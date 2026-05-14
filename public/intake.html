@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Intake formulier</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --accent: #6366f1; --success: #10b981; --border: #e5e7eb; --muted: #6b7280; }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: #f9fafb;
+      color: #111;
+      min-height: 100vh;
+      padding: 20px 16px 64px;
+    }
+
+    .container { max-width: 560px; margin: 0 auto; }
+
+    .agency-header {
+      text-align: center;
+      padding: 28px 0 24px;
+    }
+    .agency-logo {
+      width: 48px; height: 48px;
+      background: #111;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+    .agency-logo svg { width: 24px; height: 24px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .agency-name { font-size: 15px; font-weight: 700; color: #111; }
+
+    .hero-card {
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 16px;
+      color: #fff;
+    }
+    .hero-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      opacity: .75;
+      margin-bottom: 6px;
+    }
+    .hero-company { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+    .hero-sub { font-size: 13px; opacity: .85; line-height: 1.5; }
+
+    .services-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 14px;
+    }
+    .service-badge {
+      background: rgba(255,255,255,.2);
+      border-radius: 20px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 14px;
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .card-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .form-group { margin-bottom: 18px; }
+    .form-group:last-child { margin-bottom: 0; }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 6px;
+    }
+    label .req { color: #ef4444; margin-left: 2px; }
+
+    input[type="text"],
+    input[type="url"],
+    textarea,
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      color: #111;
+      background: #fff;
+      transition: border-color .15s, box-shadow .15s;
+      outline: none;
+    }
+    input[type="text"]:focus,
+    input[type="url"]:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(99,102,241,.1);
+    }
+    textarea { resize: vertical; min-height: 80px; }
+    select { appearance: none; cursor: pointer; }
+
+    .question-num {
+      display: inline-block;
+      width: 20px; height: 20px;
+      background: #eef2ff;
+      color: var(--accent);
+      border-radius: 50%;
+      font-size: 11px;
+      font-weight: 700;
+      text-align: center;
+      line-height: 20px;
+      margin-right: 6px;
+      flex-shrink: 0;
+    }
+
+    .submit-btn {
+      width: 100%;
+      height: 52px;
+      background: #111;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .15s, transform .1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .submit-btn:hover { background: #333; }
+    .submit-btn:active { transform: scale(0.99); }
+    .submit-btn:disabled { background: #9ca3af; cursor: not-allowed; }
+
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .success-card {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 14px;
+      padding: 32px 24px;
+      text-align: center;
+      margin-bottom: 14px;
+    }
+    .success-icon {
+      width: 56px; height: 56px;
+      background: var(--success);
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+    .success-icon svg { width: 28px; height: 28px; fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .success-title { font-size: 20px; font-weight: 800; color: #15803d; margin-bottom: 8px; }
+    .success-sub { font-size: 14px; color: #374151; line-height: 1.6; }
+
+    .error-box {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: #dc2626;
+      font-weight: 500;
+      margin-bottom: 14px;
+      display: none;
+    }
+
+    .footer-note {
+      text-align: center;
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 24px;
+    }
+
+    .loading-state {
+      text-align: center;
+      padding: 60px 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .loading-spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin: 0 auto 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="agency-header">
+      <div class="agency-logo">
+        <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      </div>
+      <div class="agency-name" id="agencyName">Agency AI</div>
+    </div>
+
+    <div id="mainContent">
+      <div class="loading-state">
+        <div class="loading-spinner"></div>
+        Formulier laden...
+      </div>
+    </div>
+
+    <div class="footer-note">
+      Beveiligd formulier &bull; <span id="agencyFooter">Agency AI</span>
+    </div>
+  </div>
+
+  <script>
+    const [, , leadId, token] = window.location.pathname.split('/');
+
+    async function loadIntake() {
+      const res = await fetch(`/api/intake/${leadId}/${token}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        document.getElementById('mainContent').innerHTML = `
+          <div class="card" style="text-align:center;padding:40px 24px">
+            <div style="font-size:40px;margin-bottom:12px">🔒</div>
+            <div style="font-size:16px;font-weight:700;margin-bottom:8px">Link ongeldig</div>
+            <div style="font-size:13px;color:#6b7280">${data.error || 'Deze intake link is niet meer geldig.'}</div>
+          </div>`;
+        return;
+      }
+
+      document.getElementById('agencyName').textContent = data.agencyName;
+      document.getElementById('agencyFooter').textContent = data.agencyName;
+
+      if (data.submitted) {
+        showSuccess(data.companyName);
+        return;
+      }
+
+      renderForm(data);
+    }
+
+    function renderForm(data) {
+      const servicesHTML = data.services.length
+        ? data.services.map(s => `<span class="service-badge">${s}</span>`).join('')
+        : '';
+
+      const questionsHTML = (data.questions || []).map((q, i) => {
+        let input = '';
+        if (q.type === 'select' && q.options?.length) {
+          input = `<select id="q_${q.id}" ${q.required ? 'required' : ''}>
+            <option value="">Kies een optie...</option>
+            ${q.options.map(o => `<option value="${o}">${o}</option>`).join('')}
+          </select>`;
+        } else if (q.type === 'textarea') {
+          input = `<textarea id="q_${q.id}" placeholder="${q.placeholder || ''}" rows="3" ${q.required ? 'required' : ''}></textarea>`;
+        } else {
+          input = `<input type="${q.type === 'url' ? 'url' : 'text'}" id="q_${q.id}" placeholder="${q.placeholder || ''}" ${q.required ? 'required' : ''}>`;
+        }
+        return `
+          <div class="form-group">
+            <label>
+              <span class="question-num">${i + 1}</span>
+              ${q.label}${q.required ? '<span class="req">*</span>' : ''}
+            </label>
+            ${input}
+          </div>`;
+      }).join('');
+
+      document.getElementById('mainContent').innerHTML = `
+        <div class="hero-card">
+          <div class="hero-label">Intake formulier</div>
+          <div class="hero-company">${data.companyName}</div>
+          <div class="hero-sub">Welkom! Vul onderstaande vragen in zodat we zo goed mogelijk van start kunnen gaan.</div>
+          ${servicesHTML ? `<div class="services-row">${servicesHTML}</div>` : ''}
+        </div>
+
+        <div class="error-box" id="errorBox"></div>
+
+        <div class="card">
+          <div class="card-title">Jouw gegevens</div>
+          <div class="card-sub">Alle velden met een <span style="color:#ef4444">*</span> zijn verplicht. Dit duurt ongeveer 3–5 minuten.</div>
+          <form id="intakeForm" novalidate>
+            ${questionsHTML}
+          </form>
+        </div>
+
+        <button class="submit-btn" id="submitBtn" onclick="submitIntake('${JSON.stringify(data.questions).replace(/'/g, "\\'")}')">
+          <span id="submitText">Intake versturen</span>
+          <div class="spinner" id="submitSpinner" style="display:none"></div>
+        </button>`;
+    }
+
+    async function submitIntake(questionsJSON) {
+      const questions = JSON.parse(questionsJSON);
+      const btn  = document.getElementById('submitBtn');
+      const text = document.getElementById('submitText');
+      const spin = document.getElementById('submitSpinner');
+      const errBox = document.getElementById('errorBox');
+
+      // Validate required
+      const answers = {};
+      let valid = true;
+      for (const q of questions) {
+        const el = document.getElementById(`q_${q.id}`);
+        if (!el) continue;
+        const val = el.value.trim();
+        if (q.required && !val) {
+          el.style.borderColor = '#ef4444';
+          el.style.boxShadow = '0 0 0 3px rgba(239,68,68,.1)';
+          valid = false;
+        } else {
+          el.style.borderColor = '';
+          el.style.boxShadow = '';
+          if (val) answers[q.label] = val;
+        }
+      }
+
+      if (!valid) {
+        errBox.textContent = 'Vul alle verplichte velden in.';
+        errBox.style.display = 'block';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      errBox.style.display = 'none';
+      btn.disabled = true;
+      text.style.display = 'none';
+      spin.style.display = 'block';
+
+      try {
+        const res = await fetch(`/api/intake/${leadId}/${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Versturen mislukt');
+        showSuccess();
+      } catch (err) {
+        errBox.textContent = err.message;
+        errBox.style.display = 'block';
+        btn.disabled = false;
+        text.style.display = '';
+        spin.style.display = 'none';
+      }
+    }
+
+    function showSuccess(company) {
+      document.getElementById('mainContent').innerHTML = `
+        <div class="success-card">
+          <div class="success-icon">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="success-title">Intake ontvangen!</div>
+          <div class="success-sub">
+            Bedankt${company ? ' namens ' + company : ''}! We hebben je antwoorden ontvangen en gaan ermee aan de slag.<br><br>
+            Je hoort snel van ons.
+          </div>
+        </div>`;
+    }
+
+    loadIntake();
+  </script>
+</body>
+</html>

@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Klanten Portal — Agency AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: #f9fafb;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .logo-icon {
+      width: 44px;
+      height: 44px;
+      background: #6366f1;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-icon svg {
+      width: 22px;
+      height: 22px;
+      stroke: #ffffff;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .logo-name { font-size: 20px; font-weight: 700; color: #111111; letter-spacing: -0.3px; }
+
+    .subtitle {
+      text-align: center;
+      color: #6b7280;
+      font-size: 15px;
+      margin-bottom: 8px;
+    }
+
+    .hint {
+      text-align: center;
+      color: #9ca3af;
+      font-size: 13px;
+      margin-bottom: 36px;
+    }
+
+    .form-group { margin-bottom: 16px; }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 6px;
+    }
+
+    input {
+      width: 100%;
+      height: 48px;
+      padding: 0 16px;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 600;
+      color: #111111;
+      background: #ffffff;
+      letter-spacing: 2px;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    input:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+    }
+
+    input.error-field {
+      border-color: #ef4444;
+      box-shadow: 0 0 0 3px rgba(239,68,68,0.08);
+    }
+
+    .btn-login {
+      width: 100%;
+      height: 48px;
+      background: #6366f1;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 24px;
+      transition: background 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-login:hover { background: #4f46e5; }
+    .btn-login:disabled { background: #9ca3af; cursor: not-allowed; }
+
+    .error-msg {
+      display: none;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      margin-top: 16px;
+      text-align: center;
+    }
+
+    .error-msg.visible { display: block; }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 24px 0 0;
+      color: #d1d5db;
+      font-size: 12px;
+    }
+
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #e5e7eb;
+    }
+
+    .footer-note {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
+    @media (max-width: 480px) {
+      .card { padding: 36px 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24">
+          <rect x="3" y="11" width="18" height="11" rx="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <span class="logo-name">Klanten Portal</span>
+    </div>
+    <p class="subtitle">Welkom bij je projectportaal</p>
+    <p class="hint">Voer de portaalcode in die je ontvangen hebt</p>
+
+    <form id="portalForm" novalidate>
+      <div class="form-group">
+        <label for="tokenInput">Portaalcode</label>
+        <input
+          type="text"
+          id="tokenInput"
+          placeholder="••••••••"
+          autocomplete="off"
+          spellcheck="false"
+          maxlength="32"
+          required
+        >
+      </div>
+
+      <div class="error-msg" id="errorMsg"></div>
+
+      <button type="submit" class="btn-login" id="submitBtn">
+        Mijn project bekijken &rarr;
+      </button>
+    </form>
+
+    <div class="divider">of</div>
+    <p class="footer-note">
+      <a href="/login" style="color:#6b7280;text-decoration:none;font-weight:600">
+        &#8592; Terug naar staff login
+      </a>
+    </p>
+  </div>
+
+  <script>
+    const form = document.getElementById('portalForm');
+    const input = document.getElementById('tokenInput');
+    const btn = document.getElementById('submitBtn');
+    const errorMsg = document.getElementById('errorMsg');
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+      errorMsg.classList.add('visible');
+      input.classList.add('error-field');
+    }
+
+    function clearError() {
+      errorMsg.classList.remove('visible');
+      input.classList.remove('error-field');
+    }
+
+    input.addEventListener('input', clearError);
+
+    // Auto-strip spaces and uppercase
+    input.addEventListener('input', () => {
+      const v = input.value.replace(/\s/g, '');
+      if (input.value !== v) input.value = v;
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearError();
+      const token = input.value.trim();
+      if (!token) { showError('Voer je portaalcode in.'); return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Laden...';
+
+      try {
+        const res = await fetch(`/portal/${encodeURIComponent(token)}`);
+        if (res.ok) {
+          window.location.href = `/portal/${encodeURIComponent(token)}`;
+        } else {
+          showError('Portaalcode niet gevonden. Controleer de code en probeer opnieuw.');
+          btn.disabled = false;
+          btn.textContent = 'Mijn project bekijken →';
+        }
+      } catch {
+        showError('Kan geen verbinding maken. Probeer het opnieuw.');
+        btn.disabled = false;
+        btn.textContent = 'Mijn project bekijken →';
+      }
+    });
+
+    input.focus();
+  </script>
+</body>
+</html>

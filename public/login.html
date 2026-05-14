@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agency AI — Inloggen</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: #f9fafb;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .logo-icon {
+      width: 44px;
+      height: 44px;
+      background: #111111;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-icon svg {
+      width: 24px;
+      height: 24px;
+      stroke: #ffffff;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .logo-name {
+      font-size: 20px;
+      font-weight: 700;
+      color: #111111;
+      letter-spacing: -0.3px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #6b7280;
+      font-size: 15px;
+      font-weight: 400;
+      margin-bottom: 36px;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 6px;
+      letter-spacing: 0.01em;
+    }
+
+    input {
+      width: 100%;
+      height: 44px;
+      padding: 0 14px;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 15px;
+      color: #111111;
+      background: #ffffff;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    input.error-field {
+      border-color: #ef4444;
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.08);
+    }
+
+    .btn-login {
+      width: 100%;
+      height: 48px;
+      background: #111111;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 24px;
+      transition: background 0.15s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-login:hover { background: #333333; }
+    .btn-login:active { transform: scale(0.99); }
+    .btn-login:disabled { background: #9ca3af; cursor: not-allowed; }
+
+    .btn-login .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #ffffff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    .btn-login.loading .spinner { display: block; }
+    .btn-login.loading .btn-text { display: none; }
+
+    .error-msg {
+      display: none;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      margin-top: 16px;
+      text-align: center;
+    }
+
+    .error-msg.visible { display: block; }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      15%       { transform: translateX(-6px); }
+      30%       { transform: translateX(6px); }
+      45%       { transform: translateX(-5px); }
+      60%       { transform: translateX(5px); }
+      75%       { transform: translateX(-3px); }
+      90%       { transform: translateX(3px); }
+    }
+
+    .shake { animation: shake 0.45s ease; }
+
+    .footer-note {
+      text-align: center;
+      margin-top: 28px;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
+    @media (max-width: 480px) {
+      .card { padding: 36px 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card" id="loginCard">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+      </div>
+      <span class="logo-name">Agency AI</span>
+    </div>
+    <p class="subtitle">Welkom terug</p>
+
+    <form id="loginForm" novalidate>
+      <div class="form-group">
+        <label for="username">Gebruikersnaam</label>
+        <input
+          type="text"
+          id="username"
+          placeholder="admin"
+          autocomplete="username"
+          required
+        >
+      </div>
+      <div class="form-group">
+        <label for="password">Wachtwoord</label>
+        <input
+          type="password"
+          id="password"
+          placeholder="••••••••"
+          autocomplete="current-password"
+          required
+        >
+      </div>
+
+      <div class="error-msg" id="errorMsg"></div>
+
+      <button type="submit" class="btn-login" id="loginBtn">
+        <div class="spinner"></div>
+        <span class="btn-text">Inloggen</span>
+      </button>
+    </form>
+
+    <p class="footer-note">
+      Agency AI &copy; 2024 &nbsp;&bull;&nbsp;
+      <a href="/client" style="color:#6366f1;text-decoration:none;font-weight:600">Klanten portal &rarr;</a>
+    </p>
+  </div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const btn = document.getElementById('loginBtn');
+    const errorMsg = document.getElementById('errorMsg');
+    const card = document.getElementById('loginCard');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+
+    if (localStorage.getItem('agencyToken')) {
+      window.location.href = '/app';
+    }
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+      errorMsg.classList.add('visible');
+      usernameInput.classList.add('error-field');
+      passwordInput.classList.add('error-field');
+      card.classList.remove('shake');
+      void card.offsetWidth;
+      card.classList.add('shake');
+    }
+
+    function clearError() {
+      errorMsg.classList.remove('visible');
+      usernameInput.classList.remove('error-field');
+      passwordInput.classList.remove('error-field');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearError();
+
+      const username = usernameInput.value.trim();
+      const password = passwordInput.value;
+
+      if (!username || !password) {
+        showError('Vul je gebruikersnaam en wachtwoord in.');
+        return;
+      }
+
+      btn.classList.add('loading');
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          showError(data.error || 'Inloggen mislukt.');
+          return;
+        }
+
+        localStorage.setItem('agencyToken', data.token);
+        localStorage.setItem('agencyName', data.agencyName);
+        localStorage.setItem('myName', data.myName);
+        localStorage.setItem('agencyRole', data.role || 'admin');
+
+        btn.style.background = '#10b981';
+        btn.querySelector('.btn-text').textContent = '✓ Ingelogd';
+
+        setTimeout(() => { window.location.href = '/app'; }, 400);
+
+      } catch {
+        showError('Kan geen verbinding maken met de server.');
+      } finally {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
+    });
+
+    [usernameInput, passwordInput].forEach(el => {
+      el.addEventListener('input', clearError);
+    });
+
+    usernameInput.focus();
+  </script>
+</body>
+</html>

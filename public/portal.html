@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Projectstatus</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --accent: #6366f1; --success: #10b981; --border: #e5e7eb; --muted: #6b7280; }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: #f9fafb;
+      color: #111;
+      min-height: 100vh;
+      padding: 20px 16px 48px;
+    }
+
+    .container { max-width: 560px; margin: 0 auto; }
+
+    .agency-header {
+      text-align: center;
+      padding: 28px 0 22px;
+    }
+    .agency-logo {
+      width: 44px; height: 44px;
+      background: #111;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+    .agency-logo svg { width: 22px; height: 22px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .agency-name { font-size: 15px; font-weight: 700; color: #111; }
+
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 14px;
+    }
+    .card-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 10px;
+    }
+    .company-name { font-size: 22px; font-weight: 700; margin-bottom: 3px; }
+    .company-sub { font-size: 13px; color: var(--muted); }
+
+    /* Phase tracker */
+    .phase-track {
+      display: flex;
+      align-items: flex-start;
+      margin: 22px 0 10px;
+      position: relative;
+    }
+    .phase-step {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+    .phase-connector {
+      flex: 1;
+      height: 2px;
+      margin-top: 13px;
+      background: var(--border);
+      transition: background 0.3s;
+    }
+    .phase-connector.done { background: var(--success); }
+    .phase-dot {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700;
+      border: 2px solid var(--border);
+      background: #fff;
+      color: var(--muted);
+      position: relative; z-index: 1;
+    }
+    .phase-dot.done { background: var(--success); border-color: var(--success); color: #fff; }
+    .phase-dot.current { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 0 0 4px #6366f120; }
+    .phase-label {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-top: 7px;
+      text-align: center;
+      max-width: 56px;
+      line-height: 1.3;
+    }
+    .phase-label.done { color: var(--success); }
+    .phase-label.current { color: var(--accent); font-weight: 600; }
+
+    .progress-wrap { background: #f3f4f6; border-radius: 99px; height: 5px; margin: 4px 0 10px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 99px; background: linear-gradient(to right, var(--success), var(--accent)); transition: width 0.6s ease; }
+
+    .phase-caption { font-size: 13px; color: var(--muted); }
+    .phase-caption strong { color: #111; }
+
+    .date-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: #f9fafb;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-top: 14px;
+    }
+    .date-row svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
+
+    /* Services */
+    .svc-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #f3f4f6;
+      font-size: 14px;
+    }
+    .svc-row:last-of-type { border-bottom: none; }
+    .svc-price { font-weight: 600; font-size: 13px; }
+    .svc-total {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0 0;
+      font-size: 14px;
+      font-weight: 700;
+      border-top: 1px solid var(--border);
+      margin-top: 4px;
+    }
+
+    /* Contact form */
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; color: #374151; }
+    .form-group input, .form-group textarea {
+      width: 100%;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      color: #111;
+      transition: border-color 0.15s;
+    }
+    .form-group input:focus, .form-group textarea:focus { border-color: var(--accent); }
+    .form-group textarea { min-height: 100px; resize: vertical; }
+
+    .btn-send {
+      width: 100%;
+      padding: 13px;
+      background: #111;
+      color: #fff;
+      border: none;
+      border-radius: 9px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      margin-top: 4px;
+    }
+    .btn-send:hover { opacity: 0.85; }
+    .btn-send:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .success-msg {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 10px;
+      padding: 16px;
+      font-size: 14px;
+      color: #166534;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* States */
+    .center-page { text-align: center; padding: 80px 20px; color: var(--muted); }
+    .center-page h2 { font-size: 18px; color: #111; margin: 12px 0 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { width: 26px; height: 26px; border: 2px solid #e5e7eb; border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="root"><div class="center-page"><div class="spinner"></div><p>Laden...</p></div></div>
+  </div>
+
+  <script>
+    const PHASES = [
+      { num: 1, label: 'Intake' },
+      { num: 2, label: 'Strategie' },
+      { num: 3, label: 'Uitvoering' },
+      { num: 4, label: 'Live gaan' },
+      { num: 5, label: 'Optimalisatie' }
+    ];
+
+    const CHECK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
+    function getToken() {
+      return window.location.pathname.split('/').filter(Boolean).pop();
+    }
+
+    function fmt(iso) {
+      if (!iso) return '';
+      return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
+    async function load() {
+      const token = getToken();
+      if (!token || token === 'portal') {
+        renderError('Geen portaallink gevonden.');
+        return;
+      }
+      try {
+        const res = await fetch('/api/portal/' + token);
+        if (!res.ok) { renderError('Portaal niet gevonden. Controleer de link.'); return; }
+        renderPortal(await res.json(), token);
+      } catch {
+        renderError('Kan de pagina niet laden. Probeer het later opnieuw.');
+      }
+    }
+
+    function renderError(msg) {
+      document.getElementById('root').innerHTML = `
+        <div class="center-page">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <h2>Niet gevonden</h2>
+          <p>${msg}</p>
+        </div>`;
+    }
+
+    function renderPortal(data, token) {
+      document.title = `Projectstatus – ${data.companyName}`;
+      const cur   = data.currentPhase || 1;
+      const pct   = Math.round(((cur - 1) / (PHASES.length - 1)) * 100);
+      const svcs  = data.services || [];
+      const total = svcs.reduce((s, v) => s + (v.price || 0), 0);
+
+      const phaseTrack = PHASES.map((p, i) => {
+        const isDone    = p.num < cur;
+        const isCurrent = p.num === cur;
+        const dotClass  = isDone ? 'done' : isCurrent ? 'current' : '';
+        const lblClass  = isDone ? 'done' : isCurrent ? 'current' : '';
+        const connector = i < PHASES.length - 1
+          ? `<div class="phase-connector${isDone ? ' done' : ''}"></div>`
+          : '';
+        return `
+          <div class="phase-step">
+            <div class="phase-dot ${dotClass}">${isDone ? CHECK_SVG : p.num}</div>
+            <div class="phase-label ${lblClass}">${p.label}</div>
+          </div>
+          ${connector}
+        `;
+      }).join('');
+
+      document.getElementById('root').innerHTML = `
+        <div class="agency-header">
+          <div class="agency-logo">
+            <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          </div>
+          <div class="agency-name">${data.agencyName}</div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Projectstatus</div>
+          <div class="company-name">${data.companyName}</div>
+          <div class="company-sub">Bijgewerkt door ${data.myName || data.agencyName}</div>
+
+          <div class="phase-track">${phaseTrack}</div>
+          <div class="progress-wrap">
+            <div class="progress-fill" style="width:${pct}%"></div>
+          </div>
+          <div class="phase-caption">Huidige fase: <strong>Fase ${cur} — ${PHASES[cur - 1]?.label}</strong></div>
+
+          ${data.estimatedCompletion ? `
+            <div class="date-row">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              Verwachte afronddatum: <strong>${fmt(data.estimatedCompletion)}</strong>
+            </div>
+          ` : ''}
+        </div>
+
+        ${svcs.length > 0 ? `
+          <div class="card">
+            <div class="card-label">Investering</div>
+            ${svcs.map(s => {
+              const isOnce = (s.description || '').includes('eenmalig');
+              return `
+              <div class="svc-row">
+                <span>${s.name}</span>
+                <span class="svc-price">€${(s.price || 0).toLocaleString('nl-NL')}${isOnce ? ' eenmalig' : '/mnd'}</span>
+              </div>`;
+            }).join('')}
+            ${svcs.length > 1 ? (() => {
+              const monthlyTotal = svcs.filter(s => !(s.description||'').includes('eenmalig')).reduce((sum, s) => sum + (s.price||0), 0);
+              const onceTotal    = svcs.filter(s =>  (s.description||'').includes('eenmalig')).reduce((sum, s) => sum + (s.price||0), 0);
+              return (monthlyTotal > 0 ? `<div class="svc-total"><span>Totaal per maand</span><span>€${monthlyTotal.toLocaleString('nl-NL')}</span></div>` : '') +
+                     (onceTotal > 0   ? `<div class="svc-total"><span>Totaal eenmalig</span><span>€${onceTotal.toLocaleString('nl-NL')}</span></div>` : '');
+            })() : ''}
+          </div>
+        ` : ''}
+
+        ${data.delivery?.contentCalendar?.items?.length ? `
+          <div class="card">
+            <div class="card-label">Content Kalender — Maand 1</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              ${(data.delivery.contentCalendar.items || []).map(item => `
+                <div style="padding:10px 12px;background:#f9fafb;border:1px solid #f3f4f6;border-radius:8px;font-size:13px">
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:5px">
+                    <span style="background:#eef2ff;color:#6366f1;border-radius:4px;padding:2px 6px;font-size:11px;font-weight:700">Week ${item.week}${item.day ? ' · ' + item.day : ''}</span>
+                    <span style="background:#f3f4f6;border-radius:4px;padding:2px 6px;font-size:11px">${item.platform||''}</span>
+                    <span style="background:#fefce8;color:#d97706;border-radius:4px;padding:2px 6px;font-size:11px">${item.type||''}</span>
+                    ${item.bestTime ? `<span style="background:#f0fdf4;color:#16a34a;border-radius:4px;padding:2px 6px;font-size:11px">${item.bestTime}</span>` : ''}
+                  </div>
+                  <div style="font-weight:700;color:#111;margin-bottom:3px">${item.topic||''}</div>
+                  ${item.caption ? `<div style="color:#6b7280;line-height:1.5;margin-bottom:4px">${item.caption}</div>` : ''}
+                  ${item.hashtags?.length ? `<div style="color:#6366f1;font-size:12px">${item.hashtags.join(' ')}</div>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        ${data.delivery?.chatbotFlow?.faqs?.length ? `
+          <div class="card">
+            <div class="card-label">Chatbot FAQ Script</div>
+            <p style="font-size:13px;color:#6b7280;margin-bottom:14px;line-height:1.5">Gebruik deze antwoorden op jullie website chat of WhatsApp.</p>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              ${(data.delivery.chatbotFlow.faqs || []).map((faq, i) => `
+                <div style="border:1px solid #f3f4f6;border-radius:8px;overflow:hidden">
+                  <div style="background:#f9fafb;padding:10px 14px;cursor:pointer;font-size:13px;font-weight:600;color:#111;display:flex;justify-content:space-between;align-items:center"
+                       onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+                    <span>${faq.question||''}</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </div>
+                  <div style="display:none;padding:12px 14px;font-size:13px;color:#374151;line-height:1.6">${faq.answer||''}</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        ${data.delivery?.milestones?.milestones?.length ? `
+          <div class="card">
+            <div class="card-label">Projectmijlpalen</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              ${(data.delivery.milestones.milestones || []).map(m => `
+                <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:#f9fafb;border:1px solid #f3f4f6;border-radius:8px">
+                  <span style="background:#6366f1;color:#fff;border-radius:5px;padding:3px 7px;font-size:11px;font-weight:700;flex-shrink:0">W${m.week}</span>
+                  <div>
+                    <div style="font-size:13px;font-weight:700;color:#111">${m.title||''}</div>
+                    ${m.description ? `<div style="font-size:12px;color:#6b7280;margin-top:2px">${m.description}</div>` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        ${data.reports?.length > 0 ? `
+          <div class="card">
+            <div class="card-label">Rapporten</div>
+            ${data.reports.map(r => `
+              <div style="border:1px solid #f3f4f6;border-radius:8px;overflow:hidden;margin-bottom:10px">
+                <div style="background:#f9fafb;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer"
+                     onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+                  <div>
+                    <div style="font-size:13px;font-weight:600;color:#111">${r.title}</div>
+                    <div style="font-size:11px;color:#6b7280">${fmt(r.createdAt)}</div>
+                  </div>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+                <div style="display:none;padding:14px;font-size:13px;color:#374151;line-height:1.7;white-space:pre-line">${r.content}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <div class="card">
+          <div class="card-label">Vragen of aanpassingen?</div>
+          <p style="font-size:13px;color:#6b7280;margin-bottom:18px">Heb je een vraag of wil je iets laten weten? Stuur een bericht en we reageren zo snel mogelijk.</p>
+          <div id="contactForm">
+            <div class="form-group">
+              <label>Jouw naam</label>
+              <input type="text" id="msgName" placeholder="Je naam">
+            </div>
+            <div class="form-group">
+              <label>Bericht</label>
+              <textarea id="msgText" placeholder="Schrijf hier je vraag of opmerking..."></textarea>
+            </div>
+            <button class="btn-send" id="sendBtn" onclick="sendMsg('${token}')">Verstuur bericht</button>
+          </div>
+        </div>
+      `;
+    }
+
+    async function sendMsg(token) {
+      const name    = document.getElementById('msgName')?.value?.trim();
+      const message = document.getElementById('msgText')?.value?.trim();
+      const btn     = document.getElementById('sendBtn');
+      if (!name || !message) { alert('Vul je naam en een bericht in.'); return; }
+
+      btn.disabled    = true;
+      btn.textContent = 'Versturen...';
+
+      try {
+        const res = await fetch('/api/portal/' + token + '/message', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ name, message })
+        });
+        if (res.ok) {
+          document.getElementById('contactForm').innerHTML = `
+            <div class="success-msg">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              Bericht verstuurd! We nemen zo snel mogelijk contact op.
+            </div>`;
+        } else {
+          btn.disabled    = false;
+          btn.textContent = 'Verstuur bericht';
+          alert('Versturen mislukt. Probeer het opnieuw.');
+        }
+      } catch {
+        btn.disabled    = false;
+        btn.textContent = 'Verstuur bericht';
+        alert('Verbindingsfout. Probeer het opnieuw.');
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

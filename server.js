@@ -1,0 +1,4009 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const cron = require('node-cron');
+const nodemailer = require('nodemailer');
+const Stripe = require('stripe');
+const { readJSON, writeJSON } = require('./database');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'agency_ai_secret';
+const DATA_DIR = path.join(__dirname, 'data');
+
+const DEFAULT_SERVICES = [
+  { name: 'Meta advertenties met AI',             price: 750,  billing: 'maandelijks', description: 'Facebook & Instagram ads opgezet en beheerd met AI-optimalisatie' },
+  { name: 'Google Ads met AI',                    price: 650,  billing: 'maandelijks', description: 'Google Search en Display campagnes met wekelijkse AI-optimalisatie' },
+  { name: 'AI content voor social media',         price: 395,  billing: 'maandelijks', description: 'Dagelijkse posts, captions en hashtags gegenereerd door AI' },
+  { name: 'AI chatbot voor website',              price: 495,  billing: 'maandelijks', description: '24/7 klantenservice chatbot die vragen beantwoordt en leads vangt' },
+  { name: 'Automatisch lead outreach systeem',    price: 995,  billing: 'maandelijks', description: 'Volledig automatisch koude emails en follow-ups naar prospects' },
+  { name: 'Lokale SEO optimalisatie',             price: 450,  billing: 'maandelijks', description: 'Google ranking verbeteren voor lokale zoekopdrachten en Google Maps' },
+  { name: 'Google Bedrijfsprofiel optimalisatie', price: 295,  billing: 'maandelijks', description: 'Google Maps profiel optimaliseren voor maximale lokale zichtbaarheid' },
+  { name: 'Professionele website bouwen',         price: 1495, billing: 'eenmalig',    description: 'Complete website op maat gebouwd, geoptimaliseerd en gelanceerd' },
+  { name: 'Website snelheid & SEO technisch',     price: 395,  billing: 'eenmalig',    description: 'Website technisch versnellen en optimaliseren voor betere rankings' },
+  { name: 'Online boekingssysteem integreren',    price: 495,  billing: 'eenmalig',    description: 'Boekingssoftware koppelen aan de website voor directe afspraken' },
+  { name: 'Email marketing automatisering',       price: 395,  billing: 'maandelijks', description: 'Gepersonaliseerde email flows voor leads, klanten en winback' },
+  { name: 'WhatsApp Business automatisering',     price: 295,  billing: 'maandelijks', description: 'Geautomatiseerde WhatsApp berichten voor leads en klantenservice' },
+  { name: 'AI video content creatie',             price: 595,  billing: 'maandelijks', description: 'Reels, TikToks en Shorts scripts en productie met AI' },
+  { name: 'Reputatie management (reviews)',       price: 275,  billing: 'maandelijks', description: 'Automatisch reageren op Google en Facebook reviews met AI' },
+  { name: 'Analytics & rapportage dashboard',     price: 375,  billing: 'eenmalig',    description: 'Volledig KPI-rapportage dashboard op maat opgezet en geconfigureerd' }
+];
+
+// Auto-create data directory (database.js handles SQLite init)
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+// Seed defaults into SQLite for fresh deploys (readJSON/writeJSON use SQLite)
+const DATA_DEFAULTS = {
+  'leads.json':      [],
+  'inbox.json':      [],
+  'runs.json':       [],
+  'stats.json':      { leadsFound: 0, emailsSent: 0, replies: 0, pipelineValue: 0, weeklyData: [], newReplies: [], abStats: { aApproved: 0, bApproved: 0 } },
+  'memory.json':     {},
+  'blacklist.json':  [],
+  'notifications.json': []
+};
+Object.entries(DATA_DEFAULTS).forEach(([file, def]) => {
+  if (!readJSON(file)) writeJSON(file, def);
+});
+
+if (!readJSON('settings.json')) {
+  const hash = bcrypt.hashSync('agency2024', 12);
+  writeJSON('settings.json', {
+    username: 'admin', password: hash,
+    agencyName: 'Agency AI', myName: 'Ekow', myTitle: 'AI Growth Specialist',
+    gmailAddress: '', gmailPassword: '', linkedinUrl: '', stripeSecretKey: '',
+    mollieApiKey: '', paypalMe: '', preferredPaymentMethod: 'stripe',
+    dailyRunTime: '09:00', leadsPerDay: 15, autoApproveScore: 8.0, automationPaused: false,
+    replyDetection: true, dailyBriefingEnabled: true, dailyBriefingTime: '08:45',
+    smartAutoApprove: { enabled: false, scoreThreshold: 8.0, requireNoAds: true, minFollowers: 5000, requireWebsite: true },
+    autoClientEmails: { welcome: true, intakeReceived: true, deliveryReady: true, weekComplete: true, monthlyUpdate: true, checkIn: true },
+    autoInvoiceEnabled: false, autoInvoiceDay: 1, paymentReminderDays: 7,
+    monthlyReports: true, webhookToken: '', webhookConfigured: false,
+    backupEnabled: true, backupTime: '02:00', backupEmail: true,
+    targetCompanySizes: ['small', 'medium'],
+    websiteTagline: 'Meer klanten. Minder werk. Volledig automatisch.',
+    websiteAbout: 'Wij gebruiken AI om lokale bedrijven te helpen groeien — van het vinden van kansen tot het schrijven van gepersonaliseerde emails, volledig op autopiloot.',
+    websiteContact: '',
+    services: DEFAULT_SERVICES
+  });
+}
+
+// Seed users store — migrate admin from settings.json on first run
+if (!readJSON('users.json')) {
+  const s = readJSON('settings.json') || {};
+  writeJSON('users.json', [{
+    id: '1',
+    username: s.username || 'admin',
+    password: s.password || bcrypt.hashSync('agency2024', 12),
+    name: s.myName || 'Admin',
+    role: 'admin',
+    createdAt: new Date().toISOString()
+  }]);
+}
+
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ─── Clean URL routes (must come after static so files still work) ───────────
+app.get('/login',        (_, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
+app.get('/client',       (_, res) => res.sendFile(path.join(__dirname, 'public', 'client-login.html')));
+app.get('/client-login', (_, res) => res.sendFile(path.join(__dirname, 'public', 'client-login.html')));
+app.get('/app',          (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+// readJSON / writeJSON are provided by database.js (SQLite-backed)
+
+function addActivity(type, label, opts) {
+  opts = opts || {};
+  const logFile = path.join(DATA_DIR, 'activity.json');
+  let log = [];
+  try {
+    if (fs.existsSync(logFile)) {
+      const raw = fs.readFileSync(logFile, 'utf8').replace(/^\uFEFF/, '');
+      log = JSON.parse(raw);
+    }
+  } catch { log = []; }
+  log.unshift({
+    id:        Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+    type,
+    label,
+    timestamp: new Date().toISOString(),
+    tokensIn:  opts.tokensIn  || 0,
+    tokensOut: opts.tokensOut || 0,
+    costUsd:   opts.costUsd   || 0,
+    meta:      opts.meta      || {}
+  });
+  if (log.length > 500) log = log.slice(0, 500);
+  fs.writeFileSync(logFile, JSON.stringify(log, null, 2), 'utf8');
+}
+
+function addNotification(type, title, body, leadId) {
+  const notifications = readJSON('notifications.json') || [];
+  notifications.unshift({
+    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+    type, title, body,
+    leadId: leadId || null,
+    read: false,
+    createdAt: new Date().toISOString()
+  });
+  if (notifications.length > 200) notifications.splice(200);
+  writeJSON('notifications.json', notifications);
+}
+
+function getSeasonalContext(lang = 'nl') {
+  const now   = new Date();
+  const month = now.getMonth(); // 0 = jan
+  const day   = now.getDate();
+
+  // [month]: { nl: { season, hook, event }, en: { ... } }
+  const SEASONAL = [
+    /* Jan */ { nl: { season: 'Januari', hook: 'Veel bedrijven starten het nieuwe jaar met nieuwe budgetten en plannen — ideaal moment om in gesprek te gaan.', event: 'Nieuwjaar' }, en: { season: 'January', hook: 'Most businesses kick off the new year with fresh budgets and plans — the perfect time to start a conversation.', event: 'New Year' } },
+    /* Feb */ { nl: { season: 'Februari', hook: 'Valentijnsdag brengt extra aandacht voor cadeaus, horeca en beauty — goed moment voor een seizoensactie.', event: 'Valentijnsdag' }, en: { season: 'February', hook: 'Valentine\'s Day drives traffic for hospitality, retail and beauty — great timing for a seasonal push.', event: 'Valentine\'s Day' } },
+    /* Mar */ { nl: { season: 'Lente', hook: 'De lente is hét moment om je online aanwezigheid op te frissen voor het drukke seizoen.', event: 'Lente' }, en: { season: 'Spring', hook: 'Spring is the ideal time to refresh your online presence before the busy season picks up.', event: 'Spring' } },
+    /* Apr */ { nl: { season: 'Lente', hook: 'Pasen en de lentevakantie zorgen voor extra drukte — slim om nu te adverteren voordat concurrenten het doen.', event: 'Pasen' }, en: { season: 'Spring', hook: 'Easter and spring breaks drive consumer spending — smart to advertise before competitors ramp up.', event: 'Easter' } },
+    /* May */ { nl: { season: 'Mei', hook: 'Moederdag en de aanloop naar de zomer zijn krachtige haakjes voor seizoensgerichte campagnes.', event: 'Moederdag' }, en: { season: 'May', hook: 'Mother\'s Day and early summer momentum are powerful hooks for seasonal campaigns right now.', event: 'Mother\'s Day' } },
+    /* Jun */ { nl: { season: 'Zomer', hook: 'De zomer staat voor de deur — bedrijven die nu investeren in zichtbaarheid plukken er de vruchten van in het hoogseizoen.', event: 'Zomer' }, en: { season: 'Summer', hook: 'Summer is almost here — businesses that invest in visibility now will reap the rewards during peak season.', event: 'Summer' } },
+    /* Jul */ { nl: { season: 'Zomer', hook: 'Juli is rustig voor veel bedrijven — ideaal om stille uren te benutten om je online kanalen klaar te stomen voor het najaar.', event: 'Zomervakantie' }, en: { season: 'Summer', hook: 'July is quiet for many businesses — a perfect window to prepare your online presence for the autumn rush.', event: 'Summer holidays' } },
+    /* Aug */ { nl: { season: 'Zomer', hook: 'De zomervakantie loopt bijna af — slimme bedrijven bereiden nu hun najaarscampagnes voor.', event: 'Einde zomervakantie' }, en: { season: 'Late Summer', hook: 'Summer holidays are wrapping up — smart businesses are already setting up autumn campaigns.', event: 'Back to school' } },
+    /* Sep */ { nl: { season: 'Najaar', hook: 'September betekent herstart: nieuwe budgetcycli, meer beslissers beschikbaar en hoge koopintentie.', event: 'Septemberstart' }, en: { season: 'Autumn', hook: 'September means a fresh start: new budget cycles, decision-makers back at their desks, and high buying intent.', event: 'September restart' } },
+    /* Oct */ { nl: { season: 'Najaar', hook: 'Q4 is begonnen — de laatste sprint van het jaar voor omzetdoelen. Nu is het moment om vol gas te geven op marketing.', event: 'Q4 sprint' }, en: { season: 'Autumn', hook: 'Q4 has begun — the final push to hit annual targets. Now is the time to go all-in on marketing.', event: 'Q4 sprint' } },
+    /* Nov */ { nl: { season: 'Winter', hook: 'Black Friday en de aanloop naar Kerst zijn de drukste weken van het jaar. Wie nu zichtbaar is, wint.', event: 'Black Friday / Sinterklaas' }, en: { season: 'Winter', hook: 'Black Friday and the run-up to Christmas are the busiest weeks of the year. Visibility now means revenue.', event: 'Black Friday / Christmas' } },
+    /* Dec */ { nl: { season: 'Kerst', hook: 'December is de laatste kans van het jaar én het moment waarop klanten actief op zoek zijn naar diensten en cadeaus.', event: 'Kerst & Oud & Nieuw' }, en: { season: 'Christmas', hook: 'December is the last chance of the year and the moment customers are actively searching for services and gifts.', event: 'Christmas & New Year' } },
+  ];
+
+  const ctx = SEASONAL[month][lang] || SEASONAL[month].nl;
+  return ctx;
+}
+
+function isBlacklisted(lead) {
+  const list = readJSON('blacklist.json') || [];
+  if (!list.length) return false;
+  const name   = (lead.companyName  || '').toLowerCase();
+  const domain = (lead.websiteUrl   || '').replace(/^https?:\/\//,'').split('/')[0].toLowerCase();
+  const niche  = (lead.niche        || '').toLowerCase();
+  return list.some(entry => {
+    const v = (entry.value || '').toLowerCase();
+    if (entry.type === 'company') return name.includes(v) || v.includes(name);
+    if (entry.type === 'domain')  return domain.includes(v) || v.includes(domain);
+    if (entry.type === 'niche')   return niche === v;
+    return false;
+  });
+}
+
+function addLeadHistory(leads, leadId, event) {
+  const lead = leads.find(l => l.id === leadId);
+  if (!lead) return;
+  if (!lead.history) lead.history = [];
+  lead.history.push({ ...event, time: new Date().toISOString() });
+}
+
+const NL_DAYS = ['zondag','maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag'];
+
+function getOptimalSendTime(niche) {
+  const n = (niche || '').toLowerCase();
+  let targetDay, targetHour;
+  if (n.includes('restaurant') || n.includes('food') || n.includes('horeca')) {
+    targetDay = 2; targetHour = 10;
+  } else if (n.includes('beauty') || n.includes('wellness') || n.includes('salon') || n.includes('spa')) {
+    targetDay = 1; targetHour = 9;
+  } else if (n.includes('fitness') || n.includes('sport') || n.includes('gym')) {
+    targetDay = 2; targetHour = 8;
+  } else if (n.includes('retail') || n.includes('shop') || n.includes('webshop')) {
+    targetDay = 3; targetHour = 10;
+  } else {
+    targetDay = 2; targetHour = 10;
+  }
+  const now = new Date();
+  const result = new Date(now);
+  result.setHours(targetHour, 0, 0, 0);
+  let daysUntil = (targetDay - result.getDay() + 7) % 7;
+  if (daysUntil === 0 && result <= now) daysUntil = 7;
+  result.setDate(result.getDate() + daysUntil);
+  return result.toISOString();
+}
+
+function getMemoryKey(niche, country) {
+  return `${(niche||'unknown').toLowerCase().replace(/[^a-z]/g,'')}` +
+         `_${(country||'unknown').toLowerCase().replace(/[^a-z]/g,'')}`;
+}
+
+function updateMemory(niche, country, type) {
+  const memory = readJSON('memory.json') || {};
+  const key = getMemoryKey(niche, country);
+  if (!memory[key]) {
+    memory[key] = { niche: niche||'unknown', country: (country||'unknown').toUpperCase(), sent: 0, replied: 0, replyRate: 0 };
+  }
+  if (type === 'sent')    memory[key].sent    = (memory[key].sent    || 0) + 1;
+  if (type === 'replied') memory[key].replied = (memory[key].replied || 0) + 1;
+  const { sent, replied } = memory[key];
+  memory[key].replyRate = sent > 0 ? Math.round((replied / sent) * 1000) / 10 : 0;
+  writeJSON('memory.json', memory);
+}
+
+// â"€â"€â"€ Email helper â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken) {
+  const escaped = (body || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const lines = escaped.split('\n').map(l => `<p style="margin:0 0 14px;font-size:15px;line-height:1.75;color:#111111">${l || '&nbsp;'}</p>`).join('');
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"></head>
+<body style="margin:0;padding:0;background:#ffffff;font-family:'Helvetica Neue',Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+      <td style="padding:48px 40px 24px;max-width:600px">
+        ${lines}
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:0 40px 48px">
+        <table cellpadding="0" cellspacing="0">
+          <tr><td style="padding-top:16px;border-top:1px solid #e5e7eb">
+            <p style="margin:0 0 2px;font-size:14px;font-weight:600;color:#111111">${myName || ''}</p>
+            <p style="margin:0;font-size:13px;color:#6b7280">${myTitle || 'AI Growth Specialist'} &nbsp;Â·&nbsp; ${agencyName || 'Agency AI'}</p>
+          </td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+  ${trackingToken ? `<img src="${process.env.BASE_URL||''}/track/open/${trackingToken}" width="1" height="1" style="display:block;width:1px;height:1px;opacity:0" alt="">` : ''}
+</body>
+</html>`;
+}
+
+async function sendEmail({ to, subject, body, html, settings, trackingToken }) {
+  const transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    auth: { user: settings.gmailAddress, pass: settings.gmailPassword },
+    tls: { rejectUnauthorized: false }
+  });
+  await transporter.verify();
+  await transporter.sendMail({
+    from: `"${settings.agencyName}" <${settings.gmailAddress}>`,
+    to,
+    subject,
+    text: body || '',
+    html: html || buildEmailHTML(body, settings.agencyName, settings.myName, settings.myTitle, trackingToken)
+  });
+}
+
+// â"€â"€â"€ Auth middleware â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+// AES-256-CBC helpers for API key storage
+const _aesKey = crypto.scryptSync(JWT_SECRET, 'agency-ai-salt', 32);
+function encryptApiKey(text) {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', _aesKey, iv);
+  return iv.toString('hex') + ':' + Buffer.concat([cipher.update(text), cipher.final()]).toString('hex');
+}
+function decryptApiKey(stored) {
+  const [ivHex, encHex] = stored.split(':');
+  const decipher = crypto.createDecipheriv('aes-256-cbc', _aesKey, Buffer.from(ivHex, 'hex'));
+  return Buffer.concat([decipher.update(Buffer.from(encHex, 'hex')), decipher.final()]).toString();
+}
+function hashApiKey(key) {
+  return crypto.createHash('sha256').update(key).digest('hex');
+}
+
+function authMiddleware(req, res, next) {
+  const header = req.headers['authorization'];
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Niet geautoriseerd' });
+  }
+  const token = header.split(' ')[1];
+
+  // API key authentication (sk-agency- prefix)
+  if (token.startsWith('sk-agency-')) {
+    const h = hashApiKey(token);
+    const keys = readJSON('api-keys.json') || [];
+    const found = keys.find(k => k.keyHash === h);
+    if (!found) return res.status(401).json({ error: 'API sleutel ongeldig' });
+    found.lastUsed = new Date().toISOString();
+    writeJSON('api-keys.json', keys);
+    req.user = { id: found.userId, username: found.username, role: found.role, name: found.keyLabel };
+    return next();
+  }
+
+  // JWT authentication
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Token ongeldig of verlopen' });
+  }
+}
+
+function requireAdmin(req, res, next) {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Geen toegang — alleen admins' });
+  }
+  next();
+}
+
+// â"€â"€â"€ Auth routes (public â€" no middleware) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+app.post('/api/auth/login', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Gebruikersnaam en wachtwoord verplicht' });
+  }
+
+  const users = readJSON('users.json') || [];
+  const user = users.find(u => u.username === username);
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return res.status(401).json({ error: 'Onjuiste gebruikersnaam of wachtwoord' });
+  }
+
+  const settings = readJSON('settings.json') || {};
+  const token = jwt.sign(
+    { id: user.id, username: user.username, name: user.name, role: user.role,
+      agencyName: settings.agencyName, myName: user.name },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  res.json({ token, myName: user.name, agencyName: settings.agencyName, role: user.role });
+});
+
+app.get('/api/auth/verify', (req, res) => {
+  const header = req.headers['authorization'];
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.json({ valid: false });
+  }
+  const token = header.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    res.json({ valid: true, user: decoded });
+  } catch {
+    res.json({ valid: false });
+  }
+});
+
+// â"€â"€â"€ Portal (public â€" no login needed) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+app.get('/portal/:token', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'portal.html'));
+});
+
+// ─── Intake form (public) ────────────────────────────────────────────────────
+
+app.get('/intake/:leadId/:token', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'intake.html'));
+});
+
+app.get('/api/intake/:leadId/:token', async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
+  if (!lead) return res.status(404).json({ error: 'Intake link ongeldig of verlopen' });
+
+  if (lead.intakeSubmittedAt) {
+    return res.json({ submitted: true, companyName: lead.companyName, agencyName: (readJSON('settings.json') || {}).agencyName || 'Agency AI' });
+  }
+
+  // Generate questions with AI if not yet cached
+  if (!lead.intakeQuestions) {
+    const serviceNames = (lead.services || []).map(s => s.name).join(', ') || 'AI-marketingdiensten';
+    try {
+      const questions = await aiJSON(`Je bent een projectmanager bij een AI marketing bureau.
+Genereer een intake vragenlijst voor een nieuw klant: ${lead.companyName} (${lead.niche}, ${lead.location}).
+Diensten waarvoor we gaan starten: ${serviceNames}.
+Maak 6-8 gerichte vragen die echt nuttig zijn voor de uitvoering. Mix van korte antwoorden en langere tekstvelden.
+Antwoord ALLEEN als JSON: { "questions": [{ "id": "q1", "label": "vraag tekst", "type": "text|textarea|select|url", "placeholder": "...", "options": ["optie1","optie2"] (alleen bij type select), "required": true/false }] }`);
+      lead.intakeQuestions = questions?.questions || [];
+    } catch {
+      lead.intakeQuestions = [
+        { id: 'q1', label: 'Wat is de website URL van je bedrijf?', type: 'url', placeholder: 'https://...', required: false },
+        { id: 'q2', label: 'Wie is jullie doelgroep?', type: 'textarea', placeholder: 'Beschrijf je ideale klant...', required: true },
+        { id: 'q3', label: 'Wat is jullie maandelijkse marketingbudget?', type: 'select', options: ['< €500', '€500–€1.000', '€1.000–€2.500', '€2.500+'], required: true },
+        { id: 'q4', label: 'Op welke platforms zijn jullie al actief?', type: 'textarea', placeholder: 'Instagram, Facebook, LinkedIn...', required: false },
+        { id: 'q5', label: 'Wat is het belangrijkste doel voor de komende 3 maanden?', type: 'textarea', placeholder: 'Meer leads, meer volgers, betere website...', required: true },
+        { id: 'q6', label: 'Zijn er al bestaande campagnes of advertentieaccounts?', type: 'text', placeholder: 'Ja / nee + toelichting', required: false },
+      ];
+    }
+    const idx = leads.findIndex(l => l.id === lead.id);
+    leads[idx] = lead;
+    writeJSON('leads.json', leads);
+  }
+
+  const settings = readJSON('settings.json') || {};
+  res.json({
+    submitted: false,
+    companyName: lead.companyName,
+    agencyName: settings.agencyName || 'Agency AI',
+    agencyLogo: settings.agencyName || 'Agency AI',
+    services: (lead.services || []).map(s => s.name),
+    questions: lead.intakeQuestions,
+  });
+});
+
+app.post('/api/intake/:leadId/:token', async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
+  if (idx === -1) return res.status(404).json({ error: 'Intake link ongeldig' });
+  if (leads[idx].intakeSubmittedAt) return res.status(409).json({ error: 'Intake al ingediend' });
+
+  leads[idx].intakeAnswers = req.body.answers || {};
+  leads[idx].intakeSubmittedAt = new Date().toISOString();
+  addLeadHistory(leads, leads[idx].id, { event: 'intakeSubmitted', label: 'Intake ingevuld door klant' });
+  addNotification('intake_submitted', `Intake ingevuld: ${leads[idx].companyName}`, `De intake is ingevuld door ${leads[idx].contactName || leads[idx].companyName}`, leads[idx].id);
+  writeJSON('leads.json', leads);
+
+  const settings = readJSON('settings.json') || {};
+
+  // Notify team
+  if (settings.gmailAddress && settings.gmailPassword) {
+    try {
+      const answersText = Object.entries(req.body.answers || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
+      await sendEmail({ to: settings.gmailAddress, subject: `[Intake ingevuld] ${leads[idx].companyName}`, body: `De intake van ${leads[idx].companyName} is ingevuld.\n\nAntwoorden:\n${answersText}`, settings });
+    } catch { /* optional */ }
+  }
+
+  // Auto-send intake confirmation email to client
+  const lead = leads[idx];
+  if (settings.autoClientEmails?.intakeReceived !== false && lead.email && settings.gmailAddress && settings.gmailPassword) {
+    try {
+      const email = await generateClientEmail(lead, 'intakeReceived', settings);
+      await sendEmail({ to: lead.email, subject: email.subject, body: email.body, settings });
+      if (!leads[idx].clientEmailLog) leads[idx].clientEmailLog = [];
+      leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'intakeReceived', subject: email.subject, body: email.body, to: lead.email, sentAt: new Date().toISOString(), sentBy: 'systeem' });
+      writeJSON('leads.json', leads);
+    } catch { /* optional */ }
+  }
+
+  res.json({ ok: true });
+});
+
+// ── Public agency website ─────────────────────────────────────────────────────
+// ── Email open tracking pixel (public) ───────────────────────────────────────
+const PIXEL_GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+
+app.get('/track/open/:token', (req, res) => {
+  const token = req.params.token;
+  res.set({ 'Content-Type': 'image/gif', 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache' });
+  res.send(PIXEL_GIF);
+
+  // Async update — don't block the pixel response
+  setImmediate(() => {
+    try {
+      const leads = readJSON('leads.json') || [];
+      const idx = leads.findIndex(l => l.trackingToken === token);
+      if (idx === -1) return;
+      const now = new Date().toISOString();
+      if (!leads[idx].openedAt) {
+        leads[idx].openedAt = now;
+        addLeadHistory(leads, leads[idx].id, { event: 'opened', label: 'Email geopend' });
+        addActivity('open', 'Email geopend door ' + (leads[idx].companyName || 'Onbekend'), { meta: { leadId: leads[idx].id } });
+        console.log(`[Tracking] Email geopend: ${leads[idx].companyName}`);
+      }
+      leads[idx].openCount = (leads[idx].openCount || 0) + 1;
+      leads[idx].lastOpenedAt = now;
+      writeJSON('leads.json', leads);
+
+      const inbox = readJSON('inbox.json') || [];
+      const iIdx = inbox.findIndex(i => i.trackingToken === token);
+      if (iIdx !== -1) {
+        if (!inbox[iIdx].openedAt) inbox[iIdx].openedAt = now;
+        inbox[iIdx].openCount = (inbox[iIdx].openCount || 0) + 1;
+        writeJSON('inbox.json', inbox);
+      }
+    } catch { /* silent */ }
+  });
+});
+
+app.get('/agency', (req, res) => {
+  const s        = readJSON('settings.json') || {};
+  const name     = s.agencyName  || 'Agency AI';
+  const myName   = s.myName      || '';
+  const myTitle  = s.myTitle     || 'AI Growth Specialist';
+  const tagline  = s.websiteTagline  || 'Meer klanten. Minder werk. Volledig automatisch.';
+  const about    = s.websiteAbout    || 'Wij gebruiken AI om lokale bedrijven te helpen groeien — van het vinden van kansen tot het schrijven van gepersonaliseerde emails, volledig op autopiloot.';
+  const email    = s.websiteContact  || s.gmailAddress || '';
+  const linkedin = s.linkedinUrl     || '';
+  const services = (s.services || []).slice(0, 12);
+
+  const serviceCards = services.map(sv => `
+    <div class="srv-card">
+      <div class="srv-name">${esc(sv.name)}</div>
+      <div class="srv-price">${sv.billing === 'eenmalig' ? 'Eenmalig' : 'Per maand'} &bull; &euro;${sv.price || 0}</div>
+      ${sv.description ? `<div class="srv-desc">${esc(sv.description)}</div>` : ''}
+    </div>`).join('');
+
+  const leads = readJSON('leads.json') || [];
+  const publishedCases = leads.filter(l => l.caseStudy && l.caseStudy.published === true).slice(0, 6);
+  const caseCards = publishedCases.map(l => {
+    const cs = l.caseStudy;
+    const resultsHtml = (cs.results || []).map(r => `<li>${esc(r)}</li>`).join('');
+    return `
+    <div class="cs-card">
+      <div class="cs-tag">${esc(cs.industry || l.niche)}</div>
+      <h3 class="cs-title">${esc(cs.title)}</h3>
+      <p class="cs-challenge">${esc(cs.challenge)}</p>
+      ${resultsHtml ? `<ul class="cs-results">${resultsHtml}</ul>` : ''}
+      ${cs.quote ? `<blockquote class="cs-quote">&ldquo;${esc(cs.quote)}&rdquo;<cite>${esc(cs.quoteName || '')}</cite></blockquote>` : ''}
+    </div>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${esc(name)}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --black: #0d0d0d; --white: #ffffff; --gray: #6b7280; --border: #e5e7eb;
+      --accent: #111827; --bg: #f9fafb; --card: #ffffff;
+    }
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--black); line-height: 1.6; }
+    a { color: inherit; text-decoration: none; }
+
+    /* NAV */
+    nav { background: #fff; border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 60px; position: sticky; top: 0; z-index: 100; }
+    .nav-logo { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+    .nav-cta { background: var(--black); color: #fff; padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; transition: opacity .15s; }
+    .nav-cta:hover { opacity: .85; }
+
+    /* HERO */
+    .hero { text-align: center; padding: 96px 24px 80px; max-width: 760px; margin: 0 auto; }
+    .hero-badge { display: inline-flex; align-items: center; gap: 6px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 999px; margin-bottom: 28px; }
+    .hero h1 { font-size: clamp(36px, 6vw, 60px); font-weight: 800; line-height: 1.1; letter-spacing: -1.5px; margin-bottom: 20px; }
+    .hero p { font-size: 18px; color: var(--gray); max-width: 540px; margin: 0 auto 36px; }
+    .hero-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn-primary { background: var(--black); color: #fff; padding: 14px 28px; border-radius: 10px; font-size: 15px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; transition: opacity .15s; }
+    .btn-primary:hover { opacity: .85; }
+    .btn-ghost { border: 1px solid var(--border); padding: 14px 28px; border-radius: 10px; font-size: 15px; font-weight: 600; color: var(--black); transition: background .15s; }
+    .btn-ghost:hover { background: var(--border); }
+
+    /* STATS */
+    .stats { display: flex; justify-content: center; gap: 48px; flex-wrap: wrap; padding: 48px 24px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: #fff; }
+    .stat-item { text-align: center; }
+    .stat-num { font-size: 32px; font-weight: 800; letter-spacing: -1px; }
+    .stat-lbl { font-size: 13px; color: var(--gray); margin-top: 4px; }
+
+    /* SECTION */
+    section { max-width: 1080px; margin: 0 auto; padding: 80px 24px; }
+    .section-tag { font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--gray); margin-bottom: 12px; }
+    .section-title { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -1px; margin-bottom: 14px; line-height: 1.15; }
+    .section-sub { font-size: 17px; color: var(--gray); max-width: 540px; margin-bottom: 48px; }
+
+    /* ABOUT */
+    .about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
+    @media (max-width: 680px) { .about-grid { grid-template-columns: 1fr; } }
+    .about-text p { font-size: 17px; color: var(--gray); line-height: 1.75; margin-bottom: 16px; }
+    .feature-list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+    .feature-list li { display: flex; align-items: flex-start; gap: 12px; font-size: 15px; font-weight: 500; }
+    .feature-list li::before { content: "✓"; background: #f0fdf4; color: #16a34a; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+
+    /* SERVICES */
+    .srv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+    .srv-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; transition: box-shadow .15s; }
+    .srv-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+    .srv-name { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+    .srv-price { font-size: 12px; color: var(--gray); font-weight: 600; margin-bottom: 8px; }
+    .srv-desc { font-size: 13px; color: var(--gray); line-height: 1.55; }
+
+    /* PROCESS */
+    .steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 24px; }
+    .step { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+    .step-num { width: 32px; height: 32px; background: var(--black); color: #fff; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; margin-bottom: 14px; }
+    .step h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+    .step p { font-size: 13px; color: var(--gray); line-height: 1.6; }
+
+    /* CASE STUDIES */
+    .cs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 24px; margin-top: 40px; }
+    .cs-card { background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 12px; }
+    .cs-tag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--accent); background: #f0f4ff; border-radius: 6px; padding: 3px 8px; display: inline-block; }
+    .cs-title { font-size: 17px; font-weight: 700; color: var(--black); letter-spacing: -.3px; line-height: 1.3; }
+    .cs-challenge { font-size: 13px; color: var(--gray); line-height: 1.6; }
+    .cs-results { list-style: none; display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+    .cs-results li { font-size: 13px; font-weight: 600; color: #16a34a; padding-left: 18px; position: relative; }
+    .cs-results li::before { content: '✓'; position: absolute; left: 0; color: #16a34a; }
+    .cs-quote { border-left: 3px solid var(--border); padding: 10px 14px; margin-top: 4px; font-size: 13px; font-style: italic; color: var(--gray); line-height: 1.5; }
+    .cs-quote cite { display: block; font-style: normal; font-size: 12px; font-weight: 600; color: #374151; margin-top: 6px; }
+
+    /* CTA BANNER */
+    .cta-banner { background: var(--black); border-radius: 20px; padding: 60px 40px; text-align: center; margin: 0 24px 80px; }
+    .cta-banner h2 { font-size: clamp(26px, 4vw, 38px); font-weight: 800; color: #fff; letter-spacing: -1px; margin-bottom: 14px; }
+    .cta-banner p { font-size: 16px; color: rgba(255,255,255,.65); margin-bottom: 32px; }
+    .btn-white { background: #fff; color: var(--black); padding: 14px 28px; border-radius: 10px; font-size: 15px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; transition: opacity .15s; }
+    .btn-white:hover { opacity: .9; }
+
+    /* FOOTER */
+    footer { border-top: 1px solid var(--border); padding: 28px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--gray); max-width: 1080px; margin: 0 auto; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">${esc(name)}</div>
+  ${email ? `<a class="nav-cta" href="mailto:${esc(email)}">Neem contact op</a>` : ''}
+</nav>
+
+<div class="hero">
+  <div class="hero-badge">&#9679; AI-gedreven marketing</div>
+  <h1>${esc(tagline)}</h1>
+  <p>${esc(about)}</p>
+  <div class="hero-btns">
+    ${email ? `<a class="btn-primary" href="mailto:${esc(email)}">&#9993; Stuur een bericht</a>` : ''}
+    ${linkedin ? `<a class="btn-ghost" href="${esc(linkedin)}" target="_blank" rel="noopener">LinkedIn &rarr;</a>` : ''}
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat-item"><div class="stat-num">15+</div><div class="stat-lbl">Leads per dag gevonden</div></div>
+  <div class="stat-item"><div class="stat-num">6</div><div class="stat-lbl">AI-agents per bedrijf</div></div>
+  <div class="stat-item"><div class="stat-num">100%</div><div class="stat-lbl">Gepersonaliseerd</div></div>
+  <div class="stat-item"><div class="stat-num">24/7</div><div class="stat-lbl">Volledig automatisch</div></div>
+</div>
+
+<section>
+  <div class="about-grid">
+    <div class="about-text">
+      <div class="section-tag">Over ons</div>
+      <div class="section-title">Waarom ${esc(name)}?</div>
+      <p>${esc(about)}</p>
+      ${myName ? `<p>— <strong>${esc(myName)}</strong>, ${esc(myTitle)}</p>` : ''}
+    </div>
+    <ul class="feature-list">
+      <li>Volledig geautomatiseerde lead research</li>
+      <li>Diepgaande analyse van elk bedrijf</li>
+      <li>Gepersonaliseerde emails op basis van AI</li>
+      <li>Follow-up sequenties zonder handmatig werk</li>
+      <li>Realtime rapportage &amp; statistieken</li>
+      <li>Klantportaal met live projectstatus</li>
+    </ul>
+  </div>
+</section>
+
+${serviceCards ? `
+<section style="background:#fff;border-top:1px solid var(--border);border-bottom:1px solid var(--border);max-width:100%;padding:80px 24px;">
+<div style="max-width:1080px;margin:0 auto">
+  <div class="section-tag">Diensten</div>
+  <div class="section-title">Wat wij aanbieden</div>
+  <p class="section-sub">Van advertentiecampagnes tot volledige AI-outreach — wij regelen het.</p>
+  <div class="srv-grid">${serviceCards}</div>
+</div>
+</section>` : ''}
+
+<section>
+  <div class="section-tag">Werkwijze</div>
+  <div class="section-title">Hoe het werkt</div>
+  <p class="section-sub">Van lead tot klant — volledig geautomatiseerd.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><h3>Lead vinden</h3><p>AI zoekt dagelijks 15+ bedrijven die perfect passen bij jouw doelgroep.</p></div>
+    <div class="step"><div class="step-num">2</div><h3>Bedrijf analyseren</h3><p>6 AI-agents onderzoeken website, social media, concurrenten en kansen.</p></div>
+    <div class="step"><div class="step-num">3</div><h3>Email schrijven</h3><p>Volledig gepersonaliseerde outreach — klinkt menselijk, geen AI-taal.</p></div>
+    <div class="step"><div class="step-num">4</div><h3>Opvolgen</h3><p>Automatische follow-ups na 3 en 7 dagen. Replies worden direct gesignaleerd.</p></div>
+  </div>
+</section>
+
+${caseCards ? `
+<section style="background:#f9fafb;border-top:1px solid var(--border);border-bottom:1px solid var(--border);max-width:100%;padding:80px 24px;">
+<div style="max-width:1080px;margin:0 auto">
+  <div class="section-tag">Resultaten</div>
+  <div class="section-title">Wat onze klanten bereikten</div>
+  <p class="section-sub">Echte bedrijven, meetbare groei.</p>
+  <div class="cs-grid">${caseCards}</div>
+</div>
+</section>` : ''}
+
+<div class="cta-banner" style="max-width:1080px;margin:0 auto 80px;">
+  <h2>Klaar om te groeien?</h2>
+  <p>Geen setup nodig. Geen technische kennis vereist. Alleen resultaten.</p>
+  ${email ? `<a class="btn-white" href="mailto:${esc(email)}">&#9993;&nbsp; ${esc(email)}</a>` : ''}
+</div>
+
+<footer>
+  <span>&copy; ${new Date().getFullYear()} ${esc(name)}${myName ? ' &mdash; ' + esc(myName) : ''}</span>
+  <div style="display:flex;gap:16px">
+    ${email ? `<a href="mailto:${esc(email)}">${esc(email)}</a>` : ''}
+    ${linkedin ? `<a href="${esc(linkedin)}" target="_blank" rel="noopener">LinkedIn</a>` : ''}
+  </div>
+</footer>
+
+</body>
+</html>`;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+});
+
+app.get('/api/portal/:token', (req, res) => {
+  const leads   = readJSON('leads.json') || [];
+  const lead    = leads.find(l => l.portalToken === req.params.token);
+  if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+  const settings = readJSON('settings.json') || {};
+  const settingsSvcs = settings.services || [];
+  const enrichedSvcs = (lead.services || []).map(s => {
+    const match = settingsSvcs.find(ss => ss.name === s.name);
+    return { ...s, description: match?.description || '' };
+  });
+  res.json({
+    companyName:         lead.companyName,
+    agencyName:          settings.agencyName || 'Agency AI',
+    myName:              settings.myName || '',
+    currentPhase:        lead.currentPhase || 1,
+    estimatedCompletion: lead.estimatedCompletion || null,
+    services:            enrichedSvcs,
+    reports:             (lead.reports || []).map(r => ({ title: r.title, month: r.month, createdAt: r.createdAt, content: r.content })),
+    delivery:            lead.delivery || null
+  });
+});
+
+app.post('/api/portal/:token/message', (req, res) => {
+  const { name, message } = req.body;
+  if (!name || !message) return res.status(400).json({ error: 'Naam en bericht verplicht' });
+  const leads = readJSON('leads.json') || [];
+  const lead  = leads.find(l => l.portalToken === req.params.token);
+  if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+  if (!lead.clientMessages) lead.clientMessages = [];
+  lead.clientMessages.push({ name, message, time: new Date().toISOString(), read: false });
+  const preview = message.length > 60 ? message.substring(0, 60) + '...' : message;
+  addLeadHistory(leads, lead.id, { event: 'clientMessage', label: `Klant bericht van ${name}: ${preview}` });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+// â"€â"€â"€ Apply auth middleware to all /api/ routes below this line â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+// ─── Gmail Pub/Sub webhook (public — no auth, validated by secret token) ──────
+
+app.post('/api/gmail/webhook', async (req, res) => {
+  // Acknowledge immediately — Pub/Sub will retry if we respond too slowly
+  res.status(200).json({ ok: true });
+
+  try {
+    const settings = readJSON('settings.json') || {};
+    const expectedToken = settings.webhookToken || '';
+    const receivedToken  = req.query.token || '';
+
+    if (!expectedToken || receivedToken !== expectedToken) {
+      console.warn('[Webhook] Ongeldig of ontbrekend token — verzoek genegeerd');
+      return;
+    }
+
+    // Pub/Sub data contains historyId (base64 JSON) — we just use it as a trigger
+    const msg = req.body && req.body.message;
+    if (msg && msg.data) {
+      try {
+        const decoded = JSON.parse(Buffer.from(msg.data, 'base64').toString('utf8'));
+        console.log('[Webhook] Pub/Sub bericht, historyId:', decoded.historyId);
+      } catch { /* non-fatal */ }
+    }
+
+    console.log('[Webhook] Real-time trigger ontvangen — directe reply check gestart');
+    await checkReplies();
+  } catch (err) {
+    console.error('[Webhook] Fout:', err.message);
+  }
+});
+
+app.use('/api', authMiddleware);
+
+// ─── API Keys management ──────────────────────────────────────────────────────
+
+app.get('/api/auth/api-keys', (req, res) => {
+  const keys = readJSON('api-keys.json') || [];
+  const mine = keys
+    .filter(k => k.userId === req.user.id || req.user.role === 'admin')
+    .map(k => ({ id: k.id, keyLabel: k.keyLabel, keyPrefix: k.keyPrefix, role: k.role, userId: k.userId, username: k.username, createdAt: k.createdAt, lastUsed: k.lastUsed }));
+  res.json(mine);
+});
+
+app.post('/api/auth/api-keys', (req, res) => {
+  const { label } = req.body;
+  const rawKey = 'sk-agency-' + crypto.randomBytes(24).toString('hex');
+  const entry = {
+    id: Date.now().toString(),
+    userId: req.user.id,
+    username: req.user.username,
+    role: req.user.role,
+    keyLabel: label || 'API Sleutel',
+    keyPrefix: rawKey.slice(0, 18) + '...',
+    keyHash: hashApiKey(rawKey),
+    keyEncrypted: encryptApiKey(rawKey),
+    createdAt: new Date().toISOString(),
+    lastUsed: null
+  };
+  const keys = readJSON('api-keys.json') || [];
+  keys.push(entry);
+  writeJSON('api-keys.json', keys);
+  res.json({ ok: true, id: entry.id, key: rawKey, keyPrefix: entry.keyPrefix });
+});
+
+app.delete('/api/auth/api-keys/:id', (req, res) => {
+  const keys = readJSON('api-keys.json') || [];
+  const key = keys.find(k => k.id === req.params.id);
+  if (!key) return res.status(404).json({ error: 'Sleutel niet gevonden' });
+  if (key.userId !== req.user.id && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Geen toegang' });
+  }
+  writeJSON('api-keys.json', keys.filter(k => k.id !== req.params.id));
+  res.json({ ok: true });
+});
+
+// ─── Claude API proxy â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+app.post('/api/claude', async (req, res) => {
+  const { prompt, json: expectJson } = req.body;
+  if (!prompt) return res.status(400).json({ error: 'Prompt verplicht' });
+
+  try {
+    const { default: fetch } = await import('node-fetch');
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2048,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      return res.status(500).json({ error: data.error?.message || 'Claude API fout' });
+    }
+
+    const text = data.content[0].text;
+    if (expectJson) {
+      const match = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
+      try {
+        return res.json({ result: JSON.parse(match ? match[1] : text) });
+      } catch {
+        return res.json({ result: text });
+      }
+    }
+    res.json({ result: text });
+  } catch (err) {
+    console.error('Claude error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Analyze single company (bypasses Agent 1, runs agents 2-6) ──────────────
+
+app.post('/api/analyze-company', requireAdmin, async (req, res) => {
+  const { companyName, websiteUrl, instagramHandle, niche, location, country, estimatedFollowers, companySize } = req.body || {};
+  if (!companyName) return res.status(400).json({ error: 'companyName verplicht' });
+  const lead = {
+    companyName, websiteUrl: websiteUrl || '', instagramHandle: instagramHandle || '',
+    niche: niche || 'retail', location: location || 'Nederland', country: country || 'NL',
+    estimatedFollowers: estimatedFollowers || 0, companySize: companySize || 'small'
+  };
+  try {
+    const settings = readJSON('settings.json') || {};
+    console.log(`[Aangepast bedrijf] ${companyName} analyseren...`);
+    const dupCheck = isDuplicate(lead);
+    if (dupCheck) return res.status(409).json({ error: `Duplicaat: ${lead.companyName} bestaat al (status: ${dupCheck.status})`, existing: { id: dupCheck.id, status: dupCheck.status } });
+    const result = await processOneLead(lead, settings);
+    if (!result) return res.status(400).json({ error: 'Bedrijf staat op de blacklist' });
+    const { item, leadRecord } = result;
+
+    const inbox = readJSON('inbox.json') || [];
+    writeJSON('inbox.json', [item, ...inbox]);
+    const allLeads = readJSON('leads.json') || [];
+    writeJSON('leads.json', [leadRecord, ...allLeads]);
+
+    const stats = readJSON('stats.json') || {};
+    writeJSON('stats.json', { ...stats, leadsFound: (stats.leadsFound || 0) + 1, pipelineValue: (stats.pipelineValue || 0) + (item.estimatedValue || 0) });
+
+    console.log(`[Aangepast bedrijf] Klaar — score: ${item.score}`);
+    res.json({ ok: true, item });
+  } catch (err) {
+    console.error('[analyze-company] Fout:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// â"€â"€â"€ Stats â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+app.get('/api/stats', (req, res) => {
+  const stored = readJSON('stats.json') || {};
+  const leads  = readJSON('leads.json') || [];
+  const inbox  = readJSON('inbox.json') || [];
+
+  const active = leads.filter(l => l.status !== 'disapproved' && l.status !== 'dead');
+
+  const cutoff24h = new Date(Date.now() - 86400000).toISOString();
+  const leadsLast24h = leads.filter(l => l.createdAt >= cutoff24h);
+
+  const live = {
+    leadsFound:       leads.length,
+    emailsSent:       leads.filter(l => ['sent','scheduled','replied','client'].includes(l.status)).length,
+    replies:          leads.filter(l => ['replied','client'].includes(l.status)).length,
+    pipelineValue:    active.reduce((s, l) => s + (l.estimatedValue || 0), 0),
+    inboxPending:     inbox.filter(i => !i.status || i.status === 'pending').length,
+    clients:          leads.filter(l => l.status === 'client').length,
+    last24hLeads:     leadsLast24h.length,
+    last24hValue:     leadsLast24h
+                        .filter(l => l.status !== 'disapproved' && l.status !== 'dead')
+                        .reduce((s, l) => s + (l.estimatedValue || 0), 0),
+    todayLeads: (() => {
+      const today = new Date().toISOString().slice(0, 10);
+      const entry = (stored.weeklyData || []).find(w => w.date === today);
+      return entry ? entry.count : 0;
+    })()
+  };
+
+  res.json({ ...stored, ...live });
+});
+
+// â"€â"€â"€ Leads â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+app.get('/api/stats/detailed', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const days  = parseInt(req.query.days || '30', 10);
+  const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+
+  const byDate = {};
+  for (let i = 0; i < days; i++) {
+    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    byDate[d] = 0;
+  }
+  leads.filter(l => l.createdAt >= cutoff).forEach(l => {
+    const d = (l.createdAt || '').slice(0, 10);
+    if (d in byDate) byDate[d]++;
+  });
+  const leadsPerDay = Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, count }));
+
+  const byStatus = {};
+  leads.forEach(l => { byStatus[l.status || 'unknown'] = (byStatus[l.status || 'unknown'] || 0) + 1; });
+
+  const byNiche = {};
+  leads.forEach(l => { if (l.niche) byNiche[l.niche] = (byNiche[l.niche] || 0) + 1; });
+
+  const scoreBuckets = { '0-2': 0, '2-4': 0, '4-6': 0, '6-8': 0, '8-10': 0 };
+  leads.forEach(l => {
+    const s = l.score || 0;
+    if (s < 2) scoreBuckets['0-2']++;
+    else if (s < 4) scoreBuckets['2-4']++;
+    else if (s < 6) scoreBuckets['4-6']++;
+    else if (s < 8) scoreBuckets['6-8']++;
+    else scoreBuckets['8-10']++;
+  });
+
+  const weekMap = {};
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 7 * 86400000);
+    const wk = d.toISOString().slice(0,10).slice(0,7) + '-W' + String(getWeekNum(d)).padStart(2,'0');
+    weekMap[wk] = 0;
+  }
+  function getWeekNum(d) { const s = new Date(d.getFullYear(),0,1); return Math.ceil(((d-s)/86400000+s.getDay()+1)/7); }
+  leads.filter(l => l.createdAt && l.estimatedValue && l.status !== 'disapproved' && l.status !== 'dead').forEach(l => {
+    const d = new Date(l.createdAt);
+    const wk = d.toISOString().slice(0,7) + '-W' + String(getWeekNum(d)).padStart(2,'0');
+    if (wk in weekMap) weekMap[wk] += l.estimatedValue;
+  });
+  const pipelineByWeek = Object.entries(weekMap).sort(([a],[b]) => a.localeCompare(b)).map(([week, value]) => ({ week, value }));
+
+  const nicheStats = {};
+  leads.forEach(l => {
+    if (!l.niche) return;
+    if (!nicheStats[l.niche]) nicheStats[l.niche] = { sent: 0, replied: 0 };
+    if (['sent','replied','client','followup1','followup2','dead'].includes(l.status)) nicheStats[l.niche].sent++;
+    if (['replied','client'].includes(l.status)) nicheStats[l.niche].replied++;
+  });
+  const replyRateByNiche = Object.entries(nicheStats)
+    .filter(([,v]) => v.sent >= 2)
+    .map(([niche, v]) => ({ niche, sent: v.sent, replied: v.replied, rate: Math.round(v.replied/v.sent*100) }))
+    .sort((a,b) => b.rate - a.rate);
+
+  const topLeads = [...leads].sort((a,b) => (b.score||0)-(a.score||0)).slice(0,5)
+    .map(l => ({ id: l.id, companyName: l.companyName, score: l.score, niche: l.niche, status: l.status, estimatedValue: l.estimatedValue }));
+
+  res.json({ leadsPerDay, byStatus, byNiche, scoreBuckets, pipelineByWeek, replyRateByNiche, topLeads });
+});
+
+app.get('/api/leads', (req, res) => {
+  res.json(readJSON('leads.json') || []);
+});
+
+app.get('/api/leads/export.csv', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const status = req.query.status; // optional filter
+  const filtered = status ? leads.filter(l => l.status === status) : leads;
+
+  const csvEsc = v => {
+    if (v == null) return '';
+    const s = String(v).replace(/"/g, '""');
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+  };
+
+  const headers = [
+    'Bedrijfsnaam','Niche','Locatie','Land','Score','Status','Taal',
+    'Website','Volgers','Waarde (EUR)','Email onderwerp',
+    'Aangemaakt','Verstuurd','Gereageerd','Geopend (keer)'
+  ];
+
+  const rows = filtered.map(l => [
+    l.companyName, l.niche, l.location, l.country,
+    l.score != null ? Number(l.score).toFixed(2) : '',
+    l.status, l.language,
+    l.websiteUrl, l.estimatedFollowers, l.estimatedValue,
+    l.email?.subject || '',
+    l.createdAt ? l.createdAt.slice(0,10) : '',
+    l.sentAt     ? l.sentAt.slice(0,10)     : '',
+    l.repliedAt  ? l.repliedAt.slice(0,10)  : '',
+    l.openCount  || ''
+  ].map(csvEsc).join(','));
+
+  const csv = [headers.join(','), ...rows].join('\r\n');
+  const filename = `leads-${new Date().toISOString().slice(0,10)}.csv`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send('﻿' + csv); // BOM so Excel opens UTF-8 correctly
+});
+
+app.post('/api/leads', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = { id: Date.now().toString(), createdAt: new Date().toISOString(), ...req.body };
+  leads.push(lead);
+  writeJSON('leads.json', leads);
+  res.json(lead);
+});
+
+app.post('/api/leads/bulk-delete', requireAdmin, (req, res) => {
+  const { ids } = req.body || {};
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids verplicht' });
+  const leads = readJSON('leads.json') || [];
+  const inbox = readJSON('inbox.json') || [];
+  writeJSON('leads.json', leads.filter(l => !ids.includes(l.id)));
+  writeJSON('inbox.json', inbox.filter(i => !ids.includes(i.id)));
+  res.json({ ok: true, deleted: ids.length });
+});
+
+app.get('/api/leads/check-duplicate', (req, res) => {
+  const { name, domain } = req.query;
+  if (!name && !domain) return res.json({ duplicate: false });
+  const leads = readJSON('leads.json') || [];
+  const nameLower = (name || '').toLowerCase().trim();
+  const domLower  = (domain || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase().trim();
+  const found = leads.find(l => {
+    const ln = (l.companyName || '').toLowerCase().trim();
+    const ld = (l.websiteUrl  || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase().trim();
+    if (nameLower && ln && nameLower === ln) return true;
+    if (domLower  && ld && domLower  === ld) return true;
+    return false;
+  });
+  res.json(found ? { duplicate: true, id: found.id, companyName: found.companyName, status: found.status, score: found.score } : { duplicate: false });
+});
+
+app.get('/api/leads/:id/reports', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead  = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
+  res.json(lead.reports || []);
+});
+
+app.post('/api/leads/:id/case-study', async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const lead = leads[idx];
+  const settings = readJSON('settings.json') || {};
+  const agencyName = settings.agencyName || 'Agency';
+  const lang = lead.language || 'nl';
+  const isNL = lang === 'nl';
+
+  const services = (lead.services || []).join(', ') || 'digitale marketing';
+  const problems = (lead.problems || []).join(', ') || 'online zichtbaarheid verbeteren';
+  const estimatedValue = lead.estimatedValue ? `€${lead.estimatedValue}/mnd` : '';
+
+  const prompt = isNL
+    ? `Schrijf een professionele case study voor een klant van ${agencyName}. Geef JSON terug met deze exacte velden.
+
+Klantgegevens:
+- Bedrijf: ${lead.companyName}
+- Sector: ${lead.niche}
+- Locatie: ${lead.location}
+- Uitdagingen: ${problems}
+- Diensten afgenomen: ${services}
+${estimatedValue ? `- Investering: ${estimatedValue}` : ''}
+
+Schrijf een realistische, overtuigende case study. Verzin plausibele resultaten (percentages, getallen) die passen bij de sector en diensten. Schrijf in de derde persoon over het bedrijf.
+
+{"title": "Case study titel (max 8 woorden)", "industry": "${lead.niche}", "challenge": "2-3 zinnen over de uitdaging (geen jargon)", "solution": "2-3 zinnen over de aanpak van ${agencyName}", "results": ["Resultaat 1 met getal/percentage", "Resultaat 2 met getal/percentage", "Resultaat 3 met getal/percentage"], "quote": "Fictief klantcitaat van max 20 woorden, klinkt oprecht", "quoteName": "Voornaam + Achternaam, Functietitel", "published": false}`
+    : `Write a professional case study for a client of ${agencyName}. Return JSON with these exact fields.
+
+Client data:
+- Company: ${lead.companyName}
+- Industry: ${lead.niche}
+- Location: ${lead.location}
+- Challenges: ${problems}
+- Services: ${services}
+${estimatedValue ? `- Investment: ${estimatedValue}` : ''}
+
+Write a realistic, convincing case study. Invent plausible results (percentages, numbers) that fit the industry and services. Write in third person about the company.
+
+{"title": "Case study title (max 8 words)", "industry": "${lead.niche}", "challenge": "2-3 sentences about the challenge (no jargon)", "solution": "2-3 sentences about ${agencyName}'s approach", "results": ["Result 1 with number/percentage", "Result 2 with number/percentage", "Result 3 with number/percentage"], "quote": "Fictional client quote max 20 words, sounds genuine", "quoteName": "First Last, Job Title", "published": false}`;
+
+  try {
+    const caseStudy = await aiJSON(prompt);
+    caseStudy.createdAt = new Date().toISOString();
+    caseStudy.published = caseStudy.published || false;
+    leads[idx].caseStudy = caseStudy;
+    addLeadHistory(leads, lead.id, { event: 'caseStudy', label: 'Case study gegenereerd' });
+    writeJSON('leads.json', leads);
+    res.json(caseStudy);
+  } catch (err) {
+    console.error('[Case study] Fout:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/leads/:id/case-study', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  if (!leads[idx].caseStudy) return res.status(404).json({ error: 'Geen case study' });
+  leads[idx].caseStudy = { ...leads[idx].caseStudy, ...req.body };
+  writeJSON('leads.json', leads);
+  res.json(leads[idx].caseStudy);
+});
+
+app.patch('/api/leads/:id', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const prevStatus = leads[idx].status;
+  leads[idx] = { ...leads[idx], ...req.body };
+  // Migrate old-format tasks (no id) to new format
+  if (leads[idx].tasks) {
+    leads[idx].tasks = leads[idx].tasks.map((t, i) => t.id ? t : {
+      id: `legacy-${i}-${Date.now().toString(36)}`, title: t.title || 'Taak', description: t.description || '',
+      week: 1, priority: t.priority || 'middel', status: t.done ? 'klaar' : 'todo', createdAt: new Date().toISOString()
+    });
+  }
+  if (req.body.status && req.body.status !== prevStatus) {
+    addLeadHistory(leads, req.params.id, { event: 'status', label: `Status: ${req.body.status}` });
+  }
+  writeJSON('leads.json', leads);
+  res.json(leads[idx]);
+});
+
+app.delete('/api/leads/:id', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const filtered = leads.filter(l => l.id !== req.params.id);
+  writeJSON('leads.json', filtered);
+  res.json({ ok: true });
+});
+
+// ─── Tasks per lead ──────────────────────────────────────────────────────────
+
+app.get('/api/tasks', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const users = readJSON('users.json') || [];
+  const userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
+  const all = [];
+  for (const lead of leads) {
+    for (const task of (lead.tasks || [])) {
+      all.push({ ...task, leadId: lead.id, leadName: lead.companyName, assigneeName: userMap[task.assigneeId] || null });
+    }
+  }
+  // Sort: todo/bezig first, then by week, then priority order
+  const statusOrder = { todo: 0, bezig: 1, klaar: 2 };
+  const priOrder    = { hoog: 0, middel: 1, laag: 2 };
+  all.sort((a, b) => (statusOrder[a.status||'todo'] - statusOrder[b.status||'todo']) || (a.week||99) - (b.week||99) || (priOrder[a.priority||'middel'] - priOrder[b.priority||'middel']));
+  res.json(all);
+});
+
+app.post('/api/leads/:id/tasks', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const { title, description, week, priority, assigneeId, status } = req.body;
+  if (!title) return res.status(400).json({ error: 'title verplicht' });
+  const task = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    title, description: description || '', week: week || 1,
+    priority: priority || 'middel', assigneeId: assigneeId || null,
+    status: status || 'todo', createdAt: new Date().toISOString()
+  };
+  if (!leads[idx].tasks) leads[idx].tasks = [];
+  leads[idx].tasks.push(task);
+  writeJSON('leads.json', leads);
+  res.json(task);
+});
+
+app.patch('/api/leads/:id/tasks/:taskId', async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const tIdx = (leads[idx].tasks || []).findIndex(t => t.id === req.params.taskId);
+  if (tIdx === -1) return res.status(404).json({ error: 'Taak niet gevonden' });
+  leads[idx].tasks[tIdx] = { ...leads[idx].tasks[tIdx], ...req.body };
+  if (req.body.status === 'klaar' && !leads[idx].tasks[tIdx].doneAt) leads[idx].tasks[tIdx].doneAt = new Date().toISOString();
+  writeJSON('leads.json', leads);
+  res.json(leads[idx].tasks[tIdx]);
+
+  // Auto week-complete email: check if all tasks in this week are now done
+  if (req.body.status === 'klaar') {
+    const settings = readJSON('settings.json') || {};
+    if (settings.autoClientEmails?.weekComplete !== false) {
+      const week = leads[idx].tasks[tIdx].week || 1;
+      const weekTasks = (leads[idx].tasks || []).filter(t => (t.week||1) === week);
+      const allDone = weekTasks.length > 0 && weekTasks.every(t => t.status === 'klaar');
+      const lead = leads[idx];
+      if (allDone && lead.email && settings.gmailAddress && settings.gmailPassword) {
+        // Only send once (check log)
+        const alreadySent = (lead.clientEmailLog || []).some(e => e.trigger === 'weekComplete' && e.week === week);
+        if (!alreadySent) {
+          try {
+            const email = await generateClientEmail(lead, 'weekComplete', settings, { week, tasksDone: weekTasks.length, tasksTotal: weekTasks.length });
+            await sendEmail({ to: lead.email, subject: email.subject, body: email.body, settings });
+            const freshLeads = readJSON('leads.json') || [];
+            const fIdx = freshLeads.findIndex(l => l.id === lead.id);
+            if (fIdx !== -1) {
+              if (!freshLeads[fIdx].clientEmailLog) freshLeads[fIdx].clientEmailLog = [];
+              freshLeads[fIdx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'weekComplete', week, subject: email.subject, body: email.body, to: lead.email, sentAt: new Date().toISOString(), sentBy: 'systeem' });
+              writeJSON('leads.json', freshLeads);
+            }
+            console.log(`[ClientEmail] weekComplete week ${week} → ${lead.companyName}`);
+          } catch { /* optional */ }
+        }
+      }
+    }
+  }
+});
+
+app.delete('/api/leads/:id/tasks/:taskId', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  leads[idx].tasks = (leads[idx].tasks || []).filter(t => t.id !== req.params.taskId);
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+app.post('/api/leads/:id/portal/generate', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const token = Math.random().toString(36).substr(2, 8) + Math.random().toString(36).substr(2, 4);
+  leads[idx].portalToken = token;
+  if (!leads[idx].currentPhase) leads[idx].currentPhase = 1;
+  addLeadHistory(leads, req.params.id, { event: 'portalCreated', label: 'Klantportaal aangemaakt' });
+  writeJSON('leads.json', leads);
+  res.json({ token });
+});
+
+// ─── Project Engine (SSE 8-step) ────────────────────────────────────────────
+
+app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const send = (step, label, status, extra = {}) => {
+    res.write(`data: ${JSON.stringify({ step, label, status, ...extra })}\n\n`);
+  };
+
+  try {
+    const leads = readJSON('leads.json') || [];
+    const settings = readJSON('settings.json') || {};
+    const idx = leads.findIndex(l => l.id === req.params.id);
+    if (idx === -1) { send(0, 'Lead niet gevonden', 'error'); res.end(); return; }
+    const lead = leads[idx];
+    const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+
+    // Step 1 — Portal token
+    send(1, 'Portaaltoegang instellen', 'running');
+    if (!lead.portalToken) {
+      lead.portalToken = Math.random().toString(36).substr(2, 8) + Math.random().toString(36).substr(2, 4);
+    }
+    const portalUrl = `${baseUrl}/portal/${lead.portalToken}`;
+    send(1, 'Portaaltoegang instellen', 'done', { portalUrl });
+
+    // Step 2 — Intake token
+    send(2, 'Intake link genereren', 'running');
+    if (!lead.intakeToken) {
+      lead.intakeToken = Math.random().toString(36).substr(2, 10) + Date.now().toString(36);
+    }
+    const intakeUrl = `${baseUrl}/intake/${lead.id}/${lead.intakeToken}`;
+    send(2, 'Intake link genereren', 'done', { intakeUrl });
+
+    // Step 3 — Welcome email to client
+    send(3, 'Welkomstmail versturen', 'running');
+    const clientEmail = lead.email || lead.contactEmail || '';
+    let emailSent = false;
+    if (clientEmail && settings.gmailAddress && settings.gmailPassword) {
+      try {
+        const welcomeBody = `Beste ${lead.contactName || lead.companyName},\n\nWelkom! We zijn verheugd om samen te werken.\n\nVia de onderstaande link kun je jouw intake-vragenlijst invullen, zodat we zo snel mogelijk kunnen starten:\n${intakeUrl}\n\nHeb je vragen? Stuur dan gerust een bericht via je klantportaal:\n${portalUrl}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.myTitle || ''}\n${settings.agencyName}`;
+        await sendEmail({ to: clientEmail, subject: `Welkom bij ${settings.agencyName} — volgende stappen`, body: welcomeBody, settings });
+        emailSent = true;
+      } catch { /* email optional */ }
+    }
+    send(3, 'Welkomstmail versturen', emailSent ? 'done' : 'skipped', { note: emailSent ? clientEmail : 'Geen email of Gmail niet geconfigureerd' });
+
+    // Step 4 — AI project plan
+    send(4, 'Projectplan genereren (AI)', 'running');
+    let projectPlan = null;
+    try {
+      const serviceNames = (lead.services || []).map(s => s.name).join(', ') || 'AI-marketingdiensten';
+      projectPlan = await aiJSON(`Je bent een projectmanager bij een AI marketing bureau.
+Maak een 4-weken projectplan voor ${lead.companyName} (${lead.niche}, ${lead.location}).
+Diensten: ${serviceNames}.
+Antwoord ALLEEN als JSON: { "title": "string", "overview": "string (2-3 zinnen)", "weeks": [{ "week": 1, "focus": "string", "deliverables": ["string"] }, ...4 items total] }`);
+    } catch { projectPlan = { title: `Project ${lead.companyName}`, overview: 'Automatisch projectplan wordt later aangevuld.', weeks: [{ week: 1, focus: 'Onboarding & intake', deliverables: ['Intake gesprek plannen', 'Strategie document opstellen'] }] }; }
+    send(4, 'Projectplan genereren (AI)', 'done');
+
+    // Step 5 — AI content calendar
+    send(5, 'Content kalender genereren (AI)', 'running');
+    let contentCalendar = null;
+    try {
+      contentCalendar = await aiJSON(`Maak een content kalender voor maand 1 voor ${lead.companyName} (${lead.niche}).
+Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "platform": "Instagram/Facebook/LinkedIn", "type": "Reel/Post/Story", "topic": "string", "caption": "string (kort)" }, ...8 items total] }`);
+    } catch { contentCalendar = { items: [] }; }
+    send(5, 'Content kalender genereren (AI)', 'done');
+
+    // Step 6 — AI week-1 tasks
+    send(6, 'Week 1 takenlijst aanmaken (AI)', 'running');
+    let tasks = null;
+    try {
+      tasks = await aiJSON(`Maak een takenlijst voor week 1 van het project voor ${lead.companyName}.
+Antwoord ALLEEN als JSON: { "tasks": [{ "title": "string", "description": "string", "priority": "hoog/middel/laag", "day": "ma/di/wo/do/vr" }, ...6-8 items] }`);
+    } catch { tasks = { tasks: [] }; }
+    send(6, 'Week 1 takenlijst aanmaken (AI)', 'done');
+
+    // Step 7 — Team briefing email
+    send(7, 'Team briefing versturen', 'running');
+    let briefingSent = false;
+    if (settings.gmailAddress && settings.gmailPassword) {
+      try {
+        const briefBody = `Nieuw project gestart: ${lead.companyName}\n\nNiche: ${lead.niche} | Locatie: ${lead.location}\nDiensten: ${(lead.services || []).map(s => s.name).join(', ')}\nGeschat maandbedrag: €${lead.estimatedValue || 0}\n\nProjectplan: ${projectPlan?.title || ''}\n${projectPlan?.overview || ''}\n\nIntake link (voor klant): ${intakeUrl}\nKlantportaal: ${portalUrl}\n\nWeek 1 focus: ${projectPlan?.weeks?.[0]?.focus || 'Onboarding'}`;
+        await sendEmail({ to: settings.gmailAddress, subject: `[Project gestart] ${lead.companyName}`, body: briefBody, settings });
+        briefingSent = true;
+      } catch { /* optional */ }
+    }
+    send(7, 'Team briefing versturen', briefingSent ? 'done' : 'skipped');
+
+    // Step 8 — Status update
+    send(8, 'Status bijwerken naar klant', 'running');
+    lead.status = 'client';
+    lead.projectStartedAt = new Date().toISOString();
+    lead.projectPlan = projectPlan;
+    lead.contentCalendar = contentCalendar;
+    lead.tasks = tasks?.tasks || [];
+    addLeadHistory(leads, lead.id, { event: 'projectStarted', label: 'Project gestart via Project Engine' });
+    writeJSON('leads.json', leads);
+    send(8, 'Status bijwerken naar klant', 'done');
+
+    send(0, 'Project engine voltooid', 'complete', { intakeUrl, portalUrl });
+  } catch (err) {
+    send(0, err.message, 'error');
+  }
+  res.end();
+});
+
+// ─── AI Delivery Generator (SSE 4-step) ─────────────────────────────────────
+
+app.post('/api/leads/:id/generate-delivery', requireAdmin, async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const send = (step, label, status, extra = {}) => {
+    res.write(`data: ${JSON.stringify({ step, label, status, ...extra })}\n\n`);
+  };
+
+  try {
+    const leads = readJSON('leads.json') || [];
+    const settings = readJSON('settings.json') || {};
+    const idx = leads.findIndex(l => l.id === req.params.id);
+    if (idx === -1) { send(0, 'Lead niet gevonden', 'error'); res.end(); return; }
+    const lead = leads[idx];
+
+    const serviceNames = (lead.services || []).map(s => s.name).join(', ') || 'AI-marketingdiensten';
+    const intakeContext = lead.intakeAnswers
+      ? '\n\nIntake antwoorden van de klant:\n' + Object.entries(lead.intakeAnswers).map(([k, v]) => `- ${k}: ${v}`).join('\n')
+      : '';
+
+    // Step 1 — Full content calendar
+    send(1, 'Content kalender genereren (maand 1)', 'running');
+    let fullCalendar = null;
+    try {
+      fullCalendar = await aiJSON(`Maak een gedetailleerde content kalender voor VOLLEDIGE MAAND 1 voor ${lead.companyName} (${lead.niche}, ${lead.location}).
+Diensten: ${serviceNames}.${intakeContext}
+Maak precies 20 posts verspreid over 4 weken.
+Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "day": "ma/di/wo/do/vr/za/zo", "platform": "Instagram/Facebook/LinkedIn/TikTok", "type": "Reel/Carousel/Post/Story/Video", "topic": "string", "caption": "string (volledige Nederlandse caption, 2-3 zinnen)", "hashtags": ["#tag1","#tag2","#tag3","#tag4","#tag5"], "bestTime": "HH:MM" }] }`);
+    } catch { fullCalendar = { items: (lead.contentCalendar?.items || []) }; }
+    send(1, 'Content kalender genereren (maand 1)', 'done');
+
+    // Step 2 — Chatbot FAQ flow
+    send(2, 'Chatbot FAQ flow genereren', 'running');
+    let chatbotFlow = null;
+    try {
+      chatbotFlow = await aiJSON(`Maak een chatbot FAQ script voor ${lead.companyName} (${lead.niche}).${intakeContext}
+Dit zijn de meest gestelde vragen die bezoekers stellen op de website of via WhatsApp.
+Maak 12 relevante Q&A paren die direct nuttig zijn voor het bedrijf.
+Antwoord ALLEEN als JSON: { "faqs": [{ "question": "string", "answer": "string (2-3 zinnen, vriendelijk en professioneel)", "category": "Prijzen/Openingstijden/Diensten/Locatie/Afspraken/Overig" }] }`);
+    } catch { chatbotFlow = { faqs: [] }; }
+    send(2, 'Chatbot FAQ flow genereren', 'done');
+
+    // Step 3 — Detailed project milestones
+    send(3, 'Projectmijlpalen uitwerken', 'running');
+    let milestones = null;
+    try {
+      milestones = await aiJSON(`Maak een gedetailleerde mijlpalentijdlijn voor een 3-maanden project voor ${lead.companyName}.
+Diensten: ${serviceNames}.${intakeContext}
+Antwoord ALLEEN als JSON: { "milestones": [{ "week": 1, "title": "string", "description": "string", "deliverables": ["string","string","string"], "status": "upcoming" }] } — maak precies 12 weken.`);
+    } catch { milestones = { milestones: [] }; }
+    send(3, 'Projectmijlpalen uitwerken', 'done');
+
+    // Step 4 — Save and notify
+    send(4, 'Opslaan & klant notificeren', 'running');
+    const delivery = {
+      generatedAt: new Date().toISOString(),
+      contentCalendar: fullCalendar,
+      chatbotFlow: chatbotFlow,
+      milestones: milestones
+    };
+    leads[idx].delivery = delivery;
+    // Update portal phase to 2 (Strategie → Uitvoering)
+    if ((leads[idx].currentPhase || 1) < 2) leads[idx].currentPhase = 2;
+    addLeadHistory(leads, lead.id, { event: 'deliveryGenerated', label: 'AI leveringen gegenereerd (content kalender, chatbot FAQ, mijlpalen)' });
+    writeJSON('leads.json', leads);
+
+    // Auto-send AI delivery email to client
+    if (settings.autoClientEmails?.deliveryReady !== false && lead.email && settings.gmailAddress && settings.gmailPassword) {
+      try {
+        const email = await generateClientEmail(leads[idx], 'deliveryReady', settings);
+        await sendEmail({ to: lead.email, subject: email.subject, body: email.body, settings });
+        if (!leads[idx].clientEmailLog) leads[idx].clientEmailLog = [];
+        leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'deliveryReady', subject: email.subject, body: email.body, to: lead.email, sentAt: new Date().toISOString(), sentBy: 'systeem' });
+        writeJSON('leads.json', leads);
+      } catch { /* optional */ }
+    }
+    send(4, 'Opslaan & klant notificeren', 'done');
+
+    send(0, 'Leveringen gegenereerd', 'complete');
+  } catch (err) {
+    send(0, err.message, 'error');
+  }
+  res.end();
+});
+
+// ─── Automatic client communications ────────────────────────────────────────
+
+const CLIENT_EMAIL_TEMPLATES = {
+  welcome:         { subject: 'Welkom bij {agency} — jouw project start nu!', trigger: 'Projectstart' },
+  intakeReceived:  { subject: 'Intake ontvangen — we gaan aan de slag!', trigger: 'Intake ingevuld' },
+  deliveryReady:   { subject: 'Jouw eerste leveringen zijn klaar 🎉', trigger: 'Leveringen klaar' },
+  weekComplete:    { subject: 'Week {week} afgerond — hier is het overzicht', trigger: 'Week afgerond' },
+  monthlyUpdate:   { subject: 'Maandupdate — {month} resultaten voor {company}', trigger: 'Maandupdate' },
+  checkIn:         { subject: 'Check-in: hoe gaat het tot nu toe?', trigger: 'Check-in' },
+};
+
+async function generateClientEmail(lead, trigger, settings, extra = {}) {
+  const serviceNames = (lead.services || []).map(s => s.name).join(', ') || 'AI-diensten';
+  const intakeCtx = lead.intakeAnswers ? '\nIntake antwoorden:\n' + Object.entries(lead.intakeAnswers).map(([k,v]) => `- ${k}: ${v}`).join('\n') : '';
+  const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+  const portalUrl = lead.portalToken ? `${baseUrl}/portal/${lead.portalToken}` : '';
+
+  const prompts = {
+    welcome: `Schrijf een warme welkomstmail voor een nieuw klant.
+Klant: ${lead.companyName} (${lead.niche}, ${lead.location}).
+Diensten: ${serviceNames}.
+Bureau: ${settings.agencyName}, contactpersoon: ${settings.myName} (${settings.myTitle||''}).
+${intakeCtx}
+De mail is professioneel maar persoonlijk, max 200 woorden. Geen bullet lists. Noem concreet wat er de komende week gaat gebeuren.
+${portalUrl ? `Vermeld de klantportaal link: ${portalUrl}` : ''}
+Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`,
+
+    intakeReceived: `Schrijf een korte bevestigingsmail dat we de intake hebben ontvangen en ermee aan de slag gaan.
+Klant: ${lead.companyName}. Bureau: ${settings.agencyName}, ${settings.myName}.
+${intakeCtx}
+Max 120 woorden. Informeer wanneer ze de eerste leveringen kunnen verwachten (binnen 24-48 uur).
+Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`,
+
+    deliveryReady: `Schrijf een enthousiaste mail dat de eerste leveringen klaarstaan in het portaal.
+Klant: ${lead.companyName}. Bureau: ${settings.agencyName}, ${settings.myName}.
+Leveringen: content kalender maand 1, chatbot FAQ script, projectmijlpalen.
+${portalUrl ? `Portaal: ${portalUrl}` : ''}
+Max 180 woorden. Wek enthousiasme, leg kort uit wat erin zit.
+Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`,
+
+    weekComplete: `Schrijf een korte wekelijkse voortgangsupdate mail.
+Klant: ${lead.companyName}. Week ${extra.week || 1} is afgerond.
+Taken voltooid: ${extra.tasksDone || 0}/${extra.tasksTotal || 0}.
+Bureau: ${settings.agencyName}, ${settings.myName}.
+${portalUrl ? `Portaal: ${portalUrl}` : ''}
+Max 150 woorden. Positief en motiverend.
+Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`,
+
+    monthlyUpdate: `Schrijf een maandelijkse voortgangsmail.
+Klant: ${lead.companyName} (${lead.niche}). Diensten: ${serviceNames}.
+Maand: ${new Date().toLocaleDateString('nl-NL', {month:'long',year:'numeric'})}.
+Bureau: ${settings.agencyName}, ${settings.myName}.
+${portalUrl ? `Portaal: ${portalUrl}` : ''}
+Max 200 woorden. Bespreek resultaten, wat er goed gaat en wat de focus is voor volgende maand.
+Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`,
+
+    checkIn: `Schrijf een vriendelijke check-in mail halverwege het project.
+Klant: ${lead.companyName}. Project loopt nu ${extra.weeksRunning || 4} weken.
+Bureau: ${settings.agencyName}, ${settings.myName}.
+Max 130 woorden. Informeel, vraag naar ervaringen, bied aan om te bellen.
+Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`,
+  };
+
+  const prompt = prompts[trigger];
+  if (!prompt) throw new Error('Onbekend trigger type');
+  const result = await aiJSON(prompt);
+  if (!result?.subject || !result?.body) throw new Error('AI gaf geen geldige email terug');
+
+  // Replace placeholders
+  result.subject = result.subject
+    .replace('{agency}', settings.agencyName)
+    .replace('{company}', lead.companyName)
+    .replace('{week}', extra.week || '')
+    .replace('{month}', new Date().toLocaleDateString('nl-NL', {month:'long'}));
+
+  return result;
+}
+
+app.post('/api/leads/:id/client-email', requireAdmin, async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const settings = readJSON('settings.json') || {};
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const lead = leads[idx];
+  const { trigger, customNote, preview } = req.body;
+
+  if (!CLIENT_EMAIL_TEMPLATES[trigger]) return res.status(400).json({ error: 'Ongeldig trigger type' });
+
+  try {
+    const email = await generateClientEmail(lead, trigger, settings, req.body);
+
+    // If preview=true, just return without sending
+    if (preview) return res.json({ subject: email.subject, body: email.body });
+
+    const to = lead.email || lead.contactEmail || '';
+    if (!to) return res.status(400).json({ error: 'Geen email adres bekend voor dit bedrijf' });
+    if (!settings.gmailAddress || !settings.gmailPassword) return res.status(400).json({ error: 'Gmail niet geconfigureerd' });
+
+    await sendEmail({ to, subject: email.subject, body: email.body, settings });
+
+    // Log
+    if (!leads[idx].clientEmailLog) leads[idx].clientEmailLog = [];
+    leads[idx].clientEmailLog.push({
+      id: Date.now().toString(36),
+      trigger,
+      subject: email.subject,
+      body: email.body,
+      to,
+      sentAt: new Date().toISOString(),
+      sentBy: req.user?.name || req.user?.username || 'systeem'
+    });
+    addLeadHistory(leads, lead.id, { event: 'clientEmailSent', label: `Email verstuurd: ${CLIENT_EMAIL_TEMPLATES[trigger].trigger} → ${to}` });
+    writeJSON('leads.json', leads);
+
+    console.log(`[ClientEmail] ${trigger} → ${lead.companyName} <${to}>`);
+    res.json({ ok: true, subject: email.subject });
+  } catch (err) {
+    console.error('[ClientEmail] Fout:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/leads/:id/client-emails', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+  res.json(lead.clientEmailLog || []);
+});
+
+app.post('/api/leads/:id/portal/read', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+  if (lead.clientMessages) lead.clientMessages.forEach(m => { m.read = true; });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+// â"€â"€â"€ Inbox â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+app.get('/api/inbox', (req, res) => {
+  const inbox = readJSON('inbox.json') || [];
+  res.json(inbox);
+});
+
+app.patch('/api/inbox/:id/approve', async (req, res) => {
+  const inbox = readJSON('inbox.json') || [];
+  const idx = inbox.findIndex(i => i.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Item niet gevonden' });
+
+  const settings = readJSON('settings.json');
+  const item = inbox[idx];
+  const version = (req.body?.version === 'B' && item.emailB) ? 'B' : 'A';
+  const chosenEmail = version === 'B' ? item.emailB : (item.emailA || item.email);
+
+  inbox[idx].approvedAt = new Date().toISOString();
+  inbox[idx].sentVersion = version;
+
+  // Handle scheduled send
+  if (req.body?.scheduled && item.sendOptimalTime) {
+    inbox[idx].status    = 'scheduled';
+    inbox[idx].scheduledAt = item.sendOptimalTime;
+    writeJSON('inbox.json', inbox);
+    const leads = readJSON('leads.json') || [];
+    const leadIdx = leads.findIndex(l => l.id === item.leadId);
+    if (leadIdx !== -1) {
+      leads[leadIdx].status = 'scheduled';
+      leads[leadIdx].scheduledAt = item.sendOptimalTime;
+      leads[leadIdx].sentVersion = version;
+      addLeadHistory(leads, item.leadId, { event: 'scheduled', label: `Ingepland voor ${NL_DAYS[new Date(item.sendOptimalTime).getDay()]} om ${String(new Date(item.sendOptimalTime).getHours()).padStart(2,'0')}:00` });
+      writeJSON('leads.json', leads);
+    }
+    return res.json(inbox[idx]);
+  }
+
+  if (settings.gmailAddress && settings.gmailPassword) {
+    try {
+      const trackingToken = 'otk-' + item.leadId + '-' + Math.random().toString(36).substr(2, 8);
+      inbox[idx].trackingToken = trackingToken;
+      await sendEmail({
+        to: settings.gmailAddress, // sends to own inbox as test; real leads get their email later
+        subject: chosenEmail?.subject || item.email?.subject || 'Outreach email',
+        body: chosenEmail?.body || item.email?.body || '',
+        settings,
+        trackingToken
+      });
+      inbox[idx].status = 'sent';
+      inbox[idx].sentAt = new Date().toISOString();
+
+      addActivity('email', 'Email verstuurd naar ' + (inbox[idx].companyName || 'Onbekend'), { meta: { companyName: inbox[idx].companyName, leadId: inbox[idx].leadId } });
+      const stats = readJSON('stats.json') || {};
+      stats.emailsSent = (stats.emailsSent || 0) + 1;
+      if (!stats.abStats) stats.abStats = { aApproved: 0, bApproved: 0 };
+      stats.abStats[version === 'B' ? 'bApproved' : 'aApproved']++;
+      writeJSON('stats.json', stats);
+      console.log(`[Email] Verstuurd (versie ${version}): "${chosenEmail?.subject}" -> ${settings.gmailAddress}`);
+    } catch (err) {
+      console.error('[Email] Fout:', err.message);
+      inbox[idx].status = 'approved'; // approved but not sent
+      writeJSON('inbox.json', inbox);
+      return res.status(500).json({ error: 'Email verzenden mislukt: ' + err.message });
+    }
+  } else {
+    inbox[idx].status = 'approved'; // approved, Gmail not configured
+  }
+
+  writeJSON('inbox.json', inbox);
+
+  // Sync status to leads.json
+  const leads = readJSON('leads.json') || [];
+  const leadIdx = leads.findIndex(l => l.id === item.leadId);
+  if (leadIdx !== -1) {
+    // Referral items: don't change lead status (they remain 'client')
+    if (item.type !== 'referral') {
+      leads[leadIdx].status = inbox[idx].status;
+      leads[leadIdx].sentAt = inbox[idx].sentAt;
+      if (inbox[idx].status === 'sent') leads[leadIdx].sentVersion = version;
+      if (inbox[idx].trackingToken) leads[leadIdx].trackingToken = inbox[idx].trackingToken;
+    }
+    if (item.type === 'referral' && inbox[idx].status === 'sent') {
+      leads[leadIdx].referralEmailSent = true;
+      leads[leadIdx].referralPending   = false;
+      leads[leadIdx].referralSentAt    = inbox[idx].sentAt;
+    }
+    const histLabel = inbox[idx].status === 'sent'
+      ? (item.type === 'referral' ? 'Referral email verstuurd' : `Email verstuurd (versie ${version})`)
+      : 'Goedgekeurd';
+    addLeadHistory(leads, item.leadId, { event: inbox[idx].status, label: histLabel });
+    if (inbox[idx].status === 'sent' && item.type !== 'referral') {
+      updateMemory(leads[leadIdx].niche, leads[leadIdx].country, 'sent');
+    }
+    writeJSON('leads.json', leads);
+  }
+
+  res.json(inbox[idx]);
+});
+
+app.patch('/api/inbox/:id/disapprove', (req, res) => {
+  const inbox = readJSON('inbox.json') || [];
+  const idx = inbox.findIndex(i => i.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Item niet gevonden' });
+  inbox[idx].status = 'disapproved';
+  inbox[idx].disapprovedAt = new Date().toISOString();
+  writeJSON('inbox.json', inbox);
+
+  const leads = readJSON('leads.json') || [];
+  const leadIdx = leads.findIndex(l => l.id === inbox[idx].leadId);
+  if (leadIdx !== -1) {
+    leads[leadIdx].status = 'disapproved';
+    addLeadHistory(leads, inbox[idx].leadId, { event: 'disapproved', label: 'Afgewezen' });
+    writeJSON('leads.json', leads);
+  }
+
+  res.json(inbox[idx]);
+});
+
+app.patch('/api/inbox/:id/restore', (req, res) => {
+  const inbox = readJSON('inbox.json') || [];
+  const idx = inbox.findIndex(i => i.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Item niet gevonden' });
+  inbox[idx].status = 'pending';
+  delete inbox[idx].disapprovedAt;
+  writeJSON('inbox.json', inbox);
+
+  const leads = readJSON('leads.json') || [];
+  const leadIdx = leads.findIndex(l => l.id === inbox[idx].leadId);
+  if (leadIdx !== -1) {
+    leads[leadIdx].status = 'new';
+    addLeadHistory(leads, inbox[idx].leadId, { event: 'restored', label: 'Hersteld uit prullenbak' });
+    writeJSON('leads.json', leads);
+  }
+
+  res.json(inbox[idx]);
+});
+
+app.delete('/api/inbox/:id', (req, res) => {
+  const inbox = readJSON('inbox.json') || [];
+  const item = inbox.find(i => i.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item niet gevonden' });
+  const filtered = inbox.filter(i => i.id !== req.params.id);
+  writeJSON('inbox.json', filtered);
+
+  if (req.query.deleteLead === 'true' && item.leadId) {
+    const leads = readJSON('leads.json') || [];
+    writeJSON('leads.json', leads.filter(l => l.id !== item.leadId));
+  }
+
+  res.json({ ok: true });
+});
+
+// â"€â"€â"€ Runs â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+app.get('/api/runs', (req, res) => {
+  res.json(readJSON('runs.json') || []);
+});
+
+app.post('/api/runs', (req, res) => {
+  const runs = readJSON('runs.json') || [];
+  const run = { id: Date.now().toString(), createdAt: new Date().toISOString(), ...req.body };
+  runs.unshift(run);
+  if (runs.length > 100) runs.splice(100);
+  writeJSON('runs.json', runs);
+  res.json(run);
+});
+
+// â"€â"€â"€ Settings â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+app.get('/api/settings', (req, res) => {
+  const s = readJSON('settings.json') || {};
+  const safe = { ...s };
+  delete safe.password;
+  delete safe.gmailPassword;
+  delete safe.stripeSecretKey;
+  delete safe.mollieApiKey;
+  safe.stripeConfigured = !!(s.stripeSecretKey);
+  safe.mollieConfigured = !!(s.mollieApiKey);
+  safe.paypalConfigured = !!(s.paypalMe);
+  safe.preferredPaymentMethod = s.preferredPaymentMethod || 'stripe';
+  safe.autoInvoiceEnabled = s.autoInvoiceEnabled || false;
+  safe.autoInvoiceDay = s.autoInvoiceDay || 1;
+  safe.paymentReminderDays = s.paymentReminderDays || 7;
+  res.json(safe);
+});
+
+app.patch('/api/settings/account', async (req, res) => {
+  const settings = readJSON('settings.json');
+  const { agencyName, myName, myTitle, username, newPassword, currentPassword, websiteTagline, websiteAbout, websiteContact } = req.body;
+
+  if (agencyName) settings.agencyName = agencyName;
+  if (myName) settings.myName = myName;
+  if (myTitle) settings.myTitle = myTitle;
+  if (username) settings.username = username;
+  if (websiteTagline !== undefined) settings.websiteTagline = websiteTagline;
+  if (websiteAbout   !== undefined) settings.websiteAbout   = websiteAbout;
+  if (websiteContact !== undefined) settings.websiteContact = websiteContact;
+
+  if (newPassword) {
+    if (!currentPassword) return res.status(400).json({ error: 'Huidig wachtwoord verplicht' });
+    const ok = await bcrypt.compare(currentPassword, settings.password);
+    if (!ok) return res.status(401).json({ error: 'Huidig wachtwoord onjuist' });
+    const hashed = await bcrypt.hash(newPassword, 12);
+    settings.password = hashed;
+    // sync to users store
+    const users = readJSON('users.json') || [];
+    const uIdx = users.findIndex(u => u.username === (settings.username || 'admin'));
+    if (uIdx !== -1) { users[uIdx].password = hashed; writeJSON('users.json', users); }
+  }
+
+  writeJSON('settings.json', settings);
+  res.json({ ok: true });
+});
+
+app.patch('/api/settings/gmail', requireAdmin, (req, res) => {
+  const settings = readJSON('settings.json');
+  const { gmailAddress, gmailPassword, replyDetection, webhookToken, webhookConfigured } = req.body;
+  if (gmailAddress !== undefined) settings.gmailAddress = gmailAddress;
+  if (gmailPassword !== undefined) settings.gmailPassword = gmailPassword;
+  if (replyDetection !== undefined) settings.replyDetection = replyDetection;
+  if (webhookToken !== undefined) settings.webhookToken = webhookToken;
+  if (webhookConfigured !== undefined) settings.webhookConfigured = webhookConfigured;
+  writeJSON('settings.json', settings);
+  res.json({ ok: true });
+});
+
+app.patch('/api/settings/services', requireAdmin, (req, res) => {
+  const settings = readJSON('settings.json');
+  settings.services = req.body.services;
+  writeJSON('settings.json', settings);
+  res.json({ ok: true });
+});
+
+app.get('/api/settings/services/defaults', (req, res) => {
+  res.json(DEFAULT_SERVICES);
+});
+
+app.patch('/api/settings/automation', requireAdmin, (req, res) => {
+  const settings = readJSON('settings.json');
+  const { dailyRunTime, leadsPerDay, autoApproveScore, automationPaused, linkedinUrl, dailyBriefingEnabled, dailyBriefingTime, smartAutoApprove, monthlyReports, backupEnabled, backupTime, backupEmail, targetCompanySizes } = req.body;
+  if (dailyRunTime !== undefined) settings.dailyRunTime = dailyRunTime;
+  if (leadsPerDay !== undefined) settings.leadsPerDay = leadsPerDay;
+  if (autoApproveScore !== undefined) settings.autoApproveScore = autoApproveScore;
+  if (automationPaused !== undefined) settings.automationPaused = automationPaused;
+  if (linkedinUrl !== undefined) settings.linkedinUrl = linkedinUrl;
+  if (dailyBriefingEnabled !== undefined) settings.dailyBriefingEnabled = dailyBriefingEnabled;
+  if (dailyBriefingTime !== undefined) settings.dailyBriefingTime = dailyBriefingTime;
+  if (smartAutoApprove !== undefined) settings.smartAutoApprove = smartAutoApprove;
+  if (monthlyReports !== undefined) settings.monthlyReports = monthlyReports;
+  if (backupEnabled !== undefined) settings.backupEnabled = backupEnabled;
+  if (backupTime   !== undefined) settings.backupTime    = backupTime;
+  if (backupEmail  !== undefined) settings.backupEmail   = backupEmail;
+  if (targetCompanySizes !== undefined) settings.targetCompanySizes = targetCompanySizes;
+  if (req.body.autoClientEmails !== undefined) settings.autoClientEmails = req.body.autoClientEmails;
+  if (req.body.autoInvoiceEnabled !== undefined) settings.autoInvoiceEnabled = req.body.autoInvoiceEnabled;
+  if (req.body.autoInvoiceDay !== undefined) settings.autoInvoiceDay = req.body.autoInvoiceDay;
+  if (req.body.paymentReminderDays !== undefined) settings.paymentReminderDays = req.body.paymentReminderDays;
+  writeJSON('settings.json', settings);
+  scheduleCron(); // re-schedule if run time changed
+  scheduleBriefingCron(); // re-schedule briefing if time changed
+  scheduleBackupCron(); // re-schedule backup if time changed
+  res.json({ ok: true });
+});
+
+app.post('/api/settings/test-email', async (req, res) => {
+  const settings = readJSON('settings.json');
+  if (!settings.gmailAddress || !settings.gmailPassword) {
+    return res.status(400).json({ error: 'Gmail nog niet ingesteld' });
+  }
+  try {
+    await sendEmail({
+      to: settings.gmailAddress,
+      subject: 'Agency AI â€" Testmail âœ"',
+      body: `Hoi ${settings.myName},\n\nGmail is correct ingesteld.\n\nAgency AI kan nu emails versturen namens ${settings.agencyName}!\n\nVriendelijke groet,\n${settings.myName}\n${settings.agencyName}`,
+      settings
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/settings/stripe', requireAdmin, (req, res) => {
+  const settings = readJSON('settings.json');
+  const { stripeSecretKey, mollieApiKey, paypalMe, preferredPaymentMethod } = req.body;
+  if (stripeSecretKey !== undefined) settings.stripeSecretKey = stripeSecretKey;
+  if (mollieApiKey !== undefined) settings.mollieApiKey = mollieApiKey;
+  if (paypalMe !== undefined) settings.paypalMe = paypalMe;
+  if (preferredPaymentMethod !== undefined) settings.preferredPaymentMethod = preferredPaymentMethod;
+  writeJSON('settings.json', settings);
+  res.json({ ok: true });
+});
+
+app.post('/api/stripe/invoice', async (req, res) => {
+  const settings = readJSON('settings.json');
+  if (!settings.stripeSecretKey) {
+    return res.status(400).json({ error: 'Stripe sleutel niet ingesteld — voeg toe in Instellingen' });
+  }
+  const { companyName, amount, description, billing } = req.body;
+  if (!amount || amount < 1) {
+    return res.status(400).json({ error: 'Ongeldig bedrag' });
+  }
+  try {
+    const stripe = Stripe(settings.stripeSecretKey);
+    const product = await stripe.products.create({
+      name: description || `AI-diensten — ${companyName}`
+    });
+    const priceData = {
+      product: product.id,
+      unit_amount: Math.round(amount) * 100,
+      currency: 'eur'
+    };
+    if (billing !== 'eenmalig') priceData.recurring = { interval: 'month' };
+    const price = await stripe.prices.create(priceData);
+    const paymentLink = await stripe.paymentLinks.create({
+      line_items: [{ price: price.id, quantity: 1 }]
+    });
+    console.log(`[Stripe] Betaallink aangemaakt voor ${companyName}: ${paymentLink.url}`);
+    res.json({ url: paymentLink.url });
+  } catch (err) {
+    console.error('[Stripe] Fout:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/mollie/invoice', requireAdmin, async (req, res) => {
+  const settings = readJSON('settings.json');
+  if (!settings.mollieApiKey) {
+    return res.status(400).json({ error: 'Mollie API sleutel niet ingesteld — voeg toe in Instellingen' });
+  }
+  const { companyName, amount, description, billing } = req.body;
+  if (!amount || amount < 1) return res.status(400).json({ error: 'Ongeldig bedrag' });
+  try {
+    const fetch = (await import('node-fetch')).default;
+    const body = {
+      description: description || `AI-diensten — ${companyName}`,
+      amount: { currency: 'EUR', value: (Math.round(amount)).toFixed(2) },
+      redirectUrl: settings.websiteContact || 'https://agencyai.nl',
+    };
+    const mollieRes = await fetch('https://api.mollie.com/v2/payment-links', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${settings.mollieApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    const mollieData = await mollieRes.json();
+    if (!mollieRes.ok) {
+      return res.status(400).json({ error: mollieData.detail || 'Mollie fout' });
+    }
+    const url = mollieData._links?.paymentLink?.href || mollieData._links?.checkout?.href;
+    console.log(`[Mollie] Betaallink aangemaakt voor ${companyName}: ${url}`);
+    res.json({ url });
+  } catch (err) {
+    console.error('[Mollie] Fout:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/paypal/invoice', requireAdmin, (req, res) => {
+  const settings = readJSON('settings.json');
+  if (!settings.paypalMe) {
+    return res.status(400).json({ error: 'PayPal.me naam niet ingesteld — voeg toe in Instellingen' });
+  }
+  const { amount, description } = req.body;
+  if (!amount || amount < 1) return res.status(400).json({ error: 'Ongeldig bedrag' });
+  const handle = settings.paypalMe.replace(/^.*paypal\.me\//i, '').replace(/\/$/, '');
+  const url = `https://www.paypal.me/${handle}/${Math.round(amount)}EUR`;
+  res.json({ url });
+});
+
+// ─── Payments per lead ───────────────────────────────────────────────────────
+
+async function createPaymentLink(method, { companyName, amount, description, billing, settings }) {
+  if (method === 'stripe') {
+    if (!settings.stripeSecretKey) throw new Error('Stripe niet geconfigureerd');
+    const stripe = Stripe(settings.stripeSecretKey);
+    const product = await stripe.products.create({ name: description || `AI-diensten — ${companyName}` });
+    const priceData = { product: product.id, unit_amount: Math.round(amount) * 100, currency: 'eur' };
+    if (billing !== 'eenmalig') priceData.recurring = { interval: 'month' };
+    const price = await stripe.prices.create(priceData);
+    const link = await stripe.paymentLinks.create({ line_items: [{ price: price.id, quantity: 1 }] });
+    return link.url;
+  }
+  if (method === 'mollie') {
+    if (!settings.mollieApiKey) throw new Error('Mollie niet geconfigureerd');
+    const fetch = (await import('node-fetch')).default;
+    const mollieRes = await fetch('https://api.mollie.com/v2/payment-links', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${settings.mollieApiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: description || `AI-diensten — ${companyName}`, amount: { currency: 'EUR', value: Math.round(amount).toFixed(2) }, redirectUrl: settings.websiteContact || 'https://agencyai.nl' })
+    });
+    const d = await mollieRes.json();
+    if (!mollieRes.ok) throw new Error(d.detail || 'Mollie fout');
+    return d._links?.paymentLink?.href || d._links?.checkout?.href;
+  }
+  if (method === 'paypal') {
+    if (!settings.paypalMe) throw new Error('PayPal niet geconfigureerd');
+    const handle = settings.paypalMe.replace(/^.*paypal\.me\//i, '').replace(/\/$/, '');
+    return `https://www.paypal.me/${handle}/${Math.round(amount)}EUR`;
+  }
+  throw new Error('Onbekende betaalmethode');
+}
+
+app.get('/api/payments', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const all = [];
+  for (const lead of leads) {
+    for (const p of (lead.payments || [])) {
+      all.push({ ...p, leadId: lead.id, leadName: lead.companyName, niche: lead.niche });
+    }
+  }
+  all.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  res.json(all);
+});
+
+app.get('/api/leads/:id/payments', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+  res.json(lead.payments || []);
+});
+
+app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const settings = readJSON('settings.json') || {};
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const { type, amount, description, billing, method, dueDate, splitParts } = req.body;
+  if (!amount || amount < 1) return res.status(400).json({ error: 'Ongeldig bedrag' });
+
+  const effectiveMethod = method || settings.preferredPaymentMethod || 'stripe';
+  const newPayments = [];
+
+  try {
+    if (type === 'split' && splitParts > 1) {
+      const partAmount = Math.round(amount / splitParts);
+      for (let i = 1; i <= splitParts; i++) {
+        const partDesc = `${description || 'AI-diensten'} — deel ${i}/${splitParts}`;
+        const url = await createPaymentLink(effectiveMethod, { companyName: leads[idx].companyName, amount: partAmount, description: partDesc, billing: 'eenmalig', settings });
+        const dueDays = (i - 1) * 14; // every 2 weeks
+        newPayments.push({
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2,5),
+          type: 'split', amount: partAmount, description: partDesc, billing: 'eenmalig',
+          method: effectiveMethod, paymentUrl: url, status: 'sent',
+          dueDate: dueDate ? new Date(new Date(dueDate).getTime() + dueDays * 86400000).toISOString() : new Date(Date.now() + dueDays * 86400000).toISOString(),
+          splitIndex: i, splitTotal: splitParts, createdAt: new Date().toISOString()
+        });
+      }
+    } else {
+      const url = await createPaymentLink(effectiveMethod, { companyName: leads[idx].companyName, amount, description, billing: billing || 'maandelijks', settings });
+      newPayments.push({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2,5),
+        type: type || (billing === 'eenmalig' ? 'once' : 'subscription'),
+        amount, description: description || 'AI-diensten', billing: billing || 'maandelijks',
+        method: effectiveMethod, paymentUrl: url, status: 'sent',
+        dueDate: dueDate || new Date(Date.now() + 7 * 86400000).toISOString(),
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    if (!leads[idx].payments) leads[idx].payments = [];
+    leads[idx].payments.push(...newPayments);
+    addLeadHistory(leads, leads[idx].id, { event: 'paymentCreated', label: `${newPayments.length > 1 ? `Gesplitste betaling (${splitParts} delen)` : type || 'Betaallink'}: €${amount}` });
+    writeJSON('leads.json', leads);
+
+    // Auto-send payment email to client
+    const lead = leads[idx];
+    if (lead.email && settings.gmailAddress && settings.gmailPassword) {
+      try {
+        const linksText = newPayments.map((p, i) => `${newPayments.length > 1 ? `Deel ${i+1}/${newPayments.length}: ` : ''}€${p.amount} → ${p.paymentUrl}`).join('\n');
+        await sendEmail({
+          to: lead.email,
+          subject: `Factuur ${description || 'AI-diensten'} — ${settings.agencyName}`,
+          body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder vind je de betaallink(s) voor ${description || 'onze diensten'}:\n\n${linksText}\n\nHeb je vragen? Neem gerust contact op.\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`,
+          settings
+        });
+      } catch { /* optional */ }
+    }
+
+    res.json(newPayments);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/leads/:id/payments/:payId', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const pIdx = (leads[idx].payments || []).findIndex(p => p.id === req.params.payId);
+  if (pIdx === -1) return res.status(404).json({ error: 'Betaling niet gevonden' });
+  leads[idx].payments[pIdx] = { ...leads[idx].payments[pIdx], ...req.body };
+  if (req.body.status === 'paid' && !leads[idx].payments[pIdx].paidAt) leads[idx].payments[pIdx].paidAt = new Date().toISOString();
+  writeJSON('leads.json', leads);
+  res.json(leads[idx].payments[pIdx]);
+});
+
+app.delete('/api/leads/:id/payments/:payId', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  leads[idx].payments = (leads[idx].payments || []).filter(p => p.id !== req.params.payId);
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+app.post('/api/leads/:id/payments/:payId/remind', requireAdmin, async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const settings = readJSON('settings.json') || {};
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const pay = (leads[idx].payments || []).find(p => p.id === req.params.payId);
+  if (!pay) return res.status(404).json({ error: 'Betaling niet gevonden' });
+  const lead = leads[idx];
+  if (!lead.email) return res.status(400).json({ error: 'Geen e-mailadres bekend' });
+  if (!settings.gmailAddress || !settings.gmailPassword) return res.status(400).json({ error: 'Gmail niet geconfigureerd' });
+
+  try {
+    const reminderEmail = await aiJSON(`Schrijf een vriendelijke maar dringende betalingsherinnering.
+Klant: ${lead.companyName}. Bureau: ${settings.agencyName}, ${settings.myName}.
+Bedrag: €${pay.amount}. Omschrijving: ${pay.description}. Betaallink: ${pay.paymentUrl}.
+Tone: professioneel maar begripvol. Max 150 woorden.
+Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`);
+
+    await sendEmail({ to: lead.email, subject: reminderEmail.subject, body: reminderEmail.body, settings });
+    // Log reminder
+    if (!leads[idx].payments) return;
+    const pIdx = leads[idx].payments.findIndex(p => p.id === req.params.payId);
+    if (pIdx !== -1) { leads[idx].payments[pIdx].lastReminderAt = new Date().toISOString(); leads[idx].payments[pIdx].reminderCount = (leads[idx].payments[pIdx].reminderCount || 0) + 1; }
+    addLeadHistory(leads, lead.id, { event: 'paymentReminder', label: `Betalingsherinnering verstuurd: €${pay.amount}` });
+    writeJSON('leads.json', leads);
+    res.json({ ok: true, subject: reminderEmail.subject });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/settings/leads', requireAdmin, (req, res) => {
+  writeJSON('leads.json', []);
+  writeJSON('inbox.json', []);
+  res.json({ ok: true });
+});
+
+app.get('/api/upsell', (req, res) => {
+  const stats = readJSON('stats.json') || {};
+  res.json(stats.upsellOpportunities || []);
+});
+
+app.post('/api/upsell/:leadId/email', async (req, res) => {
+  const settings = readJSON('settings.json');
+  const stats    = readJSON('stats.json') || {};
+  const opps     = stats.upsellOpportunities || [];
+  const opp      = opps.find(o => o.leadId === req.params.leadId);
+  if (!opp) return res.status(404).json({ error: 'Niet gevonden' });
+
+  const myName     = settings.myName     || 'Ekow';
+  const agencyName = settings.agencyName || 'Agency AI';
+
+  try {
+    const prompt = opp.language === 'nl'
+      ? 'Schrijf een warme upsell email voor een bestaande klant. Klinkt persoonlijk, NIET als AI. Geef JSON terug.\n\nKlant: ' + opp.companyName + ' (' + opp.niche + ', ' + opp.location + ')\nHuidige dienst: ' + opp.currentService + '\nNieuwe dienst: ' + opp.upsellService + ' (\u20AC' + opp.upsellPrice + ')\nKlant al ' + opp.daysSince + ' dagen actief\nAfzender: ' + myName + ' van ' + agencyName + '\nDatum vandaag: ' + new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) + '\n\nRegels:\n- Refereer aan hun huidige resultaten positief\n- Introduceer de nieuwe dienst als logische volgende stap\n- Max 100 woorden\n- Geen bullet points\n- CTA: vraag of ze even willen bellen\n- Afsluiting: "Groeten, ' + myName + '"\n\n{"subject": "onderwerp", "body": "emailtekst"}'
+      : 'Write a warm upsell email for an existing client. Sounds personal, NOT like AI. Return JSON.\n\nClient: ' + opp.companyName + ' (' + opp.niche + ', ' + opp.location + ')\nCurrent service: ' + opp.currentService + '\nNew service: ' + opp.upsellService + ' (\u20AC' + opp.upsellPrice + ')\nClient active for ' + opp.daysSince + ' days\nSender: ' + myName + ' from ' + agencyName + '\n\nRules:\n- Reference their current positive results\n- Introduce new service as natural next step\n- Max 100 words\n- No bullet points\n- CTA: ask for a quick call\n- Sign off: "Best, ' + myName + '"\n\n{"subject": "subject", "body": "email body"}';
+
+    const email = await aiJSON(prompt);
+    res.json({ email, opp });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/upsell/:leadId/send', async (req, res) => {
+  const settings = readJSON('settings.json');
+  if (!settings.gmailAddress || !settings.gmailPassword) return res.status(400).json({ error: 'Gmail niet ingesteld' });
+  const { subject, body } = req.body;
+  if (!subject || !body) return res.status(400).json({ error: 'Subject en body vereist' });
+  try {
+    await sendEmail({ to: settings.gmailAddress, subject, body, settings });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/settings/stats', requireAdmin, (req, res) => {
+  writeJSON('stats.json', { leadsFound: 0, emailsSent: 0, replies: 0, pipelineValue: 0, weeklyData: [] });
+  res.json({ ok: true });
+});
+
+// â"€â"€â"€ Server-side Claude helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+// In-memory token accumulator — reset per run
+let _sessionTokensIn = 0;
+let _sessionTokensOut = 0;
+
+// Claude Sonnet 4.x pricing (USD per million tokens)
+const PRICE_IN_PER_M  = 3.0;
+const PRICE_OUT_PER_M = 15.0;
+
+function calcCostUsd(tokIn, tokOut) {
+  return (tokIn / 1e6) * PRICE_IN_PER_M + (tokOut / 1e6) * PRICE_OUT_PER_M;
+}
+
+async function aiCall(prompt) {
+  const { default: fetch } = await import('node-fetch');
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.CLAUDE_API_KEY,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  const data = await res.json();
+  if (!data.content) throw new Error(data.error?.message || 'Claude API fout');
+  const usage = data.usage || {};
+  _sessionTokensIn  += usage.input_tokens  || 0;
+  _sessionTokensOut += usage.output_tokens || 0;
+  return data.content[0].text;
+}
+
+async function aiJSON(prompt) {
+  const text = await aiCall(prompt);
+  const match = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/(\[[\s\S]*\]|\{[\s\S]*\})/s);
+  try { return JSON.parse(match ? match[1] : text); }
+  catch { throw new Error('Claude JSON parse mislukt: ' + text.substring(0, 200)); }
+}
+
+// â"€â"€â"€ Website checker (Agent 2) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+async function checkWebsite(url) {
+  if (!url) return { reachable: false, notes: 'Geen URL opgegeven' };
+  try {
+    const { default: fetch } = await import('node-fetch');
+    const start = Date.now();
+    const res = await fetch(url, {
+      timeout: 8000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AgencyAI/1.0)' }
+    });
+    const ms = Date.now() - start;
+    const html = await res.text();
+
+    const hasViewport   = /<meta[^>]+viewport/i.test(html);
+    const hasHttps      = url.startsWith('https://');
+    const hasBooking    = /\b(boek|reserveer|afspraak|appointment|book|reservat)/i.test(html);
+    const hasShop       = /\b(shop|winkel|bestel|kopen|cart|basket|checkout)/i.test(html);
+    const hasCTA        = /\b(contact|contact us|meer info|neem contact|bel ons|call us)/i.test(html);
+    const speedScore    = ms < 1500 ? 9 : ms < 3000 ? 7 : ms < 5000 ? 5 : 3;
+
+    const problems = [];
+    if (ms > 3000) problems.push(`Trage laadtijd: ${(ms/1000).toFixed(1)}s (ideaal <2s)`);
+    if (!hasViewport) problems.push('Geen mobile-optimalisatie gevonden');
+    if (!hasHttps) problems.push('Geen HTTPS â€" onveilige verbinding');
+    if (!hasBooking && !hasShop) problems.push('Geen duidelijk boekings- of bestelsysteem');
+    if (!hasCTA) problems.push('Geen duidelijke call-to-action op de pagina');
+
+    return {
+      reachable: true,
+      loadTimeMs: ms,
+      speedScore,
+      hasHttps,
+      hasMobileOptimization: hasViewport,
+      hasBookingSystem: hasBooking,
+      hasShop,
+      hasCTA,
+      problems
+    };
+  } catch (err) {
+    return { reachable: false, notes: `Website niet bereikbaar: ${err.message}` };
+  }
+}
+
+// â"€â"€â"€ 6-agent pipeline â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+// â"€â"€ Per-lead processing helper (agents 2-6 + build item) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+function isDuplicate(lead) {
+  const existing = readJSON('leads.json') || [];
+  if (!existing.length) return null;
+  const nameLower   = (lead.companyName || '').toLowerCase().trim();
+  const domainRaw   = (lead.websiteUrl  || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
+  for (const e of existing) {
+    const eName   = (e.companyName || '').toLowerCase().trim();
+    const eDomain = (e.websiteUrl  || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
+    if (nameLower && eName && nameLower === eName) return e;
+    if (domainRaw && eDomain && domainRaw === eDomain) return e;
+  }
+  return null;
+}
+
+async function processOneLead(lead, settings) {
+  if (isBlacklisted(lead)) {
+    console.log(`  ✗ Geblokkeerd (blacklist): ${lead.companyName}`);
+    return null;
+  }
+
+  const dup = isDuplicate(lead);
+  if (dup) {
+    console.log(`  ✗ Duplicaat overgeslagen: ${lead.companyName} (bestaat al als ${dup.status})`);
+    return null;
+  }
+  const { services = [], myName = '', agencyName = 'Agency AI', autoApproveScore = 8.0 } = settings;
+
+  const c = (lead.country || '').toLowerCase().replace(/[^a-z]/g, '');
+  const language = (
+    c === 'nl' || c === 'be' ||
+    c === 'nederland' || c === 'netherlands' || c === 'thenetherlands' ||
+    c === 'belgie' || c === 'belgi' || c === 'belgium' || c === 'belgique'
+  ) ? 'nl' : 'en';
+  lead.language = language;
+  const companySize = lead.companySize || 'small';
+
+  console.log(`  [Agent 2] Website checken: ${lead.websiteUrl}`);
+  const website = await checkWebsite(lead.websiteUrl);
+  console.log(`  [Agent 2] Bereikbaar: ${website.reachable}, laadtijd: ${website.loadTimeMs || 'â€"'}ms`);
+
+  console.log(`  [Agent 3] Social media analyseren...`);
+  let social;
+  try {
+    social = await aiJSON(`Analyseer dit bedrijf op social media potentieel. Geef JSON terug:
+
+Bedrijf: ${lead.companyName}
+Niche: ${lead.niche}
+Instagram: ${lead.instagramHandle}
+Geschatte volgers: ${lead.estimatedFollowers}
+Locatie: ${lead.location}
+Website laadtijd: ${website.loadTimeMs ? (website.loadTimeMs/1000).toFixed(1) + 's' : 'onbekend'}
+Website problemen: ${website.problems?.join(', ') || 'geen'}
+
+{
+  "engagementRate": getal (bijv 3.2 voor 3.2%),
+  "postFrequency": "dagelijks/wekelijks/maandelijks",
+  "runningAds": true of false,
+  "growthPotential": getal 1-10,
+  "improvements": ["verbetering 1", "verbetering 2", "verbetering 3"],
+  "emailOpener": "1 concrete, specifieke observatie over dit bedrijf die je als opening in een koude email kunt gebruiken. Gebruik echte details: volgers, postfrequentie, website snelheid, niche. Schrijf in de 2e persoon (jullie/je). Max 1 zin. Klinkt als iets wat je echt online zou opmerken. Bijv: 'Zag dat jullie de afgelopen maand nauwelijks posts hebben geplaatst terwijl jullie ${lead.estimatedFollowers} volgers wachten op nieuwe content.'",
+  "emailOpenerEn": "Same but in English, 2nd person (you/your). Max 1 sentence. E.g: 'Noticed your last few posts got way less engagement than your follower count suggests — looks like reach has dropped.'",
+  "linkedinCompanyFollowers": geschat getal LinkedIn bedrijfspagina volgers (op basis van bedrijfsgrootte en niche — realistisch schatten),
+  "linkedinActive": true of false (heeft het bedrijf waarschijnlijk een actieve LinkedIn aanwezigheid?)
+}`);
+  } catch {
+    social = { engagementRate: 2.5, postFrequency: 'wekelijks', runningAds: false, growthPotential: 6, improvements: [], emailOpener: null, emailOpenerEn: null };
+  }
+
+  console.log(`  [Agent 4] Kansen berekenen...`);
+  const servicesList = services.map(s => `- ${s.name}: â‚¬${s.price} â€" ${s.description}`).join('\n');
+  let opportunity;
+  try {
+    opportunity = await aiJSON(`Analyseer dit bedrijf en geef een opportunity score. Geef JSON terug:
+
+Bedrijf: ${lead.companyName} (${lead.niche})
+Locatie: ${lead.location}
+Instagram: ${lead.estimatedFollowers} volgers, engagement ${social.engagementRate}%
+Website: ${website.reachable ? `bereikbaar in ${website.loadTimeMs}ms` : 'niet bereikbaar'}
+Website problemen: ${[...(website.problems||[])].join(', ') || 'geen'}
+Betaalde ads: ${social.runningAds ? 'ja' : 'nee'}
+
+Onze diensten:
+${servicesList}
+
+Geef JSON:
+{
+  "score": getal 1-10,
+  "problems": ["top probleem 1 met specifieke data", "probleem 2", "probleem 3"],
+  "recommendedServices": [{"name": "dienstnaam", "price": getal}],
+  "estimatedValue": totaal maandelijks bedrag in euros,
+  "urgency": "low" of "medium" of "high" of "critical",
+  "reason": "korte uitleg score in 1 zin"
+}`);
+  } catch {
+    opportunity = { score: 6.5, problems: ['Onvoldoende data'], recommendedServices: services.slice(0,2), estimatedValue: 800, urgency: 'medium', reason: 'Gemiddeld potentieel' };
+  }
+
+  // Apply memory-based score adjustment
+  const memEntry = (readJSON('memory.json') || {})[getMemoryKey(lead.niche, lead.country)];
+  if (memEntry && memEntry.sent >= 5) {
+    let adj = 0;
+    if (memEntry.replyRate > 20) adj = 0.5;
+    else if (memEntry.replyRate < 5) adj = -0.3;
+    if (adj !== 0) {
+      opportunity.score = Math.min(10, Math.max(1, (opportunity.score || 6.5) + adj));
+      console.log(`  [Memory] Score ${adj > 0 ? '+' : ''}${adj} voor ${lead.niche}/${lead.country} (reply rate: ${memEntry.replyRate}%)`);
+    }
+  }
+
+  // Company size score boost/penalty based on target sizes
+  const targetSizes = settings.targetCompanySizes || ['small', 'medium'];
+  if (companySize && targetSizes.length > 0) {
+    if (!targetSizes.includes(companySize)) {
+      opportunity.score = Math.max(1, (opportunity.score || 6.5) - 0.5);
+      console.log(`  [Size filter] Score -0.5 voor ${companySize} bedrijf (niet in doelgroep)`);
+    } else {
+      opportunity.score = Math.min(10, (opportunity.score || 6.5) + 0.2);
+      console.log(`  [Size filter] Score +0.2 voor ${companySize} bedrijf (in doelgroep)`);
+    }
+  }
+
+  console.log(`  [Agent 7] Concurrentie analyseren...`);
+  let competitors;
+  try {
+    const lang7 = language === 'nl' ? 'Nederlands' : 'English';
+    competitors = await aiJSON(`Analyseer de concurrentie voor dit bedrijf. Antwoord in ${lang7}. Geef alleen JSON terug.
+
+Bedrijf: ${lead.companyName} (${lead.niche})
+Locatie: ${lead.location}
+
+Genereer 2-3 realistische lokale concurrenten in dezelfde stad of regio.
+Analyseer wat die concurrenten waarschijnlijk beter doen aan online marketing.
+
+{
+  "competitorNames": ["naam 1", "naam 2"],
+  "competitorAdvantages": ["concreet voordeel 1", "concreet voordeel 2", "concreet voordeel 3"],
+  "competitorGap": "één concrete zin in ${lang7} die samenvat wat het grootste voordeel is dat hun concurrenten hebben ten opzichte van dit bedrijf"
+}`);
+  } catch {
+    competitors = { competitorNames: [], competitorAdvantages: [], competitorGap: null };
+  }
+
+  console.log(`  [Agent 5] Email schrijven A+B (${language})...`);
+  const topProblem = opportunity.problems?.[0] || (language === 'nl' ? 'groei online aanwezigheid' : 'growing online presence');
+  const topService = opportunity.recommendedServices?.[0]?.name || services[0]?.name || 'AI-marketing';
+  const loadSec = website.loadTimeMs ? (website.loadTimeMs / 1000).toFixed(1) : null;
+  const opener  = language === 'nl'
+    ? (social.emailOpener    || `Zag ${lead.companyName} online en merkte ${topProblem.toLowerCase()}`)
+    : (social.emailOpenerEn  || `Came across ${lead.companyName} online and noticed ${topProblem.toLowerCase()}`);
+
+  const todayNL   = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+  const seasonal  = getSeasonalContext(language);
+  const todayEN   = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  const sharedContext = language === 'nl'
+    ? `Bedrijf: ${lead.companyName} (${lead.niche}, ${lead.location})
+Bedrijfsgrootte: ${companySize}
+Instagram: ${lead.estimatedFollowers ? lead.estimatedFollowers.toLocaleString() + ' volgers' : 'onbekend'}
+LinkedIn: ${social.linkedinCompanyFollowers ? social.linkedinCompanyFollowers.toLocaleString() + ' volgers' : 'onbekend'}${social.linkedinActive === false ? ' (inactief)' : ''}
+Website laadtijd: ${loadSec ? loadSec + ' seconden' : 'onbekend'}
+Probleem: ${topProblem}
+Dienst: ${topService}
+Concurrentie in ${lead.location}: ${competitors?.competitorGap || 'niet beschikbaar'}
+Afzender: ${myName} van ${agencyName}
+Datum vandaag: ${todayNL}
+Seizoenscontext: ${seasonal.season} — ${seasonal.hook}`
+    : `Company: ${lead.companyName} (${lead.niche}, ${lead.location})
+Company size: ${companySize}
+Instagram: ${lead.estimatedFollowers ? lead.estimatedFollowers.toLocaleString() + ' followers' : 'unknown'}
+LinkedIn: ${social.linkedinCompanyFollowers ? social.linkedinCompanyFollowers.toLocaleString() + ' followers' : 'unknown'}${social.linkedinActive === false ? ' (inactive)' : ''}
+Website load time: ${loadSec ? loadSec + ' seconds' : 'unknown'}
+Problem: ${topProblem}
+Service: ${topService}
+Competitor context in ${lead.location}: ${competitors?.competitorGap || 'not available'}
+Sender: ${myName} from ${agencyName}
+Today's date: ${todayEN}
+Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
+
+  const sharedRules = language === 'nl'
+    ? `- Aanhef: small -> "Hoi [naam]," of "Hey,"; medium -> "Hoi," of "Hi,"; large -> "Hallo ${lead.companyName},"
+- Toon: casual, direct, menselijk - gebruik "je/jij/jullie", NOOIT "u" (tenzij large)
+- Schrijf alsof je dit snel intypt op je telefoon, niet vanachter een bureau
+- Varieer zinslengte: mix korte zinnen (4-6 woorden) met iets langere. Geen 3 zinnen van dezelfde lengte op rij
+- Begin NOOIT een zin met "Ik" als eerste woord van de email
+- Onderwerp: 4-6 woorden, concreet, noem bedrijfsnaam of stad - GEEN "AI", "marketing" of "samenwerking" in het onderwerp
+- Max 3 korte alinea's, elke alinea max 2-3 zinnen
+- GEEN bullet points, GEEN opsommingen, GEEN --- scheidingslijnen
+- Dienst: 1 zin, niet aanprijzend - beschrijf het resultaat, niet het product
+- CTA: 1 simpele vraag, bijv. "Klinkt dat interessant?" of "Even kort bellen?"
+- Afsluiting: "Groeten, ${myName}" of "Tot snel, ${myName}"
+- Max 110 woorden in de body
+- Als er concurrentie context is: verweef 1 korte zin organisch, nooit explicieter dan nodig
+- VERBODEN WOORDEN: innovatief, synergie, resultaatgericht, vrijblijvend, in de huidige markt, passie, data-gedreven, oplossing op maat, spannend, uniek aanbod, perfect, ideale, absoluut, zeker weten, fantastisch, geweldig, helpen te groeien, naar een hoger niveau, concurrentievoordeel, bewezen, transformeren
+- SEIZOEN: Het is nu ${seasonal.season}. Verweef optioneel 1 subtiele seizoensreferentie als het natuurlijk aansluit bij hun niche (bijv. ${seasonal.event}). Forceer dit NIET als het niet past.`
+    : `- Greeting: small -> "Hey [name]," or "Hi [name],"; medium -> "Hi," or "Hey,"; large -> "Hi ${lead.companyName} team,"
+- Tone: casual, direct, human - write like a real person texting, not a marketer emailing
+- Write as if typing quickly on your phone - short, punchy, real
+- Vary sentence length: mix short (4-6 words) and longer ones. Never 3 sentences of the same length in a row
+- NEVER start the first sentence with "I"
+- Subject: 4-6 words, specific, mention company or city - NO "AI", "marketing" or "collaboration" in the subject
+- Max 3 short paragraphs, each max 2-3 sentences
+- NO bullet points, NO lists, NO --- dividers
+- Service: 1 sentence, describe the outcome, not the product
+- CTA: 1 simple question, e.g. "Worth a quick chat?" or "Open to a quick call?"
+- Sign-off: "Cheers, ${myName}" or "Best, ${myName}"
+- Max 110 words in the body
+- If competitor context is provided: weave in 1 brief line naturally
+- BANNED: innovative, synergy, leverage, game-changer, cutting-edge, seamlessly, data-driven, tailored solution, exciting, unique offering, perfect, ideal, absolutely, fantastic, take to the next level, proven, transform, competitive advantage
+- SEASONAL: It is currently ${seasonal.season}. Optionally weave in 1 subtle seasonal reference if it naturally fits their niche (e.g. ${seasonal.event}). Do NOT force this if it feels unnatural.`;
+
+  const promptA = language === 'nl'
+    ? `Schrijf een koude email â€" VERSIE A: PROBLEEM-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.
+
+CONTEXT:
+${sharedContext}
+
+OPENING ZIN (gebruik deze exact of pas licht aan):
+"${opener}"
+
+AANPAK VERSIE A: Begin met het probleem. Gebruik de opening zin hierboven. Noem het probleem concreet met een getal of vergelijking. Dan de dienst als logische oplossing.
+
+REGELS:
+${sharedRules}
+
+{"subject": "onderwerp", "body": "emailtekst"}`
+    : `Write a cold email â€" VERSION A: PROBLEM-FOCUSED. Reads like a real person typed it, NOT like AI. Return JSON.
+
+CONTEXT:
+${sharedContext}
+
+OPENING LINE (use this exactly or adapt slightly):
+"${opener}"
+
+VERSION A APPROACH: Start with the problem. Use the opening line above. State the problem concretely with a number or comparison. Then offer the service as the logical next step.
+
+RULES:
+${sharedRules}
+
+{"subject": "subject line", "body": "email body"}`;
+
+  const openerB = language === 'nl'
+    ? `${lead.companyName} heeft echt potentieel in ${lead.location} â€" en ik denk dat ${topService.toLowerCase()} precies dat kan versnellen.`
+    : `${lead.companyName} has real potential to grow in ${lead.location} â€" and I think ${topService.toLowerCase()} could accelerate that.`;
+
+  const promptB = language === 'nl'
+    ? `Schrijf een koude email â€" VERSIE B: GROEIKANSEN-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.
+
+CONTEXT:
+${sharedContext}
+
+OPENING ZIN VERSIE B (gebruik deze exact of pas licht aan):
+"${openerB}"
+
+AANPAK VERSIE B: Begin positief â€" met groeipotentieel, niet met problemen. Focus op wat ze KUNNEN bereiken met ${topService}. Enthousiaster toon. Probleem mag kort genoemd worden als context, maar niet als hoofdboodschap.
+
+REGELS:
+${sharedRules}
+
+{"subject": "onderwerp", "body": "emailtekst"}`
+    : `Write a cold email â€" VERSION B: GROWTH/OPPORTUNITY-FOCUSED. Reads like a real person typed it, NOT like AI. Return JSON.
+
+CONTEXT:
+${sharedContext}
+
+OPENING LINE VERSION B (use this exactly or adapt slightly):
+"${openerB}"
+
+VERSION B APPROACH: Start positively â€" with growth potential, not problems. Focus on what they CAN achieve with ${topService}. More enthusiastic tone. Problem can be briefly mentioned as context but not as the main message.
+
+RULES:
+${sharedRules}
+
+{"subject": "subject line", "body": "email body"}`;
+
+  let emailA, emailB;
+  try {
+    [emailA, emailB] = await Promise.all([aiJSON(promptA), aiJSON(promptB)]);
+  } catch {
+    emailA = language === 'nl'
+      ? { subject: `${lead.companyName} â€" ik zag iets opvallends`, body: `Hoi,\n\nIk zag ${lead.companyName} online en merkte dat er kansen liggen op het gebied van ${topService.toLowerCase()}.\n\nZou je open staan voor een gratis audit?\n\nVriendelijke groet,\n${myName}` }
+      : { subject: `${lead.companyName} â€" noticed something`, body: `Hi,\n\nI came across ${lead.companyName} and noticed opportunities around ${topService.toLowerCase()}.\n\nWould you be open to a free audit?\n\nBest,\n${myName}` };
+    emailB = language === 'nl'
+      ? { subject: `${lead.companyName} â€" groeikans`, body: `Hoi,\n\n${lead.companyName} heeft echt potentieel om te groeien met ${topService.toLowerCase()}.\n\nZou je open staan voor een kort gesprek?\n\nVriendelijke groet,\n${myName}` }
+      : { subject: `${lead.companyName} â€" growth opportunity`, body: `Hi,\n\n${lead.companyName} has real potential to grow with ${topService.toLowerCase()}.\n\nWould you be open to a quick chat?\n\nBest,\n${myName}` };
+  }
+  const email = emailA;
+
+  console.log(`  [Agent 6] LinkedIn DM + voicenote schrijven (${language})...`);
+  const dmPrompt = language === 'nl'
+    ? `Schrijf een LinkedIn DM als een direct, persoonlijk berichtje. Max 280 tekens. Geen hashtags.
+
+Bedrijf: ${lead.companyName} (${lead.niche}, ${lead.location})
+Probleem: ${topProblem}
+Dienst: ${topService}
+
+Regels:
+- Begin met een concrete observatie over hun bedrijf, niet met een zelfintroductie
+- "hoi/hey + naam als mogelijk" - maar begin NOOIT met "Ik zie dat" of "Ik merkte dat"
+- Noem 1 specifiek detail (volgers, laadtijd, niche) als het past
+- Eindig met een open vraag, niet met een CTA of link-aanbod
+- Max 280 tekens inclusief afsluiting
+- VERBODEN: innovatief, synergie, vrijblijvend, perfect, uniek, oplossingen op maat
+Geef alleen de DM-tekst, geen uitleg.`
+    : `Write a LinkedIn DM that reads like a real, quick personal message. Max 280 characters. No hashtags.
+
+Company: ${lead.companyName} (${lead.niche}, ${lead.location})
+Problem: ${topProblem}
+Service: ${topService}
+
+Rules:
+- Start with a specific observation about their business, NOT a self-intro
+- "Hey/Hi + name if possible" - but NEVER start with "I noticed" or "I saw"
+- Mention 1 specific detail (followers, load time, niche) if natural
+- End with an open question, not a CTA or link offer
+- Max 280 characters including sign-off
+- BANNED: innovative, synergy, leverage, perfect, unique, tailored solutions
+Return only the DM text, no explanation.`;
+
+  const voicePrompt = language === 'nl'
+    ? `Schrijf een voicenote script voor WhatsApp of Instagram. Max 75 woorden (30 seconden uitgesproken). Klinkt als een spontaan persoonlijk berichtje.
+
+Bedrijf: ${lead.companyName} (${lead.niche}, ${lead.location})
+Specifiek detail: ${topProblem}
+Dienst: ${topService}
+
+Regels:
+- Begin middenin een gedachte, niet met standaard begroeting
+- 1 specifieke observatie over hun bedrijf
+- Gebruik ... voor 1 natuurlijke pauze
+- Eindig met een zachte vraag
+- Klinkt menselijk, niet als pitch
+- Geef alleen de spreektekst, geen labels of aanwijzingen`
+    : `Write a voicenote script for WhatsApp or Instagram. Max 75 words (30 seconds spoken). Sounds like a spontaneous personal message.
+
+Company: ${lead.companyName} (${lead.niche}, ${lead.location})
+Specific detail: ${topProblem}
+Service: ${topService}
+
+Rules:
+- Start mid-thought, not with a standard greeting
+- 1 specific observation about their business
+- Use ... for 1 natural pause
+- End with a soft question
+- Sounds human, not like a pitch
+- Return only the spoken text, no labels`;
+
+  let linkedinDm, voicenoteScript;
+  try {
+    const [dmText, voiceText] = await Promise.all([aiCall(dmPrompt), aiCall(voicePrompt)]);
+    linkedinDm      = dmText.trim().substring(0, 280);
+    voicenoteScript = voiceText.trim();
+  } catch {
+    linkedinDm = language === 'nl'
+      ? `Hoi! Zag ${lead.companyName} online — jullie doen interessant werk in ${lead.niche}. Wij helpen vergelijkbare bedrijven groeien met AI-marketing. Gratis audit beschikbaar — even kennismaken?`
+      : `Hi! Came across ${lead.companyName} — great work in the ${lead.niche} space. We help similar businesses grow with AI marketing. Free audit available — fancy a quick chat?`;
+    voicenoteScript = null;
+  }
+
+  const id = `lead-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+  const now = new Date().toISOString();
+  const item = {
+    id, leadId: id, status: 'pending', type: 'new',
+    companyName: lead.companyName, location: lead.location, country: lead.country,
+    language, companySize, emailOpener: opener,
+    niche: lead.niche, instagramHandle: lead.instagramHandle,
+    estimatedFollowers: lead.estimatedFollowers, websiteUrl: lead.websiteUrl,
+    linkedinCompanyUrl: lead.linkedinCompanyUrl || null,
+    linkedinCompanyFollowers: social.linkedinCompanyFollowers || null,
+    linkedinActive: social.linkedinActive !== false,
+    score: Math.round(opportunity.score * 10) / 10,
+    estimatedValue: opportunity.estimatedValue, urgency: opportunity.urgency,
+    problems: opportunity.problems || [], services: opportunity.recommendedServices || [],
+    website, social, email, emailA, emailB, linkedinDm, voicenoteScript, competitors,
+    sendOptimalTime: getOptimalSendTime(lead.niche), createdAt: now
+  };
+  // Smart auto-approve: check all configured conditions
+  const sap = settings.smartAutoApprove || {};
+  let shouldAutoApprove = false;
+  if (sap.enabled) {
+    const scoreOk     = item.score >= (sap.scoreThreshold || 8.0);
+    const noAdsOk     = !sap.requireNoAds  || !(social.runningAds === true);
+    const followersOk = !sap.minFollowers  || (lead.estimatedFollowers || 0) >= sap.minFollowers;
+    const websiteOk   = !sap.requireWebsite || !!lead.websiteUrl;
+    shouldAutoApprove = scoreOk && noAdsOk && followersOk && websiteOk;
+  } else {
+    // Legacy: score-only
+    shouldAutoApprove = item.score >= autoApproveScore;
+  }
+  if (shouldAutoApprove) item.status = 'auto-approved';
+
+  const leadRecord = {
+    id, companyName: lead.companyName, niche: lead.niche, location: lead.location,
+    country: lead.country, language, companySize,
+    instagramHandle: lead.instagramHandle, estimatedFollowers: lead.estimatedFollowers,
+    websiteUrl: lead.websiteUrl,
+    linkedinCompanyUrl: lead.linkedinCompanyUrl || null,
+    linkedinCompanyFollowers: social.linkedinCompanyFollowers || null,
+    linkedinActive: social.linkedinActive !== false,
+    score: item.score, urgency: item.urgency,
+    status: item.status, estimatedValue: item.estimatedValue,
+    problems: item.problems, services: item.services, emailOpener: opener,
+    email: item.email, emailA: item.emailA, emailB: item.emailB, linkedinDm: item.linkedinDm,
+    voicenoteScript: item.voicenoteScript,
+    website: item.website, competitors, sendOptimalTime: item.sendOptimalTime,
+    social: { engagementRate: social.engagementRate, postFrequency: social.postFrequency, growthPotential: social.growthPotential },
+    createdAt: now,
+    history: [{ event: 'created', label: 'Lead toegevoegd', time: now }]
+  };
+
+  return { item, leadRecord };
+}
+
+async function runFindLeadsJob(overrides = {}) {
+  const settings = readJSON('settings.json');
+  if (settings.automationPaused) {
+    console.log('[Agency AI] Automatisering gepauzeerd â€" run overgeslagen');
+    return 0;
+  }
+
+  const count      = overrides.count      || settings.leadsPerDay || 15;
+  const nichesList = overrides.niches?.length ? overrides.niches.join(', ') : 'beauty, food, fitness, retail, restaurants';
+  const services   = settings.services   || [];
+  const myName     = settings.myName     || 'Ekow';
+  const agencyName = settings.agencyName || 'Agency AI';
+  const autoScore  = settings.autoApproveScore || 8.0;
+
+  console.log(`\n[Agency AI] â"€â"€â"€ Lead finder gestart: ${count} leads â"€â"€â"€`);
+
+  // â"€â"€ Agent 1: Finder â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  console.log('[Agent 1] Leads genereren met Claude...');
+  const finderPrompt = `Je bent een lead research expert. Het huidige jaar is ${new Date().getFullYear()}. Genereer ${count} realistische bedrijven die baat hebben bij AI-marketingdiensten.
+
+Geef een JSON array terug (geen uitleg, alleen JSON):
+[{
+  "companyName": "Bedrijfsnaam",
+  "location": "Stad, Land",
+  "country": "NL of ander land",
+  "instagramHandle": "@handle",
+  "niche": "beauty" of "food" of "fitness" of "retail" of "restaurant",
+  "estimatedFollowers": getal,
+  "websiteUrl": "https://...",
+  "linkedinCompanyUrl": "https://linkedin.com/company/bedrijfsnaam-slug",
+  "companySize": "small" of "medium" of "large"
+}]
+
+companySize: "small" voor ZZP/MKB (<10 medewerkers), "medium" voor middelgroot (10-50), "large" voor groot/corporate (50+).
+linkedinCompanyUrl: geef een realistisch LinkedIn company URL op basis van de bedrijfsnaam (lowercase, koppeltekens).
+Niches: .
+Mix van locaties: Nederland, Belgie, Duitsland, UK, VS.
+Maak het realistisch â€" geen nep URLs. Gebruik domeinen die echt zouden kunnen bestaan.
+Geef exact ${count} bedrijven.`;
+
+  let leads;
+  try {
+    leads = await aiJSON(finderPrompt);
+    if (!Array.isArray(leads)) leads = [leads];
+    leads = leads.slice(0, count);
+  } catch (err) {
+    console.error('[Agent 1] Fout:', err.message);
+    return 0;
+  }
+  console.log(`[Agent 1] ${leads.length} leads gevonden`);
+
+  const inboxItems = [];
+  const newLeads   = [];
+
+  for (let i = 0; i < leads.length; i++) {
+    const lead = leads[i];
+    console.log(`\n[Lead ${i+1}/${leads.length}] ${lead.companyName} (${lead.niche})`);
+    const result = await processOneLead(lead, settings);
+    if (!result) continue;
+    const { item, leadRecord } = result;
+    inboxItems.push(item);
+    newLeads.push(leadRecord);
+    if (item.status === 'auto-approved') console.log(`  âœ" Auto-goedgekeurd (score ${item.score} >= ${autoScore})`);
+    console.log(`  âœ" Klaar â€" score: ${item.score}, waarde: â‚¬${item.estimatedValue}`);
+  }
+
+  // â"€â"€ Save results â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  const inbox = readJSON('inbox.json') || [];
+  writeJSON('inbox.json', [...inboxItems, ...inbox]);
+
+  const allLeads = readJSON('leads.json') || [];
+  writeJSON('leads.json', [...newLeads, ...allLeads]);
+
+  // Update stats
+  const stats = readJSON('stats.json') || {};
+  const today = new Date().toISOString().split('T')[0];
+  const weeklyData = stats.weeklyData || [];
+  const todayEntry = weeklyData.find(w => w.date === today);
+  if (todayEntry) todayEntry.count = (todayEntry.count || 0) + inboxItems.length;
+  else weeklyData.push({ date: today, count: inboxItems.length });
+  if (weeklyData.length > 30) weeklyData.splice(0, weeklyData.length - 30);
+
+  const totalValue = newLeads.reduce((s, l) => s + (l.estimatedValue || 0), 0);
+  writeJSON('stats.json', {
+    ...stats,
+    leadsFound: (stats.leadsFound || 0) + inboxItems.length,
+    pipelineValue: (stats.pipelineValue || 0) + totalValue,
+    weeklyData
+  });
+
+  // Save run log
+  const runs = readJSON('runs.json') || [];
+  runs.unshift({
+    id: Date.now().toString(),
+    createdAt: new Date().toISOString(),
+    leadsFound: inboxItems.length,
+    autoApproved: inboxItems.filter(i => i.status === 'auto-approved').length,
+    totalValue
+  });
+  if (runs.length > 100) runs.splice(100);
+  writeJSON('runs.json', runs);
+
+  const runTokIn  = _sessionTokensIn;
+  const runTokOut = _sessionTokensOut;
+  _sessionTokensIn = 0; _sessionTokensOut = 0;
+  const runCostUsd = calcCostUsd(runTokIn, runTokOut);
+  addActivity('run', 'Run klaar: ' + inboxItems.length + ' leads gevonden', { tokensIn: runTokIn, tokensOut: runTokOut, costUsd: runCostUsd, meta: { leadsFound: inboxItems.length, totalValue } });
+  const statsAft = readJSON('stats.json') || {};
+  statsAft.totalApiTokensIn  = (statsAft.totalApiTokensIn  || 0) + runTokIn;
+  statsAft.totalApiTokensOut = (statsAft.totalApiTokensOut || 0) + runTokOut;
+  statsAft.totalApiCostUsd   = Math.round(((statsAft.totalApiCostUsd || 0) + runCostUsd) * 10000) / 10000;
+  writeJSON('stats.json', statsAft);
+
+  if (inboxItems.length > 0) {
+    const pendingCount = inboxItems.filter(i => i.status !== 'auto-approved').length;
+    const highScoreCount = inboxItems.filter(i => i.score >= 8).length;
+    addNotification('run_complete', `Run klaar: ${inboxItems.length} leads gevonden`,
+      `${pendingCount} wachten op goedkeuring${highScoreCount > 0 ? ` · ${highScoreCount} met score 8+` : ''}`);
+  }
+  console.log(`\n[Agency AI] â"€â"€â"€ Run klaar: ${inboxItems.length} leads, â‚¬${totalValue} pipeline â"€â"€â"€\n`);
+  return inboxItems.length;
+}
+
+// â"€â"€â"€ Find leads endpoint â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+app.post('/api/find-leads', requireAdmin, async (req, res) => {
+  try {
+    const found = await runFindLeadsJob(req.body || {});
+    res.json({ ok: true, found });
+  } catch (err) {
+    console.error('[find-leads] Fout:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// â"€â"€â"€ Follow-up sequencer â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+function daysSince(isoDate) {
+  return (Date.now() - new Date(isoDate).getTime()) / 86400000;
+}
+
+async function runFollowUpJob() {
+  const settings  = readJSON('settings.json');
+  if (settings.automationPaused) return;
+
+  const myName     = settings.myName     || 'Ekow';
+  const agencyName = settings.agencyName || 'Agency AI';
+
+  const inbox = readJSON('inbox.json') || [];
+  const leads = readJSON('leads.json') || [];
+
+  let added = 0;
+  let markedDead = 0;
+
+  for (const lead of leads) {
+    if (lead.status !== 'sent') continue;
+    if (!lead.sentAt) continue;
+
+    const days    = daysSince(lead.sentAt);
+    const already = inbox.some(i => i.leadId === lead.id && (i.type === 'followup1' || i.type === 'followup2'));
+
+    // Mark dead after 10+ days with no reply and no pending follow-ups
+    if (days >= 10) {
+      const hasPending = inbox.some(i => i.leadId === lead.id && i.status === 'pending');
+      if (!hasPending) {
+        lead.status = 'dead';
+        addLeadHistory(leads, lead.id, { event: 'dead', label: `Dead â€" ${Math.floor(days)} dagen geen reactie` });
+        markedDead++;
+        console.log(`[Follow-up] ${lead.companyName} â†' dead (${Math.floor(days)} dagen geen reactie)`);
+        continue;
+      }
+    }
+
+    // Follow-up 1: 3 days after sending, no reply yet
+    const hasFollowup1 = inbox.some(i => i.leadId === lead.id && i.type === 'followup1');
+    if (days >= 3 && days < 7 && !hasFollowup1) {
+      console.log(`[Follow-up] Genereer follow-up 1 voor ${lead.companyName}...`);
+      try {
+        const email = await aiJSON(`Schrijf een korte follow-up email. Geef JSON terug.
+
+Context: Stuurden ${lead.companyName} (${lead.niche}, ${lead.location}) een email. Nog geen reactie na 3 dagen. Eerste opvolging.
+Afzender: ${myName} van ${agencyName}
+Seizoen: ${getSeasonalContext('nl').season} (${getSeasonalContext('nl').event})
+Datum vandaag: ${new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
+
+Regels:
+- Klinkt als een snel berichtje van je telefoon getypt, niet vanachter een bureau
+- Start met exact: "Wilde dit even naar boven halen -" gevolgd door 1 concrete zin over hun ${lead.niche} bedrijf
+- Max 50 woorden totaal
+- Eindig met 1 simpele vraag, bijv. "Past het komende week even?"
+- GEEN opsomming, GEEN uitleg over je dienst, GEEN excuses voor de opvolging
+- VERBODEN: "vrijblijvend", "innovatief", "ik hoop", "niet verplicht", "geen druk"
+
+{"subject": "Re: [origineel onderwerp]", "body": "volledige email"}`);
+
+        const item = {
+          id: `fu1-${lead.id}-${Date.now()}`,
+          leadId: lead.id,
+          status: 'pending',
+          type: 'followup1',
+          companyName: lead.companyName,
+          location: lead.location,
+          niche: lead.niche,
+          score: lead.score,
+          estimatedValue: lead.estimatedValue,
+          email,
+          createdAt: new Date().toISOString()
+        };
+        inbox.unshift(item);
+        addLeadHistory(leads, lead.id, { event: 'followup1', label: 'Follow-up 1 aangemaakt' });
+        added++;
+        console.log(`[Follow-up] Follow-up 1 aangemaakt voor ${lead.companyName}`);
+      } catch (err) {
+        console.error(`[Follow-up] Fout bij ${lead.companyName}:`, err.message);
+      }
+    }
+
+    // Follow-up 2: 7 days after sending, no reply yet
+    const hasFollowup2 = inbox.some(i => i.leadId === lead.id && i.type === 'followup2');
+    if (days >= 7 && days < 10 && !hasFollowup2) {
+      console.log(`[Follow-up] Genereer follow-up 2 voor ${lead.companyName}...`);
+      try {
+        const email = await aiJSON(`Schrijf een heel korte laatste follow-up email. Geef JSON terug.
+
+Context: ${lead.companyName} (${lead.niche}, ${lead.location}) heeft nergens op gereageerd. Laatste poging.
+Afzender: ${myName} van ${agencyName}
+Datum vandaag: ${new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
+Seizoen: ${getSeasonalContext('nl').season} (${getSeasonalContext('nl').event})
+
+Regels:
+- Start met exact: "Laatste berichtje -"
+- Max 40 woorden, zo beknopt mogelijk
+- Toon: luchtig en begripvol - deur openlaten, nul druk
+- Verwijzing naar hun niche of locatie (max 1 woord) om specifiek te klinken
+- Sluitzin: "Succes in ieder geval - en mocht timing later beter uitkomen, weet je me te vinden."
+- VERBODEN: "vrijblijvend", "innovatief", salesy taal, "ik hoop", excuses
+
+{"subject": "Laatste berichtje - ${lead.companyName}", "body": "volledige email"}`);;
+
+        const item = {
+          id: `fu2-${lead.id}-${Date.now()}`,
+          leadId: lead.id,
+          status: 'pending',
+          type: 'followup2',
+          companyName: lead.companyName,
+          location: lead.location,
+          niche: lead.niche,
+          score: lead.score,
+          estimatedValue: lead.estimatedValue,
+          email,
+          createdAt: new Date().toISOString()
+        };
+        inbox.unshift(item);
+        addLeadHistory(leads, lead.id, { event: 'followup2', label: 'Follow-up 2 aangemaakt' });
+        added++;
+        console.log(`[Follow-up] Follow-up 2 aangemaakt voor ${lead.companyName}`);
+      } catch (err) {
+        console.error(`[Follow-up] Fout bij ${lead.companyName}:`, err.message);
+      }
+    }
+  }
+
+  if (markedDead > 0 || added > 0) {
+    writeJSON('inbox.json', inbox);
+    writeJSON('leads.json', leads);
+  }
+
+  console.log(`[Follow-up] Klaar: ${added} follow-ups aangemaakt, ${markedDead} leads dead`);
+  return { added, markedDead };
+}
+
+// Manual trigger endpoint for follow-up job
+app.post('/api/follow-ups/run', async (req, res) => {
+  try {
+    const result = await runFollowUpJob();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Reply detection via Gmail IMAP ──────────────────────────────────────────
+
+const IMAP_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function toImapDate(d) {
+  return `${d.getDate()}-${IMAP_MONTHS[d.getMonth()]}-${d.getFullYear()}`;
+}
+
+async function checkReplies() {
+  const settings = readJSON('settings.json');
+  if (!settings.gmailAddress || !settings.gmailPassword) return 0;
+  if (settings.replyDetection === false) return 0;
+
+  let imapSimple;
+  try { imapSimple = require('imap-simple'); } catch {
+    console.error('[Reply] imap-simple niet beschikbaar');
+    return 0;
+  }
+
+  const config = {
+    imap: {
+      user: settings.gmailAddress,
+      password: settings.gmailPassword,
+      host: 'imap.gmail.com',
+      port: 993,
+      tls: true,
+      tlsOptions: { rejectUnauthorized: false },
+      authTimeout: 10000
+    }
+  };
+
+  let connection;
+  try {
+    connection = await imapSimple.connect(config);
+    await connection.openBox('INBOX');
+
+    const since = new Date();
+    since.setDate(since.getDate() - 3);
+    const searchCriteria = [['SINCE', toImapDate(since)]];
+    const fetchOptions = { bodies: ['HEADER.FIELDS (FROM SUBJECT)'], markSeen: false };
+
+    const messages = await connection.search(searchCriteria, fetchOptions);
+    const leads  = readJSON('leads.json') || [];
+    const stats  = readJSON('stats.json') || {};
+    let repliesFound = 0;
+    const newNames = [];
+
+    for (const msg of messages) {
+      const part = msg.parts.find(p => p.which === 'HEADER.FIELDS (FROM SUBJECT)');
+      if (!part) continue;
+      const raw = part.body;
+      const subjectMatch = raw.match(/^Subject:\s*(.+)/im);
+      if (!subjectMatch) continue;
+      const subject = subjectMatch[1].trim().toLowerCase();
+      if (!/^re:/i.test(subject)) continue;
+      const cleanSubject = subject.replace(/^(re:\s*)+/i, '').trim();
+
+      const matched = leads.find(l => {
+        if (['replied', 'client', 'dead'].includes(l.status)) return false;
+        if (!l.sentAt) return false;
+        const orig = (l.email?.subject || '').toLowerCase().trim();
+        if (!orig) return false;
+        return cleanSubject === orig ||
+               cleanSubject.includes(orig.substring(0, 25)) ||
+               orig.includes(cleanSubject.substring(0, 25));
+      });
+
+      if (matched) {
+        matched.status   = 'replied';
+        matched.repliedAt = new Date().toISOString();
+        addLeadHistory(leads, matched.id, {
+          event: 'replied',
+          label: `Reply ontvangen op ${new Date().toLocaleDateString('nl-NL')}`
+        });
+        if (matched.referralEmailSent) {
+          addLeadHistory(leads, matched.id, { event: 'referral', label: 'Referral interesse getoond' });
+        }
+        updateMemory(matched.niche, matched.country, 'replied');
+        repliesFound++;
+        newNames.push(matched.companyName);
+        addActivity('reply', 'Reply ontvangen van ' + matched.companyName, { meta: { companyName: matched.companyName, leadId: matched.id } });
+        addNotification('reply_received', `Reply: ${matched.companyName}`, `${matched.companyName} heeft gereageerd op jouw email`, matched.id);
+        console.log(`[Reply] Reply gedetecteerd voor ${matched.companyName}`);
+      }
+    }
+
+    connection.end();
+
+    if (repliesFound > 0) {
+      writeJSON('leads.json', leads);
+      writeJSON('stats.json', {
+        ...stats,
+        replies: (stats.replies || 0) + repliesFound,
+        newReplies: [...(stats.newReplies || []), ...newNames]
+      });
+    }
+
+    console.log(`[Reply] Check klaar: ${repliesFound} nieuwe replies`);
+    return repliesFound;
+  } catch (err) {
+    console.error('[Reply check] Fout:', err.message);
+    if (connection) try { connection.end(); } catch {}
+    return 0;
+  }
+}
+
+app.post('/api/check-replies', async (req, res) => {
+  try {
+    const found = await checkReplies();
+    res.json({ ok: true, found });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/backup/run', requireAdmin, async (req, res) => {
+  try {
+    const filename = await runDailyBackup(true);
+    res.json({ ok: true, filename });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/backup/list', (req, res) => {
+  try {
+    if (!fs.existsSync(BACKUP_DIR)) return res.json({ backups: [] });
+    const files = fs.readdirSync(BACKUP_DIR)
+      .filter(f => f.startsWith('backup_') && f.endsWith('.json'))
+      .sort().reverse()
+      .slice(0, 10)
+      .map(f => {
+        const stat = fs.statSync(path.join(BACKUP_DIR, f));
+        return { filename: f, size: stat.size, createdAt: stat.birthtime };
+      });
+    res.json({ backups: files });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Run templates ─────────────────────────────────────────────────────────────
+
+app.get('/api/run-templates', (req, res) => {
+  const templates = readJSON('run-templates.json') || [];
+  res.json({ templates });
+});
+
+app.post('/api/run-templates', (req, res) => {
+  const { name, niches, count, location } = req.body;
+  if (!name) return res.status(400).json({ error: 'Naam verplicht' });
+  const templates = readJSON('run-templates.json') || [];
+  const tmpl = {
+    id:        Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+    name:      name.trim(),
+    niches:    Array.isArray(niches) ? niches : (niches ? niches.split(',').map(n => n.trim()).filter(Boolean) : []),
+    count:     parseInt(count) || 10,
+    location:  (location || '').trim(),
+    createdAt: new Date().toISOString()
+  };
+  templates.push(tmpl);
+  writeJSON('run-templates.json', templates);
+  res.json({ ok: true, template: tmpl });
+});
+
+app.delete('/api/run-templates/:id', (req, res) => {
+  const templates = readJSON('run-templates.json') || [];
+  const updated = templates.filter(t => t.id !== req.params.id);
+  writeJSON('run-templates.json', updated);
+  res.json({ ok: true });
+});
+
+app.post('/api/run-templates/:id/run', async (req, res) => {
+  const templates = readJSON('run-templates.json') || [];
+  const tmpl = templates.find(t => t.id === req.params.id);
+  if (!tmpl) return res.status(404).json({ error: 'Sjabloon niet gevonden' });
+  try {
+    const found = await runFindLeadsJob({ count: tmpl.count, niches: tmpl.niches, location: tmpl.location });
+    res.json({ ok: true, found });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Run templates ─────────────────────────────────────────────────────────────
+
+app.get('/api/run-templates', (req, res) => {
+  const templates = readJSON('run-templates.json') || [];
+  res.json({ templates });
+});
+
+app.post('/api/run-templates', (req, res) => {
+  const { name, niches, count, location } = req.body;
+  if (!name) return res.status(400).json({ error: 'Naam verplicht' });
+  const templates = readJSON('run-templates.json') || [];
+  const tmpl = {
+    id:        Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+    name:      name.trim(),
+    niches:    Array.isArray(niches) ? niches : (niches ? niches.split(',').map(n => n.trim()).filter(Boolean) : []),
+    count:     parseInt(count) || 10,
+    location:  (location || '').trim(),
+    createdAt: new Date().toISOString()
+  };
+  templates.push(tmpl);
+  writeJSON('run-templates.json', templates);
+  res.json({ ok: true, template: tmpl });
+});
+
+app.delete('/api/run-templates/:id', (req, res) => {
+  const templates = readJSON('run-templates.json') || [];
+  const updated = templates.filter(t => t.id !== req.params.id);
+  writeJSON('run-templates.json', updated);
+  res.json({ ok: true });
+});
+
+app.post('/api/run-templates/:id/run', async (req, res) => {
+  const templates = readJSON('run-templates.json') || [];
+  const tmpl = templates.find(t => t.id === req.params.id);
+  if (!tmpl) return res.status(404).json({ error: 'Sjabloon niet gevonden' });
+  try {
+    const found = await runFindLeadsJob({ count: tmpl.count, niches: tmpl.niches, location: tmpl.location });
+    res.json({ ok: true, found });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/replies/new', (req, res) => {
+  const stats = readJSON('stats.json') || {};
+  const newReplies = stats.newReplies || [];
+  if (newReplies.length > 0) {
+    writeJSON('stats.json', { ...stats, newReplies: [] });
+  }
+  res.json({ newReplies });
+});
+
+app.get('/api/activity', requireAdmin, (req, res) => {
+  try {
+    const logFile = path.join(DATA_DIR, 'activity.json');
+    if (!fs.existsSync(logFile)) return res.json({ activity: [] });
+    const raw = fs.readFileSync(logFile, 'utf8').replace(/^\uFEFF/, '');
+    const log = JSON.parse(raw);
+    const limit = parseInt(req.query.limit) || 100;
+    res.json({ activity: log.slice(0, limit) });
+  } catch { res.json({ activity: [] }); }
+});
+
+app.get('/api/stats/costs', (req, res) => {
+  const stats   = readJSON('stats.json') || {};
+  const logFile = path.join(DATA_DIR, 'activity.json');
+  let log = [];
+  try {
+    if (fs.existsSync(logFile)) log = JSON.parse(fs.readFileSync(logFile, 'utf8').replace(/^\uFEFF/, ''));
+  } catch { log = []; }
+  const today = new Date().toISOString().slice(0, 10);
+  const todayCostUsd = log
+    .filter(e => e.timestamp && e.timestamp.startsWith(today))
+    .reduce((sum, e) => sum + (e.costUsd || 0), 0);
+  res.json({
+    totalTokensIn:  stats.totalApiTokensIn  || 0,
+    totalTokensOut: stats.totalApiTokensOut || 0,
+    totalCostUsd:   Math.round((stats.totalApiCostUsd || 0) * 10000) / 10000,
+    todayCostUsd:   Math.round(todayCostUsd * 10000) / 10000
+  });
+});
+
+app.get('/api/memory', (req, res) => {
+  res.json(readJSON('memory.json') || {});
+});
+
+// ─── Team chat ────────────────────────────────────────────────────────────────
+
+function seedChatChannels() {
+  if (!readJSON('chat-channels.json')) {
+    writeJSON('chat-channels.json', [
+      { id: '1', name: 'algemeen',  description: 'Algemeen teamkanaal', createdAt: new Date().toISOString() },
+      { id: '2', name: 'leads',     description: 'Lead discussies',     createdAt: new Date().toISOString() },
+      { id: '3', name: 'intern',    description: 'Intern overleg',       createdAt: new Date().toISOString() }
+    ]);
+  }
+  if (!readJSON('chat-messages.json')) writeJSON('chat-messages.json', []);
+}
+seedChatChannels();
+
+app.get('/api/chat/channels', (req, res) => {
+  const channels = readJSON('chat-channels.json') || [];
+  const messages = readJSON('chat-messages.json') || [];
+  // attach last message + unread count per channel
+  const result = channels.map(ch => {
+    const msgs = messages.filter(m => m.channelId === ch.id);
+    const last = msgs[msgs.length - 1] || null;
+    return { ...ch, messageCount: msgs.length, lastMessage: last ? { text: last.text, name: last.name, createdAt: last.createdAt } : null };
+  });
+  res.json(result);
+});
+
+app.post('/api/chat/channels', requireAdmin, (req, res) => {
+  const { name, description } = req.body;
+  if (!name) return res.status(400).json({ error: 'name verplicht' });
+  const channels = readJSON('chat-channels.json') || [];
+  const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  if (channels.find(c => c.name === slug)) return res.status(409).json({ error: 'Kanaal bestaat al' });
+  const ch = { id: Date.now().toString(), name: slug, description: description || '', createdAt: new Date().toISOString() };
+  channels.push(ch);
+  writeJSON('chat-channels.json', channels);
+  res.json(ch);
+});
+
+app.delete('/api/chat/channels/:id', requireAdmin, (req, res) => {
+  const channels = readJSON('chat-channels.json') || [];
+  if (!channels.find(c => c.id === req.params.id)) return res.status(404).json({ error: 'Kanaal niet gevonden' });
+  writeJSON('chat-channels.json', channels.filter(c => c.id !== req.params.id));
+  const msgs = readJSON('chat-messages.json') || [];
+  writeJSON('chat-messages.json', msgs.filter(m => m.channelId !== req.params.id));
+  res.json({ ok: true });
+});
+
+app.get('/api/chat/channels/:id/messages', (req, res) => {
+  const messages = readJSON('chat-messages.json') || [];
+  const { since, limit = 100 } = req.query;
+  let msgs = messages.filter(m => m.channelId === req.params.id);
+  if (since) msgs = msgs.filter(m => m.createdAt > since);
+  res.json(msgs.slice(-Number(limit)));
+});
+
+app.post('/api/chat/channels/:id/messages', (req, res) => {
+  const channels = readJSON('chat-channels.json') || [];
+  if (!channels.find(c => c.id === req.params.id)) return res.status(404).json({ error: 'Kanaal niet gevonden' });
+  const { text } = req.body;
+  if (!text || !text.trim()) return res.status(400).json({ error: 'Bericht verplicht' });
+  const msg = {
+    id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+    channelId: req.params.id,
+    userId: req.user.id,
+    username: req.user.username,
+    name: req.user.name || req.user.username,
+    role: req.user.role,
+    text: text.trim(),
+    createdAt: new Date().toISOString()
+  };
+  const messages = readJSON('chat-messages.json') || [];
+  messages.push(msg);
+  // Keep max 2000 messages per channel to prevent unbounded growth
+  const channelMsgs = messages.filter(m => m.channelId === req.params.id);
+  if (channelMsgs.length > 2000) {
+    const oldestIds = new Set(channelMsgs.slice(0, channelMsgs.length - 2000).map(m => m.id));
+    writeJSON('chat-messages.json', messages.filter(m => !oldestIds.has(m.id)));
+  } else {
+    writeJSON('chat-messages.json', messages);
+  }
+  res.json(msg);
+});
+
+app.delete('/api/chat/messages/:id', (req, res) => {
+  const messages = readJSON('chat-messages.json') || [];
+  const msg = messages.find(m => m.id === req.params.id);
+  if (!msg) return res.status(404).json({ error: 'Bericht niet gevonden' });
+  if (msg.userId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Geen toegang' });
+  writeJSON('chat-messages.json', messages.filter(m => m.id !== req.params.id));
+  res.json({ ok: true });
+});
+
+// ─── Users management ─────────────────────────────────────────────────────────
+
+app.get('/api/users', requireAdmin, (req, res) => {
+  const users = (readJSON('users.json') || []).map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role, createdAt: u.createdAt }));
+  res.json(users);
+});
+
+app.post('/api/users', requireAdmin, async (req, res) => {
+  const { username, password, name, role } = req.body;
+  if (!username || !password || !name) return res.status(400).json({ error: 'username, password en name verplicht' });
+  if (!['admin', 'employee'].includes(role)) return res.status(400).json({ error: 'Ongeldig role (admin of employee)' });
+  const users = readJSON('users.json') || [];
+  if (users.find(u => u.username === username)) return res.status(409).json({ error: 'Gebruikersnaam al in gebruik' });
+  const newUser = { id: Date.now().toString(), username, password: await bcrypt.hash(password, 12), name, role, createdAt: new Date().toISOString() };
+  users.push(newUser);
+  writeJSON('users.json', users);
+  res.json({ ok: true, id: newUser.id });
+});
+
+app.patch('/api/users/:id', requireAdmin, async (req, res) => {
+  const users = readJSON('users.json') || [];
+  const idx = users.findIndex(u => u.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Gebruiker niet gevonden' });
+  const { name, role, password } = req.body;
+  if (name) users[idx].name = name;
+  if (role && ['admin', 'employee'].includes(role)) users[idx].role = role;
+  if (password) users[idx].password = await bcrypt.hash(password, 12);
+  writeJSON('users.json', users);
+  res.json({ ok: true });
+});
+
+app.delete('/api/users/:id', requireAdmin, (req, res) => {
+  const users = readJSON('users.json') || [];
+  if (users.find(u => u.id === req.params.id)?.role === 'admin' && users.filter(u => u.role === 'admin').length <= 1) {
+    return res.status(400).json({ error: 'Kan de laatste admin niet verwijderen' });
+  }
+  writeJSON('users.json', users.filter(u => u.id !== req.params.id));
+  res.json({ ok: true });
+});
+
+// ── Blacklist ──────────────────────────────────────────────────────────────────
+app.get('/api/blacklist', (req, res) => {
+  res.json(readJSON('blacklist.json') || []);
+});
+
+app.post('/api/blacklist', requireAdmin, (req, res) => {
+  const { type, value, reason } = req.body || {};
+  if (!type || !value) return res.status(400).json({ error: 'type en value verplicht' });
+  const list = readJSON('blacklist.json') || [];
+  const entry = { id: 'bl-' + Date.now(), type, value: value.trim().toLowerCase(), reason: reason || '', addedAt: new Date().toISOString() };
+  list.unshift(entry);
+  writeJSON('blacklist.json', list);
+  res.json({ ok: true, entry });
+});
+
+app.delete('/api/blacklist/:id', requireAdmin, (req, res) => {
+  let list = readJSON('blacklist.json') || [];
+  list = list.filter(e => e.id !== req.params.id);
+  writeJSON('blacklist.json', list);
+  res.json({ ok: true });
+});
+
+app.post('/api/leads/:id/blacklist', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead  = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const list = readJSON('blacklist.json') || [];
+  const entries = [];
+  if (lead.companyName) {
+    const e = { id: 'bl-' + Date.now(), type: 'company', value: lead.companyName.trim().toLowerCase(), reason: req.body?.reason || 'Geblacklist via lead panel', addedAt: new Date().toISOString() };
+    list.unshift(e);
+    entries.push(e);
+  }
+  if (lead.websiteUrl) {
+    const domain = lead.websiteUrl.replace(/^https?:\/\//,'').split('/')[0].toLowerCase();
+    if (domain) {
+      const e = { id: 'bl-' + (Date.now()+1), type: 'domain', value: domain, reason: req.body?.reason || 'Geblacklist via lead panel', addedAt: new Date().toISOString() };
+      list.unshift(e);
+      entries.push(e);
+    }
+  }
+  writeJSON('blacklist.json', list);
+  res.json({ ok: true, entries });
+});
+
+// â"€â"€â"€ Cron scheduler â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+
+// ── Daily Briefing ──────────────────────────────────────────────────────────
+
+async function sendDailyBriefing() {
+  const settings = readJSON('settings.json');
+  if (settings.dailyBriefingEnabled === false) return;
+  if (!settings.gmailAddress || !settings.gmailPassword) return;
+
+  const inbox  = readJSON('inbox.json') || [];
+  const leads  = readJSON('leads.json') || [];
+  const stats  = readJSON('stats.json') || {};
+
+  const pending = inbox.filter(i => i.status === 'pending' || i.status === 'auto-approved');
+  const top3    = [...leads]
+    .filter(l => l.score)
+    .sort((a, b) => (b.score || 0) - (a.score || 0))
+    .slice(0, 3);
+
+  const repliesSince  = leads.filter(l => l.repliedAt).length;
+  const sentYesterday = (stats.weeklyData || []).slice(-1)[0]?.sent || 0;
+  const pipelineValue = stats.pipelineValue || 0;
+  const briefingDate  = new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  let motivationalLine = 'Blijf gefocust — elke email is een stap dichter bij de volgende klant.';
+  try {
+    const raw = await aiCall('Genereer 1 motiverende zin in het Nederlands (max 20 woorden, geen cliches) voor een sales agent met ' + pending.length + ' leads in inbox, ' + repliesSince + ' reacties totaal en pipeline waarde EUR ' + pipelineValue + '. Geef alleen de zin.');
+    motivationalLine = raw.trim();
+  } catch { /* keep default */ }
+
+  const top3Rows = top3.map(l =>
+    '<tr><td style="padding:8px 12px;font-size:14px;font-weight:600">' + l.companyName + '</td>' +
+    '<td style="padding:8px 12px;font-size:13px;color:#6b7280">' + (l.niche || '—') + '</td>' +
+    '<td style="padding:8px 12px;font-size:13px;color:#6b7280">' + (l.country || '—') + '</td>' +
+    '<td style="padding:8px 12px;font-size:14px;font-weight:700;color:#6366f1">' + (l.score || 0).toFixed(1) + '</td></tr>'
+  ).join('');
+
+  const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head>' +
+  '<body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#f9fafb;margin:0;padding:32px 16px">' +
+  '<div style="max-width:560px;margin:0 auto">' +
+  '<div style="font-size:13px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Agency AI</div>' +
+  '<h1 style="font-size:22px;font-weight:800;color:#111;margin:0 0 4px">Dagelijkse update</h1>' +
+  '<div style="font-size:14px;color:#6b7280;margin-bottom:24px">' + briefingDate + '</div>' +
+  '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin-bottom:14px">' +
+  '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">' +
+  '<div style="background:#f9fafb;border-radius:8px;padding:14px"><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Te beoordelen</div><div style="font-size:26px;font-weight:800;color:#111">' + pending.length + '</div></div>' +
+  '<div style="background:#f9fafb;border-radius:8px;padding:14px"><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Totaal reacties</div><div style="font-size:26px;font-weight:800;color:#10b981">' + repliesSince + '</div></div>' +
+  '<div style="background:#f9fafb;border-radius:8px;padding:14px"><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Emails gisteren</div><div style="font-size:26px;font-weight:800;color:#6366f1">' + sentYesterday + '</div></div>' +
+  '<div style="background:#f9fafb;border-radius:8px;padding:14px"><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Pipeline waarde</div><div style="font-size:26px;font-weight:800;color:#111">&#8364;' + Math.round(pipelineValue / 1000) + 'K</div></div>' +
+  '</div></div>' +
+  (top3.length ? '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:14px">Top 3 leads vandaag</div><table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:1px solid #f3f4f6"><th style="text-align:left;padding:6px 12px;font-size:11px;color:#9ca3af;font-weight:600">Bedrijf</th><th style="text-align:left;padding:6px 12px;font-size:11px;color:#9ca3af;font-weight:600">Niche</th><th style="text-align:left;padding:6px 12px;font-size:11px;color:#9ca3af;font-weight:600">Land</th><th style="text-align:left;padding:6px 12px;font-size:11px;color:#9ca3af;font-weight:600">Score</th></tr></thead><tbody>' + top3Rows + '</tbody></table></div>' : '') +
+  '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;font-size:14px;color:#166534;font-style:italic">&ldquo;' + motivationalLine + '&rdquo;</div>' +
+  '<div style="margin-top:20px;font-size:12px;color:#9ca3af;text-align:center">Agency AI &mdash; automatisch verstuurd om ' + (settings.dailyBriefingTime || '08:45') + '</div>' +
+  '</div></body></html>';
+
+  try {
+    await sendEmail({
+      to: settings.gmailAddress,
+      subject: 'Agency AI — Dagelijkse update ' + new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }),
+      body: '',
+      html,
+      settings
+    });
+    console.log('[Briefing] Dagelijkse briefing verstuurd');
+  } catch (err) {
+    console.error('[Briefing] Fout:', err.message);
+  }
+}
+
+
+// ── Upsell detector ─────────────────────────────────────────────────────────
+
+async function runUpsellCheck() {
+  const settings = readJSON('settings.json');
+  const leads    = readJSON('leads.json') || [];
+  const stats    = readJSON('stats.json') || {};
+  const allServices = settings.services || [];
+
+  const clients = leads.filter(l => l.status === 'client' && l.createdAt);
+  const now = Date.now();
+  const opportunities = [];
+
+  for (const client of clients) {
+    const daysSince = Math.floor((now - new Date(client.createdAt).getTime()) / 86400000);
+    if (daysSince < 30) continue;
+
+    const clientServiceNames = (client.services || []).map(s => s.name.toLowerCase());
+    const missing = allServices.filter(s => !clientServiceNames.some(n => n === s.name.toLowerCase()));
+    if (missing.length < 2) continue;
+
+    // Pick the highest-value missing service
+    const topUpsell = missing.sort((a, b) => (b.price || 0) - (a.price || 0))[0];
+    const currentService = (client.services || [])[0]?.name || 'huidige dienst';
+
+    opportunities.push({
+      leadId: client.id,
+      companyName: client.companyName,
+      niche: client.niche,
+      location: client.location,
+      language: client.language || 'nl',
+      currentService,
+      upsellService: topUpsell.name,
+      upsellPrice: topUpsell.price,
+      upsellDescription: topUpsell.description || '',
+      clientEmail: client.email?.to || null,
+      daysSince
+    });
+  }
+
+  stats.upsellOpportunities = opportunities;
+  writeJSON('stats.json', stats);
+  console.log('[Upsell] ' + opportunities.length + ' kansen gevonden');
+  return opportunities;
+}
+
+
+// ── Monthly report generator ─────────────────────────────────────────────────
+
+async function runMonthlyReports() {
+  const settings = readJSON('settings.json');
+  if (settings.monthlyReports === false) return;
+
+  const leads = readJSON('leads.json') || [];
+  const myName     = settings.myName     || 'Ekow';
+  const agencyName = settings.agencyName || 'Agency AI';
+  const clients = leads.filter(l => l.status === 'client');
+  if (!clients.length) return;
+
+  const now       = new Date();
+  const monthName = now.toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' });
+  let changed = false;
+
+  for (const client of clients) {
+    const service     = (client.services || [])[0]?.name || 'AI-marketingdienst';
+    const daysSince   = Math.floor((now - new Date(client.createdAt || now).getTime()) / 86400000);
+    const monthsActive = Math.max(1, Math.floor(daysSince / 30));
+    const lang        = client.language || 'nl';
+
+    let reportContent = '';
+    try {
+      const prompt = lang === 'nl'
+        ? 'Schrijf een professioneel maar bondig maandrapport voor een klant. Klinkt realistisch en positief. Max 200 woorden in het Nederlands.\n\nKlant: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nDienst: ' + service + '\nActief: ' + monthsActive + ' maand(en)\nMaand: ' + monthName + '\n\nStructuur:\n- Samenvatting prestaties (realistische positieve getallen voor ' + service + ')\n- Uitgevoerde werkzaamheden\n- Aanbeveling voor volgende maand\n\nGeef alleen de rapporttekst.'
+        : 'Write a professional but concise monthly report for a client. Sounds realistic and positive. Max 200 words in English.\n\nClient: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nService: ' + service + '\nActive: ' + monthsActive + ' month(s)\nMonth: ' + monthName + '\n\nStructure:\n- Performance summary (realistic positive numbers for ' + service + ')\n- Work completed\n- Recommendation for next month\n\nReturn only the report text.';
+      reportContent = (await aiCall(prompt)).trim();
+    } catch {
+      reportContent = lang === 'nl'
+        ? 'Dit rapport is automatisch gegenereerd voor ' + monthName + '.\n\nDienst: ' + service + '\nStatus: Actief en op schema.\n\nVoor vragen kunt u contact opnemen via het portaal.'
+        : 'This report was automatically generated for ' + monthName + '.\n\nService: ' + service + '\nStatus: Active and on track.\n\nFor questions, please use the portal contact form.';
+    }
+
+    const report = {
+      id: 'rep-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+      month: monthName,
+      createdAt: now.toISOString(),
+      title: (lang === 'nl' ? 'Maandrapport ' : 'Monthly Report ') + monthName,
+      content: reportContent
+    };
+
+    const idx = leads.findIndex(l => l.id === client.id);
+    if (idx !== -1) {
+      if (!leads[idx].reports) leads[idx].reports = [];
+      leads[idx].reports.unshift(report);
+      changed = true;
+    }
+
+    // Email notification if portal exists
+    if (client.portalToken && settings.gmailAddress && settings.gmailPassword) {
+      try {
+        const portalUrl = 'http://localhost:' + (process.env.PORT || 3000) + '/portal/' + client.portalToken;
+        const subject = lang === 'nl'
+          ? agencyName + ' — Uw maandrapport voor ' + monthName + ' staat klaar'
+          : agencyName + ' — Your monthly report for ' + monthName + ' is ready';
+        const body = lang === 'nl'
+          ? 'Beste ' + client.companyName + ',\n\nUw maandrapport voor ' + monthName + ' staat klaar in uw portaal.\n\nBekijk het hier: ' + portalUrl + '\n\nMet vriendelijke groet,\n' + myName
+          : 'Dear ' + client.companyName + ',\n\nYour monthly report for ' + monthName + ' is ready in your portal.\n\nView it here: ' + portalUrl + '\n\nBest regards,\n' + myName;
+        await sendEmail({ to: settings.gmailAddress, subject, body, settings });
+      } catch { /* skip */ }
+    }
+  }
+
+  if (changed) {
+    writeJSON('leads.json', leads);
+    console.log('[Maandrapport] Rapporten gegenereerd voor ' + clients.length + ' klant(en)');
+  }
+}
+
+
+// ── Referral module ──────────────────────────────────────────────────────────
+
+async function runReferralCheck() {
+  const settings   = readJSON('settings.json');
+  const leads      = readJSON('leads.json') || [];
+  const inbox      = readJSON('inbox.json') || [];
+  const myName     = settings.myName     || 'Ekow';
+  const agencyName = settings.agencyName || 'Agency AI';
+  const now        = Date.now();
+  let changed = false;
+
+  const clients = leads.filter(l =>
+    l.status === 'client' &&
+    !l.referralEmailSent &&
+    !l.referralPending &&
+    !inbox.some(i => i.leadId === l.id && i.type === 'referral') &&
+    l.createdAt &&
+    Math.floor((now - new Date(l.createdAt).getTime()) / 86400000) >= 90
+  );
+
+  for (const client of clients) {
+    const lang    = client.language || 'nl';
+    const service = (client.services || [])[0]?.name || 'AI-marketing';
+    const daysSince = Math.floor((now - new Date(client.createdAt).getTime()) / 86400000);
+
+    let email = null;
+    try {
+      const prompt = lang === 'nl'
+        ? 'Schrijf een warme referral-verzoek email voor een tevreden klant. Klinkt persoonlijk, niet als een template. Geef JSON terug.\n\nKlant: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nDienst: ' + service + '\nActief: ' + daysSince + ' dagen\nAfzender: ' + myName + ' van ' + agencyName + '\nDatum vandaag: ' + new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) + '\n\nRegels:\n- Refereer positief aan hun samenwerking en resultaten\n- Vraag vriendelijk of ze iemand kennen die ook baat zou hebben\n- NIET pusherig of salesy\n- Max 100 woorden\n- Geen bullet points\n- Einde met zachte vraag\n- Afsluiting: "Groeten, ' + myName + '"\n\n{"subject": "onderwerp", "body": "emailtekst"}'
+        : 'Write a warm referral request email for a happy client. Sounds personal, not like a template. Return JSON.\n\nClient: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nService: ' + service + '\nActive: ' + daysSince + ' days\nSender: ' + myName + ' from ' + agencyName + '\n\nRules:\n- Reference their positive collaboration and results\n- Warmly ask if they know anyone who could benefit\n- NOT pushy or salesy\n- Max 100 words\n- No bullet points\n- End with a soft question\n- Sign off: "Best, ' + myName + '"\n\n{"subject": "subject", "body": "email body"}';
+      email = await aiJSON(prompt);
+    } catch {
+      email = lang === 'nl'
+        ? { subject: 'Kort vraagje — ' + client.companyName, body: 'Hoi,\n\nWe werken nu al ' + Math.floor(daysSince / 30) + ' maanden samen en ik hoop dat je tevreden bent met de resultaten tot nu toe.\n\nKen jij misschien iemand in jouw netwerk die ook baat zou hebben bij wat wij doen? Een warme introductie zou ik erg waarderen.\n\nGroeten,\n' + myName }
+        : { subject: 'Quick question — ' + client.companyName, body: 'Hi,\n\nWe have been working together for ' + Math.floor(daysSince / 30) + ' months now and I hope you\'re happy with the results so far.\n\nDo you know anyone in your network who could benefit from what we do? A warm introduction would mean a lot.\n\nBest,\n' + myName };
+    }
+
+    const id = 'ref-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+    inbox.push({
+      id, leadId: client.id, status: 'pending', type: 'referral',
+      companyName: client.companyName, location: client.location, country: client.country,
+      language: lang, niche: client.niche,
+      score: client.score || 0,
+      email, emailA: email, emailB: null,
+      createdAt: new Date().toISOString()
+    });
+
+    const idx = leads.findIndex(l => l.id === client.id);
+    if (idx !== -1) {
+      leads[idx].referralPending = true;
+      addLeadHistory(leads, client.id, { event: 'referral', label: 'Referral email gegenereerd en klaar voor goedkeuring' });
+    }
+    changed = true;
+    console.log('[Referral] Gegenereerd voor', client.companyName);
+  }
+
+  if (changed) {
+    writeJSON('inbox.json', inbox);
+    writeJSON('leads.json', leads);
+  }
+}
+
+// ── Daily Backup ────────────────────────────────────────────────────────────
+
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+
+async function runDailyBackup(manual = false) {
+  const settings = readJSON('settings.json');
+  if (!manual && settings.backupEnabled === false) return;
+
+  if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const filename = 'backup_' + dateStr + '.json';
+  const filepath = path.join(BACKUP_DIR, filename);
+
+  // Build sanitized bundle (strip credentials)
+  const settingsRaw = readJSON('settings.json') || {};
+  const safeSettings = { ...settingsRaw };
+  delete safeSettings.password;
+  delete safeSettings.gmailPassword;
+  delete safeSettings.stripeSecretKey;
+  delete safeSettings.webhookToken;
+
+  const bundle = {
+    exportedAt:   new Date().toISOString(),
+    leads:  readJSON('leads.json')  || [],
+    inbox:  readJSON('inbox.json')  || [],
+    runs:   readJSON('runs.json')   || [],
+    stats:  readJSON('stats.json')  || {},
+    memory: readJSON('memory.json') || {},
+    settings: safeSettings
+  };
+
+  fs.writeFileSync(filepath, JSON.stringify(bundle, null, 2), 'utf8');
+  console.log('[Backup] Backup aangemaakt:', filename);
+  addActivity('backup', 'Backup aangemaakt: ' + filename, { meta: { filename } });
+
+  // Rotate: keep last 30 backups
+  const all = fs.readdirSync(BACKUP_DIR)
+    .filter(f => f.startsWith('backup_') && f.endsWith('.json'))
+    .sort();
+  if (all.length > 30) {
+    const toDelete = all.slice(0, all.length - 30);
+    toDelete.forEach(f => {
+      try { fs.unlinkSync(path.join(BACKUP_DIR, f)); } catch {}
+    });
+    console.log('[Backup] Rotatie: ' + toDelete.length + ' oude backup(s) verwijderd');
+  }
+
+  // Email backup if configured
+  if (settings.backupEmail !== false && settings.gmailAddress && settings.gmailPassword) {
+    try {
+      const nodemailer = require('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com', port: 587, secure: false,
+        auth: { user: settings.gmailAddress, pass: settings.gmailPassword }
+      });
+      await transporter.sendMail({
+        from:    settings.gmailAddress,
+        to:      settings.gmailAddress,
+        subject: 'Agency AI Backup — ' + dateStr,
+        html:    '<div style="font-family:sans-serif;padding:24px"><h2 style="margin:0 0 12px;font-size:18px">Agency AI — Dagelijkse backup</h2><p style="color:#6b7280;font-size:14px">Automatische backup van ' + dateStr + ' is bijgevoegd als JSON bestand.</p><p style="font-size:12px;color:#9ca3af;margin-top:24px">Bevat: leads, inbox, runs, stats, memory en instellingen (zonder wachtwoorden).</p></div>',
+        attachments: [{ filename, content: JSON.stringify(bundle, null, 2), contentType: 'application/json' }]
+      });
+      console.log('[Backup] Backup email verstuurd naar', settings.gmailAddress);
+    } catch (err) {
+      console.error('[Backup] Email fout:', err.message);
+    }
+  }
+
+  return filename;
+}
+
+let backupCronJob = null;
+
+function scheduleBackupCron() {
+  const settings = readJSON('settings.json');
+  if (settings.backupEnabled === false) {
+    if (backupCronJob) { backupCronJob.stop(); backupCronJob = null; }
+    return;
+  }
+  const time = settings.backupTime || '02:00';
+  const [h, m] = time.split(':').map(Number);
+  if (backupCronJob) backupCronJob.stop();
+  backupCronJob = cron.schedule(m + ' ' + h + ' * * *', () => {
+    console.log('[Cron] Dagelijkse backup gestart');
+    runDailyBackup().catch(err => console.error('[Cron Backup] Fout:', err.message));
+  });
+  console.log('[Cron] Dagelijkse backup ingepland om ' + time);
+}
+
+let cronJob = null;
+
+function scheduleCron() {
+  const settings = readJSON('settings.json');
+  const time = settings.dailyRunTime || '09:00';
+  const [hour, minute] = time.split(':').map(Number);
+  const schedule = `${minute} ${hour} * * *`;
+
+  if (cronJob) cronJob.stop();
+  cronJob = cron.schedule(schedule, () => {
+    console.log(`[Cron] Dagelijkse run gestart om ${time}`);
+    runFindLeadsJob().catch(err => console.error('[Cron] Fout:', err.message));
+  });
+  console.log(`[Cron] Dagelijkse run ingepland om ${time} (${schedule})`);
+}
+
+// Follow-up cron: daily at 10:00
+cron.schedule('0 10 * * *', () => {
+  console.log('[Cron] Follow-up check gestart');
+  runFollowUpJob().catch(err => console.error('[Cron Follow-up] Fout:', err.message));
+});
+
+let briefingCronJob = null;
+
+function scheduleBriefingCron() {
+  const settings = readJSON('settings.json');
+  const time = settings.dailyBriefingTime || '08:45';
+  const [h, m] = time.split(':').map(Number);
+  if (briefingCronJob) briefingCronJob.stop();
+  briefingCronJob = cron.schedule(m + ' ' + h + ' * * *', () => {
+    console.log('[Cron] Dagelijkse briefing gestart');
+    sendDailyBriefing().catch(err => console.error('[Cron Briefing] Fout:', err.message));
+  });
+  console.log('[Cron] Dagelijkse briefing ingepland om ' + time);
+}
+
+// Upsell check cron: daily at 11:00
+cron.schedule('0 11 * * *', () => {
+  console.log('[Cron] Upsell check gestart');
+  runUpsellCheck().catch(err => console.error('[Cron Upsell] Fout:', err.message));
+});
+
+// Monthly report cron: 1st of every month at 09:00
+cron.schedule('0 9 1 * *', () => {
+  console.log('[Cron] Maandrapport generatie gestart');
+  runMonthlyReports().catch(err => console.error('[Cron Maandrapport] Fout:', err.message));
+});
+
+// Referral check cron: daily at 12:00
+cron.schedule('0 12 * * *', () => {
+  console.log('[Cron] Referral check gestart');
+  runReferralCheck().catch(err => console.error('[Cron Referral] Fout:', err.message));
+});
+
+// Reply detection cron: every 2 hours (skipped when real-time webhook is active)
+cron.schedule('0 */2 * * *', () => {
+  const s = readJSON('settings.json') || {};
+  if (s.webhookConfigured) {
+    console.log('[Cron] Reply check overgeslagen — webhook is actief');
+    return;
+  }
+  console.log('[Cron] Reply check gestart');
+  checkReplies().catch(err => console.error('[Cron Reply] Fout:', err.message));
+});
+
+// Scheduled send cron: every minute
+cron.schedule('* * * * *', async () => {
+  const inbox = readJSON('inbox.json') || [];
+  const now = new Date();
+  const due = inbox.filter(i => i.status === 'scheduled' && i.scheduledAt && new Date(i.scheduledAt) <= now);
+  if (!due.length) return;
+
+  const settings = readJSON('settings.json');
+  if (!settings.gmailAddress || !settings.gmailPassword) return;
+
+  const leads = readJSON('leads.json') || [];
+  let changed = false;
+
+  for (const item of due) {
+    const version = item.sentVersion || 'A';
+    const chosenEmail = version === 'B' ? item.emailB : (item.emailA || item.email);
+    const idx = inbox.findIndex(i => i.id === item.id);
+    try {
+      const scheduledToken = item.trackingToken || ('otk-' + item.leadId + '-' + Math.random().toString(36).substr(2, 8));
+      if (!item.trackingToken) inbox[idx].trackingToken = scheduledToken;
+      await sendEmail({
+        to: settings.gmailAddress,
+        subject: chosenEmail?.subject || item.email?.subject || 'Outreach email',
+        body: chosenEmail?.body || item.email?.body || '',
+        settings,
+        trackingToken: scheduledToken
+      });
+      inbox[idx].status = 'sent';
+      inbox[idx].sentAt = new Date().toISOString();
+
+      const stats = readJSON('stats.json') || {};
+      stats.emailsSent = (stats.emailsSent || 0) + 1;
+      if (!stats.abStats) stats.abStats = { aApproved: 0, bApproved: 0 };
+      stats.abStats[version === 'B' ? 'bApproved' : 'aApproved']++;
+      writeJSON('stats.json', stats);
+
+      const leadIdx = leads.findIndex(l => l.id === item.leadId);
+      if (leadIdx !== -1) {
+        leads[leadIdx].status = 'sent';
+        leads[leadIdx].sentAt = inbox[idx].sentAt;
+        addLeadHistory(leads, item.leadId, { event: 'sent', label: `Email verstuurd op ingeplande tijd (versie ${version})` });
+        updateMemory(leads[leadIdx].niche, leads[leadIdx].country, 'sent');
+      }
+      console.log(`[Scheduled] Email verstuurd voor ${item.companyName}`);
+      changed = true;
+    } catch (err) {
+      console.error(`[Scheduled] Fout bij ${item.companyName}:`, err.message);
+    }
+  }
+  if (changed) {
+    writeJSON('inbox.json', inbox);
+    writeJSON('leads.json', leads);
+  }
+});
+
+scheduleCron();
+scheduleBriefingCron();
+scheduleBackupCron();
+
+// ─── Monthly auto-invoice + overdue reminder ──────────────────────────────────
+
+cron.schedule('0 9 * * *', async () => {
+  const settings = readJSON('settings.json') || {};
+  const leads = readJSON('leads.json') || [];
+  const today = new Date();
+
+  // Auto-invoice: run on configured day of month
+  if (settings.autoInvoiceEnabled && today.getDate() === (settings.autoInvoiceDay || 1)) {
+    console.log('[Cron] Auto-factuur run gestart');
+    const clients = leads.filter(l => l.status === 'client' && (l.services || []).some(s => s.billing !== 'eenmalig'));
+    for (const lead of clients) {
+      try {
+        const monthlyServices = (lead.services || []).filter(s => s.billing !== 'eenmalig');
+        const total = monthlyServices.reduce((sum, s) => sum + (s.price || 0), 0);
+        if (total < 1) continue;
+        const method = settings.preferredPaymentMethod || 'stripe';
+        const desc = `${monthlyServices.map(s => s.name).join(', ')} — ${today.toLocaleDateString('nl-NL', {month:'long',year:'numeric'})}`;
+        const url = await createPaymentLink(method, { companyName: lead.companyName, amount: total, description: desc, billing: 'eenmalig', settings });
+        const freshLeads = readJSON('leads.json') || [];
+        const fIdx = freshLeads.findIndex(l => l.id === lead.id);
+        if (fIdx !== -1) {
+          if (!freshLeads[fIdx].payments) freshLeads[fIdx].payments = [];
+          freshLeads[fIdx].payments.push({ id: Date.now().toString(36), type: 'subscription', amount: total, description: desc, billing: 'eenmalig', method, paymentUrl: url, status: 'sent', dueDate: new Date(today.getTime() + 14 * 86400000).toISOString(), createdAt: new Date().toISOString() });
+          addLeadHistory(freshLeads, lead.id, { event: 'autoInvoice', label: `Automatische factuur aangemaakt: €${total}` });
+          writeJSON('leads.json', freshLeads);
+        }
+        if (lead.email && settings.gmailAddress && settings.gmailPassword) {
+          await sendEmail({ to: lead.email, subject: `Factuur ${today.toLocaleDateString('nl-NL', {month:'long'})} — ${settings.agencyName}`, body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder de factuur voor deze maand:\n\n${desc}\nBedrag: €${total}\nBetaallink: ${url}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`, settings });
+        }
+        console.log(`[AutoInvoice] €${total} → ${lead.companyName}`);
+      } catch (err) { console.error(`[AutoInvoice] Fout voor ${lead.companyName}:`, err.message); }
+    }
+  }
+
+  // Overdue reminders
+  const reminderDays = settings.paymentReminderDays || 7;
+  const allLeads = readJSON('leads.json') || [];
+  for (const lead of allLeads) {
+    for (const pay of (lead.payments || [])) {
+      if (pay.status !== 'sent') continue;
+      const due = new Date(pay.dueDate);
+      const daysOverdue = Math.floor((today - due) / 86400000);
+      if (daysOverdue < reminderDays) continue;
+      // Don't spam: only send if no reminder in last 7 days
+      const lastReminder = pay.lastReminderAt ? new Date(pay.lastReminderAt) : null;
+      if (lastReminder && (today - lastReminder) < 7 * 86400000) continue;
+      if (!lead.email || !settings.gmailAddress || !settings.gmailPassword) continue;
+      try {
+        const reminderEmail = await aiJSON(`Schrijf een vriendelijke betalingsherinnering. Klant: ${lead.companyName}. Bedrag: €${pay.amount}. ${daysOverdue} dagen te laat. Betaallink: ${pay.paymentUrl}. Max 100 woorden. JSON: { "subject": "...", "body": "..." }`);
+        await sendEmail({ to: lead.email, subject: reminderEmail.subject, body: reminderEmail.body, settings });
+        const lIdx = allLeads.findIndex(l => l.id === lead.id);
+        const pIdx = (allLeads[lIdx]?.payments || []).findIndex(p => p.id === pay.id);
+        if (lIdx !== -1 && pIdx !== -1) { allLeads[lIdx].payments[pIdx].lastReminderAt = new Date().toISOString(); allLeads[lIdx].payments[pIdx].reminderCount = (allLeads[lIdx].payments[pIdx].reminderCount || 0) + 1; }
+        addNotification('payment_overdue', `Betaling te laat: ${lead.companyName}`, `€${pay.amount} is ${daysOverdue} dagen te laat — herinnering verstuurd`, lead.id);
+        console.log(`[Overdue] Herinnering verstuurd aan ${lead.companyName} voor €${pay.amount}`);
+      } catch { /* optional */ }
+    }
+  }
+  writeJSON('leads.json', allLeads);
+});
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+app.get('/api/notifications', authMiddleware, (req, res) => {
+  const notifications = readJSON('notifications.json') || [];
+  const unread = notifications.filter(n => !n.read).length;
+  res.json({ notifications: notifications.slice(0, 50), unread });
+});
+
+app.post('/api/notifications/read-all', authMiddleware, (req, res) => {
+  const notifications = readJSON('notifications.json') || [];
+  notifications.forEach(n => { n.read = true; });
+  writeJSON('notifications.json', notifications);
+  res.json({ ok: true });
+});
+
+app.patch('/api/notifications/:id/read', authMiddleware, (req, res) => {
+  const notifications = readJSON('notifications.json') || [];
+  const idx = notifications.findIndex(n => n.id === req.params.id);
+  if (idx !== -1) { notifications[idx].read = true; writeJSON('notifications.json', notifications); }
+  res.json({ ok: true });
+});
+
+// ─── SPA fallback ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Niet gevonden' });
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// â"€â"€â"€ Start â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+app.listen(PORT, () => {
+  console.log(`\nAgency AI draait op http://localhost:${PORT}`);
+  console.log(`Data directory: ${DATA_DIR}`);
+  if (!process.env.CLAUDE_API_KEY || process.env.CLAUDE_API_KEY === 'your_anthropic_api_key_here') {
+    console.warn('âš   CLAUDE_API_KEY niet ingesteld â€" voeg toe aan .env');
+  }
+  console.log('\nAgency AI klaar voor deployment');
+  console.log('Ga naar railway.app om online te zetten\n');
+});

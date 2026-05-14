@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Agency AI</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Agency AI">
+  <meta name="theme-color" content="#111111">
+
+  <!-- Apply theme before render to prevent flash -->
+  <script>
+    (function(){var t=localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);})();
+  </script>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+  <!-- ── Sidebar (desktop) ─────────────────────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <div class="logo-icon">
+          <i class="ti ti-bolt"></i>
+        </div>
+        <span class="logo-name">Agency AI</span>
+      </div>
+      <button class="notif-btn" id="notifBtn" title="Meldingen">
+        <i class="ti ti-bell"></i>
+        <span class="notif-badge" id="notifBadge" style="display:none">0</span>
+      </button>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item" data-view="dashboard">
+        <i class="ti ti-layout-dashboard"></i>
+        <span>Dashboard</span>
+      </a>
+      <a href="#" class="nav-item" data-view="inbox">
+        <i class="ti ti-inbox"></i>
+        <span>Inbox</span>
+        <span class="nav-badge" id="inboxBadge" style="display:none"></span>
+      </a>
+      <a href="#" class="nav-item" data-view="leads">
+        <i class="ti ti-users"></i>
+        <span>Leads</span>
+      </a>
+      <a href="#" class="nav-item" data-view="pipeline">
+        <i class="ti ti-git-branch"></i>
+        <span>Pipeline</span>
+      </a>
+      <a href="#" class="nav-item" data-view="agents">
+        <i class="ti ti-robot"></i>
+        <span>Agents</span>
+      </a>
+      <a href="#" class="nav-item" data-view="runs">
+        <i class="ti ti-rotate-clockwise"></i>
+        <span>Runs</span>
+      </a>
+      <a href="#" class="nav-item" data-view="stats">
+        <i class="ti ti-chart-bar"></i>
+        <span>Statistieken</span>
+      </a>
+      <a href="#" class="nav-item" data-view="chat">
+        <i class="ti ti-message-circle"></i>
+        <span>Chat</span>
+        <span class="nav-badge" id="chatBadge" style="display:none"></span>
+      </a>
+      <a href="#" class="nav-item" data-view="settings" data-admin-only>
+        <i class="ti ti-settings"></i>
+        <span>Instellingen</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="userAvatar">E</div>
+        <div class="user-details">
+          <div class="user-name" id="userName">Ekow</div>
+          <div class="user-role" id="userRole">Admin</div>
+        </div>
+      </div>
+      <button class="btn-theme" id="themeBtn" title="Dark/light mode">
+        <i class="ti ti-moon"></i>
+      </button>
+      <button class="btn-logout" id="logoutBtn" title="Uitloggen">
+        <i class="ti ti-logout"></i>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ── Main content ───────────────────────────────────────────── -->
+  <main class="main-content" id="mainContent">
+    <div id="appView"></div>
+  </main>
+
+  <!-- ── Mobile bottom nav ──────────────────────────────────────── -->
+  <nav class="bottom-nav" id="bottomNav">
+    <a href="#" class="bottom-nav-item" data-view="dashboard">
+      <i class="ti ti-layout-dashboard"></i>
+      <span>Dashboard</span>
+    </a>
+    <a href="#" class="bottom-nav-item" data-view="inbox">
+      <i class="ti ti-inbox"></i>
+      <span>Inbox</span>
+      <span class="bottom-badge" id="inboxBadgeMobile" style="display:none"></span>
+    </a>
+    <a href="#" class="bottom-nav-item" data-view="leads">
+      <i class="ti ti-users"></i>
+      <span>Leads</span>
+    </a>
+    <a href="#" class="bottom-nav-item" data-view="pipeline">
+      <i class="ti ti-git-branch"></i>
+      <span>Pipeline</span>
+    </a>
+    <a href="#" class="bottom-nav-item" data-view="agents">
+      <i class="ti ti-robot"></i>
+      <span>Agents</span>
+    </a>
+    <a href="#" class="bottom-nav-item" data-view="runs">
+      <i class="ti ti-rotate-clockwise"></i>
+      <span>Runs</span>
+    </a>
+    <a href="#" class="bottom-nav-item" data-view="stats">
+      <i class="ti ti-chart-bar"></i>
+      <span>Stats</span>
+    </a>
+    <a href="#" class="bottom-nav-item" data-view="chat">
+      <i class="ti ti-message-circle"></i>
+      <span>Chat</span>
+    </a>
+    <a href="#" class="bottom-nav-item" data-view="settings">
+      <i class="ti ti-settings"></i>
+      <span>Instellingen</span>
+    </a>
+  </nav>
+
+  <!-- ── Mobile notification bell ─────────────────────────────── -->
+  <button class="notif-btn-mobile" id="notifBtnMobile" title="Meldingen">
+    <i class="ti ti-bell"></i>
+    <span class="notif-badge" id="notifBadgeMobile" style="display:none">0</span>
+  </button>
+
+  <!-- ── Toast container ───────────────────────────────────────── -->
+  <div id="toastContainer"></div>
+
+  <!-- ── Modal container ───────────────────────────────────────── -->
+  <div id="modalContainer"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
