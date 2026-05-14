@@ -5,20 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agency AI — Jouw Volledige Digitale Partner</title>
   <meta name="description" content="Van website tot beveiliging, van advertenties tot AI-automatisering — Agency AI is jouw one-stop partner voor alles wat digitaal is.">
-  <meta property="og:title" content="Agency AI — Jouw Volledige Digitale Partner">
-  <meta property="og:description" content="Wij bouwen. Wij groeien. Wij beschermen.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
-    /* ── Reset & base ───────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { font-size: 16px; scroll-behavior: smooth; }
-    body { font-family: 'Plus Jakarta Sans', sans-serif; color: #111; background: #fff; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+    body { font-family: 'Plus Jakarta Sans', sans-serif; color: #111; background: #fff; line-height: 1.6; -webkit-font-smoothing: antialiased; transition: opacity .15s ease; }
     a { text-decoration: none; color: inherit; }
     button { font-family: inherit; cursor: pointer; }
 
-    /* ── Variables ──────────────────────────────────────────────────────────── */
     :root {
       --black:   #111111;
       --indigo:  #6366f1;
@@ -33,11 +29,9 @@
       --r-lg:    16px;
     }
 
-    /* ── Layout helpers ─────────────────────────────────────────────────────── */
     .container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
     .section    { padding: 96px 0; }
 
-    /* ── Typography ─────────────────────────────────────────────────────────── */
     .badge {
       display: inline-flex; align-items: center; gap: 6px;
       font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
@@ -49,7 +43,6 @@
     .center        { text-align: center; }
     .center .section-sub { margin: 0 auto; }
 
-    /* ── Buttons ────────────────────────────────────────────────────────────── */
     .btn-dark {
       display: inline-flex; align-items: center; gap: 7px;
       background: var(--black); color: #fff;
@@ -59,7 +52,6 @@
     }
     .btn-dark:hover  { background: #333; }
     .btn-dark:active { transform: scale(.99); }
-
     .btn-ghost {
       display: inline-flex; align-items: center; gap: 7px;
       background: none; color: var(--t2);
@@ -69,25 +61,20 @@
     }
     .btn-ghost:hover { border-color: var(--black); color: var(--black); }
 
-    /* ── Navigation ─────────────────────────────────────────────────────────── */
+    /* Nav */
     #nav {
       position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
       transition: background .2s, box-shadow .2s;
     }
     #nav.scrolled { background: #fff; box-shadow: 0 1px 0 var(--border); }
-
     .nav-inner {
       max-width: var(--max-w); margin: 0 auto; padding: 0 24px;
       height: 68px; display: flex; align-items: center; gap: 32px;
     }
-    .nav-logo {
-      display: flex; align-items: center; gap: 10px;
-      font-size: 16px; font-weight: 800; flex-shrink: 0;
-    }
+    .nav-logo { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 800; flex-shrink: 0; }
     .nav-logo-icon {
       width: 34px; height: 34px; background: var(--black); border-radius: 9px;
-      display: flex; align-items: center; justify-content: center;
-      color: #fff; font-size: 15px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; color: #fff; font-size: 15px; flex-shrink: 0;
     }
     .nav-links { display: flex; gap: 28px; margin: 0 auto; }
     .nav-links a { font-size: 14px; font-weight: 600; color: var(--t2); transition: color .15s; }
@@ -101,6 +88,35 @@
     .nav-cta:hover { background: #333; }
     .nav-burger { display: none; background: none; border: none; font-size: 22px; color: var(--black); padding: 4px 6px; line-height: 1; }
 
+    /* Language switcher */
+    .lang-switcher { position: relative; }
+    .lang-btn {
+      display: flex; align-items: center; gap: 5px;
+      background: none; border: 1.5px solid var(--border); border-radius: 8px;
+      padding: 7px 11px; font-size: 13px; font-weight: 700; color: var(--black);
+      cursor: pointer; transition: border-color .15s; white-space: nowrap;
+    }
+    .lang-btn:hover { border-color: var(--black); }
+    .lang-chevron { font-size: 9px; color: var(--t3); margin-left: 1px; }
+    .lang-dropdown {
+      position: absolute; top: calc(100% + 8px); right: 0;
+      background: #fff; border: 1px solid var(--border); border-radius: var(--r);
+      box-shadow: 0 8px 24px rgba(0,0,0,.12); min-width: 158px; z-index: 2000;
+      display: none; overflow: hidden;
+    }
+    .lang-dropdown.open { display: block; }
+    .lang-dropdown button {
+      display: flex; align-items: center; gap: 9px;
+      width: 100%; padding: 10px 14px; background: none; border: none;
+      text-align: left; font-family: inherit; font-size: 14px; font-weight: 500;
+      color: var(--black); cursor: pointer; transition: background .1s;
+    }
+    .lang-dropdown button:hover { background: var(--surface); }
+    .lang-dropdown button.active { font-weight: 700; color: var(--indigo); }
+    .lang-check { margin-left: auto; color: var(--indigo); display: none; }
+    .lang-dropdown button.active .lang-check { display: inline; }
+
+    /* Mobile nav */
     #navMobile {
       display: none; flex-direction: column;
       background: #fff; border-top: 1px solid var(--border);
@@ -113,236 +129,130 @@
       font-size: 15px; font-weight: 600; padding: 12px 0;
       border-bottom: 1px solid var(--border); color: var(--black);
     }
-    #navMobile a:last-child { border-bottom: none; }
+    .mobile-lang {
+      padding: 14px 0 2px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+    .mobile-lang-lbl { font-size: 12px; font-weight: 700; color: var(--t2); text-transform: uppercase; letter-spacing: .05em; }
+    .mobile-lang-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+    .mobile-lang-btns button {
+      background: none; border: 1.5px solid var(--border); border-radius: 7px;
+      padding: 6px 10px; font-size: 16px; cursor: pointer; transition: border-color .1s, background .1s; line-height: 1;
+    }
+    .mobile-lang-btns button:hover, .mobile-lang-btns button.active {
+      border-color: var(--indigo); background: var(--ind-lt);
+    }
 
-    /* ── Hero ───────────────────────────────────────────────────────────────── */
+    /* Hero */
     .hero {
       min-height: 100vh; display: flex; align-items: center;
       padding: 120px 24px 80px;
       background: radial-gradient(ellipse 80% 55% at 50% -5%, rgba(99,102,241,.07) 0%, transparent 65%);
     }
     .hero-inner { max-width: var(--max-w); margin: 0 auto; text-align: center; }
-
-    .hero-title {
-      font-size: clamp(3.2rem, 8vw, 5.75rem);
-      font-weight: 900; line-height: 1.08; letter-spacing: -.03em;
-      margin-bottom: 26px;
-    }
+    .hero-title { font-size: clamp(3.2rem, 8vw, 5.75rem); font-weight: 900; line-height: 1.08; letter-spacing: -.03em; margin-bottom: 26px; }
     .hl-1, .hl-3 { display: block; color: var(--black); }
     .hl-2 {
       display: block;
       background: linear-gradient(135deg, var(--indigo) 0%, var(--indigo2) 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      background-clip: text;
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
-
-    .hero-sub {
-      font-size: clamp(1rem, 2vw, 1.2rem); color: var(--t2);
-      max-width: 600px; margin: 0 auto 36px; line-height: 1.7;
-    }
+    .hero-sub { font-size: clamp(1rem, 2vw, 1.2rem); color: var(--t2); max-width: 600px; margin: 0 auto 36px; line-height: 1.7; }
     .hero-ctas  { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 44px; }
     .hero-trust { display: flex; gap: 28px; justify-content: center; flex-wrap: wrap; }
-    .hero-trust span {
-      font-size: 13px; font-weight: 600; color: var(--t2);
-      display: flex; align-items: center; gap: 6px;
-    }
+    .hero-trust span { font-size: 13px; font-weight: 600; color: var(--t2); display: flex; align-items: center; gap: 6px; }
     .hero-trust span::before { content: '✓'; color: var(--indigo); font-weight: 900; }
 
-    /* ── Stats bar ──────────────────────────────────────────────────────────── */
-    .stats-bar {
-      background: var(--surface);
-      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
-      padding: 44px 0;
-    }
-    .stats-inner {
-      max-width: var(--max-w); margin: 0 auto; padding: 0 24px;
-      display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; text-align: center;
-    }
+    /* Stats */
+    .stats-bar { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 44px 0; }
+    .stats-inner { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; text-align: center; }
     .stat-num { font-size: 2.6rem; font-weight: 900; color: var(--black); line-height: 1; margin-bottom: 6px; }
     .stat-lbl { font-size: 14px; font-weight: 600; color: var(--t2); }
 
-    /* ── Services ───────────────────────────────────────────────────────────── */
+    /* Services */
     .cat-section { margin-bottom: 52px; }
     .cat-section:last-child { margin-bottom: 0; }
-    .cat-title {
-      font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em;
-      color: var(--t2); margin-bottom: 20px;
-      display: flex; align-items: center; gap: 12px;
-    }
+    .cat-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; color: var(--t2); margin-bottom: 20px; display: flex; align-items: center; gap: 12px; }
     .cat-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-
-    .service-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 14px;
-    }
-    .service-card {
-      background: #fff; border: 1px solid var(--border);
-      border-left: 3px solid transparent;
-      border-radius: var(--r); padding: 22px 20px;
-      transition: transform .2s, box-shadow .2s, border-left-color .2s;
-    }
-    .service-card:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 8px 24px rgba(0,0,0,.08);
-      border-left-color: var(--indigo);
-    }
+    .service-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+    .service-card { background: #fff; border: 1px solid var(--border); border-left: 3px solid transparent; border-radius: var(--r); padding: 22px 20px; transition: transform .2s, box-shadow .2s, border-left-color .2s; }
+    .service-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.08); border-left-color: var(--indigo); }
     .svc-icon { font-size: 1.75rem; margin-bottom: 10px; line-height: 1; }
     .svc-name { font-size: 14px; font-weight: 700; margin-bottom: 5px; }
     .svc-desc { font-size: 13px; color: var(--t2); line-height: 1.55; }
 
-    /* ── Werkwijze ───────────────────────────────────────────────────────────── */
+    /* Werkwijze */
     .werkwijze { background: var(--surface); }
-
     .steps-wrap { position: relative; margin-top: 12px; }
-    .steps-line {
-      position: absolute; top: 28px; left: calc(12.5% + 20px); right: calc(12.5% + 20px);
-      height: 2px;
-      background: linear-gradient(90deg, var(--indigo), rgba(99,102,241,.2));
-    }
-    .steps {
-      display: grid; grid-template-columns: repeat(4,1fr); gap: 24px;
-      position: relative; z-index: 1;
-    }
+    .steps-line { position: absolute; top: 28px; left: calc(12.5% + 20px); right: calc(12.5% + 20px); height: 2px; background: linear-gradient(90deg, var(--indigo), rgba(99,102,241,.2)); }
+    .steps { display: grid; grid-template-columns: repeat(4,1fr); gap: 24px; position: relative; z-index: 1; }
     .step { text-align: center; }
-    .step-num {
-      width: 56px; height: 56px; background: var(--black); color: #fff;
-      font-size: 1.4rem; font-weight: 900; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      margin: 0 auto 18px; position: relative; z-index: 2;
-      box-shadow: 0 0 0 6px #fff, 0 0 0 7px var(--border);
-    }
+    .step-num { width: 56px; height: 56px; background: var(--black); color: #fff; font-size: 1.4rem; font-weight: 900; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; position: relative; z-index: 2; box-shadow: 0 0 0 6px #fff, 0 0 0 7px var(--border); }
     .step-title { font-size: 15px; font-weight: 800; margin-bottom: 8px; }
     .step-desc  { font-size: 13px; color: var(--t2); line-height: 1.55; }
 
-    /* ── Waarom Agency AI ────────────────────────────────────────────────────── */
-    .waarom-inner {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
-    }
+    /* Waarom */
+    .waarom-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
     .waarom-list { list-style: none; display: flex; flex-direction: column; gap: 14px; margin-top: 28px; }
     .waarom-list li { display: flex; gap: 12px; align-items: flex-start; font-size: 15px; }
-    .wcheck {
-      width: 22px; height: 22px; background: var(--indigo); border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0; margin-top: 1px; font-size: 11px; color: #fff; font-weight: 900;
-    }
-
+    .wcheck { width: 22px; height: 22px; background: var(--indigo); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; font-size: 11px; color: #fff; font-weight: 900; }
     .waarom-visual { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .w-box {
-      border-radius: var(--r-lg); padding: 24px 18px;
-      display: flex; flex-direction: column; gap: 8px;
-      transition: transform .2s;
-    }
+    .w-box { border-radius: var(--r-lg); padding: 24px 18px; display: flex; flex-direction: column; gap: 8px; transition: transform .2s; }
     .w-box:hover { transform: translateY(-2px); }
     .w-box-icon { font-size: 2rem; line-height: 1; }
     .w-box-lbl  { font-size: 13px; font-weight: 700; }
 
-    /* ── Resultaten ──────────────────────────────────────────────────────────── */
+    /* Resultaten */
     .resultaten { background: var(--surface); }
     .results-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 24px; margin-bottom: 20px; }
-
-    .result-card {
-      background: #fff; border: 1px solid var(--border);
-      border-radius: var(--r-lg); padding: 28px 24px;
-      transition: transform .2s, box-shadow .2s;
-    }
+    .result-card { background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); padding: 28px 24px; transition: transform .2s, box-shadow .2s; }
     .result-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.07); }
-    .result-metric { font-size: 1.5rem; font-weight: 900; color: var(--black); margin-bottom: 6px; }
+    .result-metric  { font-size: 1.5rem; font-weight: 900; color: var(--black); margin-bottom: 6px; }
     .result-company { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
     .result-service { font-size: 12px; color: var(--t2); margin-bottom: 14px; }
     .result-stars   { color: #f59e0b; font-size: 14px; margin-bottom: 8px; }
     .result-quote   { font-size: 14px; color: var(--t2); font-style: italic; line-height: 1.55; }
     .result-note    { text-align: center; font-size: 12px; color: var(--t3); }
 
-    /* ── Contact ─────────────────────────────────────────────────────────────── */
-    .contact-wrap {
-      max-width: 540px; margin: 0 auto;
-      background: #fff; border: 1px solid var(--border);
-      border-radius: var(--r-lg); padding: 40px;
-      box-shadow: 0 4px 24px rgba(0,0,0,.06);
-    }
+    /* Contact */
+    .contact-wrap { max-width: 540px; margin: 0 auto; background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); padding: 40px; box-shadow: 0 4px 24px rgba(0,0,0,.06); }
     .form-row   { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     .form-group { margin-bottom: 18px; }
     .form-group:last-of-type { margin-bottom: 24px; }
-    .form-group label {
-      display: block; font-size: 13px; font-weight: 600;
-      color: #374151; margin-bottom: 6px;
-    }
-    .form-group input,
-    .form-group select,
-    .form-group textarea {
-      width: 100%; padding: 11px 14px;
-      border: 1.5px solid var(--border); border-radius: 8px;
-      font-family: inherit; font-size: 14px; color: #111;
-      background: #fff; outline: none;
-      transition: border-color .15s, box-shadow .15s;
-    }
-    .form-group input:focus,
-    .form-group select:focus,
-    .form-group textarea:focus {
-      border-color: var(--indigo);
-      box-shadow: 0 0 0 3px rgba(99,102,241,.1);
-    }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 11px 14px; border: 1.5px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 14px; color: #111; background: #fff; outline: none; transition: border-color .15s, box-shadow .15s; }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--indigo); box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
     .form-group textarea  { min-height: 100px; resize: vertical; }
     .form-group select    { appearance: none; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' viewBox='0 0 24 24'%3E%3Cpath stroke='%236b7280' stroke-width='2' stroke-linecap='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }
-
-    .form-submit {
-      width: 100%; padding: 14px;
-      background: var(--black); color: #fff; border: none;
-      border-radius: 10px; font-family: inherit; font-size: 15px; font-weight: 700;
-      cursor: pointer; transition: background .15s;
-    }
+    .form-submit { width: 100%; padding: 14px; background: var(--black); color: #fff; border: none; border-radius: 10px; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; transition: background .15s; }
     .form-submit:hover    { background: #333; }
     .form-submit:disabled { background: #9ca3af; cursor: not-allowed; }
-
-    .form-error {
-      background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;
-      padding: 11px 14px; font-size: 13px; color: #dc2626; font-weight: 500;
-      margin-bottom: 20px; display: none;
-    }
+    .form-error { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 11px 14px; font-size: 13px; color: #dc2626; font-weight: 500; margin-bottom: 20px; display: none; }
     .form-success { text-align: center; padding: 20px 0; display: none; }
     .form-success-icon  { font-size: 3.5rem; margin-bottom: 14px; }
     .form-success-title { font-size: 1.3rem; font-weight: 800; margin-bottom: 8px; }
     .form-success-sub   { font-size: 14px; color: var(--t2); line-height: 1.6; }
 
-    /* ── Footer ──────────────────────────────────────────────────────────────── */
+    /* Footer */
     footer { background: var(--black); color: #fff; padding: 52px 0 24px; }
     .footer-inner { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
-    .footer-top {
-      display: grid; grid-template-columns: 1fr auto 1fr;
-      align-items: start; gap: 40px; margin-bottom: 44px;
-    }
+    .footer-top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 40px; margin-bottom: 44px; }
     .footer-logo { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 800; margin-bottom: 8px; }
-    .footer-logo-icon {
-      width: 34px; height: 34px; background: rgba(255,255,255,.12);
-      border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 15px;
-    }
+    .footer-logo-icon { width: 34px; height: 34px; background: rgba(255,255,255,.12); border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
     .footer-tagline { font-size: 13px; color: rgba(255,255,255,.4); }
-    .footer-links   { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+    .footer-links { display: flex; flex-direction: column; gap: 10px; align-items: center; }
     .footer-links a { font-size: 14px; font-weight: 600; color: rgba(255,255,255,.5); transition: color .15s; }
     .footer-links a:hover { color: #fff; }
     .footer-right { display: flex; justify-content: flex-end; }
-    .footer-signin {
-      display: inline-flex; align-items: center; gap: 5px;
-      font-size: 14px; font-weight: 700; color: #fff;
-      border: 1px solid rgba(255,255,255,.2); padding: 9px 18px; border-radius: 8px;
-      transition: border-color .15s, background .15s;
-    }
+    .footer-signin { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 700; color: #fff; border: 1px solid rgba(255,255,255,.2); padding: 9px 18px; border-radius: 8px; transition: border-color .15s, background .15s; }
     .footer-signin:hover { border-color: rgba(255,255,255,.6); background: rgba(255,255,255,.06); }
-    .footer-bottom {
-      border-top: 1px solid rgba(255,255,255,.1); padding-top: 22px;
-      text-align: center; font-size: 12px; color: rgba(255,255,255,.25);
-    }
+    .footer-bottom { border-top: 1px solid rgba(255,255,255,.1); padding-top: 22px; text-align: center; font-size: 12px; color: rgba(255,255,255,.25); }
 
-    /* ── Animations ──────────────────────────────────────────────────────────── */
+    /* Animations */
     .fade-in { opacity: 0; transform: translateY(22px); transition: opacity .65s ease, transform .65s ease; }
     .fade-in.visible { opacity: 1; transform: translateY(0); }
-    .d1 { transition-delay: .1s; }
-    .d2 { transition-delay: .2s; }
-    .d3 { transition-delay: .3s; }
-    .d4 { transition-delay: .4s; }
+    .d1 { transition-delay: .1s; } .d2 { transition-delay: .2s; } .d3 { transition-delay: .3s; } .d4 { transition-delay: .4s; }
 
-    /* ── Mobile ──────────────────────────────────────────────────────────────── */
+    /* Mobile */
     @media (max-width: 768px) {
       .nav-links { display: none; }
       .nav-burger { display: block; }
@@ -351,12 +261,7 @@
       .stats-inner { grid-template-columns: 1fr 1fr; }
       .steps-line { display: none; }
       .steps { grid-template-columns: 1fr; gap: 0; }
-      .step {
-        display: flex; align-items: flex-start; gap: 18px;
-        text-align: left; padding: 0 0 28px;
-        border-left: 2px solid var(--border); margin-left: 28px; padding-left: 28px;
-        position: relative;
-      }
+      .step { display: flex; align-items: flex-start; gap: 18px; text-align: left; padding: 0 0 28px; border-left: 2px solid var(--border); margin-left: 28px; padding-left: 28px; position: relative; }
       .step:last-child { border-left-color: transparent; }
       .step-num { width: 48px; height: 48px; font-size: 1.1rem; margin: 0; flex-shrink: 0; position: absolute; left: -25px; top: 0; box-shadow: 0 0 0 5px var(--surface); }
       .step > div { flex: 1; }
@@ -368,7 +273,6 @@
       .footer-top { grid-template-columns: 1fr; gap: 28px; }
       .footer-right { justify-content: flex-start; }
     }
-
     @media (min-width: 769px) and (max-width: 1024px) {
       .steps-line { display: none; }
       .steps { grid-template-columns: 1fr 1fr; gap: 32px; }
@@ -378,7 +282,6 @@
 </head>
 <body>
 
-<!-- ── Navigation ──────────────────────────────────────────────────────────── -->
 <nav id="nav">
   <div class="nav-inner">
     <a href="/" class="nav-logo">
@@ -386,232 +289,245 @@
       <span>Agency AI</span>
     </a>
     <div class="nav-links">
-      <a href="#diensten">Diensten</a>
-      <a href="#werkwijze">Werkwijze</a>
-      <a href="#resultaten">Resultaten</a>
-      <a href="#contact">Contact</a>
+      <a href="#diensten" data-i18n="nav.services">Diensten</a>
+      <a href="#werkwijze" data-i18n="nav.process">Werkwijze</a>
+      <a href="#resultaten" data-i18n="nav.results">Resultaten</a>
+      <a href="#contact" data-i18n="nav.contact">Contact</a>
     </div>
-    <div style="display:flex;align-items:center;gap:10px">
-      <a href="/login" class="nav-cta">Sign in</a>
+    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <div class="lang-switcher" id="langSwitcher">
+        <button class="lang-btn" id="langBtn" onclick="toggleLangDropdown()">
+          <span id="langFlag">🇳🇱</span><span id="langCode">NL</span><span class="lang-chevron">▾</span>
+        </button>
+        <div class="lang-dropdown" id="langDropdown">
+          <button onclick="setLanguage('nl')" data-lang="nl">🇳🇱 Nederlands<span class="lang-check">✓</span></button>
+          <button onclick="setLanguage('en')" data-lang="en">🇬🇧 English<span class="lang-check">✓</span></button>
+          <button onclick="setLanguage('de')" data-lang="de">🇩🇪 Deutsch<span class="lang-check">✓</span></button>
+          <button onclick="setLanguage('fr')" data-lang="fr">🇫🇷 Français<span class="lang-check">✓</span></button>
+          <button onclick="setLanguage('es')" data-lang="es">🇪🇸 Español<span class="lang-check">✓</span></button>
+        </div>
+      </div>
+      <a href="/login" class="nav-cta" data-i18n="nav.signin">Sign in</a>
       <button class="nav-burger" id="navBurger" onclick="toggleMobile()">☰</button>
     </div>
   </div>
   <div id="navMobile">
-    <a href="#diensten" onclick="closeMobile()">Diensten</a>
-    <a href="#werkwijze" onclick="closeMobile()">Werkwijze</a>
-    <a href="#resultaten" onclick="closeMobile()">Resultaten</a>
-    <a href="#contact" onclick="closeMobile()">Contact</a>
-    <a href="/login">Sign in →</a>
+    <a href="#diensten" onclick="closeMobile()" data-i18n="nav.services">Diensten</a>
+    <a href="#werkwijze" onclick="closeMobile()" data-i18n="nav.process">Werkwijze</a>
+    <a href="#resultaten" onclick="closeMobile()" data-i18n="nav.results">Resultaten</a>
+    <a href="#contact" onclick="closeMobile()" data-i18n="nav.contact">Contact</a>
+    <a href="/login" data-i18n="nav.signinArrow">Sign in →</a>
+    <div class="mobile-lang">
+      <span class="mobile-lang-lbl">🌐</span>
+      <div class="mobile-lang-btns">
+        <button onclick="setLanguage('nl');closeMobile()" data-lang="nl" title="Nederlands">🇳🇱</button>
+        <button onclick="setLanguage('en');closeMobile()" data-lang="en" title="English">🇬🇧</button>
+        <button onclick="setLanguage('de');closeMobile()" data-lang="de" title="Deutsch">🇩🇪</button>
+        <button onclick="setLanguage('fr');closeMobile()" data-lang="fr" title="Français">🇫🇷</button>
+        <button onclick="setLanguage('es');closeMobile()" data-lang="es" title="Español">🇪🇸</button>
+      </div>
+    </div>
   </div>
 </nav>
 
-<!-- ── Hero ────────────────────────────────────────────────────────────────── -->
+<!-- Hero -->
 <section class="hero" id="hero">
   <div class="hero-inner">
-    <div class="badge fade-in">✦ Jouw volledige digitale partner</div>
+    <div class="badge fade-in" data-i18n="hero.badge">✦ Jouw volledige digitale partner</div>
     <h1 class="hero-title fade-in d1">
-      <span class="hl-1">Wij bouwen.</span>
-      <span class="hl-2">Wij groeien.</span>
-      <span class="hl-3">Wij beschermen.</span>
+      <span class="hl-1" data-i18n="hero.line1">Wij bouwen.</span>
+      <span class="hl-2" data-i18n="hero.line2">Wij groeien.</span>
+      <span class="hl-3" data-i18n="hero.line3">Wij beschermen.</span>
     </h1>
-    <p class="hero-sub fade-in d2">
-      Van website tot beveiliging, van advertenties tot volledige AI-automatisering —
-      Agency AI is jouw one-stop partner voor alles wat digitaal is.
-    </p>
+    <p class="hero-sub fade-in d2" data-i18n="hero.sub">Van website tot beveiliging, van advertenties tot volledige AI-automatisering — Agency AI is jouw one-stop partner voor alles wat digitaal is.</p>
     <div class="hero-ctas fade-in d3">
-      <a href="#contact" class="btn-dark">Gratis audit aanvragen</a>
-      <a href="#diensten" class="btn-ghost">Bekijk alles wat we doen ↓</a>
+      <a href="#contact" class="btn-dark" data-i18n="hero.cta1">Gratis audit aanvragen</a>
+      <a href="#diensten" class="btn-ghost" data-i18n="hero.cta2">Bekijk alles wat we doen ↓</a>
     </div>
     <div class="hero-trust fade-in d4">
-      <span>Alles onder één dak</span>
-      <span>Resultaat binnen 30 dagen</span>
-      <span>Geen verborgen kosten</span>
+      <span data-i18n="hero.trust1">Alles onder één dak</span>
+      <span data-i18n="hero.trust2">Resultaat binnen 30 dagen</span>
+      <span data-i18n="hero.trust3">Geen verborgen kosten</span>
     </div>
   </div>
 </section>
 
-<!-- ── Stats ────────────────────────────────────────────────────────────────── -->
+<!-- Stats -->
 <section class="stats-bar">
   <div class="stats-inner">
     <div class="stat-item fade-in">
       <div class="stat-num">15+</div>
-      <div class="stat-lbl">Diensten</div>
+      <div class="stat-lbl" data-i18n="stats.services">Diensten</div>
     </div>
     <div class="stat-item fade-in d1">
       <div class="stat-num">24/7</div>
-      <div class="stat-lbl">Bereikbaar</div>
+      <div class="stat-lbl" data-i18n="stats.available">Bereikbaar</div>
     </div>
     <div class="stat-item fade-in d2">
-      <div class="stat-num">30 dagen</div>
-      <div class="stat-lbl">Eerste resultaat</div>
+      <div class="stat-num">30 <span data-i18n="stats.days">dagen</span></div>
+      <div class="stat-lbl" data-i18n="stats.firstResult">Eerste resultaat</div>
     </div>
     <div class="stat-item fade-in d3">
       <div class="stat-num">100%</div>
-      <div class="stat-lbl">Transparant</div>
+      <div class="stat-lbl" data-i18n="stats.transparent">Transparant</div>
     </div>
   </div>
 </section>
 
-<!-- ── Diensten ─────────────────────────────────────────────────────────────── -->
+<!-- Diensten -->
 <section class="section" id="diensten">
   <div class="container">
     <div class="center fade-in" style="margin-bottom:60px">
-      <div class="badge">✦ Onze diensten</div>
-      <h2 class="section-title">Alles wat jouw bedrijf nodig heeft</h2>
-      <p class="section-sub">Één partner voor elk digitaal vraagstuk.</p>
+      <div class="badge" data-i18n="services.badge">✦ Onze diensten</div>
+      <h2 class="section-title" data-i18n="services.title">Alles wat jouw bedrijf nodig heeft</h2>
+      <p class="section-sub" data-i18n="services.sub">Één partner voor elk digitaal vraagstuk.</p>
     </div>
 
-    <!-- 1. Web & Design -->
     <div class="cat-section fade-in">
-      <div class="cat-title">🌐 &nbsp;Web &amp; Design</div>
+      <div class="cat-title" data-i18n="cat.web">🌐 &nbsp;Web &amp; Design</div>
       <div class="service-grid">
         <div class="service-card">
           <div class="svc-icon">🖥️</div>
-          <div class="svc-name">Website laten bouwen</div>
-          <div class="svc-desc">Snelle, moderne websites die bezoekers omzetten in klanten.</div>
+          <div class="svc-name" data-i18n="svc.website.name">Website laten bouwen</div>
+          <div class="svc-desc" data-i18n="svc.website.desc">Snelle, moderne websites die bezoekers omzetten in klanten.</div>
         </div>
         <div class="service-card">
           <div class="svc-icon">🛒</div>
-          <div class="svc-name">Webshop bouwen</div>
-          <div class="svc-desc">Professionele webshops met volledige betaalintegratie en voorraadbeheer.</div>
+          <div class="svc-name" data-i18n="svc.webshop.name">Webshop bouwen</div>
+          <div class="svc-desc" data-i18n="svc.webshop.desc">Professionele webshops met volledige betaalintegratie en voorraadbeheer.</div>
         </div>
         <div class="service-card">
           <div class="svc-icon">🎯</div>
-          <div class="svc-name">Landing page ontwerp</div>
-          <div class="svc-desc">Conversiegerichte pagina's voor campagnes en advertenties.</div>
+          <div class="svc-name" data-i18n="svc.landing.name">Landing page ontwerp</div>
+          <div class="svc-desc" data-i18n="svc.landing.desc">Conversiegerichte pagina's voor campagnes en advertenties.</div>
         </div>
       </div>
     </div>
 
-    <!-- 2. Marketing -->
     <div class="cat-section fade-in">
-      <div class="cat-title">📣 &nbsp;Marketing &amp; Advertenties</div>
+      <div class="cat-title" data-i18n="cat.marketing">📣 &nbsp;Marketing &amp; Advertenties</div>
       <div class="service-grid">
         <div class="service-card">
           <div class="svc-icon">📱</div>
-          <div class="svc-name">Meta advertenties (Facebook &amp; Instagram)</div>
-          <div class="svc-desc">AI-gestuurde campagnes die meer opleveren voor minder budget.</div>
+          <div class="svc-name" data-i18n="svc.meta.name">Meta advertenties (Facebook &amp; Instagram)</div>
+          <div class="svc-desc" data-i18n="svc.meta.desc">AI-gestuurde campagnes die meer opleveren voor minder budget.</div>
         </div>
         <div class="service-card">
           <div class="svc-icon">🔍</div>
-          <div class="svc-name">Google Ads</div>
-          <div class="svc-desc">Bovenaan in Google verschijnen precies wanneer klanten zoeken.</div>
+          <div class="svc-name" data-i18n="svc.google.name">Google Ads</div>
+          <div class="svc-desc" data-i18n="svc.google.desc">Bovenaan in Google verschijnen precies wanneer klanten zoeken.</div>
         </div>
         <div class="service-card">
           <div class="svc-icon">📧</div>
-          <div class="svc-name">Email marketing</div>
-          <div class="svc-desc">Geautomatiseerde email campagnes die leads omzetten in betalende klanten.</div>
+          <div class="svc-name" data-i18n="svc.email.name">Email marketing</div>
+          <div class="svc-desc" data-i18n="svc.email.desc">Geautomatiseerde email campagnes die leads omzetten in betalende klanten.</div>
         </div>
         <div class="service-card">
           <div class="svc-icon">📸</div>
-          <div class="svc-name">Content &amp; Social media</div>
-          <div class="svc-desc">Dagelijkse posts, Reels en Stories — afgestemd op jouw merk en doelgroep.</div>
+          <div class="svc-name" data-i18n="svc.social.name">Content &amp; Social media</div>
+          <div class="svc-desc" data-i18n="svc.social.desc">Dagelijkse posts, Reels en Stories — afgestemd op jouw merk en doelgroep.</div>
         </div>
       </div>
     </div>
 
-    <!-- 3. AI -->
     <div class="cat-section fade-in">
-      <div class="cat-title">🤖 &nbsp;AI &amp; Automatisering</div>
+      <div class="cat-title" data-i18n="cat.ai">🤖 &nbsp;AI &amp; Automatisering</div>
       <div class="service-grid">
         <div class="service-card">
           <div class="svc-icon">🎯</div>
-          <div class="svc-name">AI Leadgeneratie systeem</div>
-          <div class="svc-desc">Volledig automatisch nieuwe klanten vinden en benaderen — 24/7.</div>
+          <div class="svc-name" data-i18n="svc.leadgen.name">AI Leadgeneratie systeem</div>
+          <div class="svc-desc" data-i18n="svc.leadgen.desc">Volledig automatisch nieuwe klanten vinden en benaderen — 24/7.</div>
         </div>
         <div class="service-card">
           <div class="svc-icon">💬</div>
-          <div class="svc-name">AI Chatbot voor website</div>
-          <div class="svc-desc">Beantwoordt vragen, vangt leads en plant afspraken in — zonder menselijke tussenkomst.</div>
+          <div class="svc-name" data-i18n="svc.chatbot.name">AI Chatbot voor website</div>
+          <div class="svc-desc" data-i18n="svc.chatbot.desc">Beantwoordt vragen, vangt leads en plant afspraken in — zonder menselijke tussenkomst.</div>
         </div>
         <div class="service-card">
           <div class="svc-icon">⚙️</div>
-          <div class="svc-name">Workflow automatisering</div>
-          <div class="svc-desc">Herhaalbare taken automatiseren zodat jij je focust op wat echt telt.</div>
+          <div class="svc-name" data-i18n="svc.workflow.name">Workflow automatisering</div>
+          <div class="svc-desc" data-i18n="svc.workflow.desc">Herhaalbare taken automatiseren zodat jij je focust op wat echt telt.</div>
         </div>
         <div class="service-card">
           <div class="svc-icon">✨</div>
-          <div class="svc-name">AI content creatie</div>
-          <div class="svc-desc">Teksten, afbeeldingen en video's gegenereerd door AI op schaal.</div>
+          <div class="svc-name" data-i18n="svc.aicontent.name">AI content creatie</div>
+          <div class="svc-desc" data-i18n="svc.aicontent.desc">Teksten, afbeeldingen en video's gegenereerd door AI op schaal.</div>
         </div>
       </div>
     </div>
 
-    <!-- 4. Security -->
     <div class="cat-section fade-in">
-      <div class="cat-title">🔒 &nbsp;Security &amp; Beveiliging</div>
+      <div class="cat-title" data-i18n="cat.security">🔒 &nbsp;Security &amp; Beveiliging</div>
       <div class="service-grid">
         <div class="service-card">
           <div class="svc-icon">🛡️</div>
-          <div class="svc-name">Website beveiliging</div>
-          <div class="svc-desc">SSL, firewalls, malware scanning en continue monitoring van jouw website.</div>
+          <div class="svc-name" data-i18n="svc.websec.name">Website beveiliging</div>
+          <div class="svc-desc" data-i18n="svc.websec.desc">SSL, firewalls, malware scanning en continue monitoring van jouw website.</div>
         </div>
         <div class="service-card">
           <div class="svc-icon">⚖️</div>
-          <div class="svc-name">GDPR &amp; privacybeheer</div>
-          <div class="svc-desc">Volledig compliant met Europese wetgeving — cookies, privacy policy en meer.</div>
+          <div class="svc-name" data-i18n="svc.gdpr.name">GDPR &amp; privacybeheer</div>
+          <div class="svc-desc" data-i18n="svc.gdpr.desc">Volledig compliant met Europese wetgeving — cookies, privacy policy en meer.</div>
         </div>
         <div class="service-card">
           <div class="svc-icon">💾</div>
-          <div class="svc-name">Backup &amp; herstel</div>
-          <div class="svc-desc">Automatische dagelijkse backups en snel herstel bij problemen.</div>
+          <div class="svc-name" data-i18n="svc.backup.name">Backup &amp; herstel</div>
+          <div class="svc-desc" data-i18n="svc.backup.desc">Automatische dagelijkse backups en snel herstel bij problemen.</div>
         </div>
       </div>
     </div>
 
-    <!-- 5. SEO -->
     <div class="cat-section fade-in">
-      <div class="cat-title">📈 &nbsp;SEO &amp; Vindbaarheid</div>
+      <div class="cat-title" data-i18n="cat.seo">📈 &nbsp;SEO &amp; Vindbaarheid</div>
       <div class="service-grid">
         <div class="service-card">
           <div class="svc-icon">📍</div>
-          <div class="svc-name">Lokale SEO</div>
-          <div class="svc-desc">Gevonden worden in Google door klanten in jouw stad of regio.</div>
+          <div class="svc-name" data-i18n="svc.localseo.name">Lokale SEO</div>
+          <div class="svc-desc" data-i18n="svc.localseo.desc">Gevonden worden in Google door klanten in jouw stad of regio.</div>
         </div>
         <div class="service-card">
           <div class="svc-icon">🗺️</div>
-          <div class="svc-name">Google Bedrijfsprofiel</div>
-          <div class="svc-desc">Optimalisatie van je Google Maps aanwezigheid en reviews.</div>
+          <div class="svc-name" data-i18n="svc.gmb.name">Google Bedrijfsprofiel</div>
+          <div class="svc-desc" data-i18n="svc.gmb.desc">Optimalisatie van je Google Maps aanwezigheid en reviews.</div>
         </div>
         <div class="service-card">
           <div class="svc-icon">⚡</div>
-          <div class="svc-name">Technische SEO</div>
-          <div class="svc-desc">Snelheid, structuur en code geoptimaliseerd voor maximale Google ranking.</div>
+          <div class="svc-name" data-i18n="svc.techseo.name">Technische SEO</div>
+          <div class="svc-desc" data-i18n="svc.techseo.desc">Snelheid, structuur en code geoptimaliseerd voor maximale Google ranking.</div>
         </div>
       </div>
     </div>
 
-    <!-- 6. Strategie -->
     <div class="cat-section fade-in">
-      <div class="cat-title">📊 &nbsp;Advies &amp; Strategie</div>
+      <div class="cat-title" data-i18n="cat.strategy">📊 &nbsp;Advies &amp; Strategie</div>
       <div class="service-grid">
         <div class="service-card">
           <div class="svc-icon">🧭</div>
-          <div class="svc-name">Digitale strategie</div>
-          <div class="svc-desc">Een helder plan welke kanalen en tools het meest opleveren voor jouw business.</div>
+          <div class="svc-name" data-i18n="svc.strategy.name">Digitale strategie</div>
+          <div class="svc-desc" data-i18n="svc.strategy.desc">Een helder plan welke kanalen en tools het meest opleveren voor jouw business.</div>
         </div>
         <div class="service-card">
           <div class="svc-icon">🔬</div>
-          <div class="svc-name">Concurrentieanalyse</div>
-          <div class="svc-desc">Wij analyseren wat jouw concurrenten doen en hoe jij ze voorbij gaat.</div>
+          <div class="svc-name" data-i18n="svc.competitor.name">Concurrentieanalyse</div>
+          <div class="svc-desc" data-i18n="svc.competitor.desc">Wij analyseren wat jouw concurrenten doen en hoe jij ze voorbij gaat.</div>
         </div>
         <div class="service-card">
           <div class="svc-icon">📊</div>
-          <div class="svc-name">Analytics &amp; rapportage</div>
-          <div class="svc-desc">Inzicht in wat werkt via duidelijke dashboards en maandelijkse rapporten.</div>
+          <div class="svc-name" data-i18n="svc.analytics.name">Analytics &amp; rapportage</div>
+          <div class="svc-desc" data-i18n="svc.analytics.desc">Inzicht in wat werkt via duidelijke dashboards en maandelijkse rapporten.</div>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ── Werkwijze ─────────────────────────────────────────────────────────────── -->
+<!-- Werkwijze -->
 <section class="section werkwijze" id="werkwijze">
   <div class="container">
     <div class="center fade-in" style="margin-bottom:56px">
-      <div class="badge">✦ Ons proces</div>
-      <h2 class="section-title">Hoe het werkt</h2>
-      <p class="section-sub">Simpel proces, grote resultaten.</p>
+      <div class="badge" data-i18n="werkwijze.badge">✦ Ons proces</div>
+      <h2 class="section-title" data-i18n="werkwijze.title">Hoe het werkt</h2>
+      <p class="section-sub" data-i18n="werkwijze.sub">Simpel proces, grote resultaten.</p>
     </div>
     <div class="steps-wrap">
       <div class="steps-line"></div>
@@ -619,29 +535,29 @@
         <div class="step fade-in">
           <div class="step-num">①</div>
           <div>
-            <div class="step-title">Gratis Audit</div>
-            <div class="step-desc">We analyseren jouw bedrijf, website, beveiliging en marketing volledig gratis.</div>
+            <div class="step-title" data-i18n="step1.title">Gratis Audit</div>
+            <div class="step-desc" data-i18n="step1.desc">We analyseren jouw bedrijf, website, beveiliging en marketing volledig gratis.</div>
           </div>
         </div>
         <div class="step fade-in d1">
           <div class="step-num">②</div>
           <div>
-            <div class="step-title">Strategie op Maat</div>
-            <div class="step-desc">Binnen 48 uur een concreet plan met exacte diensten, tijdlijn en investering.</div>
+            <div class="step-title" data-i18n="step2.title">Strategie op Maat</div>
+            <div class="step-desc" data-i18n="step2.desc">Binnen 48 uur een concreet plan met exacte diensten, tijdlijn en investering.</div>
           </div>
         </div>
         <div class="step fade-in d2">
           <div class="step-num">③</div>
           <div>
-            <div class="step-title">Wij Bouwen &amp; Activeren</div>
-            <div class="step-desc">Ons team voert alles uit — jij volgt mee via jouw eigen klantportaal.</div>
+            <div class="step-title" data-i18n="step3.title">Wij Bouwen &amp; Activeren</div>
+            <div class="step-desc" data-i18n="step3.desc">Ons team voert alles uit — jij volgt mee via jouw eigen klantportaal.</div>
           </div>
         </div>
         <div class="step fade-in d3">
           <div class="step-num">④</div>
           <div>
-            <div class="step-title">Groei &amp; Optimalisatie</div>
-            <div class="step-desc">We monitoren, rapporteren en optimaliseren elke maand voor blijvende resultaten.</div>
+            <div class="step-title" data-i18n="step4.title">Groei &amp; Optimalisatie</div>
+            <div class="step-desc" data-i18n="step4.desc">We monitoren, rapporteren en optimaliseren elke maand voor blijvende resultaten.</div>
           </div>
         </div>
       </div>
@@ -649,110 +565,92 @@
   </div>
 </section>
 
-<!-- ── Waarom Agency AI ──────────────────────────────────────────────────────── -->
+<!-- Waarom -->
 <section class="section" id="waarom">
   <div class="container">
     <div class="waarom-inner">
       <div class="fade-in">
-        <div class="badge">✦ Waarom wij</div>
-        <h2 class="section-title">Waarom Agency AI?</h2>
+        <div class="badge" data-i18n="waarom.badge">✦ Waarom wij</div>
+        <h2 class="section-title" data-i18n="waarom.title">Waarom Agency AI?</h2>
         <ul class="waarom-list">
-          <li><span class="wcheck">✓</span><span>Alles onder één dak — geen 5 verschillende bureaus meer</span></li>
-          <li><span class="wcheck">✓</span><span>AI + menselijke expertise gecombineerd</span></li>
-          <li><span class="wcheck">✓</span><span>Volledig transparant via eigen klantportaal</span></li>
-          <li><span class="wcheck">✓</span><span>Maandelijks opzegbaar — geen lock-in</span></li>
-          <li><span class="wcheck">✓</span><span>Resultaatgericht — we meten alles</span></li>
-          <li><span class="wcheck">✓</span><span>Persoonlijk contact — altijd bereikbaar</span></li>
-          <li><span class="wcheck">✓</span><span>Schaalbaar — groeit mee met jouw bedrijf</span></li>
-          <li><span class="wcheck">✓</span><span>Bewezen aanpak binnen 30 dagen resultaat</span></li>
+          <li><span class="wcheck">✓</span><span data-i18n="waarom.p1">Alles onder één dak — geen 5 verschillende bureaus meer</span></li>
+          <li><span class="wcheck">✓</span><span data-i18n="waarom.p2">AI + menselijke expertise gecombineerd</span></li>
+          <li><span class="wcheck">✓</span><span data-i18n="waarom.p3">Volledig transparant via eigen klantportaal</span></li>
+          <li><span class="wcheck">✓</span><span data-i18n="waarom.p4">Maandelijks opzegbaar — geen lock-in</span></li>
+          <li><span class="wcheck">✓</span><span data-i18n="waarom.p5">Resultaatgericht — we meten alles</span></li>
+          <li><span class="wcheck">✓</span><span data-i18n="waarom.p6">Persoonlijk contact — altijd bereikbaar</span></li>
+          <li><span class="wcheck">✓</span><span data-i18n="waarom.p7">Schaalbaar — groeit mee met jouw bedrijf</span></li>
+          <li><span class="wcheck">✓</span><span data-i18n="waarom.p8">Bewezen aanpak binnen 30 dagen resultaat</span></li>
         </ul>
       </div>
       <div class="fade-in d2">
         <div class="waarom-visual">
-          <div class="w-box" style="background:#eff6ff">
-            <div class="w-box-icon">🌐</div>
-            <div class="w-box-lbl">Web &amp; Design</div>
-          </div>
-          <div class="w-box" style="background:#f5f3ff">
-            <div class="w-box-icon">📣</div>
-            <div class="w-box-lbl">Marketing</div>
-          </div>
-          <div class="w-box" style="background:#eef2ff">
-            <div class="w-box-icon">🤖</div>
-            <div class="w-box-lbl">AI &amp; Auto</div>
-          </div>
-          <div class="w-box" style="background:#fef2f2">
-            <div class="w-box-icon">🔒</div>
-            <div class="w-box-lbl">Security</div>
-          </div>
-          <div class="w-box" style="background:#ecfdf5">
-            <div class="w-box-icon">📈</div>
-            <div class="w-box-lbl">SEO</div>
-          </div>
-          <div class="w-box" style="background:#fffbeb">
-            <div class="w-box-icon">📊</div>
-            <div class="w-box-lbl">Strategie</div>
-          </div>
+          <div class="w-box" style="background:#eff6ff"><div class="w-box-icon">🌐</div><div class="w-box-lbl" data-i18n="wbox.web">Web &amp; Design</div></div>
+          <div class="w-box" style="background:#f5f3ff"><div class="w-box-icon">📣</div><div class="w-box-lbl" data-i18n="wbox.marketing">Marketing</div></div>
+          <div class="w-box" style="background:#eef2ff"><div class="w-box-icon">🤖</div><div class="w-box-lbl" data-i18n="wbox.ai">AI &amp; Auto</div></div>
+          <div class="w-box" style="background:#fef2f2"><div class="w-box-icon">🔒</div><div class="w-box-lbl" data-i18n="wbox.security">Security</div></div>
+          <div class="w-box" style="background:#ecfdf5"><div class="w-box-icon">📈</div><div class="w-box-lbl" data-i18n="wbox.seo">SEO</div></div>
+          <div class="w-box" style="background:#fffbeb"><div class="w-box-icon">📊</div><div class="w-box-lbl" data-i18n="wbox.strategy">Strategie</div></div>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ── Resultaten ────────────────────────────────────────────────────────────── -->
+<!-- Resultaten -->
 <section class="section resultaten" id="resultaten">
   <div class="container">
     <div class="center fade-in" style="margin-bottom:48px">
-      <div class="badge">✦ Resultaten</div>
-      <h2 class="section-title">Wat onze klanten bereiken</h2>
-      <p class="section-sub">Eerste cases komen binnenkort — wij zijn net gestart.</p>
+      <div class="badge" data-i18n="resultaten.badge">✦ Resultaten</div>
+      <h2 class="section-title" data-i18n="resultaten.title">Wat onze klanten bereiken</h2>
+      <p class="section-sub" data-i18n="resultaten.sub">Eerste cases komen binnenkort — wij zijn net gestart.</p>
     </div>
     <div class="results-grid">
       <div class="result-card fade-in">
-        <div class="result-metric">+14 boekingen / maand</div>
+        <div class="result-metric" data-i18n="r1.metric">+14 boekingen / maand</div>
         <div class="result-company">Beauty salon Amsterdam</div>
         <div class="result-service">Meta ads + AI content</div>
         <div class="result-stars">★★★★★</div>
-        <div class="result-quote">"Binnen 3 weken merkbaar verschil"</div>
+        <div class="result-quote" data-i18n="r1.quote">"Binnen 3 weken merkbaar verschil"</div>
       </div>
       <div class="result-card fade-in d1">
-        <div class="result-metric">Reserveringen ×2</div>
+        <div class="result-metric" data-i18n="r2.metric">Reserveringen ×2</div>
         <div class="result-company">Restaurant Rotterdam</div>
         <div class="result-service">Website + Google SEO + Ads</div>
         <div class="result-stars">★★★★★</div>
-        <div class="result-quote">"Eindelijk gevonden op Google"</div>
+        <div class="result-quote" data-i18n="r2.quote">"Eindelijk gevonden op Google"</div>
       </div>
       <div class="result-card fade-in d2">
-        <div class="result-metric">Volledig volgeboekt</div>
+        <div class="result-metric" data-i18n="r3.metric">Volledig volgeboekt</div>
         <div class="result-company">Personal trainer Utrecht</div>
-        <div class="result-service">AI leadgeneratie + chatbot</div>
+        <div class="result-service" data-i18n="r3.service">AI leadgeneratie + chatbot</div>
         <div class="result-stars">★★★★★</div>
-        <div class="result-quote">"Geen tijd meer verloren aan acquisitie"</div>
+        <div class="result-quote" data-i18n="r3.quote">"Geen tijd meer verloren aan acquisitie"</div>
       </div>
     </div>
-    <p class="result-note">* Voorbeeldresultaten — eigen cases worden binnenkort toegevoegd</p>
+    <p class="result-note" data-i18n="resultaten.note">* Voorbeeldresultaten — eigen cases worden binnenkort toegevoegd</p>
   </div>
 </section>
 
-<!-- ── Contact ───────────────────────────────────────────────────────────────── -->
+<!-- Contact -->
 <section class="section" style="background:var(--surface)" id="contact">
   <div class="container">
     <div class="center fade-in" style="margin-bottom:40px">
-      <div class="badge">✦ Neem contact op</div>
-      <h2 class="section-title">Klaar om te groeien?</h2>
-      <p class="section-sub">Vraag een gratis audit aan. Geen verplichtingen, wel eerlijk advies.</p>
+      <div class="badge" data-i18n="contact.badge">✦ Neem contact op</div>
+      <h2 class="section-title" data-i18n="contact.title">Klaar om te groeien?</h2>
+      <p class="section-sub" data-i18n="contact.sub">Vraag een gratis audit aan. Geen verplichtingen, wel eerlijk advies.</p>
     </div>
     <div class="contact-wrap fade-in d1">
       <div class="form-error" id="formError"></div>
       <form id="contactForm" onsubmit="submitContact(event)">
         <div class="form-row">
           <div class="form-group">
-            <label for="cName">Naam <span style="color:#ef4444">*</span></label>
-            <input type="text" id="cName" placeholder="Jouw naam" required>
+            <label for="cName"><span data-i18n="form.name">Naam</span> <span style="color:#ef4444">*</span></label>
+            <input type="text" id="cName" data-i18n-ph="form.namePh" placeholder="Jouw naam" required>
           </div>
           <div class="form-group">
-            <label for="cCompany">Bedrijfsnaam</label>
-            <input type="text" id="cCompany" placeholder="Jouw bedrijf">
+            <label for="cCompany" data-i18n="form.company">Bedrijfsnaam</label>
+            <input type="text" id="cCompany" data-i18n-ph="form.companyPh" placeholder="Jouw bedrijf">
           </div>
         </div>
         <div class="form-row">
@@ -761,128 +659,469 @@
             <input type="email" id="cEmail" placeholder="email@bedrijf.nl" required>
           </div>
           <div class="form-group">
-            <label for="cPhone">Telefoonnummer</label>
-            <input type="tel" id="cPhone" placeholder="+31 6 00 00 00 00">
+            <label for="cPhone" data-i18n="form.phone">Telefoonnummer</label>
+            <input type="tel" id="cPhone" data-i18n-ph="form.phonePh" placeholder="+31 6 00 00 00 00">
           </div>
         </div>
         <div class="form-group">
-          <label for="cService">Waar ben je naar op zoek?</label>
+          <label for="cService" data-i18n="form.service">Waar ben je naar op zoek?</label>
           <select id="cService">
-            <option value="">Kies een optie...</option>
-            <option>Website / Webshop</option>
-            <option>Marketing &amp; Advertenties</option>
-            <option>AI &amp; Automatisering</option>
-            <option>Beveiliging</option>
-            <option>SEO &amp; Vindbaarheid</option>
-            <option>Meerdere diensten / Weet ik nog niet</option>
+            <option value="" data-i18n="form.svc0">Kies een optie...</option>
+            <option data-i18n="form.svc1">Website / Webshop</option>
+            <option data-i18n="form.svc2">Marketing &amp; Advertenties</option>
+            <option data-i18n="form.svc3">AI &amp; Automatisering</option>
+            <option data-i18n="form.svc4">Beveiliging</option>
+            <option data-i18n="form.svc5">SEO &amp; Vindbaarheid</option>
+            <option data-i18n="form.svc6">Meerdere diensten / Weet ik nog niet</option>
           </select>
         </div>
         <div class="form-group">
-          <label for="cMsg">Vertel ons meer</label>
-          <textarea id="cMsg" placeholder="Vertel kort over jouw bedrijf en wat je wilt bereiken..."></textarea>
+          <label for="cMsg" data-i18n="form.message">Vertel ons meer</label>
+          <textarea id="cMsg" data-i18n-ph="form.messagePh" placeholder="Vertel kort over jouw bedrijf en wat je wilt bereiken..."></textarea>
         </div>
-        <button type="submit" class="form-submit" id="formSubmit">Stuur aanvraag</button>
+        <button type="submit" class="form-submit" id="formSubmit" data-i18n="form.submit">Stuur aanvraag</button>
       </form>
       <div class="form-success" id="formSuccess">
         <div class="form-success-icon">🎉</div>
-        <div class="form-success-title">Bedankt!</div>
-        <div class="form-success-sub">We bellen je binnen 24 uur terug.<br>Check ook je inbox voor een bevestiging.</div>
+        <div class="form-success-title" data-i18n="success.title">Bedankt!</div>
+        <div class="form-success-sub" data-i18n="success.sub">We bellen je binnen 24 uur terug.<br>Check ook je inbox voor een bevestiging.</div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ── Footer ────────────────────────────────────────────────────────────────── -->
+<!-- Footer -->
 <footer>
   <div class="footer-inner">
     <div class="footer-top">
       <div>
-        <div class="footer-logo">
-          <div class="footer-logo-icon">⚡</div>
-          <span>Agency AI</span>
-        </div>
-        <div class="footer-tagline">Jouw volledige digitale partner</div>
+        <div class="footer-logo"><div class="footer-logo-icon">⚡</div><span>Agency AI</span></div>
+        <div class="footer-tagline" data-i18n="footer.tagline">Jouw volledige digitale partner</div>
       </div>
       <div class="footer-links">
-        <a href="#diensten">Diensten</a>
-        <a href="#werkwijze">Werkwijze</a>
-        <a href="#resultaten">Resultaten</a>
-        <a href="#contact">Contact</a>
+        <a href="#diensten" data-i18n="nav.services">Diensten</a>
+        <a href="#werkwijze" data-i18n="nav.process">Werkwijze</a>
+        <a href="#resultaten" data-i18n="nav.results">Resultaten</a>
+        <a href="#contact" data-i18n="nav.contact">Contact</a>
       </div>
       <div class="footer-right">
-        <a href="/login" class="footer-signin">Sign in →</a>
+        <a href="/login" class="footer-signin" data-i18n="nav.signinArrow">Sign in →</a>
       </div>
     </div>
-    <div class="footer-bottom">
-      &copy; 2026 Agency AI &mdash; Alle rechten voorbehouden
-    </div>
+    <div class="footer-bottom" data-i18n="footer.copy">&copy; 2026 Agency AI &mdash; Alle rechten voorbehouden</div>
   </div>
 </footer>
 
 <script>
-  // Nav scroll
-  window.addEventListener('scroll', () => {
-    document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 50);
-  }, { passive: true });
-
-  // Mobile menu
-  function toggleMobile() {
-    const menu = document.getElementById('navMobile');
-    const open = menu.classList.toggle('open');
-    document.getElementById('navBurger').textContent = open ? '✕' : '☰';
+const TRANSLATIONS = {
+  nl: {
+    'nav.services':'Diensten','nav.process':'Werkwijze','nav.results':'Resultaten','nav.contact':'Contact','nav.signin':'Sign in','nav.signinArrow':'Sign in →',
+    'hero.badge':'✦ Jouw volledige digitale partner','hero.line1':'Wij bouwen.','hero.line2':'Wij groeien.','hero.line3':'Wij beschermen.',
+    'hero.sub':'Van website tot beveiliging, van advertenties tot volledige AI-automatisering — Agency AI is jouw one-stop partner voor alles wat digitaal is.',
+    'hero.cta1':'Gratis audit aanvragen','hero.cta2':'Bekijk alles wat we doen ↓',
+    'hero.trust1':'Alles onder één dak','hero.trust2':'Resultaat binnen 30 dagen','hero.trust3':'Geen verborgen kosten',
+    'stats.services':'Diensten','stats.available':'Bereikbaar','stats.days':'dagen','stats.firstResult':'Eerste resultaat','stats.transparent':'Transparant',
+    'services.badge':'✦ Onze diensten','services.title':'Alles wat jouw bedrijf nodig heeft','services.sub':'Één partner voor elk digitaal vraagstuk.',
+    'cat.web':'🌐  Web & Design','cat.marketing':'📣  Marketing & Advertenties','cat.ai':'🤖  AI & Automatisering',
+    'cat.security':'🔒  Security & Beveiliging','cat.seo':'📈  SEO & Vindbaarheid','cat.strategy':'📊  Advies & Strategie',
+    'svc.website.name':'Website laten bouwen','svc.website.desc':'Snelle, moderne websites die bezoekers omzetten in klanten.',
+    'svc.webshop.name':'Webshop bouwen','svc.webshop.desc':'Professionele webshops met volledige betaalintegratie en voorraadbeheer.',
+    'svc.landing.name':'Landing page ontwerp','svc.landing.desc':'Conversiegerichte pagina\'s voor campagnes en advertenties.',
+    'svc.meta.name':'Meta advertenties (Facebook & Instagram)','svc.meta.desc':'AI-gestuurde campagnes die meer opleveren voor minder budget.',
+    'svc.google.name':'Google Ads','svc.google.desc':'Bovenaan in Google verschijnen precies wanneer klanten zoeken.',
+    'svc.email.name':'Email marketing','svc.email.desc':'Geautomatiseerde email campagnes die leads omzetten in betalende klanten.',
+    'svc.social.name':'Content & Social media','svc.social.desc':'Dagelijkse posts, Reels en Stories — afgestemd op jouw merk en doelgroep.',
+    'svc.leadgen.name':'AI Leadgeneratie systeem','svc.leadgen.desc':'Volledig automatisch nieuwe klanten vinden en benaderen — 24/7.',
+    'svc.chatbot.name':'AI Chatbot voor website','svc.chatbot.desc':'Beantwoordt vragen, vangt leads en plant afspraken in — zonder menselijke tussenkomst.',
+    'svc.workflow.name':'Workflow automatisering','svc.workflow.desc':'Herhaalbare taken automatiseren zodat jij je focust op wat echt telt.',
+    'svc.aicontent.name':'AI content creatie','svc.aicontent.desc':'Teksten, afbeeldingen en video\'s gegenereerd door AI op schaal.',
+    'svc.websec.name':'Website beveiliging','svc.websec.desc':'SSL, firewalls, malware scanning en continue monitoring van jouw website.',
+    'svc.gdpr.name':'GDPR & privacybeheer','svc.gdpr.desc':'Volledig compliant met Europese wetgeving — cookies, privacy policy en meer.',
+    'svc.backup.name':'Backup & herstel','svc.backup.desc':'Automatische dagelijkse backups en snel herstel bij problemen.',
+    'svc.localseo.name':'Lokale SEO','svc.localseo.desc':'Gevonden worden in Google door klanten in jouw stad of regio.',
+    'svc.gmb.name':'Google Bedrijfsprofiel','svc.gmb.desc':'Optimalisatie van je Google Maps aanwezigheid en reviews.',
+    'svc.techseo.name':'Technische SEO','svc.techseo.desc':'Snelheid, structuur en code geoptimaliseerd voor maximale Google ranking.',
+    'svc.strategy.name':'Digitale strategie','svc.strategy.desc':'Een helder plan welke kanalen en tools het meest opleveren voor jouw business.',
+    'svc.competitor.name':'Concurrentieanalyse','svc.competitor.desc':'Wij analyseren wat jouw concurrenten doen en hoe jij ze voorbij gaat.',
+    'svc.analytics.name':'Analytics & rapportage','svc.analytics.desc':'Inzicht in wat werkt via duidelijke dashboards en maandelijkse rapporten.',
+    'werkwijze.badge':'✦ Ons proces','werkwijze.title':'Hoe het werkt','werkwijze.sub':'Simpel proces, grote resultaten.',
+    'step1.title':'Gratis Audit','step1.desc':'We analyseren jouw bedrijf, website, beveiliging en marketing volledig gratis.',
+    'step2.title':'Strategie op Maat','step2.desc':'Binnen 48 uur een concreet plan met exacte diensten, tijdlijn en investering.',
+    'step3.title':'Wij Bouwen & Activeren','step3.desc':'Ons team voert alles uit — jij volgt mee via jouw eigen klantportaal.',
+    'step4.title':'Groei & Optimalisatie','step4.desc':'We monitoren, rapporteren en optimaliseren elke maand voor blijvende resultaten.',
+    'waarom.badge':'✦ Waarom wij','waarom.title':'Waarom Agency AI?',
+    'waarom.p1':'Alles onder één dak — geen 5 verschillende bureaus meer','waarom.p2':'AI + menselijke expertise gecombineerd',
+    'waarom.p3':'Volledig transparant via eigen klantportaal','waarom.p4':'Maandelijks opzegbaar — geen lock-in',
+    'waarom.p5':'Resultaatgericht — we meten alles','waarom.p6':'Persoonlijk contact — altijd bereikbaar',
+    'waarom.p7':'Schaalbaar — groeit mee met jouw bedrijf','waarom.p8':'Bewezen aanpak binnen 30 dagen resultaat',
+    'wbox.web':'Web & Design','wbox.marketing':'Marketing','wbox.ai':'AI & Auto','wbox.security':'Security','wbox.seo':'SEO','wbox.strategy':'Strategie',
+    'resultaten.badge':'✦ Resultaten','resultaten.title':'Wat onze klanten bereiken','resultaten.sub':'Eerste cases komen binnenkort — wij zijn net gestart.',
+    'r1.metric':'+14 boekingen / maand','r1.quote':'"Binnen 3 weken merkbaar verschil"',
+    'r2.metric':'Reserveringen ×2','r2.quote':'"Eindelijk gevonden op Google"',
+    'r3.metric':'Volledig volgeboekt','r3.service':'AI leadgeneratie + chatbot','r3.quote':'"Geen tijd meer verloren aan acquisitie"',
+    'resultaten.note':'* Voorbeeldresultaten — eigen cases worden binnenkort toegevoegd',
+    'contact.badge':'✦ Neem contact op','contact.title':'Klaar om te groeien?','contact.sub':'Vraag een gratis audit aan. Geen verplichtingen, wel eerlijk advies.',
+    'form.name':'Naam','form.namePh':'Jouw naam','form.company':'Bedrijfsnaam','form.companyPh':'Jouw bedrijf',
+    'form.phone':'Telefoonnummer','form.phonePh':'+31 6 00 00 00 00',
+    'form.service':'Waar ben je naar op zoek?','form.svc0':'Kies een optie...','form.svc1':'Website / Webshop',
+    'form.svc2':'Marketing & Advertenties','form.svc3':'AI & Automatisering','form.svc4':'Beveiliging',
+    'form.svc5':'SEO & Vindbaarheid','form.svc6':'Meerdere diensten / Weet ik nog niet',
+    'form.message':'Vertel ons meer','form.messagePh':'Vertel kort over jouw bedrijf en wat je wilt bereiken...',
+    'form.submit':'Stuur aanvraag','form.sending':'Versturen...',
+    'success.title':'Bedankt!','success.sub':'We bellen je binnen 24 uur terug.<br>Check ook je inbox voor een bevestiging.',
+    'footer.tagline':'Jouw volledige digitale partner','footer.copy':'© 2026 Agency AI — Alle rechten voorbehouden'
+  },
+  en: {
+    'nav.services':'Services','nav.process':'Process','nav.results':'Results','nav.contact':'Contact','nav.signin':'Sign in','nav.signinArrow':'Sign in →',
+    'hero.badge':'✦ Your complete digital partner','hero.line1':'We build.','hero.line2':'We grow.','hero.line3':'We protect.',
+    'hero.sub':'From website to security, from advertising to full AI automation — Agency AI is your one-stop partner for everything digital.',
+    'hero.cta1':'Request free audit','hero.cta2':'See everything we do ↓',
+    'hero.trust1':'All under one roof','hero.trust2':'Results within 30 days','hero.trust3':'No hidden costs',
+    'stats.services':'Services','stats.available':'Available','stats.days':'days','stats.firstResult':'First result','stats.transparent':'Transparent',
+    'services.badge':'✦ Our services','services.title':'Everything your business needs','services.sub':'One partner for every digital challenge.',
+    'cat.web':'🌐  Web & Design','cat.marketing':'📣  Marketing & Advertising','cat.ai':'🤖  AI & Automation',
+    'cat.security':'🔒  Security & Protection','cat.seo':'📈  SEO & Visibility','cat.strategy':'📊  Advice & Strategy',
+    'svc.website.name':'Website development','svc.website.desc':'Fast, modern websites that convert visitors into clients.',
+    'svc.webshop.name':'Online shop development','svc.webshop.desc':'Professional online shops with full payment integration and inventory management.',
+    'svc.landing.name':'Landing page design','svc.landing.desc':'Conversion-focused pages for campaigns and advertising.',
+    'svc.meta.name':'Meta ads (Facebook & Instagram)','svc.meta.desc':'AI-driven campaigns that deliver more results for less budget.',
+    'svc.google.name':'Google Ads','svc.google.desc':'Appear at the top of Google exactly when clients are searching.',
+    'svc.email.name':'Email marketing','svc.email.desc':'Automated email campaigns that convert leads into paying clients.',
+    'svc.social.name':'Content & Social media','svc.social.desc':'Daily posts, Reels and Stories — tailored to your brand and audience.',
+    'svc.leadgen.name':'AI Lead generation system','svc.leadgen.desc':'Fully automatic new client acquisition and outreach — 24/7.',
+    'svc.chatbot.name':'AI Chatbot for website','svc.chatbot.desc':'Answers questions, captures leads and books appointments — without human intervention.',
+    'svc.workflow.name':'Workflow automation','svc.workflow.desc':'Automate repetitive tasks so you can focus on what truly matters.',
+    'svc.aicontent.name':'AI content creation','svc.aicontent.desc':'Texts, images and videos generated by AI at scale.',
+    'svc.websec.name':'Website security','svc.websec.desc':'SSL, firewalls, malware scanning and continuous monitoring of your website.',
+    'svc.gdpr.name':'GDPR & privacy management','svc.gdpr.desc':'Fully compliant with European legislation — cookies, privacy policy and more.',
+    'svc.backup.name':'Backup & recovery','svc.backup.desc':'Automatic daily backups and fast recovery when problems occur.',
+    'svc.localseo.name':'Local SEO','svc.localseo.desc':'Be found on Google by clients in your city or region.',
+    'svc.gmb.name':'Google Business Profile','svc.gmb.desc':'Optimisation of your Google Maps presence and reviews.',
+    'svc.techseo.name':'Technical SEO','svc.techseo.desc':'Speed, structure and code optimised for maximum Google ranking.',
+    'svc.strategy.name':'Digital strategy','svc.strategy.desc':'A clear plan for which channels and tools deliver the most for your business.',
+    'svc.competitor.name':'Competitor analysis','svc.competitor.desc':'We analyse what your competitors do and how you can surpass them.',
+    'svc.analytics.name':'Analytics & reporting','svc.analytics.desc':'Insight into what works via clear dashboards and monthly reports.',
+    'werkwijze.badge':'✦ Our process','werkwijze.title':'How it works','werkwijze.sub':'Simple process, big results.',
+    'step1.title':'Free Audit','step1.desc':'We analyse your business, website, security and marketing completely free.',
+    'step2.title':'Custom Strategy','step2.desc':'Within 48 hours a concrete plan with exact services, timeline and investment.',
+    'step3.title':'We Build & Activate','step3.desc':'Our team executes everything — you follow along via your own client portal.',
+    'step4.title':'Growth & Optimisation','step4.desc':'We monitor, report and optimise every month for lasting results.',
+    'waarom.badge':'✦ Why us','waarom.title':'Why Agency AI?',
+    'waarom.p1':'All under one roof — no more 5 different agencies','waarom.p2':'AI + human expertise combined',
+    'waarom.p3':'Fully transparent via your own client portal','waarom.p4':'Monthly cancellation — no lock-in',
+    'waarom.p5':'Results-focused — we measure everything','waarom.p6':'Personal contact — always reachable',
+    'waarom.p7':'Scalable — grows with your business','waarom.p8':'Proven approach with results in 30 days',
+    'wbox.web':'Web & Design','wbox.marketing':'Marketing','wbox.ai':'AI & Auto','wbox.security':'Security','wbox.seo':'SEO','wbox.strategy':'Strategy',
+    'resultaten.badge':'✦ Results','resultaten.title':'What our clients achieve','resultaten.sub':'First cases coming soon — we just launched.',
+    'r1.metric':'+14 bookings / month','r1.quote':'"Noticeable difference within 3 weeks"',
+    'r2.metric':'Reservations ×2','r2.quote':'"Finally found on Google"',
+    'r3.metric':'Fully booked','r3.service':'AI lead generation + chatbot','r3.quote':'"No more time lost on acquisition"',
+    'resultaten.note':'* Example results — own cases will be added soon',
+    'contact.badge':'✦ Get in touch','contact.title':'Ready to grow?','contact.sub':'Request a free audit. No obligations, just honest advice.',
+    'form.name':'Name','form.namePh':'Your name','form.company':'Company name','form.companyPh':'Your company',
+    'form.phone':'Phone number','form.phonePh':'+44 7000 000000',
+    'form.service':'What are you looking for?','form.svc0':'Choose an option...','form.svc1':'Website / Online shop',
+    'form.svc2':'Marketing & Advertising','form.svc3':'AI & Automation','form.svc4':'Security',
+    'form.svc5':'SEO & Visibility','form.svc6':'Multiple services / Not sure yet',
+    'form.message':'Tell us more','form.messagePh':'Tell us briefly about your business and what you want to achieve...',
+    'form.submit':'Send request','form.sending':'Sending...',
+    'success.title':'Thank you!','success.sub':'We\'ll call you back within 24 hours.<br>Also check your inbox for a confirmation.',
+    'footer.tagline':'Your complete digital partner','footer.copy':'© 2026 Agency AI — All rights reserved'
+  },
+  de: {
+    'nav.services':'Leistungen','nav.process':'Prozess','nav.results':'Ergebnisse','nav.contact':'Kontakt','nav.signin':'Anmelden','nav.signinArrow':'Anmelden →',
+    'hero.badge':'✦ Ihr vollständiger digitaler Partner','hero.line1':'Wir bauen.','hero.line2':'Wir wachsen.','hero.line3':'Wir schützen.',
+    'hero.sub':'Von der Website bis zur Sicherheit, von der Werbung bis zur KI-Automatisierung — Agency AI ist Ihr One-Stop-Partner für alles Digitale.',
+    'hero.cta1':'Kostenlose Prüfung anfragen','hero.cta2':'Alles entdecken ↓',
+    'hero.trust1':'Alles unter einem Dach','hero.trust2':'Ergebnisse in 30 Tagen','hero.trust3':'Keine versteckten Kosten',
+    'stats.services':'Leistungen','stats.available':'Erreichbar','stats.days':'Tage','stats.firstResult':'Erstes Ergebnis','stats.transparent':'Transparent',
+    'services.badge':'✦ Unsere Leistungen','services.title':'Alles, was Ihr Unternehmen braucht','services.sub':'Ein Partner für jede digitale Herausforderung.',
+    'cat.web':'🌐  Web & Design','cat.marketing':'📣  Marketing & Werbung','cat.ai':'🤖  KI & Automatisierung',
+    'cat.security':'🔒  Sicherheit & Schutz','cat.seo':'📈  SEO & Sichtbarkeit','cat.strategy':'📊  Beratung & Strategie',
+    'svc.website.name':'Website-Entwicklung','svc.website.desc':'Schnelle, moderne Websites, die Besucher in Kunden verwandeln.',
+    'svc.webshop.name':'Online-Shop-Entwicklung','svc.webshop.desc':'Professionelle Online-Shops mit vollständiger Zahlungsintegration und Lagerverwaltung.',
+    'svc.landing.name':'Landing-Page-Design','svc.landing.desc':'Konversionsorientierte Seiten für Kampagnen und Werbung.',
+    'svc.meta.name':'Meta-Anzeigen (Facebook & Instagram)','svc.meta.desc':'KI-gesteuerte Kampagnen, die mehr Ergebnisse für weniger Budget liefern.',
+    'svc.google.name':'Google Ads','svc.google.desc':'Ganz oben in Google erscheinen, genau wenn Kunden suchen.',
+    'svc.email.name':'E-Mail-Marketing','svc.email.desc':'Automatisierte E-Mail-Kampagnen, die Leads in zahlende Kunden umwandeln.',
+    'svc.social.name':'Content & Social Media','svc.social.desc':'Tägliche Posts, Reels und Stories — abgestimmt auf Ihre Marke und Zielgruppe.',
+    'svc.leadgen.name':'KI-Leadgenerierungssystem','svc.leadgen.desc':'Vollautomatische Neukundengewinnung und Ansprache — 24/7.',
+    'svc.chatbot.name':'KI-Chatbot für Website','svc.chatbot.desc':'Beantwortet Fragen, erfasst Leads und plant Termine — ohne menschliches Eingreifen.',
+    'svc.workflow.name':'Workflow-Automatisierung','svc.workflow.desc':'Sich wiederholende Aufgaben automatisieren, damit Sie sich auf das Wesentliche konzentrieren.',
+    'svc.aicontent.name':'KI-Content-Erstellung','svc.aicontent.desc':'Texte, Bilder und Videos in großem Maßstab durch KI generiert.',
+    'svc.websec.name':'Website-Sicherheit','svc.websec.desc':'SSL, Firewalls, Malware-Scanning und kontinuierliche Überwachung Ihrer Website.',
+    'svc.gdpr.name':'DSGVO & Datenschutz','svc.gdpr.desc':'Vollständig konform mit europäischer Gesetzgebung — Cookies, Datenschutzrichtlinie und mehr.',
+    'svc.backup.name':'Backup & Wiederherstellung','svc.backup.desc':'Automatische tägliche Backups und schnelle Wiederherstellung bei Problemen.',
+    'svc.localseo.name':'Lokales SEO','svc.localseo.desc':'Von Kunden in Ihrer Stadt oder Region bei Google gefunden werden.',
+    'svc.gmb.name':'Google Unternehmensprofil','svc.gmb.desc':'Optimierung Ihrer Google Maps-Präsenz und Bewertungen.',
+    'svc.techseo.name':'Technisches SEO','svc.techseo.desc':'Geschwindigkeit, Struktur und Code optimiert für maximales Google-Ranking.',
+    'svc.strategy.name':'Digitale Strategie','svc.strategy.desc':'Ein klarer Plan, welche Kanäle und Tools für Ihr Unternehmen am meisten bringen.',
+    'svc.competitor.name':'Wettbewerbsanalyse','svc.competitor.desc':'Wir analysieren, was Ihre Konkurrenten tun und wie Sie sie überholen.',
+    'svc.analytics.name':'Analytics & Reporting','svc.analytics.desc':'Einblick in das, was funktioniert, durch klare Dashboards und monatliche Berichte.',
+    'werkwijze.badge':'✦ Unser Prozess','werkwijze.title':'Wie es funktioniert','werkwijze.sub':'Einfacher Prozess, große Ergebnisse.',
+    'step1.title':'Kostenlose Prüfung','step1.desc':'Wir analysieren Ihr Unternehmen, Ihre Website, Sicherheit und Marketing vollständig kostenlos.',
+    'step2.title':'Maßgeschneiderte Strategie','step2.desc':'Innerhalb von 48 Stunden ein konkreter Plan mit genauen Leistungen, Zeitplan und Investition.',
+    'step3.title':'Wir Bauen & Aktivieren','step3.desc':'Unser Team führt alles aus — Sie verfolgen es über Ihr eigenes Kundenportal.',
+    'step4.title':'Wachstum & Optimierung','step4.desc':'Wir überwachen, berichten und optimieren jeden Monat für dauerhafte Ergebnisse.',
+    'waarom.badge':'✦ Warum wir','waarom.title':'Warum Agency AI?',
+    'waarom.p1':'Alles unter einem Dach — keine 5 verschiedenen Agenturen mehr','waarom.p2':'KI + menschliche Expertise kombiniert',
+    'waarom.p3':'Vollständig transparent über Ihr eigenes Kundenportal','waarom.p4':'Monatlich kündbar — kein Lock-in',
+    'waarom.p5':'Ergebnisorientiert — wir messen alles','waarom.p6':'Persönlicher Kontakt — immer erreichbar',
+    'waarom.p7':'Skalierbar — wächst mit Ihrem Unternehmen','waarom.p8':'Bewährter Ansatz mit Ergebnissen in 30 Tagen',
+    'wbox.web':'Web & Design','wbox.marketing':'Marketing','wbox.ai':'KI & Auto','wbox.security':'Sicherheit','wbox.seo':'SEO','wbox.strategy':'Strategie',
+    'resultaten.badge':'✦ Ergebnisse','resultaten.title':'Was unsere Kunden erreichen','resultaten.sub':'Erste Fälle kommen bald — wir haben gerade begonnen.',
+    'r1.metric':'+14 Buchungen / Monat','r1.quote':'"Merklicher Unterschied innerhalb von 3 Wochen"',
+    'r2.metric':'Reservierungen ×2','r2.quote':'"Endlich bei Google gefunden"',
+    'r3.metric':'Vollständig ausgebucht','r3.service':'KI-Leadgenerierung + Chatbot','r3.quote':'"Keine Zeit mehr für die Akquise verloren"',
+    'resultaten.note':'* Beispielergebnisse — eigene Fälle werden bald hinzugefügt',
+    'contact.badge':'✦ Kontakt aufnehmen','contact.title':'Bereit zu wachsen?','contact.sub':'Fordern Sie eine kostenlose Prüfung an. Keine Verpflichtungen, nur ehrliche Beratung.',
+    'form.name':'Name','form.namePh':'Ihr Name','form.company':'Firmenname','form.companyPh':'Ihr Unternehmen',
+    'form.phone':'Telefonnummer','form.phonePh':'+49 1500 000000',
+    'form.service':'Wonach suchen Sie?','form.svc0':'Option auswählen...','form.svc1':'Website / Online-Shop',
+    'form.svc2':'Marketing & Werbung','form.svc3':'KI & Automatisierung','form.svc4':'Sicherheit',
+    'form.svc5':'SEO & Sichtbarkeit','form.svc6':'Mehrere Leistungen / Noch nicht sicher',
+    'form.message':'Erzählen Sie uns mehr','form.messagePh':'Erzählen Sie kurz von Ihrem Unternehmen und was Sie erreichen möchten...',
+    'form.submit':'Anfrage senden','form.sending':'Senden...',
+    'success.title':'Danke!','success.sub':'Wir rufen Sie innerhalb von 24 Stunden zurück.<br>Prüfen Sie auch Ihren Posteingang.',
+    'footer.tagline':'Ihr vollständiger digitaler Partner','footer.copy':'© 2026 Agency AI — Alle Rechte vorbehalten'
+  },
+  fr: {
+    'nav.services':'Services','nav.process':'Processus','nav.results':'Résultats','nav.contact':'Contact','nav.signin':'Connexion','nav.signinArrow':'Connexion →',
+    'hero.badge':'✦ Votre partenaire digital complet','hero.line1':'Nous construisons.','hero.line2':'Nous grandissons.','hero.line3':'Nous protégeons.',
+    'hero.sub':'Du site web à la sécurité, de la publicité à l\'automatisation IA complète — Agency AI est votre partenaire tout-en-un pour tout ce qui est digital.',
+    'hero.cta1':'Demander un audit gratuit','hero.cta2':'Découvrir tout ce que nous faisons ↓',
+    'hero.trust1':'Tout sous un même toit','hero.trust2':'Résultats en 30 jours','hero.trust3':'Sans frais cachés',
+    'stats.services':'Services','stats.available':'Disponible','stats.days':'jours','stats.firstResult':'Premier résultat','stats.transparent':'Transparent',
+    'services.badge':'✦ Nos services','services.title':'Tout ce dont votre entreprise a besoin','services.sub':'Un partenaire pour chaque défi numérique.',
+    'cat.web':'🌐  Web & Design','cat.marketing':'📣  Marketing & Publicité','cat.ai':'🤖  IA & Automatisation',
+    'cat.security':'🔒  Sécurité & Protection','cat.seo':'📈  SEO & Visibilité','cat.strategy':'📊  Conseil & Stratégie',
+    'svc.website.name':'Création de site web','svc.website.desc':'Sites web rapides et modernes qui convertissent les visiteurs en clients.',
+    'svc.webshop.name':'Création de boutique en ligne','svc.webshop.desc':'Boutiques en ligne professionnelles avec intégration de paiement complète et gestion des stocks.',
+    'svc.landing.name':'Conception de landing page','svc.landing.desc':'Pages orientées conversion pour les campagnes et la publicité.',
+    'svc.meta.name':'Publicités Meta (Facebook & Instagram)','svc.meta.desc':'Campagnes pilotées par IA qui rapportent plus pour moins de budget.',
+    'svc.google.name':'Google Ads','svc.google.desc':'Apparaître en tête de Google exactement quand les clients cherchent.',
+    'svc.email.name':'Email marketing','svc.email.desc':'Campagnes email automatisées qui convertissent les prospects en clients payants.',
+    'svc.social.name':'Contenu & Réseaux sociaux','svc.social.desc':'Posts, Reels et Stories quotidiens — adaptés à votre marque et votre audience.',
+    'svc.leadgen.name':'Système de génération de leads IA','svc.leadgen.desc':'Acquisition et prospection automatiques de nouveaux clients — 24h/24.',
+    'svc.chatbot.name':'Chatbot IA pour site web','svc.chatbot.desc':'Répond aux questions, capture des leads et planifie des rendez-vous — sans intervention humaine.',
+    'svc.workflow.name':'Automatisation des workflows','svc.workflow.desc':'Automatiser les tâches répétitives pour vous concentrer sur l\'essentiel.',
+    'svc.aicontent.name':'Création de contenu IA','svc.aicontent.desc':'Textes, images et vidéos générés par IA à grande échelle.',
+    'svc.websec.name':'Sécurité web','svc.websec.desc':'SSL, pare-feux, analyse des malwares et surveillance continue de votre site.',
+    'svc.gdpr.name':'RGPD & gestion de la confidentialité','svc.gdpr.desc':'Entièrement conforme à la législation européenne — cookies, politique de confidentialité et plus.',
+    'svc.backup.name':'Sauvegarde & restauration','svc.backup.desc':'Sauvegardes quotidiennes automatiques et restauration rapide en cas de problème.',
+    'svc.localseo.name':'SEO local','svc.localseo.desc':'Être trouvé sur Google par des clients dans votre ville ou région.',
+    'svc.gmb.name':'Profil Google Business','svc.gmb.desc':'Optimisation de votre présence Google Maps et de vos avis.',
+    'svc.techseo.name':'SEO technique','svc.techseo.desc':'Vitesse, structure et code optimisés pour un classement Google maximal.',
+    'svc.strategy.name':'Stratégie digitale','svc.strategy.desc':'Un plan clair sur les canaux et outils qui apportent le plus à votre entreprise.',
+    'svc.competitor.name':'Analyse concurrentielle','svc.competitor.desc':'Nous analysons ce que font vos concurrents et comment vous pouvez les dépasser.',
+    'svc.analytics.name':'Analytics & rapports','svc.analytics.desc':'Aperçu de ce qui fonctionne grâce à des tableaux de bord clairs et des rapports mensuels.',
+    'werkwijze.badge':'✦ Notre processus','werkwijze.title':'Comment ça marche','werkwijze.sub':'Processus simple, grands résultats.',
+    'step1.title':'Audit Gratuit','step1.desc':'Nous analysons votre entreprise, site web, sécurité et marketing entièrement gratuitement.',
+    'step2.title':'Stratégie sur Mesure','step2.desc':'Dans les 48 heures un plan concret avec les services exacts, le calendrier et l\'investissement.',
+    'step3.title':'Nous Construisons & Activons','step3.desc':'Notre équipe exécute tout — vous suivez via votre propre portail client.',
+    'step4.title':'Croissance & Optimisation','step4.desc':'Nous surveillons, rapportons et optimisons chaque mois pour des résultats durables.',
+    'waarom.badge':'✦ Pourquoi nous','waarom.title':'Pourquoi Agency AI ?',
+    'waarom.p1':'Tout sous un même toit — plus besoin de 5 agences différentes','waarom.p2':'IA + expertise humaine combinée',
+    'waarom.p3':'Entièrement transparent via votre propre portail client','waarom.p4':'Résiliable mensuellement — sans engagement',
+    'waarom.p5':'Orienté résultats — nous mesurons tout','waarom.p6':'Contact personnel — toujours joignable',
+    'waarom.p7':'Évolutif — grandit avec votre entreprise','waarom.p8':'Approche éprouvée avec des résultats en 30 jours',
+    'wbox.web':'Web & Design','wbox.marketing':'Marketing','wbox.ai':'IA & Auto','wbox.security':'Sécurité','wbox.seo':'SEO','wbox.strategy':'Stratégie',
+    'resultaten.badge':'✦ Résultats','resultaten.title':'Ce que nos clients accomplissent','resultaten.sub':'Les premiers cas arrivent bientôt — nous venons de démarrer.',
+    'r1.metric':'+14 réservations / mois','r1.quote':'"Différence notable en 3 semaines"',
+    'r2.metric':'Réservations ×2','r2.quote':'"Enfin trouvé sur Google"',
+    'r3.metric':'Complet','r3.service':'Génération de leads IA + chatbot','r3.quote':'"Plus de temps perdu en prospection"',
+    'resultaten.note':'* Exemples de résultats — nos propres cas seront ajoutés prochainement',
+    'contact.badge':'✦ Prendre contact','contact.title':'Prêt à grandir ?','contact.sub':'Demandez un audit gratuit. Sans obligation, juste des conseils honnêtes.',
+    'form.name':'Nom','form.namePh':'Votre nom','form.company':'Nom de l\'entreprise','form.companyPh':'Votre entreprise',
+    'form.phone':'Numéro de téléphone','form.phonePh':'+33 6 00 00 00 00',
+    'form.service':'Que recherchez-vous ?','form.svc0':'Choisir une option...','form.svc1':'Site web / Boutique en ligne',
+    'form.svc2':'Marketing & Publicité','form.svc3':'IA & Automatisation','form.svc4':'Sécurité',
+    'form.svc5':'SEO & Visibilité','form.svc6':'Plusieurs services / Pas encore sûr',
+    'form.message':'Parlez-nous de vous','form.messagePh':'Parlez-nous brièvement de votre entreprise et de ce que vous souhaitez accomplir...',
+    'form.submit':'Envoyer la demande','form.sending':'Envoi...',
+    'success.title':'Merci !','success.sub':'Nous vous rappellerons dans les 24 heures.<br>Vérifiez aussi votre boîte de réception.',
+    'footer.tagline':'Votre partenaire digital complet','footer.copy':'© 2026 Agency AI — Tous droits réservés'
+  },
+  es: {
+    'nav.services':'Servicios','nav.process':'Proceso','nav.results':'Resultados','nav.contact':'Contacto','nav.signin':'Acceder','nav.signinArrow':'Acceder →',
+    'hero.badge':'✦ Tu socio digital completo','hero.line1':'Construimos.','hero.line2':'Crecemos.','hero.line3':'Protegemos.',
+    'hero.sub':'Desde la web hasta la seguridad, desde la publicidad hasta la automatización IA completa — Agency AI es tu socio integral para todo lo digital.',
+    'hero.cta1':'Solicitar auditoría gratuita','hero.cta2':'Ver todo lo que hacemos ↓',
+    'hero.trust1':'Todo bajo un mismo techo','hero.trust2':'Resultados en 30 días','hero.trust3':'Sin costes ocultos',
+    'stats.services':'Servicios','stats.available':'Disponible','stats.days':'días','stats.firstResult':'Primer resultado','stats.transparent':'Transparente',
+    'services.badge':'✦ Nuestros servicios','services.title':'Todo lo que tu empresa necesita','services.sub':'Un socio para cada reto digital.',
+    'cat.web':'🌐  Web & Diseño','cat.marketing':'📣  Marketing & Publicidad','cat.ai':'🤖  IA & Automatización',
+    'cat.security':'🔒  Seguridad & Protección','cat.seo':'📈  SEO & Visibilidad','cat.strategy':'📊  Consultoría & Estrategia',
+    'svc.website.name':'Desarrollo web','svc.website.desc':'Sitios web rápidos y modernos que convierten visitantes en clientes.',
+    'svc.webshop.name':'Desarrollo de tienda online','svc.webshop.desc':'Tiendas online profesionales con integración de pagos completa y gestión de inventario.',
+    'svc.landing.name':'Diseño de landing page','svc.landing.desc':'Páginas orientadas a conversión para campañas y publicidad.',
+    'svc.meta.name':'Anuncios Meta (Facebook & Instagram)','svc.meta.desc':'Campañas impulsadas por IA que generan más resultados con menos presupuesto.',
+    'svc.google.name':'Google Ads','svc.google.desc':'Aparecer en lo alto de Google justo cuando los clientes buscan.',
+    'svc.email.name':'Email marketing','svc.email.desc':'Campañas de email automatizadas que convierten leads en clientes de pago.',
+    'svc.social.name':'Contenido & Redes sociales','svc.social.desc':'Posts, Reels y Stories diarios — adaptados a tu marca y audiencia.',
+    'svc.leadgen.name':'Sistema de generación de leads IA','svc.leadgen.desc':'Captación y prospección automática de nuevos clientes — 24/7.',
+    'svc.chatbot.name':'Chatbot IA para web','svc.chatbot.desc':'Responde preguntas, capta leads y programa citas — sin intervención humana.',
+    'svc.workflow.name':'Automatización de flujos de trabajo','svc.workflow.desc':'Automatiza tareas repetitivas para que te centres en lo que realmente importa.',
+    'svc.aicontent.name':'Creación de contenido IA','svc.aicontent.desc':'Textos, imágenes y vídeos generados por IA a escala.',
+    'svc.websec.name':'Seguridad web','svc.websec.desc':'SSL, firewalls, análisis de malware y monitorización continua de tu web.',
+    'svc.gdpr.name':'RGPD & gestión de privacidad','svc.gdpr.desc':'Totalmente conforme con la legislación europea — cookies, política de privacidad y más.',
+    'svc.backup.name':'Backup & recuperación','svc.backup.desc':'Copias de seguridad diarias automáticas y recuperación rápida ante problemas.',
+    'svc.localseo.name':'SEO local','svc.localseo.desc':'Ser encontrado en Google por clientes en tu ciudad o región.',
+    'svc.gmb.name':'Perfil de Google Business','svc.gmb.desc':'Optimización de tu presencia en Google Maps y reseñas.',
+    'svc.techseo.name':'SEO técnico','svc.techseo.desc':'Velocidad, estructura y código optimizados para el máximo ranking en Google.',
+    'svc.strategy.name':'Estrategia digital','svc.strategy.desc':'Un plan claro sobre qué canales y herramientas generan más para tu negocio.',
+    'svc.competitor.name':'Análisis de competencia','svc.competitor.desc':'Analizamos lo que hacen tus competidores y cómo puedes superarlos.',
+    'svc.analytics.name':'Analytics e informes','svc.analytics.desc':'Visión de lo que funciona a través de dashboards claros e informes mensuales.',
+    'werkwijze.badge':'✦ Nuestro proceso','werkwijze.title':'Cómo funciona','werkwijze.sub':'Proceso simple, grandes resultados.',
+    'step1.title':'Auditoría Gratuita','step1.desc':'Analizamos tu empresa, web, seguridad y marketing de forma completamente gratuita.',
+    'step2.title':'Estrategia a Medida','step2.desc':'En 48 horas un plan concreto con los servicios exactos, cronograma e inversión.',
+    'step3.title':'Construimos & Activamos','step3.desc':'Nuestro equipo ejecuta todo — tú lo sigues a través de tu propio portal de cliente.',
+    'step4.title':'Crecimiento & Optimización','step4.desc':'Monitorizamos, informamos y optimizamos cada mes para resultados duraderos.',
+    'waarom.badge':'✦ Por qué nosotros','waarom.title':'¿Por qué Agency AI?',
+    'waarom.p1':'Todo bajo un mismo techo — sin más 5 agencias diferentes','waarom.p2':'IA + experiencia humana combinada',
+    'waarom.p3':'Totalmente transparente a través de tu propio portal de cliente','waarom.p4':'Cancelación mensual — sin compromiso',
+    'waarom.p5':'Orientado a resultados — medimos todo','waarom.p6':'Contacto personal — siempre disponible',
+    'waarom.p7':'Escalable — crece con tu negocio','waarom.p8':'Enfoque probado con resultados en 30 días',
+    'wbox.web':'Web & Diseño','wbox.marketing':'Marketing','wbox.ai':'IA & Auto','wbox.security':'Seguridad','wbox.seo':'SEO','wbox.strategy':'Estrategia',
+    'resultaten.badge':'✦ Resultados','resultaten.title':'Lo que nuestros clientes logran','resultaten.sub':'Los primeros casos llegan pronto — acabamos de empezar.',
+    'r1.metric':'+14 reservas / mes','r1.quote':'"Diferencia notable en 3 semanas"',
+    'r2.metric':'Reservas ×2','r2.quote':'"Por fin encontrado en Google"',
+    'r3.metric':'Completamente lleno','r3.service':'Generación de leads IA + chatbot','r3.quote':'"Sin más tiempo perdido en captación"',
+    'resultaten.note':'* Resultados de ejemplo — los casos propios se añadirán pronto',
+    'contact.badge':'✦ Ponte en contacto','contact.title':'¿Listo para crecer?','contact.sub':'Solicita una auditoría gratuita. Sin compromisos, solo consejo honesto.',
+    'form.name':'Nombre','form.namePh':'Tu nombre','form.company':'Nombre de empresa','form.companyPh':'Tu empresa',
+    'form.phone':'Número de teléfono','form.phonePh':'+34 600 000000',
+    'form.service':'¿Qué estás buscando?','form.svc0':'Elige una opción...','form.svc1':'Web / Tienda online',
+    'form.svc2':'Marketing & Publicidad','form.svc3':'IA & Automatización','form.svc4':'Seguridad',
+    'form.svc5':'SEO & Visibilidad','form.svc6':'Varios servicios / Aún no lo sé',
+    'form.message':'Cuéntanos más','form.messagePh':'Cuéntanos brevemente sobre tu empresa y lo que quieres lograr...',
+    'form.submit':'Enviar solicitud','form.sending':'Enviando...',
+    'success.title':'¡Gracias!','success.sub':'Te llamaremos en las próximas 24 horas.<br>Revisa también tu bandeja de entrada.',
+    'footer.tagline':'Tu socio digital completo','footer.copy':'© 2026 Agency AI — Todos los derechos reservados'
   }
-  function closeMobile() {
-    document.getElementById('navMobile').classList.remove('open');
-    document.getElementById('navBurger').textContent = '☰';
+};
+
+const FLAGS = { nl:'🇳🇱', en:'🇬🇧', de:'🇩🇪', fr:'🇫🇷', es:'🇪🇸' };
+
+function setLanguage(code) {
+  const t = TRANSLATIONS[code];
+  if (!t) return;
+
+  document.body.style.opacity = '0';
+  setTimeout(() => {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.dataset.i18n;
+      if (t[key] !== undefined) {
+        if (key === 'success.sub' || key === 'footer.copy') {
+          el.innerHTML = t[key];
+        } else {
+          el.textContent = t[key];
+        }
+      }
+    });
+    document.querySelectorAll('[data-i18n-ph]').forEach(el => {
+      const key = el.dataset.i18nPh;
+      if (t[key] !== undefined) el.placeholder = t[key];
+    });
+
+    document.getElementById('langFlag').textContent = FLAGS[code];
+    document.getElementById('langCode').textContent = code.toUpperCase();
+
+    document.querySelectorAll('[data-lang]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.lang === code);
+    });
+
+    document.documentElement.lang = code;
+    localStorage.setItem('lang', code);
+    document.getElementById('langDropdown').classList.remove('open');
+
+    document.body.style.opacity = '1';
+  }, 140);
+}
+
+function toggleLangDropdown() {
+  const dd = document.getElementById('langDropdown');
+  dd.classList.toggle('open');
+}
+
+document.addEventListener('click', e => {
+  const sw = document.getElementById('langSwitcher');
+  if (sw && !sw.contains(e.target)) {
+    document.getElementById('langDropdown').classList.remove('open');
   }
-  document.addEventListener('click', e => {
-    const menu = document.getElementById('navMobile');
-    if (menu.classList.contains('open') && !menu.contains(e.target) && !document.getElementById('navBurger').contains(e.target)) closeMobile();
-  });
+  const menu = document.getElementById('navMobile');
+  if (menu.classList.contains('open') && !menu.contains(e.target) && !document.getElementById('navBurger').contains(e.target)) closeMobile();
+});
 
-  // Fade-in on scroll
-  const io = new IntersectionObserver(entries => {
-    entries.forEach(en => { if (en.isIntersecting) en.target.classList.add('visible'); });
-  }, { threshold: 0.08 });
-  document.querySelectorAll('.fade-in').forEach(el => io.observe(el));
+window.addEventListener('scroll', () => {
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 50);
+}, { passive: true });
 
-  // Hero animates immediately
-  document.querySelectorAll('.hero .fade-in').forEach((el, i) => {
-    setTimeout(() => el.classList.add('visible'), 80 + i * 130);
-  });
+function toggleMobile() {
+  const menu = document.getElementById('navMobile');
+  const open = menu.classList.toggle('open');
+  document.getElementById('navBurger').textContent = open ? '✕' : '☰';
+}
+function closeMobile() {
+  document.getElementById('navMobile').classList.remove('open');
+  document.getElementById('navBurger').textContent = '☰';
+}
 
-  // Contact form
-  async function submitContact(e) {
-    e.preventDefault();
-    const btn = document.getElementById('formSubmit');
-    const err = document.getElementById('formError');
-    btn.disabled = true;
-    btn.textContent = 'Versturen...';
-    err.style.display = 'none';
-    try {
-      const res = await fetch('/api/contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name:    document.getElementById('cName').value,
-          company: document.getElementById('cCompany').value,
-          email:   document.getElementById('cEmail').value,
-          phone:   document.getElementById('cPhone').value,
-          service: document.getElementById('cService').value,
-          message: document.getElementById('cMsg').value
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Versturen mislukt');
-      document.getElementById('contactForm').style.display = 'none';
-      document.getElementById('formSuccess').style.display = 'block';
-    } catch (ex) {
-      err.textContent = ex.message;
-      err.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'Stuur aanvraag';
-    }
+const io = new IntersectionObserver(entries => {
+  entries.forEach(en => { if (en.isIntersecting) en.target.classList.add('visible'); });
+}, { threshold: 0.08 });
+document.querySelectorAll('.fade-in').forEach(el => io.observe(el));
+document.querySelectorAll('.hero .fade-in').forEach((el, i) => {
+  setTimeout(() => el.classList.add('visible'), 80 + i * 130);
+});
+
+async function submitContact(e) {
+  e.preventDefault();
+  const lang = localStorage.getItem('lang') || 'nl';
+  const t = TRANSLATIONS[lang];
+  const btn = document.getElementById('formSubmit');
+  const err = document.getElementById('formError');
+  btn.disabled = true;
+  btn.textContent = t['form.sending'] || 'Sending...';
+  err.style.display = 'none';
+  try {
+    const res = await fetch('/api/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name:    document.getElementById('cName').value,
+        company: document.getElementById('cCompany').value,
+        email:   document.getElementById('cEmail').value,
+        phone:   document.getElementById('cPhone').value,
+        service: document.getElementById('cService').value,
+        message: document.getElementById('cMsg').value
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || t['form.sending']);
+    document.getElementById('contactForm').style.display = 'none';
+    document.getElementById('formSuccess').style.display = 'block';
+  } catch (ex) {
+    err.textContent = ex.message;
+    err.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = t['form.submit'] || 'Send';
   }
+}
+
+// Init language from localStorage or browser
+(function() {
+  const saved = localStorage.getItem('lang');
+  const browser = (navigator.language || '').slice(0, 2).toLowerCase();
+  const supported = ['nl','en','de','fr','es'];
+  const lang = supported.includes(saved) ? saved : (supported.includes(browser) ? browser : 'nl');
+  if (lang !== 'nl') setLanguage(lang);
+  else {
+    document.getElementById('langFlag').textContent = '🇳🇱';
+    document.getElementById('langCode').textContent = 'NL';
+    document.querySelectorAll('[data-lang="nl"]').forEach(b => b.classList.add('active'));
+  }
+})();
 </script>
 </body>
 </html>
