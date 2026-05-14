@@ -45,7 +45,8 @@ const DATA_DEFAULTS = {
   'stats.json':      { leadsFound: 0, emailsSent: 0, replies: 0, pipelineValue: 0, weeklyData: [], newReplies: [], abStats: { aApproved: 0, bApproved: 0 } },
   'memory.json':     {},
   'blacklist.json':  [],
-  'notifications.json': []
+  'notifications.json': [],
+  'contacts.json':      []
 };
 Object.entries(DATA_DEFAULTS).forEach(([file, def]) => {
   if (!readJSON(file)) writeJSON(file, def);
@@ -91,6 +92,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── Clean URL routes (must come after static so files still work) ───────────
+app.get('/',             (_, res) => res.sendFile(path.join(__dirname, 'public', 'landing.html')));
 app.get('/login',        (_, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/client',       (_, res) => res.sendFile(path.join(__dirname, 'public', 'client-login.html')));
 app.get('/client-login', (_, res) => res.sendFile(path.join(__dirname, 'public', 'client-login.html')));
@@ -3982,6 +3984,33 @@ app.patch('/api/notifications/:id/read', authMiddleware, (req, res) => {
   const notifications = readJSON('notifications.json') || [];
   const idx = notifications.findIndex(n => n.id === req.params.id);
   if (idx !== -1) { notifications[idx].read = true; writeJSON('notifications.json', notifications); }
+  res.json({ ok: true });
+});
+
+// ─── Contact form (public) ───────────────────────────────────────────────────
+app.post('/api/contact', async (req, res) => {
+  const { name, company, email, phone, service, message } = req.body;
+  if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
+  const contacts = readJSON('contacts.json') || [];
+  contacts.unshift({
+    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+    name, company: company || '', email, phone: phone || '',
+    service: service || '', message: message || '',
+    createdAt: new Date().toISOString(),
+    status: 'new'
+  });
+  writeJSON('contacts.json', contacts);
+  const settings = readJSON('settings.json') || {};
+  if (settings.gmailAddress && settings.gmailPassword) {
+    try {
+      await sendEmail({
+        to: settings.gmailAddress,
+        subject: `Nieuwe aanvraag: ${name}${company ? ' — ' + company : ''}`,
+        body: `Nieuwe websiteaanvraag:\n\nNaam: ${name}\nBedrijf: ${company || '—'}\nEmail: ${email}\nTelefoon: ${phone || '—'}\nDienst: ${service || '—'}\n\nBericht:\n${message || '—'}`,
+        settings
+      });
+    } catch (_) { /* email is optional */ }
+  }
   res.json({ ok: true });
 });
 
