@@ -1,6 +1,6 @@
-const CACHE = 'agency-ai-v1';
+const CACHE = 'agency-ai-v2';
 const SHELL = [
-  '/',
+  '/app',
   '/app.js',
   '/style.css',
   '/login.html',

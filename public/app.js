@@ -1,5 +1,6 @@
 // ─── Auth guard — runs before anything else ───────────────────────────────────
 (async function checkAuth() {
+  if (!window.location.pathname.startsWith('/app')) return;
   const token = localStorage.getItem('agencyToken');
   if (!token) {
     window.location.href = '/login';

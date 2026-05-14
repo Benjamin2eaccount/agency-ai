@@ -89,10 +89,10 @@ if (!readJSON('users.json')) {
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // ─── Clean URL routes (must come after static so files still work) ───────────
-app.get('/',             (_, res) => res.sendFile(path.join(__dirname, 'public', 'landing.html')));
+app.get('/', (req, res) => { console.log('[route] GET / → landing.html'); res.sendFile(path.join(__dirname, 'public', 'landing.html')); });
 app.get('/login',        (_, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/client',       (_, res) => res.sendFile(path.join(__dirname, 'public', 'client-login.html')));
 app.get('/client-login', (_, res) => res.sendFile(path.join(__dirname, 'public', 'client-login.html')));
