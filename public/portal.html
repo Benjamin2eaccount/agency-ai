@@ -370,6 +370,37 @@
           </div>
         ` : ''}
 
+        ${data.generatedSite ? `
+          <div class="card">
+            <div class="card-label">Website preview</div>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+              <span style="background:${data.generatedSite.status === 'live' ? '#16a34a' : '#d97706'};color:#fff;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700">${data.generatedSite.status === 'live' ? 'Live' : 'Preview'}</span>
+              <span style="font-size:12px;color:#6b7280">Gegenereerd op ${new Date(data.generatedSite.generatedAt).toLocaleDateString('nl-NL')}</span>
+            </div>
+            <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:12px">
+              <iframe src="${data.generatedSite.siteUrl}" style="width:100%;height:320px;border:none;display:block" loading="lazy" sandbox="allow-same-origin allow-scripts" title="Website preview"></iframe>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <a href="${data.generatedSite.siteUrl}" target="_blank"
+                 style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#111;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">
+                &#x1F517; Bekijk website
+              </a>
+              <button onclick="document.getElementById('siteFeedbackSection').style.display=''"
+                 style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;color:#111;border:1.5px solid #e5e7eb;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+                &#x1F4AC; Aanpassingen doorgeven
+              </button>
+            </div>
+            <div id="siteFeedbackSection" style="display:none;margin-top:14px">
+              <div class="form-group">
+                <label>Beschrijf de aanpassingen</label>
+                <textarea id="portalSiteFeedback" placeholder="Bijv: Andere kleur voor de knoppen, andere tekst in de over ons sectie..." style="width:100%;min-height:90px;padding:10px;border:1.5px solid #e5e7eb;border-radius:8px;font-family:inherit;font-size:13px;resize:vertical"></textarea>
+              </div>
+              <button onclick="submitPortalSiteFeedback('${token}')" class="btn-send" style="margin-top:0">Verstuur aanpassingen</button>
+              <div id="siteFeedbackSuccess" style="display:none;margin-top:10px;color:#16a34a;font-size:13px;font-weight:600">&#10003; Aanpassingen ontvangen! We verwerken dit zo snel mogelijk.</div>
+            </div>
+          </div>
+        ` : ''}
+
         ${data.reports?.length > 0 ? `
           <div class="card">
             <div class="card-label">Rapporten</div>
@@ -405,6 +436,22 @@
           </div>
         </div>
       `;
+    }
+
+    async function submitPortalSiteFeedback(token) {
+      const feedback = document.getElementById('portalSiteFeedback')?.value?.trim();
+      if (!feedback) { alert('Voer feedback in.'); return; }
+      try {
+        const res = await fetch('/api/portal/' + token + '/site-feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feedback })
+        });
+        if (res.ok) {
+          document.getElementById('siteFeedbackSuccess').style.display = '';
+          document.getElementById('portalSiteFeedback').value = '';
+        } else { alert('Versturen mislukt. Probeer het opnieuw.'); }
+      } catch { alert('Verbindingsfout. Probeer het opnieuw.'); }
     }
 
     async function sendMsg(token) {

@@ -86,6 +86,11 @@ async function claudeCall(prompt, expectJson = false) {
 }
 
 // ─── Routing ──────────────────────────────────────────────────────────────────
+const VIEW_LABELS = {
+  dashboard: 'Dashboard', inbox: 'Inbox', leads: 'Leads', pipeline: 'Pipeline',
+  agents: 'Agents', runs: 'Runs', stats: 'Statistieken', chat: 'Chat', settings: 'Instellingen'
+};
+
 function setView(view) {
   // Stop chat polling when leaving chat view
   if (state.view === 'chat' && view !== 'chat' && state._chatPollTimer) {
@@ -95,6 +100,10 @@ function setView(view) {
   // Destroy Chart.js instances when leaving stats view
   if (state.view === 'stats' && view !== 'stats') destroyStatsCharts();
   state.view = view;
+
+  // Update topbar breadcrumb
+  const topbarPage = document.getElementById('topbarPage');
+  if (topbarPage) topbarPage.textContent = VIEW_LABELS[view] || view;
 
   document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.view === view);
@@ -202,8 +211,8 @@ async function renderDashboard() {
   document.getElementById('appView').innerHTML = `
     <div class="page-header">
       <div>
+        <div class="page-label">Overzicht</div>
         <h1 class="page-title">Dashboard</h1>
-        <p class="page-subtitle">Overzicht van je outreach machine</p>
       </div>
       <button class="btn btn-primary" id="runNowBtn">
         <i class="ti ti-player-play"></i> Run nu
@@ -245,46 +254,46 @@ async function renderDashboard() {
 
   document.getElementById('dashboardContent').innerHTML = `
     ${pending > 0 ? `
-      <div class="alert alert-warning" onclick="setView('inbox')" style="cursor:pointer;margin-bottom:16px">
-        <i class="ti ti-inbox"></i>
-        <strong>${pending} lead${pending !== 1 ? 's' : ''} te beoordelen</strong>
-        — Klik om inbox te openen
+      <div class="alert-banner" onclick="setView('inbox')" style="cursor:pointer;margin-bottom:20px">
+        <i class="ti ti-inbox" style="font-size:16px"></i>
+        <strong>${pending} lead${pending !== 1 ? 's' : ''} wachten op beoordeling</strong>
+        <span style="color:var(--text-secondary);font-weight:400">— klik om te openen</span>
       </div>
     ` : ''}
 
     <div class="stats-grid">
       <div class="stat-card">
-        <div class="stat-icon stat-icon-blue"><i class="ti ti-users"></i></div>
+        <div class="stat-icon"><i class="ti ti-users"></i></div>
         <div class="stat-value">${stats.leadsFound || 0}</div>
         <div class="stat-label">Leads in pipeline</div>
-        ${stats.last24hLeads > 0 ? `<div class="stat-sub">+${stats.last24hLeads} afgelopen 24u</div>` : ''}
+        ${stats.last24hLeads > 0 ? `<div class="stat-sub">+${stats.last24hLeads} vandaag</div>` : ''}
       </div>
       <div class="stat-card">
-        <div class="stat-icon stat-icon-green"><i class="ti ti-mail"></i></div>
+        <div class="stat-icon"><i class="ti ti-mail"></i></div>
         <div class="stat-value">${stats.emailsSent || 0}</div>
         <div class="stat-label">Emails verstuurd</div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon stat-icon-purple"><i class="ti ti-message-circle"></i></div>
+        <div class="stat-icon"><i class="ti ti-message-circle"></i></div>
         <div class="stat-value">${stats.replies || 0}</div>
         <div class="stat-label">Replies ontvangen</div>
       </div>
       <div class="stat-card${pending > 0 ? ' stat-card-urgent' : ''}" style="cursor:pointer" onclick="setView('inbox')">
-        <div class="stat-icon stat-icon-amber"><i class="ti ti-inbox"></i></div>
+        <div class="stat-icon"><i class="ti ti-inbox"></i></div>
         <div class="stat-value">${pending || 0}</div>
         <div class="stat-label">Te beoordelen</div>
-        ${pending > 0 ? `<div class="stat-sub" style="color:var(--warning)">Klik om te bekijken</div>` : ''}
+        ${pending > 0 ? `<div class="stat-sub" style="color:var(--warning)">Bekijken &rarr;</div>` : ''}
       </div>
       <div class="stat-card">
-        <div class="stat-icon stat-icon-amber"><i class="ti ti-currency-euro"></i></div>
+        <div class="stat-icon"><i class="ti ti-currency-euro"></i></div>
         <div class="stat-value">€${(stats.pipelineValue || 0).toLocaleString('nl-NL')}</div>
-        <div class="stat-label">Totale pipeline waarde</div>
-        ${stats.last24hValue > 0 ? `<div class="stat-sub">+€${Math.round(stats.last24hValue).toLocaleString('nl-NL')} afgelopen 24u</div>` : ''}
+        <div class="stat-label">Pipeline waarde</div>
+        ${stats.last24hValue > 0 ? `<div class="stat-sub">+€${Math.round(stats.last24hValue).toLocaleString('nl-NL')} vandaag</div>` : ''}
       </div>
-      <div class="stat-card stat-card-earned">
-        <div class="stat-icon stat-icon-green"><i class="ti ti-trophy"></i></div>
+      <div class="stat-card">
+        <div class="stat-icon"><i class="ti ti-trophy"></i></div>
         <div class="stat-value">€${earned.toLocaleString('nl-NL')}</div>
-        <div class="stat-label">Verdiend (klanten)${stats.clients > 0 ? ` · ${stats.clients} klant${stats.clients !== 1 ? 'en' : ''}` : ''}</div>
+        <div class="stat-label">Verdiend${stats.clients > 0 ? ` · ${stats.clients} klant${stats.clients !== 1 ? 'en' : ''}` : ''}</div>
       </div>
     </div>
 
@@ -292,6 +301,7 @@ async function renderDashboard() {
       <div class="card">
         <div class="card-header">
           <h3 class="card-title">Outreach per dag</h3>
+          <span class="card-meta">Afgelopen 7 dagen</span>
         </div>
         <div class="chart-wrap">
           <canvas id="weekChart"></canvas>
@@ -306,39 +316,43 @@ async function renderDashboard() {
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-header">
-        <h3 class="card-title">Auto-run</h3>
-        <div class="card-meta">
-          Volgende run: <strong>${nextRun.label}</strong>
-          &nbsp;·&nbsp; Afteltimer: <span id="countdown" class="mono">${nextRun.countdown}</span>
+    <div class="dashboard-grid" style="grid-template-columns:1fr 1fr">
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Auto-run</h3>
+          ${settings?.automationPaused
+            ? `<span class="badge badge-red"><i class="ti ti-pause"></i> Gepauzeerd</span>`
+            : `<span class="badge badge-green"><i class="ti ti-player-play"></i> Actief</span>`
+          }
+        </div>
+        <div style="margin-top:4px">
+          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px">Volgende run</div>
+          <div style="font-size:20px;font-weight:700;color:var(--text-primary);letter-spacing:-0.5px">${nextRun.label}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:6px">Afteltimer: <span id="countdown" class="mono" style="color:var(--accent);font-weight:600">${nextRun.countdown}</span></div>
+        </div>
+        <div style="margin-top:12px;font-size:12px;color:var(--text-muted)">
+          Laatste run: ${recentRuns[0] ? relativeTime(recentRuns[0].createdAt) : 'nog niet gerund'}
         </div>
       </div>
-      <div class="autorun-status">
-        ${settings?.automationPaused
-          ? `<span class="badge badge-red"><i class="ti ti-pause"></i> Gepauzeerd</span>`
-          : `<span class="badge badge-green"><i class="ti ti-player-play"></i> Actief</span>`
-        }
-        <span class="text-secondary">Laatste run: ${recentRuns[0] ? relativeTime(recentRuns[0].createdAt) : 'nog niet gerund'}</span>
-      </div>
-    </div>
 
-    <div class="card">
-      <div class="card-header">
-        <h3 class="card-title">Recente activiteit</h3>
-      </div>
-      ${recentRuns.length === 0
-        ? `<div class="empty-state"><i class="ti ti-history"></i><p>Nog geen activiteit</p></div>`
-        : `<div class="activity-list">${recentRuns.map(r => `
-            <div class="activity-item">
-              <div class="activity-icon"><i class="ti ti-bolt"></i></div>
-              <div class="activity-body">
-                <div class="activity-title">${r.leadsFound || 0} leads gevonden</div>
-                <div class="activity-time">${relativeTime(r.createdAt)}</div>
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Recente activiteit</h3>
+        </div>
+        ${recentRuns.length === 0
+          ? `<div class="empty-state"><i class="ti ti-history"></i><p>Nog geen activiteit</p></div>`
+          : `<div class="activity-list">${recentRuns.slice(0,5).map(r => `
+              <div class="activity-item">
+                <div class="activity-icon"><i class="ti ti-bolt"></i></div>
+                <div class="activity-body">
+                  <div class="activity-title">${r.leadsFound || 0} leads gevonden</div>
+                  <div class="activity-time">${relativeTime(r.createdAt)}</div>
+                </div>
+                ${r.emailsSent > 0 ? `<span class="badge badge-green" style="font-size:11px">${r.emailsSent} emails</span>` : ''}
               </div>
-            </div>
-          `).join('')}</div>`
-      }
+            `).join('')}</div>`
+        }
+      </div>
     </div>
 
     <div id="upsellSection"></div>
@@ -354,8 +368,8 @@ async function renderDashboard() {
         datasets: [{
           label: 'Emails verstuurd',
           data: weekCounts,
-          backgroundColor: 'rgba(99,102,241,0.15)',
-          borderColor: '#6366f1',
+          backgroundColor: 'rgba(37,99,235,0.12)',
+          borderColor: '#2563eb',
           borderWidth: 2,
           borderRadius: 6
         }]
@@ -365,8 +379,8 @@ async function renderDashboard() {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#f3f4f6' } },
-          x: { grid: { display: false } }
+          y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.04)' } },
+          x: { ticks: { font: { size: 11 } }, grid: { display: false } }
         }
       }
     });
@@ -374,10 +388,10 @@ async function renderDashboard() {
 
   // Funnel
   const funnelStages = [
-    { label: 'Gevonden',      count: stats.leadsFound || 0,   color: '#6366f1' },
-    { label: 'Gekwalificeerd',count: state.leads.filter(l => l.score >= 6).length, color: '#8b5cf6' },
-    { label: 'Verstuurd',     count: stats.emailsSent || 0,   color: '#10b981' },
-    { label: 'Gereageerd',    count: stats.replies || 0,       color: '#f59e0b' }
+    { label: 'Gevonden',      count: stats.leadsFound || 0,   color: '#2563eb' },
+    { label: 'Gekwalificeerd',count: state.leads.filter(l => l.score >= 6).length, color: '#7c3aed' },
+    { label: 'Verstuurd',     count: stats.emailsSent || 0,   color: '#16a34a' },
+    { label: 'Gereageerd',    count: stats.replies || 0,       color: '#ea580c' }
   ];
   const maxCount = Math.max(...funnelStages.map(s => s.count), 1);
   document.getElementById('funnelChart').innerHTML = funnelStages.map((s, i) => {
@@ -428,8 +442,8 @@ async function renderInbox() {
   document.getElementById('appView').innerHTML = `
     <div class="page-header">
       <div>
+        <div class="page-label">Beoordelen</div>
         <h1 class="page-title">Inbox</h1>
-        <p class="page-subtitle">Leads wachten op jouw goedkeuring</p>
       </div>
     </div>
     <div id="inboxContent"><div class="loading-state"><div class="spinner-lg"></div></div></div>
@@ -448,9 +462,10 @@ async function renderInbox() {
 
   if (!settings.gmailAddress) {
     container.innerHTML += `
-      <div class="alert alert-warning" onclick="setView('settings')" style="cursor:pointer;margin-bottom:16px">
-        <i class="ti ti-mail-off"></i>
-        Gmail is nog niet ingesteld — <strong>klik hier om in te stellen</strong>
+      <div class="alert-banner" onclick="setView('settings')" style="cursor:pointer;margin-bottom:20px">
+        <i class="ti ti-mail-off" style="font-size:16px"></i>
+        <strong>Gmail niet ingesteld</strong>
+        <span style="color:var(--text-secondary);font-weight:400">— klik hier om in te stellen</span>
       </div>
     `;
   }
@@ -471,17 +486,17 @@ async function renderInbox() {
 
   const highScore = pending.filter(i => (i.score || 0) >= 8.0);
   const bulkBar = pending.length >= 3 ? `
-    <div id="bulkBar" style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span style="font-size:13px;font-weight:600;color:#374151;flex:1;min-width:120px">${pending.length} leads staan klaar</span>
+    <div id="bulkBar" class="bulk-bar">
+      <span class="bulk-bar-count">${pending.length} leads klaar voor beoordeling</span>
       ${highScore.length > 0 ? `
-        <button class="btn btn-success btn-sm" onclick="bulkApproveHigh()">
-          <i class="ti ti-bolt"></i> Keur alle ${highScore.length} × 8.0+ goed
+        <button class="btn btn-primary btn-sm" onclick="bulkApproveHigh()">
+          <i class="ti ti-bolt"></i> ${highScore.length} × 8.0+ goedkeuren
         </button>
       ` : ''}
-      <button class="btn btn-ghost btn-sm" onclick="bulkSelectAll()"><i class="ti ti-checkbox"></i> Selecteer alles</button>
-      <button class="btn btn-ghost btn-sm" onclick="bulkDeselectAll()"><i class="ti ti-square"></i> Deselecteer alles</button>
-      <button class="btn btn-primary btn-sm" id="bulkApproveSelBtn" style="display:none" onclick="bulkApproveSelected()">
-        <i class="ti ti-check"></i> Keur geselecteerde goed (<span id="bulkSelCount">0</span>)
+      <button class="btn btn-ghost btn-sm" onclick="bulkSelectAll()"><i class="ti ti-checkbox"></i> Alles selecteren</button>
+      <button class="btn btn-ghost btn-sm" onclick="bulkDeselectAll()"><i class="ti ti-square"></i> Deselecteren</button>
+      <button class="btn btn-blue btn-sm" id="bulkApproveSelBtn" style="display:none" onclick="bulkApproveSelected()">
+        <i class="ti ti-check"></i> Geselecteerde goedkeuren (<span id="bulkSelCount">0</span>)
       </button>
     </div>
   ` : '';
@@ -490,31 +505,31 @@ async function renderInbox() {
 
   if (trashed.length > 0) {
     html += `
-      <div style="margin-top:28px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-          <i class="ti ti-trash" style="color:#ef4444;font-size:16px"></i>
-          <span style="font-size:14px;font-weight:700;color:#374151">Prullenbak</span>
-          <span style="background:#fee2e2;color:#ef4444;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px">${trashed.length}</span>
-          <button onclick="emptyTrash()" style="margin-left:auto;background:none;border:1px solid #fca5a5;border-radius:6px;color:#ef4444;font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer">
-            Alles verwijderen
+      <div class="trash-section">
+        <div class="trash-header">
+          <i class="ti ti-trash"></i>
+          <span class="trash-title">Prullenbak</span>
+          <span class="badge badge-red">${trashed.length}</span>
+          <button class="btn btn-ghost btn-sm" onclick="emptyTrash()" style="margin-left:auto;color:var(--danger)">
+            <i class="ti ti-trash"></i> Alles verwijderen
           </button>
         </div>
         ${trashed.map(item => `
-          <div style="background:#fff;border:1px solid #fca5a5;border-radius:12px;padding:16px;margin-bottom:10px;display:flex;align-items:flex-start;gap:12px">
-            <div style="flex:1;min-width:0">
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
-                <span style="font-size:14px;font-weight:700;color:#111">${esc(item.companyName)}</span>
-                <span style="font-size:11px;color:#6b7280">${esc(item.niche)} &bull; ${esc(item.location)}</span>
-                ${item.score ? `<span style="background:#f1f5f9;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;color:#374151">Score ${Number(item.score).toFixed(1)}</span>` : ''}
+          <div class="trash-card">
+            <div class="trash-card-body">
+              <div class="trash-card-row">
+                <span class="trash-company">${esc(item.companyName)}</span>
+                <span class="text-secondary" style="font-size:12px">${esc(item.niche)} &bull; ${esc(item.location)}</span>
+                ${item.score ? `<span class="score-pill score-${scoreColor(item.score)}">${Number(item.score).toFixed(1)}</span>` : ''}
               </div>
-              ${item.email?.subject ? `<div style="font-size:12px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(item.email.subject)}</div>` : ''}
-              ${item.disapprovedAt ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px">Afgewezen ${formatDate(item.disapprovedAt)}</div>` : ''}
+              ${item.email?.subject ? `<div class="trash-subject">${esc(item.email.subject)}</div>` : ''}
+              ${item.disapprovedAt ? `<div class="trash-date">Afgewezen ${formatDate(item.disapprovedAt)}</div>` : ''}
             </div>
-            <div style="display:flex;gap:6px;flex-shrink:0">
-              <button onclick="restoreTrash('${item.id}')" style="background:#f0fdf4;border:1px solid #86efac;color:#16a34a;border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">
+            <div class="trash-card-actions">
+              <button class="btn btn-ghost btn-sm" onclick="restoreTrash('${item.id}')">
                 <i class="ti ti-restore"></i> Herstel
               </button>
-              <button onclick="deleteTrash('${item.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#ef4444;border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer">
+              <button class="btn btn-ghost btn-sm" onclick="deleteTrash('${item.id}')" style="color:var(--danger)">
                 <i class="ti ti-trash"></i>
               </button>
             </div>
@@ -534,29 +549,36 @@ function buildInboxCard(item) {
   const colorClass = scoreColor(score);
   const typeLabel = item.type === 'followup1' ? 'Follow-up #1' :
                     item.type === 'followup2' ? 'Follow-up #2' :
-                    item.type === 'referral'  ? '🎁 Referral' : 'Nieuw';
+                    item.type === 'referral'  ? 'Referral' : 'Nieuw';
   const typeBadge = item.type?.startsWith('followup')
     ? `<span class="badge badge-amber">${typeLabel}</span>`
     : item.type === 'referral'
-    ? `<span class="badge" style="background:#fdf4ff;color:#7e22ce;border:1px solid #e9d5ff">${typeLabel}</span>`
+    ? `<span class="badge badge-purple">${typeLabel}</span>`
     : `<span class="badge badge-blue">${typeLabel}</span>`;
   const langFlag = item.language === 'nl' ? '🇳🇱' : item.language === 'en' ? '🇬🇧' : '';
 
   return `
     <div class="inbox-card" data-id="${item.id}" id="card-${item.id}" data-selected-version="A">
+      <label class="inbox-checkbox-wrap" onclick="event.stopPropagation()">
+        <input type="checkbox" class="bulk-checkbox" data-id="${item.id}" onchange="updateBulkSelCount()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
+      </label>
+
       <div class="inbox-card-header">
-        <label style="position:absolute;top:14px;right:14px;cursor:pointer;z-index:2" onclick="event.stopPropagation()">
-          <input type="checkbox" class="bulk-checkbox" data-id="${item.id}" onchange="updateBulkSelCount()" style="width:16px;height:16px;accent-color:#6366f1;cursor:pointer">
-        </label>
         <div class="inbox-card-title-row">
-          <h3 class="inbox-company">${item.companyName}${langFlag ? ` <span class="lang-flag">${langFlag}</span>` : ''}</h3>
+          <h3 class="inbox-company">${esc(item.companyName)}${langFlag ? ` <span class="lang-flag">${langFlag}</span>` : ''}</h3>
           ${typeBadge}
-          ${item.status === 'auto-approved' ? `<span class="badge" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;font-size:10px"><i class="ti ti-bolt"></i> Auto-goedgekeurd</span>` : ''}
+          ${item.status === 'auto-approved' ? `<span class="badge badge-green" style="font-size:10px"><i class="ti ti-bolt"></i> Auto-goedgekeurd</span>` : ''}
         </div>
         <div class="inbox-card-meta">
           ${nicheBadge(item.niche)}
-          <span class="text-secondary"><i class="ti ti-map-pin"></i> ${item.location || '—'}</span>
-          ${item.websiteUrl ? `<a href="${item.websiteUrl}" target="_blank" class="link"><i class="ti ti-world"></i> Website</a>` : ''}
+          <span class="text-secondary" style="font-size:12px"><i class="ti ti-map-pin"></i> ${esc(item.location || '—')}</span>
+          ${item.websiteUrl ? `<a href="${item.websiteUrl}" target="_blank" class="link" style="font-size:12px"><i class="ti ti-world"></i> Website</a>` : ''}
+        </div>
+        <div class="inbox-email-row">
+          ${item.contactEmail
+            ? `<span class="inbox-email-addr"><i class="ti ti-mail"></i> ${esc(item.contactEmail)}</span>
+               <span class="email-src-badge ${item.emailSource === 'gevonden' ? 'email-src-found' : 'email-src-guess'}">${item.emailSource === 'gevonden' ? 'Gevonden' : 'Geschat'}</span>`
+            : `<span class="inbox-email-none"><i class="ti ti-mail-off"></i> Geen email gevonden</span>`}
         </div>
         <div class="score-display score-${colorClass}">
           <span class="score-number">${score.toFixed(1)}</span>
@@ -567,22 +589,22 @@ function buildInboxCard(item) {
       ${item.emailOpener ? `
         <div class="opener-preview">
           <i class="ti ti-quote"></i>
-          <span>${item.emailOpener}</span>
+          <span>${esc(item.emailOpener)}</span>
         </div>
       ` : ''}
 
       ${item.problems?.length ? `
         <div class="inbox-section">
-          <div class="inbox-section-title"><i class="ti ti-alert-triangle" style="color:#ef4444"></i> Problemen gevonden</div>
+          <div class="inbox-section-title"><i class="ti ti-alert-triangle" style="color:var(--danger)"></i> Problemen gevonden</div>
           <ul class="problem-list">
-            ${item.problems.map(p => `<li><i class="ti ti-point-filled" style="color:#ef4444"></i> ${p}</li>`).join('')}
+            ${item.problems.map(p => `<li><i class="ti ti-point-filled" style="color:var(--danger)"></i> ${p}</li>`).join('')}
           </ul>
         </div>
       ` : ''}
 
       ${item.services?.length ? `
         <div class="inbox-section">
-          <div class="inbox-section-title"><i class="ti ti-currency-euro" style="color:#10b981"></i> Kansen</div>
+          <div class="inbox-section-title"><i class="ti ti-currency-euro" style="color:var(--success)"></i> Kansen</div>
           <ul class="opportunity-list">
             ${item.services.map(s => `
               <li>
@@ -596,30 +618,30 @@ function buildInboxCard(item) {
       ` : ''}
 
       ${item.emailA && item.emailB ? `
-        <div class="inbox-section" style="padding-bottom:0">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-            <div class="inbox-section-title" style="margin-bottom:0"><i class="ti ti-test-pipe" style="color:#6366f1"></i> A/B email versies</div>
+        <div class="inbox-section inbox-ab-section">
+          <div class="inbox-ab-header">
+            <div class="inbox-section-title" style="margin-bottom:0"><i class="ti ti-test-pipe" style="color:var(--accent)"></i> A/B email versies</div>
             <div style="display:flex;gap:4px">
-              <button id="btnA-${item.id}" onclick="selectVersion('${item.id}','A')" style="padding:3px 10px;border-radius:6px;border:1.5px solid #6366f1;background:#6366f1;color:#fff;font-size:11px;font-weight:700;cursor:pointer">A</button>
-              <button id="btnB-${item.id}" onclick="selectVersion('${item.id}','B')" style="padding:3px 10px;border-radius:6px;border:1.5px solid #e5e7eb;background:#fff;color:#6b7280;font-size:11px;font-weight:700;cursor:pointer">B</button>
+              <button id="btnA-${item.id}" class="ab-btn ab-btn-active" onclick="selectVersion('${item.id}','A')">A</button>
+              <button id="btnB-${item.id}" class="ab-btn" onclick="selectVersion('${item.id}','B')">B</button>
             </div>
           </div>
-          <div id="abSubject-${item.id}" style="font-size:13px;font-weight:600;color:#111;margin-bottom:2px">${item.emailA.subject}</div>
-          <div id="abDesc-${item.id}" style="font-size:11px;color:#6b7280">Probleem-gericht</div>
+          <div id="abSubject-${item.id}" class="ab-subject">${esc(item.emailA.subject)}</div>
+          <div id="abDesc-${item.id}" class="ab-desc">Probleem-gericht</div>
         </div>
       ` : ''}
 
       ${item.voicenoteScript ? `
-        <div style="margin-top:12px">
-          <button class="btn btn-ghost btn-sm" style="font-size:12px;color:#7c3aed" onclick="toggleVoicenote('${item.id}')">
+        <div class="voicenote-wrap">
+          <button class="btn btn-ghost btn-sm voicenote-toggle" onclick="toggleVoicenote('${item.id}')">
             <i class="ti ti-microphone"></i> Voicenote script
             <i class="ti ti-chevron-down" id="voiceChevron-${item.id}" style="font-size:11px;margin-left:2px"></i>
           </button>
-          <div id="voicenote-${item.id}" style="display:none;margin-top:8px;background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:12px">
-            <p style="font-size:13px;color:#4c1d95;line-height:1.55;margin:0 0 8px">${item.voicenoteScript}</p>
-            <div style="display:flex;align-items:center;justify-content:space-between">
-              <span style="font-size:11px;color:#7c3aed"><i class="ti ti-info-circle"></i> Spreek dit in als WhatsApp of Instagram voicenote</span>
-              <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:3px 8px" onclick="copyText('${(item.voicenoteScript||'').replace(/'/g, "\\'")}','Voicenote gekopieerd!')">
+          <div id="voicenote-${item.id}" class="voicenote-body" style="display:none">
+            <p>${esc(item.voicenoteScript)}</p>
+            <div class="voicenote-footer">
+              <span><i class="ti ti-info-circle"></i> Spreek in als WhatsApp of Instagram voicenote</span>
+              <button class="btn btn-ghost btn-sm" onclick="copyText('${(item.voicenoteScript||'').replace(/'/g, "\\'")}','Voicenote gekopieerd!')">
                 <i class="ti ti-copy"></i> Kopiëren
               </button>
             </div>
@@ -628,25 +650,27 @@ function buildInboxCard(item) {
       ` : ''}
 
       <div class="inbox-actions">
-        <button class="btn btn-ghost btn-sm" onclick="viewEmail('${item.id}')">
-          <i class="ti ti-mail"></i> Bekijk email
-        </button>
-        <button class="btn btn-ghost btn-sm" onclick="viewLinkedin('${item.id}')">
-          <i class="ti ti-brand-linkedin"></i> LinkedIn DM
-        </button>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="viewEmail('${item.id}')">
+            <i class="ti ti-mail"></i> Email
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="viewLinkedin('${item.id}')">
+            <i class="ti ti-brand-linkedin"></i> LinkedIn
+          </button>
+        </div>
         <div class="inbox-primary-actions">
-          <button class="btn btn-danger btn-outline" onclick="disapprove('${item.id}')">
+          <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="disapprove('${item.id}')">
             <i class="ti ti-x"></i> Afwijzen
           </button>
           ${item.sendOptimalTime ? `
-            <button class="btn btn-success btn-outline" onclick="approve('${item.id}')">
-              <i class="ti ti-send"></i> Nu versturen
+            <button class="btn btn-ghost btn-sm" style="color:var(--success)" onclick="approve('${item.id}')">
+              <i class="ti ti-send"></i> Nu
             </button>
-            <button class="btn btn-success" onclick="scheduleApprove('${item.id}')">
-              <i class="ti ti-clock"></i> Verstuur op ${formatOptimalTime(item.sendOptimalTime)}
+            <button class="btn btn-primary btn-sm" onclick="scheduleApprove('${item.id}')">
+              <i class="ti ti-clock"></i> ${formatOptimalTime(item.sendOptimalTime)}
             </button>
           ` : `
-            <button class="btn btn-success" onclick="approve('${item.id}')">
+            <button class="btn btn-primary btn-sm" onclick="approve('${item.id}')">
               <i class="ti ti-check"></i> Goedkeuren & Versturen
             </button>
           `}
@@ -672,8 +696,8 @@ function selectVersion(id, version) {
   const btnB = document.getElementById('btnB-' + id);
   if (subjectEl && email) subjectEl.textContent = email.subject || '';
   if (descEl) descEl.textContent = desc;
-  if (btnA) { btnA.style.background = version === 'A' ? '#6366f1' : '#fff'; btnA.style.color = version === 'A' ? '#fff' : '#6b7280'; btnA.style.borderColor = version === 'A' ? '#6366f1' : '#e5e7eb'; }
-  if (btnB) { btnB.style.background = version === 'B' ? '#6366f1' : '#fff'; btnB.style.color = version === 'B' ? '#fff' : '#6b7280'; btnB.style.borderColor = version === 'B' ? '#6366f1' : '#e5e7eb'; }
+  if (btnA) { btnA.classList.toggle('ab-btn-active', version === 'A'); }
+  if (btnB) { btnB.classList.toggle('ab-btn-active', version === 'B'); }
 }
 
 function initSwipeHandlers() {
@@ -888,9 +912,9 @@ async function runBulkApprove(ids) {
   const bar = document.getElementById('bulkBar');
   if (bar) bar.innerHTML = `
     <div style="width:100%;padding:4px 0">
-      <div style="font-size:13px;color:#374151;margin-bottom:8px">Bezig met versturen... <span id="bulkProgress">0</span> / ${ids.length}</div>
-      <div style="background:#e5e7eb;border-radius:99px;height:5px;overflow:hidden">
-        <div id="bulkProgressBar" style="height:100%;background:linear-gradient(to right,#10b981,#6366f1);border-radius:99px;width:0;transition:width 0.3s"></div>
+      <div style="font-size:13px;color:var(--text-primary);margin-bottom:8px">Bezig met versturen… <span id="bulkProgress">0</span> / ${ids.length}</div>
+      <div style="background:var(--border);border-radius:99px;height:5px;overflow:hidden">
+        <div id="bulkProgressBar" style="height:100%;background:var(--accent);border-radius:99px;width:0;transition:width 0.3s"></div>
       </div>
     </div>`;
 
@@ -921,12 +945,18 @@ async function renderLeads() {
   document.getElementById('appView').innerHTML = `
     <div class="page-header">
       <div>
+        <div class="page-label" id="leadsCountLabel">… BEDRIJVEN</div>
         <h1 class="page-title">Leads</h1>
-        <p class="page-subtitle">Alle gevonden bedrijven</p>
+        <p class="page-subtitle">Alle gevonden bedrijven met severity-score en geïdentificeerde problemen.</p>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="exportLeadsCSV()">
-        <i class="ti ti-download"></i> Export CSV
-      </button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" id="toggleFiltersBtn">
+          <i class="ti ti-filter"></i> Filters
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="exportLeadsCSV()">
+          <i class="ti ti-download"></i> Export CSV
+        </button>
+      </div>
     </div>
     <div class="pipeline-layout" id="leadsLayout">
       <div id="leadsContent"><div class="loading-state"><div class="spinner-lg"></div></div></div>
@@ -940,9 +970,12 @@ async function renderLeads() {
   if (settings) state.settings = settings;
   if (users) state.users = users;
 
+  const lbl = document.getElementById('leadsCountLabel');
+  if (lbl) lbl.textContent = `${(leads || []).length} BEDRIJVEN`;
+
   const container = document.getElementById('leadsContent');
 
-  if (leads.length === 0) {
+  if (!leads || leads.length === 0) {
     container.innerHTML = `
       <div class="empty-card">
         <i class="ti ti-users-off"></i>
@@ -956,7 +989,7 @@ async function renderLeads() {
     return;
   }
 
-  const niches = ['all', ...new Set(leads.map(l => l.niche).filter(Boolean))];
+  const niches = [...new Set(leads.map(l => l.niche).filter(Boolean))];
   let activeNiche = 'all';
   let activeStatus = 'all';
   let activeScore = 'all';
@@ -1023,46 +1056,66 @@ async function renderLeads() {
       grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><i class="ti ti-search-off"></i><p>Geen leads gevonden voor deze filters</p></div>`;
       return;
     }
+    const COUNTRY_COLORS = { NL:'#FF6B35', BE:'#FFD700', DE:'#333333', GB:'#003087', US:'#002868' };
+    const COUNTRY_TEXT   = { BE:'#333333' };
     grid.innerHTML = filtered.map(l => {
-      const flag = l.language === 'nl' ? '🇳🇱' : l.language === 'en' ? '🇬🇧' : '';
-      const urgencyColor = l.urgency === 'critical' ? 'danger' : l.urgency === 'high' ? 'warning' : l.urgency === 'medium' ? 'blue' : 'gray';
-      const websiteOk = l.website?.reachable;
-      const checked = selectedLeads.has(l.id);
+      const checked    = selectedLeads.has(l.id);
+      const country    = l.country || (l.language === 'nl' ? 'NL' : l.language === 'en' ? 'GB' : null);
+      const flagBg     = country ? (COUNTRY_COLORS[country] || '#9b9b98') : '#9b9b98';
+      const flagTxt    = COUNTRY_TEXT[country] || '#fff';
+      const countryCode = country || '??';
+      const score      = l.score || 0;
+      const scoreStr   = score.toFixed(1);
+      const scoreCls   = score >= 8 ? 'score-num-green' : score >= 6 ? 'score-num-amber' : 'score-num-red';
+      const volgers    = l.estimatedFollowers || l.linkedinCompanyFollowers || 0;
+      const volgersStr = volgers >= 1000 ? (volgers/1000).toFixed(0)+'K' : (volgers || '—');
+      const visits     = l.website?.monthlyVisits || l.monthlyVisits;
+      const visitsStr  = visits ? (visits >= 1000 ? (visits/1000).toFixed(0)+'K' : visits) : '—';
+      const websiteOk  = l.website?.reachable;
+      const websiteHtml = l.websiteUrl
+        ? (websiteOk ? '<span class="lc2-stat-online">● Online</span>' : '<span class="lc2-stat-offline">● Offline</span>')
+        : '<span class="lc2-stat-val">—</span>';
+      const dealWaarde = l.estimatedValue ? `€${(l.estimatedValue/1000).toFixed(0)}K` : '—';
+      const nichePill  = l.niche ? `<span class="pill pill-gray">${esc(l.niche)}</span>` : '';
+      const sizePill   = l.companySize ? `<span class="pill pill-gray">${l.companySize === 'small' ? 'Klein' : l.companySize === 'medium' ? 'Middel' : 'Groot'}</span>` : '';
+      const urgPill    = l.urgency === 'critical' ? `<span class="pill pill-red">kritiek</span>` : (l.urgency === 'high' || l.urgency === 'hoog') ? `<span class="pill pill-amber">hoog</span>` : '';
       return `
-        <div class="lead-card${checked ? ' lead-card-selected' : ''}" onclick="openLeadDetail('${l.id}')">
-          <input type="checkbox" class="lead-card-checkbox" ${checked ? 'checked' : ''}
-            onclick="event.stopPropagation();toggleLeadSelect('${l.id}')"
-            title="Selecteer">
-          <div class="lead-card-header">
-            <div class="lead-card-name">${l.companyName}${flag ? ` <span class="lang-flag">${flag}</span>` : ''}</div>
-            <span class="status-pill status-${STATUS_COLORS[l.status] || 'gray'}" style="font-size:10px">${STATUS_LABELS[l.status] || 'Inbox'}</span>
-                ${l.companySize ? '<span class="badge badge-gray" style="font-size:10px">'+(l.companySize==="small"?"Klein":l.companySize==="medium"?"Middel":"Groot")+'</span>' : ''}
-          </div>
-          <div class="lead-card-meta">
-            ${nicheBadge(l.niche)}
-            <span class="text-secondary" style="font-size:12px"><i class="ti ti-map-pin"></i> ${l.location || '—'}</span>
-          </div>
-          <div class="lead-card-score">
-            <span class="score-pill score-${scoreColor(l.score || 0)}" style="font-size:16px;padding:4px 10px">${(l.score || 0).toFixed(1)}</span>
-            ${l.urgency ? `<span class="badge badge-${urgencyColor}" style="font-size:10px">${l.urgency}</span>` : ''}
-          </div>
-          <div class="lead-card-stats">
-            ${l.estimatedFollowers ? `<span><i class="ti ti-brand-instagram"></i> ${(l.estimatedFollowers/1000).toFixed(0)}K</span>` : ''}
-            ${l.linkedinCompanyFollowers ? `<span style="color:#0a66c2"><i class="ti ti-brand-linkedin"></i> ${l.linkedinCompanyFollowers >= 1000 ? (l.linkedinCompanyFollowers/1000).toFixed(0)+'K' : l.linkedinCompanyFollowers}</span>` : ''}
-            ${l.websiteUrl ? `<span style="color:${websiteOk ? 'var(--success)' : 'var(--danger)'}"><i class="ti ti-world"></i> ${websiteOk ? 'Online' : 'Offline'}</span>` : ''}
-            ${l.estimatedValue ? `<span><i class="ti ti-currency-euro"></i> ${(l.estimatedValue/1000).toFixed(0)}K</span>` : ''}
-          </div>
-          <div class="lead-card-footer">
-            <span class="text-muted" style="font-size:11px">${relativeTime(l.createdAt)}</span>
-            <div style="display:flex;gap:4px">
-              <button class="btn btn-ghost btn-sm lead-trash-btn" style="font-size:11px;padding:2px 8px;color:var(--danger)" title="Verwijder"
-                onclick="event.stopPropagation();deleteOneLead('${l.id}','${l.companyName.replace(/'/g,"\\'")}')">
-                <i class="ti ti-trash"></i>
-              </button>
-              <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px" onclick="event.stopPropagation();openLeadDetail('${l.id}')">
-                <i class="ti ti-chevron-right"></i>
-              </button>
+        <div class="lead-card-v2${checked ? ' lead-card-v2-selected' : ''}" onclick="openLeadDetail('${l.id}')">
+          <input type="checkbox" class="lc2-checkbox" ${checked ? 'checked' : ''}
+            onclick="event.stopPropagation();toggleLeadSelect('${l.id}')" title="Selecteer">
+          <div class="lc2-header">
+            <div class="lead-flag-sq" style="background:${flagBg};color:${flagTxt}">${countryCode}</div>
+            <div class="lc2-name">${esc(l.companyName)}</div>
+            <div class="lc2-score-wrap">
+              <div class="lc2-score-num ${scoreCls}">${scoreStr}</div>
+              <div class="lc2-score-label">SEVERITY</div>
             </div>
+          </div>
+          <div class="lc2-tags">${nichePill}${sizePill}${urgPill}</div>
+          <div class="lc2-divider"></div>
+          <div class="lc2-stats">
+            <div>
+              <div class="lc2-stat-lbl">VOLGERS</div>
+              <div class="lc2-stat-val">${volgersStr}</div>
+            </div>
+            <div>
+              <div class="lc2-stat-lbl">VISITS/MND</div>
+              <div class="lc2-stat-val">${visitsStr}</div>
+            </div>
+            <div>
+              <div class="lc2-stat-lbl">WEBSITE</div>
+              ${websiteHtml}
+            </div>
+            <div>
+              <div class="lc2-stat-lbl">DEAL-WAARDE</div>
+              <div class="lc2-stat-val">${dealWaarde}</div>
+            </div>
+          </div>
+          <div class="lc2-footer">
+            <span class="text-muted" style="font-size:11px">${relativeTime(l.createdAt)}</span>
+            <button class="lc2-open-btn" onclick="event.stopPropagation();openLeadDetail('${l.id}')">
+              Open ›
+            </button>
           </div>
         </div>
       `;
@@ -1122,65 +1175,57 @@ async function renderLeads() {
   container.innerHTML = `
     <div id="bulkActionBar" class="bulk-action-bar" style="display:none">
       <span class="bulk-count"></span>
-      <button class="btn btn-sm" style="background:var(--danger);color:#fff;border-color:var(--danger)" onclick="bulkDeleteLeads()">
+      <button class="btn btn-danger btn-sm" onclick="bulkDeleteLeads()">
         <i class="ti ti-trash"></i> Verwijder selectie
       </button>
       <button class="btn btn-ghost btn-sm" onclick="selectAllLeads()" id="selectAllBtn">
         <i class="ti ti-square"></i> Selecteer alles
       </button>
     </div>
-    <div class="leads-toolbar">
-      <div class="leads-search-row">
-        <input type="search" class="search-input" id="leadsSearch" placeholder="Zoek naam, stad, niche...">
-        <select class="sort-select" id="leadsSortSelect">
-          <option value="newest">Nieuwste eerst</option>
-          <option value="score">Score ↓</option>
-          <option value="value">Waarde ↓</option>
-          <option value="name">Naam A-Z</option>
-        </select>
+    <div class="leads-bar">
+      <div class="leads-bar-search">
+        <input type="search" class="search-input" id="leadsSearch" placeholder="Zoek bedrijf of stad...">
       </div>
-      <div class="filter-row">
-        <div class="filter-group">
-          <span class="filter-label">Status</span>
-          <div class="filter-chips">
-            <button class="filter-chip active" data-status="all">Alles</button>
-            <button class="filter-chip" data-status="inbox">Inbox</button>
-            <button class="filter-chip" data-status="approved">Goedgekeurd</button>
-            <button class="filter-chip" data-status="sent">Verstuurd</button>
-            <button class="filter-chip" data-status="replied">Gereageerd</button>
-            <button class="filter-chip" data-status="client">Klant</button>
-            <button class="filter-chip" data-status="dead">Dead</button>
-          </div>
-        </div>
-        ${niches.length > 2 ? `
-        <div class="filter-group">
-          <span class="filter-label">Niche</span>
-          <div class="filter-chips">
-            ${niches.map(n => `<button class="filter-chip${n === 'all' ? ' active' : ''}" data-niche="${n}">${n === 'all' ? 'Alles' : n}</button>`).join('')}
-          </div>
-        </div>` : ''}
-        <div class="filter-group">
-          <span class="filter-label">Score</span>
-          <div class="filter-chips">
-            <button class="filter-chip active" data-score="all">Alles</button>
-            <button class="filter-chip" data-score="8+">8+</button>
-            <button class="filter-chip" data-score="6+">6+</button>
-          </div>
-        </div>
-      </div>
-      <div class="filter-meta">
-        <span id="filterCount">${leads.length} leads</span>
-        <div style="display:flex;gap:6px;margin-left:auto">
-          <button class="btn btn-ghost btn-sm" id="clearFiltersBtn" style="display:none" onclick="clearLeadFilters()">
-            <i class="ti ti-x"></i> Filters wissen
-          </button>
-          <button class="btn btn-ghost btn-sm" onclick="selectAllLeads()" id="selectAllBtnMain">
-            <i class="ti ti-square"></i> Selecteer alles
-          </button>
-        </div>
+      <div class="leads-bar-chips">
+        <button class="niche-chip active" data-niche="all">Alles <span class="niche-chip-count">${leads.length}</span></button>
+        ${niches.map(n => {
+          const cnt = leads.filter(l => l.niche === n).length;
+          return `<button class="niche-chip" data-niche="${n}">${esc(n)} <span class="niche-chip-count">${cnt}</span></button>`;
+        }).join('')}
       </div>
     </div>
-    <div class="lead-cards" id="leadsGrid"></div>
+    <div id="leadsFilterPanel" class="leads-filter-panel" style="display:none">
+      <div class="leads-filter-group">
+        <span class="leads-filter-group-label">Status</span>
+        <div class="filter-chips">
+          <button class="filter-chip active" data-status="all">Alles</button>
+          <button class="filter-chip" data-status="inbox">Inbox</button>
+          <button class="filter-chip" data-status="approved">Goedgekeurd</button>
+          <button class="filter-chip" data-status="sent">Verstuurd</button>
+          <button class="filter-chip" data-status="replied">Gereageerd</button>
+          <button class="filter-chip" data-status="client">Klant</button>
+          <button class="filter-chip" data-status="dead">Dead</button>
+        </div>
+      </div>
+      <div class="leads-filter-group">
+        <span class="leads-filter-group-label">Score</span>
+        <div class="filter-chips">
+          <button class="filter-chip active" data-score="all">Alles</button>
+          <button class="filter-chip" data-score="8+">8+</button>
+          <button class="filter-chip" data-score="6+">6+</button>
+        </div>
+      </div>
+      <div class="leads-filter-group" style="margin-left:auto;flex-direction:row;align-items:center;gap:10px">
+        <button class="btn btn-ghost btn-sm" id="clearFiltersBtn" style="display:none" onclick="clearLeadFilters()">
+          <i class="ti ti-x"></i> Wissen
+        </button>
+        <span id="filterCount" class="text-muted" style="font-size:13px;white-space:nowrap">${leads.length} leads</span>
+        <button class="btn btn-ghost btn-sm" onclick="selectAllLeads()" id="selectAllBtnMain">
+          <i class="ti ti-square"></i> Alles
+        </button>
+      </div>
+    </div>
+    <div class="lead-cards-v2" id="leadsGrid"></div>
   `;
 
   renderGrid();
@@ -1191,14 +1236,18 @@ async function renderLeads() {
     updateBulkBar();
   });
 
-  document.getElementById('leadsSortSelect').addEventListener('change', e => {
-    sortBy = e.target.value;
-    renderGrid();
+  document.getElementById('toggleFiltersBtn')?.addEventListener('click', () => {
+    const panel = document.getElementById('leadsFilterPanel');
+    const btn   = document.getElementById('toggleFiltersBtn');
+    if (!panel) return;
+    const open = panel.style.display !== 'none';
+    panel.style.display = open ? 'none' : '';
+    btn?.classList.toggle('active', !open);
   });
 
-  document.querySelectorAll('.filter-chip[data-niche]').forEach(btn => {
+  document.querySelectorAll('[data-niche]').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-chip[data-niche]').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('[data-niche]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       activeNiche = btn.dataset.niche;
       renderGrid();
@@ -1226,8 +1275,7 @@ async function renderLeads() {
   window.clearLeadFilters = function() {
     activeNiche = 'all'; activeStatus = 'all'; activeScore = 'all'; sortBy = 'newest'; searchQ = '';
     document.getElementById('leadsSearch').value = '';
-    document.getElementById('leadsSortSelect').value = 'newest';
-    document.querySelectorAll('.filter-chip[data-niche]').forEach(b => b.classList.toggle('active', b.dataset.niche === 'all'));
+    document.querySelectorAll('[data-niche]').forEach(b => b.classList.toggle('active', b.dataset.niche === 'all'));
     document.querySelectorAll('.filter-chip[data-status]').forEach(b => b.classList.toggle('active', b.dataset.status === 'all'));
     document.querySelectorAll('.filter-chip[data-score]').forEach(b => b.classList.toggle('active', b.dataset.score === 'all'));
     renderGrid();
@@ -1255,10 +1303,14 @@ async function renderPipeline() {
   document.getElementById('appView').innerHTML = `
     <div class="page-header">
       <div>
-        <h1 class="page-title">Pipeline</h1>
-        <p class="page-subtitle">Alle leads en hun status</p>
+        <div class="page-label">PIPELINE</div>
+        <h1 class="page-title">Sleep leads door je funnel</h1>
+        <p class="page-subtitle">Van eerste touch tot betalende klant. Klik een kaart om de hele context te zien.</p>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-ghost btn-sm" onclick="exportLeadsCSV()">
+          <i class="ti ti-download"></i> Export
+        </button>
         <div class="view-toggle">
           <button class="view-toggle-btn active" id="kanbanViewBtn" onclick="switchPipelineView('kanban')">
             <i class="ti ti-layout-board"></i> Kanban
@@ -1267,9 +1319,6 @@ async function renderPipeline() {
             <i class="ti ti-table"></i> Tabel
           </button>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="exportLeadsCSV()">
-          <i class="ti ti-download"></i> Export
-        </button>
       </div>
     </div>
     <div class="pipeline-layout" id="pipelineLayout">
@@ -1317,33 +1366,37 @@ async function renderPipeline() {
 }
 
 const KANBAN_COLS = [
-  { key: 'inbox',    label: 'Inbox',           color: '#6b7280', statuses: ['inbox', 'pending', 'new'] },
-  { key: 'approved', label: 'Goedgekeurd',     color: '#3b82f6', statuses: ['approved', 'auto-approved'] },
-  { key: 'sent',     label: 'Verstuurd',       color: '#6366f1', statuses: ['sent', 'followup1', 'followup2', 'scheduled'] },
-  { key: 'replied',  label: 'Gereageerd',      color: '#10b981', statuses: ['replied'] },
-  { key: 'client',   label: 'Klant',           color: '#f59e0b', statuses: ['client'] },
-  { key: 'dead',     label: 'Dead',            color: '#ef4444', statuses: ['dead', 'disapproved'] }
+  { key: 'inbox',    label: 'Inbox',      color: '#2563eb', statuses: ['inbox', 'pending', 'new'] },
+  { key: 'approved', label: 'Gekwalif.',  color: '#7c3aed', statuses: ['approved', 'auto-approved'] },
+  { key: 'sent',     label: 'Verstuurd',  color: '#16a34a', statuses: ['sent', 'followup1', 'followup2', 'scheduled'] },
+  { key: 'replied',  label: 'Gereageerd', color: '#d97706', statuses: ['replied'] },
+  { key: 'client',   label: 'Klant',      color: '#9b9b98', statuses: ['client'] },
+  { key: 'dead',     label: 'Dead',       color: '#dc2626', statuses: ['dead', 'disapproved'] }
 ];
 
 function buildKanbanCard(l) {
+  const COUNTRY_COLORS = { NL:'#FF6B35', BE:'#FFD700', DE:'#333333', GB:'#003087', US:'#002868' };
+  const COUNTRY_TEXT   = { BE:'#333333' };
+  const country   = l.country || (l.language === 'nl' ? 'NL' : l.language === 'en' ? 'GB' : null);
+  const flagBg    = country ? (COUNTRY_COLORS[country] || '#9b9b98') : '#9b9b98';
+  const flagTxt   = COUNTRY_TEXT[country] || '#fff';
+  const code      = country || '??';
+  const score     = l.score || 0;
+  const scoreCls  = score >= 8 ? 'score-num-green' : score >= 6 ? 'score-num-amber' : 'score-num-red';
+  const city      = l.location ? l.location.split(',')[0].trim() : '';
+  const deal      = l.estimatedValue ? `€${(l.estimatedValue/1000).toFixed(0)}K` : null;
   const hasUnread = (l.clientMessages || []).some(m => !m.read);
   return `
     <div class="kanban-card" data-id="${l.id}" draggable="true">
-      <div class="kanban-card-name">
-        ${l.companyName || '—'}${l.language === 'nl' ? ' 🇳🇱' : l.language === 'en' ? ' 🇬🇧' : ''}${hasUnread ? ' <span class="msg-dot"></span>' : ''}
+      <div class="kc2-header">
+        <div class="lead-flag-sq" style="background:${flagBg};color:${flagTxt};width:24px;height:24px;font-size:9px;border-radius:4px">${code}</div>
+        <div class="kc2-name">${esc(l.companyName || '—')}${hasUnread ? ' <span class="msg-dot"></span>' : ''}</div>
+        <span class="kc2-score ${scoreCls}">${score.toFixed(1)}</span>
       </div>
-      <div class="kanban-card-meta">
-        ${nicheBadge(l.niche)}
-        ${l.location ? `<span class="kanban-card-loc"><i class="ti ti-map-pin"></i>${l.location.split(',')[0].trim()}</span>` : ''}
-      </div>
-      <div class="kanban-card-footer">
-        <span class="score-pill score-${scoreColor(l.score || 0)}" style="font-size:11px;padding:2px 7px">${(l.score || 0).toFixed(1)}</span>
-        <span style="display:flex;gap:5px;align-items:center">
-          ${l.estimatedValue ? `<span class="kanban-card-value">€${(l.estimatedValue/1000).toFixed(0)}K</span>` : ''}
-          ${l.openedAt ? `<i class="ti ti-eye" title="Email geopend" style="color:var(--success);font-size:12px"></i>` : ''}
-          ${l.repliedAt ? `<i class="ti ti-mail-opened" title="Heeft gereageerd" style="color:var(--accent);font-size:12px"></i>` : ''}
-          ${l.projectStartedAt ? `<i class="ti ti-rocket" title="Project actief" style="color:var(--warning);font-size:12px"></i>` : ''}
-        </span>
+      ${city ? `<div class="kc2-city"><i class="ti ti-map-pin" style="font-size:10px"></i>${esc(city)}</div>` : ''}
+      <div class="kc2-tags">
+        ${l.niche ? `<span class="pill pill-gray">${esc(l.niche)}</span>` : ''}
+        ${deal ? `<span class="kc2-deal">${deal}</span>` : ''}
       </div>
     </div>`;
 }
@@ -1372,8 +1425,8 @@ function renderKanban(leads, container) {
               </div>
               ${totalVal > 0 ? `<div class="kanban-col-meta">€${totalVal >= 1000 ? (totalVal/1000).toFixed(0)+'K' : totalVal} pipeline</div>` : ''}
             </div>
-            <div class="kanban-col-cards">
-              ${cards.length ? cards.map(l => buildKanbanCard(l)).join('') : '<div class="kanban-col-empty">Leeg</div>'}
+            <div class="kanban-col-body" data-drop-status="${col.key}">
+              ${cards.length ? cards.map(l => buildKanbanCard(l)).join('') : '<div class="kanban-col-empty">Nog niets hier</div>'}
             </div>
           </div>`;
       }).join('')}
@@ -1388,14 +1441,14 @@ function renderKanban(leads, container) {
     card.addEventListener('click', () => openLeadDetail(card.dataset.id));
   });
 
-  document.querySelectorAll('.kanban-col').forEach(col => {
-    col.addEventListener('dragover', e => { e.preventDefault(); col.classList.add('drag-over'); });
-    col.addEventListener('dragleave', e => { if (!col.contains(e.relatedTarget)) col.classList.remove('drag-over'); });
-    col.addEventListener('drop', async e => {
+  document.querySelectorAll('.kanban-col-body').forEach(body => {
+    body.addEventListener('dragover', e => { e.preventDefault(); body.classList.add('drag-over'); });
+    body.addEventListener('dragleave', e => { if (!body.contains(e.relatedTarget)) body.classList.remove('drag-over'); });
+    body.addEventListener('drop', async e => {
       e.preventDefault();
-      col.classList.remove('drag-over');
+      body.classList.remove('drag-over');
       const leadId = e.dataTransfer.getData('text/plain');
-      const colKey = col.dataset.dropStatus;
+      const colKey = body.dataset.dropStatus;
       const STATUS_MAP = { inbox: 'inbox', approved: 'approved', sent: 'sent', replied: 'replied', client: 'client', dead: 'dead' };
       const newStatus = STATUS_MAP[colKey];
       if (!newStatus || !leadId) return;
@@ -1450,6 +1503,7 @@ function renderPipelineTable(leads, container) {
           <tr>
             <th>Bedrijf</th>
             <th>Niche</th>
+            <th>Email</th>
             <th>Score</th>
             <th>Status</th>
             <th>Verstuurd</th>
@@ -1467,18 +1521,21 @@ function renderPipelineTable(leads, container) {
             <tr class="leads-row" data-id="${l.id}" data-status="${l.status || 'inbox'}" data-size="${l.companySize || ''}">
               <td><strong>${l.companyName || '—'}${l.language === 'nl' ? ' 🇳🇱' : l.language === 'en' ? ' 🇬🇧' : ''}${l.status === 'auto-approved' ? ' <span title="Auto-goedgekeurd" style="color:#10b981;font-size:11px">⚡</span>' : ''}${l.referralPending ? ' <span title="Referral email klaar voor goedkeuring" style="font-size:11px">🎁</span>' : ''}${(l.clientMessages || []).some(m => !m.read) ? ' <span class="msg-dot" title="Ongelezen klantbericht"></span>' : ''}${dupIds.has(l.id) ? ' <span title="Mogelijk duplicaat" style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid #fde68a">Dubbel</span>' : ''}</strong><br><span class="text-muted" style="font-size:12px">${l.location || ''}</span></td>
               <td>${nicheBadge(l.niche)}</td>
+              <td>${l.contactEmail
+                ? `<span class="table-email">${esc(l.contactEmail)}</span><span class="email-src-badge ${l.emailSource === 'gevonden' ? 'email-src-found' : 'email-src-guess'}" style="margin-left:4px">${l.emailSource === 'gevonden' ? 'Gevonden' : 'Geschat'}</span>`
+                : `<span class="text-warning" style="font-size:11px">Geen email</span>`}</td>
               <td><span class="score-pill score-${scoreColor(l.score || 0)}">${(l.score || 0).toFixed(1)}</span></td>
               <td>
                 <span class="status-pill status-${STATUS_COLORS[l.status] || 'gray'}">${STATUS_LABELS[l.status] || 'Inbox'}</span>
-                ${l.scheduledAt ? `<br><span style="font-size:11px;color:#f59e0b"><i class="ti ti-clock"></i> ${formatOptimalTime(l.scheduledAt)}</span>` : ''}
-                ${l.openedAt ? `<br><span style="font-size:11px;color:#10b981"><i class="ti ti-eye"></i> Geopend ${formatDate(l.openedAt)}${l.openCount > 1 ? ' ('+l.openCount+'x)' : ''}</span>` : ''}
+                ${l.scheduledAt ? `<br><span class="text-warning" style="font-size:11px"><i class="ti ti-clock"></i> ${formatOptimalTime(l.scheduledAt)}</span>` : ''}
+                ${l.openedAt ? `<br><span class="text-success" style="font-size:11px"><i class="ti ti-eye"></i> Geopend ${formatDate(l.openedAt)}${l.openCount > 1 ? ' (' + l.openCount + 'x)' : ''}</span>` : ''}
               </td>
               <td class="text-secondary">${l.sentAt ? formatDate(l.sentAt) : '—'}</td>
               <td class="text-secondary">${l.repliedAt ? formatDate(l.repliedAt) : '—'}</td>
               <td class="text-secondary">${l.estimatedValue ? '€' + l.estimatedValue.toLocaleString('nl-NL') : '—'}</td>
               <td style="display:flex;gap:4px;align-items:center">
                 <button class="btn btn-ghost btn-sm" onclick="openLeadDetail('${l.id}')"><i class="ti ti-chevron-right"></i></button>
-                <button class="btn btn-ghost btn-sm" title="Blacklisten" onclick="quickBlacklist('${l.id}','${esc(l.companyName)}')" style="color:#ef4444"><i class="ti ti-ban"></i></button>
+                <button class="btn btn-ghost btn-sm" title="Blacklisten" onclick="quickBlacklist('${l.id}','${esc(l.companyName)}')" style="color:var(--danger)"><i class="ti ti-ban"></i></button>
               </td>
             </tr>
           `).join('');
@@ -1560,6 +1617,14 @@ function openLeadDetail(id) {
           ${nicheBadge(lead.niche)}
           <span class="text-secondary"><i class="ti ti-map-pin"></i> ${lead.location || '—'}</span>
         </div>
+        <div class="detail-email-row">
+          ${lead.contactEmail
+            ? `<i class="ti ti-mail" style="color:var(--text-secondary);font-size:13px"></i>
+               <span class="detail-email-addr">${lead.contactEmail}</span>
+               <span class="email-src-badge ${lead.emailSource === 'gevonden' ? 'email-src-found' : 'email-src-guess'}">${lead.emailSource === 'gevonden' ? 'Gevonden' : 'Geschat'}</span>
+               <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;margin-left:2px" onclick="navigator.clipboard.writeText('${lead.contactEmail}');toast('Email gekopieerd!')"><i class="ti ti-copy"></i></button>`
+            : `<i class="ti ti-mail-off" style="color:#f59e0b;font-size:13px"></i><span style="font-size:12px;color:#f59e0b">Geen email gevonden</span>`}
+        </div>
       </div>
       <button class="btn-close-panel" onclick="closeLeadDetail()"><i class="ti ti-x"></i></button>
     </div>
@@ -1570,10 +1635,10 @@ function openLeadDetail(id) {
       <button class="detail-tab"        data-tab="linkedin"  onclick="switchDetailTab('linkedin')">LinkedIn</button>
       <button class="detail-tab"        data-tab="website"   onclick="switchDetailTab('website')">Website</button>
       <button class="detail-tab"        data-tab="notes"     onclick="switchDetailTab('notes')">Notities</button>
-      ${lead.status === 'client' ? `<button class="detail-tab" data-tab="payments" onclick="switchDetailTab('payments')">${(lead.payments?.filter(p=>p.status==='sent').length||0) > 0 ? `<i class="ti ti-coin" style="margin-right:3px;color:#f59e0b"></i>Betalingen <span class="tab-badge" style="background:#f59e0b">${lead.payments.filter(p=>p.status==='sent').length}</span>` : '<i class="ti ti-coin" style="margin-right:3px"></i>Betalingen'}</button>` : ''}
-      <button class="detail-tab"        data-tab="emails"    onclick="switchDetailTab('emails')">${(lead.clientEmailLog?.length || 0) > 0 ? `<i class="ti ti-mail" style="margin-right:3px"></i>E-mails <span class="tab-badge" style="background:#6366f1">${lead.clientEmailLog.length}</span>` : '<i class="ti ti-mail" style="margin-right:3px"></i>E-mails'}</button>
+      ${lead.status === 'client' ? `<button class="detail-tab" data-tab="payments" onclick="switchDetailTab('payments')">${(lead.payments?.filter(p=>p.status==='sent').length||0) > 0 ? `<i class="ti ti-coin" style="margin-right:3px;color:var(--warning)"></i>Betalingen <span class="tab-badge tab-badge-warning">${lead.payments.filter(p=>p.status==='sent').length}</span>` : '<i class="ti ti-coin" style="margin-right:3px"></i>Betalingen'}</button>` : ''}
+      <button class="detail-tab"        data-tab="emails"    onclick="switchDetailTab('emails')">${(lead.clientEmailLog?.length || 0) > 0 ? `<i class="ti ti-mail" style="margin-right:3px"></i>E-mails <span class="tab-badge">${lead.clientEmailLog.length}</span>` : '<i class="ti ti-mail" style="margin-right:3px"></i>E-mails'}</button>
       <button class="detail-tab"        data-tab="portal"    onclick="switchDetailTab('portal')">Klantportaal${unreadCount > 0 ? `<span class="tab-badge">${unreadCount}</span>` : ''}</button>
-      <button class="detail-tab"        data-tab="reports"   onclick="switchDetailTab('reports')">Rapporten${lead.reports?.length > 0 ? `<span class="tab-badge" style="background:#6366f1">${lead.reports.length}</span>` : ''}</button>
+      <button class="detail-tab"        data-tab="reports"   onclick="switchDetailTab('reports')">Rapporten${lead.reports?.length > 0 ? `<span class="tab-badge">${lead.reports.length}</span>` : ''}</button>
       ${lead.intakeToken ? `<button class="detail-tab" data-tab="intake" onclick="switchDetailTab('intake')">${lead.intakeSubmittedAt ? '<i class="ti ti-clipboard-check" style="color:#10b981;margin-right:4px"></i>' : '<i class="ti ti-clipboard-list" style="margin-right:4px"></i>'}Intake</button>` : ''}
       ${lead.projectPlan ? `<button class="detail-tab" data-tab="project" onclick="switchDetailTab('project')"><i class="ti ti-rocket" style="margin-right:4px"></i>Project</button>` : ''}
     </div>
@@ -1637,10 +1702,10 @@ function openLeadDetail(id) {
 
       ${['approved','scheduled','sent','replied'].includes(lead.status) && !lead.projectStartedAt ? `
         <div class="detail-section">
-          <div style="background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);border-radius:12px;padding:16px">
-            <div style="font-size:13px;font-weight:700;color:#fff;margin-bottom:4px"><i class="ti ti-rocket"></i> Project Engine</div>
-            <div style="font-size:12px;color:rgba(255,255,255,.8);margin-bottom:12px">Start het project automatisch: portaal, intake, AI-projectplan, content kalender & taken.</div>
-            <button class="btn btn-sm" style="background:#fff;color:#6366f1;font-weight:700" onclick="startProject('${lead.id}')">
+          <div class="project-engine-cta">
+            <div class="project-engine-title"><i class="ti ti-rocket"></i> Project Engine</div>
+            <div class="project-engine-sub">Start het project automatisch: portaal, intake, AI-projectplan, content kalender & taken.</div>
+            <button class="btn btn-sm project-engine-btn" onclick="startProject('${lead.id}')">
               <i class="ti ti-rocket"></i> Project starten
             </button>
           </div>
@@ -1769,7 +1834,7 @@ function openLeadDetail(id) {
                       <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
                         <span style="font-size:10px;font-weight:700;background:${isOverdue?'#fef2f2':'#f3f4f6'};color:${isOverdue?'#dc2626':statusColors[p.status]||'#6b7280'};border-radius:4px;padding:2px 6px">${isOverdue?'ACHTERSTALLIG':statusLabels[p.status]||p.status}</span>
                         <span style="font-size:10px;background:#f3f4f6;border-radius:4px;padding:2px 6px">${esc(p.method||'')}</span>
-                        ${p.billing === 'maandelijks' ? '<span style="font-size:10px;background:#eef2ff;color:#6366f1;border-radius:4px;padding:2px 6px">Maandelijks</span>' : ''}
+                        ${p.billing === 'maandelijks' ? '<span class="badge badge-blue" style="font-size:10px">Maandelijks</span>' : ''}
                         <span style="font-size:10px;color:#9ca3af">${p.dueDate ? 'Vervalt ' + formatDate(p.dueDate) : ''}</span>
                         ${p.paidAt ? `<span style="font-size:10px;color:#16a34a">Betaald ${formatDate(p.paidAt)}</span>` : ''}
                       </div>
@@ -1921,8 +1986,8 @@ function openLeadDetail(id) {
         <div style="display:flex;flex-direction:column;gap:10px">
           ${(lead.projectPlan.weeks || []).map(w => `
             <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
-              <div style="background:#f9fafb;padding:10px 14px;display:flex;align-items:center;gap:10px">
-                <span style="background:#6366f1;color:#fff;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">Week ${w.week}</span>
+              <div style="background:var(--surface-2);padding:10px 14px;display:flex;align-items:center;gap:10px">
+                <span class="week-badge">Week ${w.week}</span>
                 <span style="font-size:13px;font-weight:600">${esc(w.focus || '')}</span>
               </div>
               <ul style="padding:10px 14px 10px 28px;margin:0;display:flex;flex-direction:column;gap:4px">
@@ -2066,13 +2131,71 @@ function switchDetailTab(tabName) {
 
 function buildWebsiteTab(lead) {
   const w = lead.website || {};
+  const site = lead.generatedSite;
   const check = (val, label) => `
     <div class="website-check">
       <i class="ti ${val ? 'ti-check' : 'ti-x'}" style="color:${val ? 'var(--success)' : 'var(--danger)'}"></i>
       <span style="font-size:13px">${label}</span>
     </div>`;
 
+  const generatorSection = site ? `
+    <div class="detail-section site-gen-section">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="detail-section-title" style="margin:0">Gegenereerde website</div>
+          <span class="site-status-badge ${site.status === 'live' ? 'site-status-live' : 'site-status-preview'}">${site.status === 'live' ? 'Live' : 'Preview'}</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <a href="${site.siteUrl}" target="_blank" class="btn btn-sm btn-outline"><i class="ti ti-external-link"></i> Bekijk live</a>
+          <button class="btn btn-sm btn-ghost" onclick="editSiteHTML('${lead.id}')"><i class="ti ti-code"></i> HTML bewerken</button>
+          <button class="btn btn-sm btn-ghost" onclick="sendSiteFeedback('${lead.id}')"><i class="ti ti-message"></i> Feedback</button>
+          <button class="btn btn-sm btn-ghost" onclick="downloadSiteHTML('${lead.id}')"><i class="ti ti-download"></i> Download</button>
+          ${site.status === 'preview'
+            ? `<button class="btn btn-sm" style="background:#10b981;color:#fff;border:none" onclick="setSiteStatus('${lead.id}','live')"><i class="ti ti-rocket"></i> Zet live</button>`
+            : `<button class="btn btn-sm btn-ghost" onclick="setSiteStatus('${lead.id}','preview')"><i class="ti ti-eye-off"></i> Terug naar preview</button>`}
+          <button class="btn btn-sm" style="background:#111;color:#fff;border:none" onclick="generateSite('${lead.id}')"><i class="ti ti-refresh"></i> Regenereer</button>
+        </div>
+      </div>
+
+      <div class="site-preview-wrap">
+        <iframe src="${site.siteUrl}" class="site-preview-iframe" title="Website preview" loading="lazy" sandbox="allow-same-origin allow-scripts"></iframe>
+      </div>
+
+      <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text-muted)">URL:</span>
+        <a href="${site.siteUrl}" target="_blank" style="font-size:12px;color:#6366f1;word-break:break-all">${site.siteUrl}</a>
+        <button class="btn btn-ghost" style="padding:2px 8px;font-size:11px" onclick="navigator.clipboard.writeText('${site.siteUrl}');toast('URL gekopieerd!')"><i class="ti ti-copy"></i></button>
+      </div>
+
+      ${site.feedback?.length ? `
+        <div style="margin-top:12px">
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px">Feedback (${site.feedback.length})</div>
+          ${site.feedback.map(f => `
+            <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;color:var(--text-muted);margin-bottom:4px">
+              <span style="color:var(--text)">${f.text}</span>
+              <span style="margin-left:8px;opacity:.6">${f.by} · ${new Date(f.time).toLocaleDateString('nl-NL')}</span>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+    </div>
+  ` : `
+    <div class="detail-section">
+      <div style="text-align:center;padding:24px 16px">
+        <div style="font-size:32px;margin-bottom:10px">🌐</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">Website generator</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:18px">Genereer een professionele website op basis van de bedrijfsinformatie en intake antwoorden.</div>
+        <button class="btn" style="background:#111;color:#fff;border:none;padding:10px 20px" onclick="generateSite('${lead.id}')">
+          <i class="ti ti-wand"></i> Website genereren
+        </button>
+        ${!lead.intakeAnswers ? `<div style="font-size:12px;color:var(--text-muted);margin-top:10px">Tip: na intake invullen krijg je betere resultaten.</div>` : ''}
+      </div>
+    </div>
+  `;
+
   return `
+    ${generatorSection}
+
     ${lead.websiteUrl ? `
       <div class="website-screenshot-wrap">
         <img class="website-screenshot-img"
@@ -2088,7 +2211,7 @@ function buildWebsiteTab(lead) {
 
     ${w.reachable !== undefined ? `
       <div class="detail-section">
-        <div class="detail-section-title">Analyse</div>
+        <div class="detail-section-title">Analyse huidige website</div>
         <div class="website-checks">
           ${check(w.reachable, w.reachable ? `Bereikbaar — laadtijd ${w.loadTimeMs ? (w.loadTimeMs/1000).toFixed(1)+'s' : '—'}` : 'Niet bereikbaar')}
           ${check(w.hasHttps,              'HTTPS beveiligd')}
@@ -2105,7 +2228,7 @@ function buildWebsiteTab(lead) {
           </ul>
         </div>
       ` : ''}
-    ` : '<div class="empty-state"><i class="ti ti-world-off"></i><p>Geen websitedata beschikbaar</p></div>'}
+    ` : ''}
 
     ${(lead.linkedinCompanyUrl || lead.linkedinCompanyFollowers) ? `
       <div class="detail-section">
@@ -2916,6 +3039,154 @@ function generateDelivery(leadId) {
   });
 }
 
+// ─── Website Generator ────────────────────────────────────────────────────────
+
+function generateSite(leadId) {
+  const steps = [
+    { label: 'Website content genereren met AI' },
+    { label: 'Volledige HTML website bouwen' },
+    { label: 'Website opslaan en URL aanmaken' },
+    { label: 'Preview link versturen naar klant' }
+  ];
+
+  openModal('Website genereren', `
+    <div style="padding:4px 0">
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:18px">
+        Claude genereert een professionele website op basis van de bedrijfsinfo en intake antwoorden. Dit duurt ongeveer 30–60 seconden.
+      </p>
+      ${steps.map((s, i) => `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div id="site-step-icon-${i+1}" style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;color:#9ca3af">${i+1}</div>
+          <span id="site-step-label-${i+1}" style="font-size:13px;color:#6b7280">${s.label}</span>
+        </div>
+      `).join('')}
+      <div id="site-result" style="display:none;margin-top:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px">
+        <div style="font-size:14px;font-weight:700;color:#15803d;margin-bottom:6px"><i class="ti ti-check"></i> Website succesvol gegenereerd!</div>
+        <a id="site-result-link" href="#" target="_blank" style="font-size:12px;color:#6366f1;word-break:break-all"></a>
+      </div>
+      <div id="site-error" style="display:none;margin-top:16px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px;font-size:13px;color:#dc2626"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="siteModalClose" onclick="closeModal()" disabled>Sluiten</button>
+      <button class="btn btn-ghost" id="siteDoneBtn" style="display:none" onclick="closeModal(); renderLeadDetail('${leadId}')">Bekijk resultaat</button>
+    </div>
+  `);
+
+  fetch(`/api/leads/${leadId}/generate-site`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${localStorage.getItem('agencyToken')}` }
+  }).then(res => {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    const pump = () => reader.read().then(({ done, value }) => {
+      if (done) {
+        document.getElementById('siteModalClose').disabled = false;
+        document.getElementById('siteDoneBtn').style.display = '';
+        return;
+      }
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      parts.forEach(part => {
+        const line = part.trim();
+        if (!line.startsWith('data: ')) return;
+        try {
+          const d = JSON.parse(line.slice(6));
+          const { step, label, status, siteUrl } = d;
+          if (step > 0) {
+            const icon = document.getElementById(`site-step-icon-${step}`);
+            const lbl  = document.getElementById(`site-step-label-${step}`);
+            if (icon) {
+              if (status === 'running') { icon.innerHTML = '<i class="ti ti-loader-2 spin" style="font-size:12px;color:#6366f1"></i>'; icon.style.borderColor = '#6366f1'; }
+              else if (status === 'done') { icon.innerHTML = '<i class="ti ti-check" style="font-size:12px;color:#10b981"></i>'; icon.style.borderColor = '#10b981'; icon.style.background = '#f0fdf4'; }
+            }
+            if (lbl) lbl.style.color = status === 'done' ? '#111' : status === 'running' ? '#6366f1' : '';
+          }
+          if (status === 'complete') {
+            document.getElementById('site-result').style.display = '';
+            if (siteUrl) { const a = document.getElementById('site-result-link'); a.href = siteUrl; a.textContent = siteUrl; }
+            document.getElementById('siteDoneBtn').style.display = '';
+          }
+          if (status === 'error') {
+            document.getElementById('site-error').textContent = label;
+            document.getElementById('site-error').style.display = '';
+            document.getElementById('siteModalClose').disabled = false;
+          }
+        } catch { /* ignore */ }
+      });
+      pump();
+    }).catch(() => { document.getElementById('siteModalClose').disabled = false; document.getElementById('siteDoneBtn').style.display = ''; });
+    pump();
+  });
+}
+
+async function editSiteHTML(leadId) {
+  const res  = await apiFetch(`/api/leads/${leadId}/site`);
+  const data = await res.json();
+  if (!data.exists) { toast('Geen website gevonden'); return; }
+
+  openModal('HTML bewerken', `
+    <div style="padding:4px 0">
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Bewerk de HTML direct. Sla op om de live site bij te werken.</p>
+      <textarea id="siteHtmlEditor" style="width:100%;height:420px;font-family:monospace;font-size:12px;padding:10px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical;white-space:pre">${data.html.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
+      <button class="btn" style="background:#111;color:#fff;border:none" onclick="saveSiteHTML('${leadId}')"><i class="ti ti-device-floppy"></i> Opslaan</button>
+    </div>
+  `);
+}
+
+async function saveSiteHTML(leadId) {
+  const el = document.getElementById('siteHtmlEditor');
+  if (!el) return;
+  const html = el.value.replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+  const res = await apiFetch(`/api/leads/${leadId}/site`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html }) });
+  if (res.ok) { toast('Website opgeslagen!'); closeModal(); renderLeadDetail(leadId); }
+  else { toast('Opslaan mislukt'); }
+}
+
+async function setSiteStatus(leadId, status) {
+  const res = await apiFetch(`/api/leads/${leadId}/site/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+  if (res.ok) { toast(status === 'live' ? 'Website is live gezet!' : 'Terug naar preview'); renderLeadDetail(leadId); }
+  else { toast('Status wijzigen mislukt'); }
+}
+
+function sendSiteFeedback(leadId) {
+  openModal('Feedback toevoegen', `
+    <div style="padding:4px 0">
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Beschrijf wat er aangepast moet worden aan de website.</p>
+      <textarea id="siteFeedbackText" placeholder="Bijv: Verander de kleur van de knop naar groen, voeg een telefoon sectie toe..." style="width:100%;height:120px;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;background:var(--bg);color:var(--text);resize:vertical"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
+      <button class="btn" style="background:#111;color:#fff;border:none" onclick="submitSiteFeedback('${leadId}')"><i class="ti ti-send"></i> Feedback opslaan</button>
+    </div>
+  `);
+}
+
+async function submitSiteFeedback(leadId) {
+  const feedback = document.getElementById('siteFeedbackText')?.value?.trim();
+  if (!feedback) { toast('Voer feedback in'); return; }
+  const res = await apiFetch(`/api/leads/${leadId}/site/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ feedback }) });
+  if (res.ok) { toast('Feedback opgeslagen!'); closeModal(); renderLeadDetail(leadId); }
+  else { toast('Feedback opslaan mislukt'); }
+}
+
+async function downloadSiteHTML(leadId) {
+  const res  = await apiFetch(`/api/leads/${leadId}/site`);
+  const data = await res.json();
+  if (!data.exists || !data.html) { toast('Geen website HTML beschikbaar'); return; }
+  const blob = new Blob([data.html], { type: 'text/html' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `website-${leadId}.html`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+  toast('HTML gedownload!');
+}
+
 // ─── Tasks system ─────────────────────────────────────────────────────────────
 
 const TASK_STATUS = { todo: { label: 'Te doen', color: '#6b7280', bg: '#f3f4f6' }, bezig: { label: 'Bezig', color: '#d97706', bg: '#fefce8' }, klaar: { label: 'Klaar', color: '#16a34a', bg: '#f0fdf4' } };
@@ -3310,13 +3581,13 @@ async function submitInvoice(leadId) {
 
 async function renderAgents() {
   const AGENTS = [
-    { num: 1, icon: 'ti-search',           color: '#6366f1', name: 'Lead Finder',        role: 'Genereert bedrijven per dag', desc: 'Vraagt Claude om realistische bedrijven te genereren die baat hebben bij AI-marketing. Mixt niches (beauty, food, fitness, retail, restaurant) en locaties (NL, BE, DE, UK, VS).' },
-    { num: 2, icon: 'ti-world',            color: '#0ea5e9', name: 'Website Checker',     role: 'Analyseert website technisch', desc: 'Bezoekt de website van elk bedrijf, meet laadtijd, controleert HTTPS, mobile viewport, aanwezigheid van CTA en boekingssysteem. Genereert concrete verbeterpunten.' },
-    { num: 3, icon: 'ti-brand-instagram',  color: '#ec4899', name: 'Social Analyzer',     role: 'Analyseert social media', desc: 'Schat engagement rate, postfrequentie en groeipotentieel in. Genereert een gepersonaliseerde email-opener gebaseerd op echte observaties over het account.' },
-    { num: 4, icon: 'ti-chart-bar',        color: '#f59e0b', name: 'Opportunity Scorer',  role: 'Score 1–10 + aanbevolen diensten', desc: 'Combineert website- en social data om een kwaliteitsscore te berekenen. Koppelt de beste diensten aan het bedrijf en schat de maandelijkse pipeline waarde.' },
-    { num: 5, icon: 'ti-mail',             color: '#10b981', name: 'Email Writer',         role: 'Schrijft gepersonaliseerde koude email', desc: 'Schrijft een menselijke koude email in de taal van het bedrijf (NL of EN). Max 120 woorden, informele toon, begint met de gepersonaliseerde opener van Agent 3.' },
-    { num: 6, icon: 'ti-brand-linkedin',   color: '#2563eb', name: 'LinkedIn DM Writer',  role: 'Schrijft LinkedIn DM (max 280 tekens)', desc: 'Schrijft een korte, directe LinkedIn DM in de taal van het bedrijf. Max 280 tekens, vriendelijk en specifiek. Klaar om te plakken in LinkedIn.' },
-    { num: 7, icon: 'ti-chart-dots',       color: '#f97316', name: 'Competitor Analyzer', role: 'Analyseert lokale concurrenten', desc: 'Genereert 2-3 realistische concurrenten voor het bedrijf in hun stad of regio. Analyseert hun voordelen (ads, website, reviews). Agent 5 gebruikt dit om een concurrentie-hook toe te voegen aan de email.' }
+    { num: 1, color: '#2563eb', icon: 'ti-search',          name: 'Lead Finder',        role: 'Genereert bedrijven per dag',           desc: 'Vraagt Claude om realistische bedrijven te genereren die baat hebben bij AI-marketing. Mixt niches (beauty, food, fitness, retail, restaurant) en locaties (NL, BE, DE, UK, VS).', s1l: 'Gevonden', s2l: 'Runs' },
+    { num: 2, color: '#7c3aed', icon: 'ti-world',           name: 'Website Checker',    role: 'Analyseert website technisch',           desc: 'Bezoekt de website van elk bedrijf, meet laadtijd, controleert HTTPS, mobile viewport, aanwezigheid van CTA en boekingssysteem. Genereert concrete verbeterpunten.', s1l: 'Gecheckt', s2l: 'Problemen' },
+    { num: 3, color: '#16a34a', icon: 'ti-brand-instagram', name: 'Social Analyzer',    role: 'Analyseert social media',               desc: 'Schat engagement rate, postfrequentie en groeipotentieel in. Genereert een gepersonaliseerde email-opener gebaseerd op echte observaties over het account.', s1l: 'Geanalyseerd', s2l: 'Openers' },
+    { num: 4, color: '#0891b2', icon: 'ti-chart-bar',       name: 'Opportunity Scorer', role: 'Score 1–10 + aanbevolen diensten',      desc: 'Combineert website- en social data om een kwaliteitsscore te berekenen. Koppelt de beste diensten aan het bedrijf en schat de maandelijkse pipeline waarde.', s1l: 'Gescoord', s2l: 'Gem. score' },
+    { num: 5, color: '#dc2626', icon: 'ti-mail',            name: 'Email Writer',       role: 'Schrijft gepersonaliseerde koude email', desc: 'Schrijft een menselijke koude email in de taal van het bedrijf (NL of EN). Max 120 woorden, informele toon, begint met de gepersonaliseerde opener van Agent 3.', s1l: 'Geschreven', s2l: 'Verstuurd' },
+    { num: 6, color: '#0284c7', icon: 'ti-brand-linkedin',  name: 'LinkedIn DM Writer', role: 'Schrijft LinkedIn DM (max 280 tekens)',  desc: 'Schrijft een korte, directe LinkedIn DM in de taal van het bedrijf. Max 280 tekens, vriendelijk en specifiek. Klaar om te plakken in LinkedIn.', s1l: "DM's geschreven", s2l: 'Verstuurd' },
+    { num: 7, color: '#d97706', icon: 'ti-chart-dots',      name: 'Competitor Analyzer',role: 'Analyseert lokale concurrenten',         desc: 'Genereert 2-3 realistische concurrenten voor het bedrijf in hun stad of regio. Analyseert hun voordelen (ads, website, reviews). Agent 5 gebruikt dit om een concurrentie-hook toe te voegen aan de email.', s1l: 'Geanalyseerd', s2l: 'Concurrenten' }
   ];
 
   const [stats, runs, memory] = await Promise.all([
@@ -3325,6 +3596,7 @@ async function renderAgents() {
     apiJSON('/api/memory')
   ]);
   const totalRuns   = (runs  || []).length;
+  window._agentLogsRuns = runs || [];
   const totalLeads  = stats?.leadsFound  || 0;
   const totalSent   = stats?.emailsSent  || 0;
   const memEntries  = Object.values(memory || {});
@@ -3332,9 +3604,12 @@ async function renderAgents() {
   document.getElementById('appView').innerHTML = `
     <div class="page-header">
       <div>
+        <div class="page-label">Automatisering</div>
         <h1 class="page-title">Agents</h1>
-        <p class="page-subtitle">De 7 AI-agents die samen leads vinden en converteren</p>
       </div>
+      <button class="btn btn-primary" id="agentRunBtn">
+        <i class="ti ti-player-play"></i> Run nu starten
+      </button>
     </div>
 
     <div class="stats-grid" style="margin-bottom:20px">
@@ -3355,45 +3630,62 @@ async function renderAgents() {
       </div>
     </div>
 
-    <div class="agents-pipeline">
-      ${AGENTS.map((agent, i) => `
-        <div class="agent-card">
-          <div class="agent-number">${agent.num}</div>
-          <div class="agent-icon-wrap" style="background:${agent.color}18;border:1.5px solid ${agent.color}35">
-            <i class="ti ${agent.icon}" style="color:${agent.color};font-size:20px"></i>
-          </div>
-          <div class="agent-info">
-            <div class="agent-name">${agent.name}</div>
-            <div class="agent-role">${agent.role}</div>
-            <div class="agent-desc">${agent.desc}</div>
-            <button class="btn btn-ghost btn-sm" style="margin-top:8px;font-size:12px" onclick="showAgentSummary(${agent.num}, '${agent.name}', '${agent.icon}', '${agent.color}')">
-              <i class="ti ti-eye"></i> Bekijk samenvatting
+    <div class="agents-list" id="agentsList">
+      ${AGENTS.map((agent, i) => {
+        const s1v = agent.num === 1 ? totalLeads : agent.num === 4 ? ((stats?.avgScore)||'—') : agent.num === 5 || agent.num === 6 ? totalSent : totalLeads;
+        const s2v = agent.num === 1 ? totalRuns : agent.num === 7 ? totalLeads * 2 : agent.num === 5 || agent.num === 6 ? totalSent : totalLeads;
+        return `
+        <div class="agent-entry">
+          <div class="agent-row" id="agentRow${agent.num}" onclick="toggleAgentRow(${agent.num})">
+            <div class="agent-num-circle" style="background:${agent.color}">${agent.num}</div>
+            <div class="agent-row-icon" style="background:${agent.color}18;border:1px solid ${agent.color}30;color:${agent.color}">
+              <i class="ti ${agent.icon}"></i>
+            </div>
+            <div class="agent-row-info">
+              <div class="agent-row-name">${agent.name}</div>
+              <div class="agent-row-role" style="color:${agent.color}">${agent.role}</div>
+            </div>
+            <div class="agent-row-stats">
+              <div class="agent-row-stat">
+                <div class="agent-row-stat-lbl">${agent.s1l}</div>
+                <div class="agent-row-stat-val">${s1v}</div>
+              </div>
+              <div class="agent-row-stat">
+                <div class="agent-row-stat-lbl">${agent.s2l}</div>
+                <div class="agent-row-stat-val">${s2v}</div>
+              </div>
+            </div>
+            <button class="agent-row-chevron" onclick="event.stopPropagation();toggleAgentRow(${agent.num})">
+              <i class="ti ti-chevron-down"></i>
             </button>
           </div>
+          <div class="agent-expand" id="agentExpand${agent.num}">
+            <div class="agent-expand-inner">
+              <div class="agent-expand-desc">${agent.desc}</div>
+              <div class="agent-expand-actions">
+                <button class="btn btn-ghost btn-sm" onclick="showAgentSummary(${agent.num}, '${agent.name}', '${agent.icon}')">
+                  <i class="ti ti-eye"></i> Bekijk prompt
+                </button>
+                <button class="btn btn-ghost btn-sm" onclick="showAgentLogs(${agent.num})">
+                  <i class="ti ti-file-text"></i> Logs
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-        ${i < AGENTS.length - 1 ? '<div class="agent-connector"><i class="ti ti-arrow-down" style="color:#d1d5db;font-size:18px"></i></div>' : ''}
-      `).join('')}
+        ${i < AGENTS.length - 1 ? '<div class="agent-dashed-gap"></div>' : ''}
+      `}).join('')}
     </div>
 
     <div class="card" style="margin-top:20px">
       <div class="card-header">
-        <h3 class="card-title"><i class="ti ti-player-play" style="color:var(--accent)"></i> Pipeline starten</h3>
-      </div>
-      <p class="text-secondary" style="font-size:13px;margin-bottom:16px">Alle 6 agents draaien elke dag automatisch om je ingestelde tijd. Je kunt ook direct een handmatige run starten.</p>
-      <button class="btn btn-primary" id="agentRunBtn">
-        <i class="ti ti-player-play"></i> Run nu starten
-      </button>
-    </div>
-
-    <div class="card" style="margin-top:16px">
-      <div class="card-header">
-        <h3 class="card-title"><i class="ti ti-brain" style="color:#8b5cf6"></i> Wat het systeem heeft geleerd</h3>
+        <h3 class="card-title"><i class="ti ti-brain" style="color:#7c3aed;margin-right:6px"></i> Wat het systeem heeft geleerd</h3>
       </div>
       <p class="text-secondary" style="font-size:13px;margin-bottom:14px">Agent 4 past scores automatisch aan op basis van historische reply rates per niche + land. Minimaal 5 verstuurde emails nodig voor aanpassing.</p>
       ${memEntries.length === 0 ? `
-        <div style="text-align:center;padding:20px;color:#9ca3af;font-size:13px">
-          <i class="ti ti-database-off" style="font-size:24px;display:block;margin-bottom:8px"></i>
-          Nog geen data — wordt gevuld na de eerste verstuurde emails
+        <div class="empty-state">
+          <i class="ti ti-database-off"></i>
+          <p>Nog geen data — wordt gevuld na de eerste verstuurde emails</p>
         </div>
       ` : `
       <div style="overflow-x:auto">
@@ -3403,18 +3695,18 @@ async function renderAgents() {
           </tr></thead>
           <tbody>
             ${memEntries.map(m => {
-              let adj = '—', adjColor = '#6b7280';
+              let adj = '—', adjClass = 'text-secondary';
               if (m.sent >= 5) {
-                if (m.replyRate > 20) { adj = '+0.5'; adjColor = '#10b981'; }
-                else if (m.replyRate < 5) { adj = '-0.3'; adjColor = '#ef4444'; }
-                else { adj = '0'; }
+                if (m.replyRate > 20) { adj = '+0.5'; adjClass = 'text-success'; }
+                else if (m.replyRate < 5) { adj = '-0.3'; adjClass = 'text-danger'; }
+                else { adj = '0'; adjClass = ''; }
               }
               return `<tr>
                 <td>${nicheBadge(m.niche)}</td>
                 <td>${m.country}</td>
                 <td>${m.sent}</td>
-                <td>${m.replyRate}%${m.sent < 5 ? ' <span style="color:#9ca3af;font-size:11px">(te weinig data)</span>' : ''}</td>
-                <td style="color:${adjColor};font-weight:600">${adj}</td>
+                <td>${m.replyRate}%${m.sent < 5 ? ' <span class="text-muted" style="font-size:11px">(te weinig data)</span>' : ''}</td>
+                <td class="${adjClass}" style="font-weight:600">${adj}</td>
               </tr>`;
             }).join('')}
           </tbody>
@@ -3425,7 +3717,7 @@ async function renderAgents() {
 
     <div class="card" style="margin-top:16px">
       <div class="card-header">
-        <h3 class="card-title"><i class="ti ti-ab" style="color:#6366f1"></i> Agent 5 — A/B email statistieken</h3>
+        <h3 class="card-title"><i class="ti ti-ab" style="color:var(--accent);margin-right:6px"></i> Agent 5 — A/B email statistieken</h3>
       </div>
       <p class="text-secondary" style="font-size:13px;margin-bottom:14px">Elke lead krijgt 2 email versies: A (probleem-gericht) en B (groeikansen-gericht). Kies per lead welke je verstuurt.</p>
       ${(() => {
@@ -3435,23 +3727,23 @@ async function renderAgents() {
         const pctB = total > 0 ? Math.round((ab.bApproved / total) * 100) : 0;
         const winner = total >= 5 ? (ab.aApproved > ab.bApproved ? 'A' : ab.bApproved > ab.aApproved ? 'B' : 'gelijk') : null;
         return `
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-            <div style="background:#f3f4f6;border-radius:10px;padding:14px;text-align:center">
-              <div style="font-size:22px;font-weight:800;color:#6366f1">${ab.aApproved || 0}</div>
-              <div style="font-size:12px;color:#6b7280;margin-top:2px">Versie A goedgekeurd</div>
-              <div style="font-size:11px;color:#9ca3af">Probleem-gericht</div>
+          <div class="ab-stats-grid">
+            <div class="ab-stat-card">
+              <div class="ab-stat-value">${ab.aApproved || 0}</div>
+              <div class="ab-stat-label">Versie A goedgekeurd</div>
+              <div class="ab-stat-sub">Probleem-gericht</div>
             </div>
-            <div style="background:#f3f4f6;border-radius:10px;padding:14px;text-align:center">
-              <div style="font-size:22px;font-weight:800;color:#8b5cf6">${ab.bApproved || 0}</div>
-              <div style="font-size:12px;color:#6b7280;margin-top:2px">Versie B goedgekeurd</div>
-              <div style="font-size:11px;color:#9ca3af">Groeikansen-gericht</div>
+            <div class="ab-stat-card">
+              <div class="ab-stat-value" style="color:#7c3aed">${ab.bApproved || 0}</div>
+              <div class="ab-stat-label">Versie B goedgekeurd</div>
+              <div class="ab-stat-sub">Groeikansen-gericht</div>
             </div>
           </div>
           ${total >= 5 ? `
-            <div style="background:${winner === 'A' ? '#eff6ff' : winner === 'B' ? '#f5f3ff' : '#f9fafb'};border:1px solid ${winner === 'A' ? '#bfdbfe' : winner === 'B' ? '#ddd6fe' : '#e5e7eb'};border-radius:8px;padding:10px 14px;font-size:13px">
+            <div class="ab-winner-banner">
               <strong>${winner === 'gelijk' ? 'Gelijkspel' : `Versie ${winner} wint`}</strong> — ${pctA}% kiest A, ${pctB}% kiest B
             </div>
-          ` : `<div style="font-size:12px;color:#9ca3af">Minimaal 5 goedkeuringen nodig voor statistieken</div>`}
+          ` : `<div class="text-muted" style="font-size:12px">Minimaal 5 goedkeuringen nodig voor statistieken</div>`}
         `;
       })()}
     </div>
@@ -3460,12 +3752,37 @@ async function renderAgents() {
   document.getElementById('agentRunBtn').addEventListener('click', triggerFindLeads);
 }
 
-async function showAgentSummary(num, name, icon, color) {
+function toggleAgentRow(num) {
+  const row = document.getElementById(`agentRow${num}`);
+  const expand = document.getElementById(`agentExpand${num}`);
+  if (!row || !expand) return;
+  const isOpen = row.classList.contains('open');
+  row.classList.toggle('open', !isOpen);
+  expand.classList.toggle('open', !isOpen);
+}
+
+function showAgentLogs(num) {
+  const runs = (window._agentLogsRuns || []).slice(-10).reverse();
+  const rows = runs.length
+    ? runs.map(r => `<tr><td style="font-size:11px;color:var(--text-muted)">${new Date(r.startedAt||r.date||'').toLocaleDateString('nl-NL',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</td><td>${r.leadsFound||0} leads</td><td>${r.emailsSent||0} emails</td></tr>`).join('')
+    : `<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:16px">Nog geen runs</td></tr>`;
+  openModal(`
+    <div class="modal-header">
+      <h3 class="modal-title">Agent ${num} — Logs</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <table class="table"><thead><tr><th>Datum</th><th>Leads</th><th>Emails</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>`);
+}
+
+async function showAgentSummary(num, name, icon) {
   openModal(`
     <div class="modal-header">
       <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:32px;height:32px;border-radius:8px;background:${color}18;border:1.5px solid ${color}35;display:flex;align-items:center;justify-content:center">
-          <i class="ti ${icon}" style="color:${color};font-size:16px"></i>
+        <div class="agent-icon-wrap" style="width:32px;height:32px">
+          <i class="ti ${icon}" style="font-size:15px"></i>
         </div>
         <h3 class="modal-title">Agent ${num} — ${name}</h3>
       </div>
@@ -3505,8 +3822,8 @@ async function renderRuns() {
   document.getElementById('appView').innerHTML = `
     <div class="page-header">
       <div>
+        <div class="page-label">Automatisering</div>
         <h1 class="page-title">Runs</h1>
-        <p class="page-subtitle">Pipeline beheren, bedrijven toevoegen en geschiedenis bekijken</p>
       </div>
       <button class="btn btn-primary" id="runNowBtn2">
         <i class="ti ti-player-play"></i> Run nu
@@ -3538,25 +3855,24 @@ async function renderRuns() {
   const nextLabel  = next.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' }) + ' om ' + runTime;
 
   document.getElementById('runsContent').innerHTML = `
-    <!-- Stats -->
-    <div class="runs-stats-grid" style="margin-bottom:20px">
+    <div class="stats-grid" style="margin-bottom:20px">
       <div class="stat-card">
-        <div class="stat-icon stat-icon-blue"><i class="ti ti-rotate-clockwise"></i></div>
+        <div class="stat-icon"><i class="ti ti-rotate-clockwise"></i></div>
         <div class="stat-value">${totalRuns}</div>
         <div class="stat-label">Runs totaal</div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon stat-icon-purple"><i class="ti ti-users"></i></div>
+        <div class="stat-icon"><i class="ti ti-users"></i></div>
         <div class="stat-value">${totalLeads}</div>
         <div class="stat-label">Leads gevonden</div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon stat-icon-green"><i class="ti ti-check"></i></div>
+        <div class="stat-icon"><i class="ti ti-check"></i></div>
         <div class="stat-value">${totalAuto}</div>
         <div class="stat-label">Auto-goedgekeurd</div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon stat-icon-amber"><i class="ti ti-currency-euro"></i></div>
+        <div class="stat-icon"><i class="ti ti-currency-euro"></i></div>
         <div class="stat-value">€${totalValue.toLocaleString('nl-NL')}</div>
         <div class="stat-label">Totale waarde</div>
       </div>
@@ -3564,28 +3880,28 @@ async function renderRuns() {
 
     <!-- Persoonlijke run-sjablonen -->
     <div class="card" style="margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-        <h2 class="settings-title" style="margin:0"><i class="ti ti-bookmark"></i> Persoonlijke run-sjablonen</h2>
+      <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-bookmark"></i> Run-sjablonen</h3>
         <button class="btn btn-ghost btn-sm" onclick="showNewTemplateForm()">
-          <i class="ti ti-plus"></i> Nieuw sjabloon
+          <i class="ti ti-plus"></i> Nieuw
         </button>
       </div>
-      <div id="templateFormWrap" style="display:none;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:14px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div id="templateFormWrap" class="template-form-wrap" style="display:none">
+        <div class="form-grid" style="margin-bottom:10px">
           <div class="form-group" style="margin:0">
             <label>Naam</label>
-            <input type="text" id="tmplName" placeholder="Bijv. Restaurants NL" style="width:100%">
+            <input type="text" id="tmplName" placeholder="Bijv. Restaurants NL">
           </div>
           <div class="form-group" style="margin:0">
-            <label>Niches <span style="font-size:11px;color:#9ca3af">(komma-gescheiden)</span></label>
+            <label>Niches <span class="text-muted" style="font-size:11px">(komma-gescheiden)</span></label>
             <input type="text" id="tmplNiches" placeholder="restaurant, fitness, beauty">
           </div>
           <div class="form-group" style="margin:0">
             <label>Aantal leads</label>
-            <input type="number" id="tmplCount" value="10" min="1" max="30" style="width:100%">
+            <input type="number" id="tmplCount" value="10" min="1" max="30">
           </div>
           <div class="form-group" style="margin:0">
-            <label>Locatie <span style="font-size:11px;color:#9ca3af">(optioneel)</span></label>
+            <label>Locatie <span class="text-muted" style="font-size:11px">(optioneel)</span></label>
             <input type="text" id="tmplLocation" placeholder="Amsterdam, Rotterdam...">
           </div>
         </div>
@@ -3600,7 +3916,7 @@ async function renderRuns() {
     <!-- Section 1: Run Configuratie -->
     <div class="card" style="margin-bottom:14px">
       <div class="card-header">
-        <h3 class="card-title"><i class="ti ti-settings" style="color:var(--accent)"></i> Run configuratie</h3>
+        <h3 class="card-title">Run configuratie</h3>
       </div>
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
         <div>
@@ -3622,7 +3938,7 @@ async function renderRuns() {
     <!-- Section 2: Eigen bedrijf toevoegen -->
     <div class="card" style="margin-bottom:14px">
       <div class="card-header">
-        <h3 class="card-title"><i class="ti ti-building-plus" style="color:var(--success)"></i> Eigen bedrijf toevoegen</h3>
+        <h3 class="card-title">Eigen bedrijf toevoegen</h3>
       </div>
       <p class="text-secondary" style="font-size:13px;margin-bottom:14px">Voeg een specifiek bedrijf toe om direct te analyseren en aan je inbox toe te voegen.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -3661,18 +3977,19 @@ async function renderRuns() {
       <button class="btn btn-secondary" id="analyzeBtn" style="margin-top:14px" onclick="analyzeCustomCompany()">
         <i class="ti ti-wand"></i> Voeg toe en analyseer
       </button>
+      <div id="analyzeProgress" style="display:none;margin-top:14px"></div>
     </div>
 
     <!-- Section 3: Geplande runs -->
     <div class="card" style="margin-bottom:14px">
       <div class="card-header">
-        <h3 class="card-title"><i class="ti ti-clock" style="color:#f59e0b"></i> Geplande runs</h3>
+        <h3 class="card-title">Geplande runs</h3>
       </div>
-      <div style="display:flex;align-items:center;gap:12px;font-size:14px">
+      <div style="display:flex;align-items:center;gap:10px;font-size:14px">
         <i class="ti ti-calendar-event" style="color:var(--text-muted)"></i>
         <span>Volgende automatische run: <strong>${nextLabel}</strong></span>
       </div>
-      <p class="text-secondary" style="font-size:12px;margin-top:8px">De dagelijkse run tijd kan worden aangepast onder Instellingen → Automatisering.</p>
+      <p class="text-secondary" style="font-size:12px;margin-top:8px">Aanpassen via Instellingen → Automatisering.</p>
     </div>
 
     <!-- Section 4: Run geschiedenis -->
@@ -3716,13 +4033,13 @@ async function renderRuns() {
 
     <!-- Kosten & activiteiten -->
     <div class="card" style="margin-top:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <h2 class="settings-title" style="margin:0"><i class="ti ti-activity"></i> Activiteiten & API kosten</h2>
-        <div id="costsHeader" style="font-size:13px;color:#6b7280">Laden...</div>
+      <div class="card-header">
+        <h3 class="card-title">Activiteiten &amp; API kosten</h3>
+        <span id="costsHeader" class="text-muted" style="font-size:12px">Laden...</span>
       </div>
-      <div id="costsCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px"></div>
+      <div id="costsCards" class="stats-grid" style="margin-bottom:20px"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <span style="font-size:13px;font-weight:600;color:#374151">Log</span>
+        <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Log</span>
         <select id="activityFilter" class="form-select" style="width:160px;font-size:12px" onchange="loadActivityLog()">
           <option value="">Alle activiteiten</option>
           <option value="run">Runs</option>
@@ -3742,7 +4059,7 @@ async function renderRuns() {
 }
 
 const ACTIVITY_ICONS = { run: 'ti-player-play', email: 'ti-send', reply: 'ti-message-reply', backup: 'ti-database-export', followup: 'ti-clock-hour-4' };
-const ACTIVITY_COLORS = { run: '#6366f1', email: '#10b981', reply: '#f59e0b', backup: '#6b7280', followup: '#8b5cf6' };
+const ACTIVITY_COLORS = { run: '#2563eb', email: '#16a34a', reply: '#ea580c', backup: '#9b9b98', followup: '#7c3aed' };
 
 async function loadCostStats() {
   try {
@@ -3753,13 +4070,21 @@ async function loadCostStats() {
     const totalEur = (data.totalCostUsd * 0.92).toFixed(4);
     const todayEur = (data.todayCostUsd * 0.92).toFixed(4);
     cards.innerHTML =
-      statCard('Totale API kosten', '€' + totalEur, 'ti-coin', '#6366f1') +
-      statCard('Vandaag', '€' + todayEur, 'ti-calendar-stats', '#10b981') +
-      statCard('Input tokens', formatNumber(data.totalTokensIn), 'ti-arrow-bar-to-right', '#f59e0b') +
-      statCard('Output tokens', formatNumber(data.totalTokensOut), 'ti-arrow-bar-to-left', '#8b5cf6');
+      statCard('Totale API kosten', '€' + totalEur, 'ti-coin') +
+      statCard('Vandaag', '€' + todayEur, 'ti-calendar-stats') +
+      statCard('Input tokens', formatNumber(data.totalTokensIn), 'ti-arrow-bar-to-right') +
+      statCard('Output tokens', formatNumber(data.totalTokensOut), 'ti-arrow-bar-to-left');
     const header = document.getElementById('costsHeader');
     if (header) header.textContent = 'claude-sonnet-4-6 · $3/$15 per M tokens';
   } catch {}
+}
+
+function statCard(label, value, icon) {
+  return `<div class="stat-card">
+    <div class="stat-icon"><i class="ti ${icon}"></i></div>
+    <div class="stat-value">${value}</div>
+    <div class="stat-label">${label}</div>
+  </div>`;
 }
 
 function formatNumber(n) {
@@ -3784,20 +4109,22 @@ async function loadActivityLog() {
     }
     container.innerHTML = entries.map(e => {
       const icon  = ACTIVITY_ICONS[e.type]  || 'ti-point';
-      const color = ACTIVITY_COLORS[e.type] || '#6b7280';
+      const color = ACTIVITY_COLORS[e.type] || 'var(--text-muted)';
       const time  = new Date(e.timestamp).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
       const dollarSign = String.fromCharCode(36);
-      const cost  = e.costUsd > 0 ? '<span style="font-size:11px;color:#9ca3af;margin-left:8px">' + dollarSign + e.costUsd.toFixed(4) + '</span>' : '';
-      const tok   = e.tokensIn > 0 ? '<span style="font-size:11px;color:#d1d5db;margin-left:6px">' + formatNumber(e.tokensIn + e.tokensOut) + ' tok</span>' : '';
-      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f3f4f6">' +
-        '<div style="width:28px;height:28px;border-radius:50%;background:' + color + '18;display:flex;align-items:center;justify-content:center;flex-shrink:0">' +
-        '<i class="ti ' + icon + '" style="font-size:13px;color:' + color + '"></i></div>' +
-        '<div style="flex:1;min-width:0">' +
-        '<div style="font-size:13px;color:#111;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + e.label + cost + tok + '</div>' +
-        '<div style="font-size:11px;color:#9ca3af">' + time + '</div>' +
-        '</div></div>';
+      const cost  = e.costUsd > 0 ? `<span class="text-muted" style="font-size:11px;margin-left:8px">${dollarSign}${e.costUsd.toFixed(4)}</span>` : '';
+      const tok   = e.tokensIn > 0 ? `<span class="text-muted" style="font-size:11px;margin-left:6px">${formatNumber(e.tokensIn + e.tokensOut)} tok</span>` : '';
+      return `<div class="activity-log-row">
+        <div class="activity-log-icon" style="background:${color}18;color:${color}">
+          <i class="ti ${icon}"></i>
+        </div>
+        <div class="activity-log-body">
+          <div class="activity-log-label">${esc(e.label)}${cost}${tok}</div>
+          <div class="activity-log-time">${time}</div>
+        </div>
+      </div>`;
     }).join('');
-  } catch { container.innerHTML = '<p style="color:#9ca3af;font-size:13px">Laden mislukt</p>'; }
+  } catch { container.innerHTML = '<p class="text-muted" style="font-size:13px">Laden mislukt</p>'; }
 }
 
 
@@ -3813,26 +4140,27 @@ async function loadTemplates() {
     const data = await apiJSON('/api/run-templates');
     const templates = (data && data.templates) || [];
     if (!templates.length) {
-      container.innerHTML = '<p style="font-size:13px;color:#9ca3af;margin:0">Geen sjablonen. Voeg er een toe om snel te herstarten.</p>';
+      container.innerHTML = '<p class="text-muted" style="font-size:13px;margin:0">Geen sjablonen. Voeg er een toe om snel te herstarten.</p>';
       return;
     }
     container.innerHTML = templates.map(t => {
       const niches = (t.niches || []).join(', ') || '—';
       const loc    = t.location ? ' · ' + t.location : '';
-      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f3f4f6">' +
-        '<div style="flex:1;min-width:0">' +
-        '<div style="font-size:13px;font-weight:600;color:#111">' + t.name + '</div>' +
-        '<div style="font-size:12px;color:#6b7280;margin-top:2px">' + niches + loc + ' · ' + t.count + ' leads</div>' +
-        '</div>' +
-        '<button class="btn btn-primary btn-sm" onclick="runTemplate(\'' + t.id + '\', this)">' +
-          '<i class="ti ti-player-play"></i> Uitvoeren' +
-        '</button>' +
-        '<button class="btn btn-ghost btn-sm btn-icon" onclick="deleteTemplate(\'' + t.id + '\')">' +
-          '<i class="ti ti-trash"></i>' +
-        '</button></div>';
+      return `<div class="template-row">
+        <div class="template-row-info">
+          <div class="template-row-name">${esc(t.name)}</div>
+          <div class="template-row-meta">${esc(niches)}${loc} · ${t.count} leads</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="runTemplate('${t.id}', this)">
+          <i class="ti ti-player-play"></i> Uitvoeren
+        </button>
+        <button class="btn btn-ghost btn-sm btn-icon" onclick="deleteTemplate('${t.id}')">
+          <i class="ti ti-trash"></i>
+        </button>
+      </div>`;
     }).join('');
   } catch {
-    container.innerHTML = '<p style="font-size:13px;color:#9ca3af;margin:0">Laden mislukt</p>';
+    container.innerHTML = '<p class="text-muted" style="font-size:13px;margin:0">Laden mislukt</p>';
   }
 }
 
@@ -3988,48 +4316,140 @@ async function analyzeCustomCompany() {
   if (!companyName) { toast('Vul een bedrijfsnaam in.', 'error'); return; }
 
   const domain = document.getElementById('custWebsite')?.value?.trim() || '';
-  const params = new URLSearchParams();
-  params.set('name', companyName);
-  if (domain) params.set('domain', domain);
-  const dupData = await apiJSON(`/api/leads/check-duplicate?${params}`);
+  const dupParams = new URLSearchParams();
+  dupParams.set('name', companyName);
+  if (domain) dupParams.set('domain', domain);
+  const dupData = await apiJSON(`/api/leads/check-duplicate?${dupParams}`);
   if (dupData?.duplicate) {
     if (!confirm(`${companyName} staat al in je pipeline (status: ${dupData.status}). Toch toevoegen?`)) return;
   }
 
   const btn = document.getElementById('analyzeBtn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Analyseren...'; }
-  const res = await api('/api/analyze-company', {
-    method: 'POST',
-    body: JSON.stringify({
-      companyName,
-      websiteUrl:   domain,
-      instagramHandle: document.getElementById('custInstagram')?.value?.trim() || '',
-      niche:        document.getElementById('custNiche')?.value || 'retail',
-      location:     document.getElementById('custLocation')?.value?.trim() || 'Nederland',
-      country:      document.getElementById('custCountry')?.value?.trim() || 'NL'
-    })
-  });
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-wand"></i> Voeg toe en analyseer'; }
-  if (!res) {
-    toast('Sessie verlopen — log opnieuw in.', 'error');
-    return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...'; }
+
+  const STEPS = [
+    { icon: 'ti-search',          name: 'Lead Finder',         sub: 'Bedrijf registreren' },
+    { icon: 'ti-world',           name: 'Website Checker',     sub: 'Website analyseren' },
+    { icon: 'ti-brand-instagram', name: 'Social Analyzer',     sub: 'Social media checken' },
+    { icon: 'ti-chart-bar',       name: 'Opportunity Scorer',  sub: 'Score berekenen' },
+    { icon: 'ti-chart-dots',      name: 'Competitor Analyzer', sub: 'Concurrenten zoeken' },
+    { icon: 'ti-mail',            name: 'Email Writer',        sub: 'Email schrijven' },
+    { icon: 'ti-brand-linkedin',  name: 'LinkedIn DM',         sub: 'LinkedIn DM schrijven' },
+  ];
+
+  const progressEl = document.getElementById('analyzeProgress');
+  if (progressEl) {
+    progressEl.style.display = '';
+    progressEl.innerHTML = `
+      <div class="analyze-progress-panel">
+        <div class="analyze-progress-header">
+          <span class="analyze-progress-title" id="analyzePanelTitle">Agent pipeline bezig...</span>
+          <div class="analyze-progress-bar-wrap"><div class="analyze-progress-bar" id="analyzeProgressBar" style="width:0%"></div></div>
+          <span class="analyze-progress-count" id="analyzeProgressCount">0 / ${STEPS.length}</span>
+        </div>
+        <div class="analyze-steps">
+          ${STEPS.map((s, i) => `
+            <div class="analyze-step step-pending" id="astep-${i}">
+              <span class="analyze-step-icon" id="astep-icon-${i}"><i class="ti ti-circle" style="color:var(--border)"></i></span>
+              <span class="analyze-step-name">${s.name}</span>
+              <span class="analyze-step-status" id="astep-status-${i}">${s.sub}</span>
+            </div>
+          `).join('')}
+        </div>
+        <div class="analyze-result" id="analyzeResult" style="display:none"></div>
+      </div>`;
   }
-  if (res.ok) {
-    const data = await res.json();
-    toast(`${companyName} toegevoegd aan inbox! Score: ${data.item?.score || '?'}`, 'success');
+
+  let doneCount = 0;
+  function stepActive(i) {
+    const el = document.getElementById(`astep-${i}`);
+    const icon = document.getElementById(`astep-icon-${i}`);
+    const status = document.getElementById(`astep-status-${i}`);
+    if (el) el.className = 'analyze-step step-active';
+    if (icon) icon.innerHTML = '<i class="ti ti-loader-2 spin" style="color:var(--accent)"></i>';
+    if (status) status.textContent = 'Bezig...';
+  }
+  function stepDone(i) {
+    const el = document.getElementById(`astep-${i}`);
+    const icon = document.getElementById(`astep-icon-${i}`);
+    const status = document.getElementById(`astep-status-${i}`);
+    if (el) el.className = 'analyze-step step-done';
+    if (icon) icon.innerHTML = '<i class="ti ti-check" style="color:#16a34a"></i>';
+    if (status) status.textContent = 'Klaar';
+    doneCount++;
+    const pct = Math.round((doneCount / STEPS.length) * 100);
+    const bar = document.getElementById('analyzeProgressBar');
+    const cnt = document.getElementById('analyzeProgressCount');
+    if (bar) bar.style.width = pct + '%';
+    if (cnt) cnt.textContent = `${doneCount} / ${STEPS.length}`;
+  }
+
+  // Simulate step progress while real fetch runs (~5s per step)
+  const STEP_DELAYS = [0, 4000, 8000, 13000, 18000, 23000, 28000];
+  let activatedUpTo = -1;
+  let fetchComplete = false;
+  const timers = STEPS.map((_, i) => setTimeout(() => {
+    if (fetchComplete) return;
+    if (activatedUpTo >= 0) stepDone(activatedUpTo);
+    stepActive(i);
+    activatedUpTo = i;
+  }, STEP_DELAYS[i]));
+
+  // Real API call
+  let res = null, data = null;
+  try {
+    res = await api('/api/analyze-company', {
+      method: 'POST',
+      body: JSON.stringify({
+        companyName,
+        websiteUrl:      domain,
+        instagramHandle: document.getElementById('custInstagram')?.value?.trim() || '',
+        niche:           document.getElementById('custNiche')?.value || 'retail',
+        location:        document.getElementById('custLocation')?.value?.trim() || 'Nederland',
+        country:         document.getElementById('custCountry')?.value?.trim() || 'NL'
+      })
+    });
+    if (res) data = await res.json();
+  } catch (_) {}
+
+  fetchComplete = true;
+  timers.forEach(t => clearTimeout(t));
+
+  // Fast-complete remaining steps
+  if (activatedUpTo >= 0) stepDone(activatedUpTo);
+  for (let i = activatedUpTo + 1; i < STEPS.length; i++) {
+    stepActive(i);
+    await new Promise(r => setTimeout(r, 70));
+    stepDone(i);
+  }
+
+  // Show result
+  const resultEl = document.getElementById('analyzeResult');
+  const titleEl  = document.getElementById('analyzePanelTitle');
+  if (!res || !res.ok) {
+    const errMsg = data?.error || `Fout ${res?.status || 'onbekend'}`;
+    if (resultEl) {
+      resultEl.style.display = '';
+      resultEl.className = 'analyze-result result-error';
+      resultEl.innerHTML = `<i class="ti ti-alert-circle"></i> ${esc(errMsg)}`;
+    }
+    if (titleEl) titleEl.textContent = 'Analyse mislukt';
+  } else {
+    const score = data?.item?.score != null ? Number(data.item.score).toFixed(1) : '?';
+    if (resultEl) {
+      resultEl.style.display = '';
+      resultEl.className = 'analyze-result result-success';
+      resultEl.innerHTML = `<strong>✓ ${esc(companyName)} toegevoegd!</strong> Score: ${score}/10 &nbsp;—&nbsp; <a href="#" onclick="event.preventDefault();setView('inbox')">Bekijk in inbox →</a>`;
+    }
+    if (titleEl) titleEl.textContent = 'Analyse voltooid';
     ['custCompany','custWebsite','custInstagram','custLocation'].forEach(id => {
       const el = document.getElementById(id); if (el) el.value = '';
     });
     const warn = document.getElementById('dupWarning');
     if (warn) warn.style.display = 'none';
-  } else {
-    let errMsg = `Fout ${res.status}`;
-    try {
-      const errData = await res.json();
-      if (errData.error) errMsg = errData.error;
-    } catch (_) {}
-    toast(errMsg, 'error');
   }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-wand"></i> Voeg toe en analyseer'; }
 }
 
 // ─── Statistics ───────────────────────────────────────────────────────────────
@@ -4045,8 +4465,8 @@ async function renderStats() {
   document.getElementById('appView').innerHTML = `
     <div class="page-header">
       <div>
+        <div class="page-label">Analyse</div>
         <h1 class="page-title">Statistieken</h1>
-        <p class="page-subtitle">Prestaties en inzichten</p>
       </div>
       <div style="display:flex;gap:8px">
         ${[7,30,90].map(d => `<button class="btn btn-ghost btn-sm stats-range-btn${d===30?' active':''}" data-days="${d}">${d} dagen</button>`).join('')}
@@ -4086,12 +4506,12 @@ async function loadStatsData(days) {
     <!-- KPI cards -->
     <div class="stats-grid" style="margin-bottom:24px">
       ${[
-        { label: 'Leads gevonden', value: fmt(summary.leadsFound), icon: 'ti-users', color: '#6366f1' },
-        { label: 'Emails verstuurd', value: fmt(summary.emailsSent), icon: 'ti-mail', color: '#0ea5e9' },
-        { label: 'Reacties', value: fmt(summary.replies), icon: 'ti-message-reply', color: '#10b981' },
-        { label: 'Reply rate', value: replyRate + '%', icon: 'ti-percentage', color: '#f59e0b' },
-        { label: 'Pipeline waarde', value: fmtEur(summary.pipelineValue), icon: 'ti-currency-euro', color: '#8b5cf6' },
-        { label: 'Klanten', value: fmt(summary.clients), icon: 'ti-star', color: '#ef4444' }
+        { label: 'Leads gevonden',  value: fmt(summary.leadsFound),         icon: 'ti-users',          color: '#2563eb' },
+        { label: 'Emails verstuurd',value: fmt(summary.emailsSent),         icon: 'ti-mail',           color: '#0ea5e9' },
+        { label: 'Reacties',        value: fmt(summary.replies),            icon: 'ti-message-reply',  color: '#16a34a' },
+        { label: 'Reply rate',      value: replyRate + '%',                 icon: 'ti-percentage',     color: '#d97706' },
+        { label: 'Pipeline waarde', value: fmtEur(summary.pipelineValue),   icon: 'ti-currency-euro',  color: '#7c3aed' },
+        { label: 'Klanten',         value: fmt(summary.clients),            icon: 'ti-star',           color: '#dc2626' }
       ].map(k => `
         <div class="stat-card">
           <div class="stat-icon" style="background:${k.color}20;color:${k.color}"><i class="ti ${k.icon}"></i></div>
@@ -4104,64 +4524,64 @@ async function loadStatsData(days) {
     </div>
 
     <!-- Charts row 1 -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-      <div class="card" style="padding:20px">
-        <h3 style="font-size:14px;font-weight:700;margin-bottom:16px">Leads per dag</h3>
+    <div class="charts-row-2">
+      <div class="card chart-card">
+        <h3 class="chart-title">Leads per dag</h3>
         <canvas id="chartLeadsPerDay" height="200"></canvas>
       </div>
-      <div class="card" style="padding:20px">
-        <h3 style="font-size:14px;font-weight:700;margin-bottom:16px">Pipeline waarde per week</h3>
+      <div class="card chart-card">
+        <h3 class="chart-title">Pipeline waarde per week</h3>
         <canvas id="chartPipelineWeek" height="200"></canvas>
       </div>
     </div>
 
     <!-- Charts row 2 -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
-      <div class="card" style="padding:20px">
-        <h3 style="font-size:14px;font-weight:700;margin-bottom:16px">Status verdeling</h3>
+    <div class="charts-row-3">
+      <div class="card chart-card">
+        <h3 class="chart-title">Status verdeling</h3>
         <canvas id="chartStatus" height="220"></canvas>
       </div>
-      <div class="card" style="padding:20px">
-        <h3 style="font-size:14px;font-weight:700;margin-bottom:16px">Top niches</h3>
+      <div class="card chart-card">
+        <h3 class="chart-title">Top niches</h3>
         <canvas id="chartNiches" height="220"></canvas>
       </div>
-      <div class="card" style="padding:20px">
-        <h3 style="font-size:14px;font-weight:700;margin-bottom:16px">Score verdeling</h3>
+      <div class="card chart-card">
+        <h3 class="chart-title">Score verdeling</h3>
         <canvas id="chartScores" height="220"></canvas>
       </div>
     </div>
 
     <!-- Reply rate by niche + top leads -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div class="card" style="padding:20px">
-        <h3 style="font-size:14px;font-weight:700;margin-bottom:16px">Reply rate per niche</h3>
+    <div class="charts-row-2" style="margin-bottom:0">
+      <div class="card chart-card">
+        <h3 class="chart-title">Reply rate per niche</h3>
         ${detail.replyRateByNiche.length === 0
           ? '<p class="text-secondary" style="font-size:13px">Nog niet genoeg data.</p>'
           : detail.replyRateByNiche.map(r => `
-            <div style="margin-bottom:10px">
-              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+            <div class="reply-rate-row">
+              <div class="reply-rate-label">
                 <span style="font-weight:600">${esc(r.niche)}</span>
-                <span style="color:var(--text-secondary)">${r.replied}/${r.sent} (${r.rate}%)</span>
+                <span class="text-secondary">${r.replied}/${r.sent} (${r.rate}%)</span>
               </div>
-              <div style="height:6px;background:var(--border);border-radius:3px">
-                <div style="height:100%;width:${r.rate}%;background:#6366f1;border-radius:3px;transition:width .3s"></div>
+              <div class="reply-rate-bar">
+                <div class="reply-rate-fill" style="width:${r.rate}%"></div>
               </div>
             </div>
           `).join('')}
       </div>
-      <div class="card" style="padding:20px">
-        <h3 style="font-size:14px;font-weight:700;margin-bottom:16px">Top 5 leads op score</h3>
+      <div class="card chart-card">
+        <h3 class="chart-title">Top 5 leads op score</h3>
         ${detail.topLeads.length === 0
           ? '<p class="text-secondary" style="font-size:13px">Nog geen leads.</p>'
           : detail.topLeads.map((l, i) => `
-            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;${i < detail.topLeads.length-1 ? 'border-bottom:1px solid var(--border)' : ''}">
-              <span style="font-size:18px;font-weight:800;color:var(--border);width:20px">${i+1}</span>
-              <div style="flex:1">
-                <div style="font-size:13px;font-weight:700">${esc(l.companyName)}</div>
-                <div style="font-size:11px;color:var(--text-secondary)">${esc(l.niche || '')} · ${STATUS_LABELS[l.status] || l.status}</div>
+            <div class="top-lead-row${i < detail.topLeads.length-1 ? ' border-bottom' : ''}">
+              <span class="top-lead-rank">${i+1}</span>
+              <div class="top-lead-info">
+                <div class="top-lead-name">${esc(l.companyName)}</div>
+                <div class="top-lead-sub">${esc(l.niche || '')} · ${STATUS_LABELS[l.status] || l.status}</div>
               </div>
-              <span class="score-pill score-${scoreColor(l.score||0)}" style="font-size:13px">${(l.score||0).toFixed(1)}</span>
-              ${l.estimatedValue ? `<span style="font-size:12px;font-weight:600;color:#10b981">€${Math.round(l.estimatedValue/1000)}K</span>` : ''}
+              <span class="score-pill score-${scoreColor(l.score||0)}">${(l.score||0).toFixed(1)}</span>
+              ${l.estimatedValue ? `<span class="text-success" style="font-size:12px;font-weight:600">€${Math.round(l.estimatedValue/1000)}K</span>` : ''}
             </div>
           `).join('')}
       </div>
@@ -4169,10 +4589,10 @@ async function loadStatsData(days) {
   `;
 
   // Chart colours
-  const PURPLE = '#6366f1'; const BLUE = '#0ea5e9'; const GREEN = '#10b981';
-  const AMBER = '#f59e0b'; const RED = '#ef4444'; const GRAY = '#e5e7eb';
+  const BLUE = '#2563eb'; const SKY = '#0ea5e9'; const GREEN = '#16a34a';
+  const AMBER = '#d97706'; const RED = '#dc2626'; const PURPLE = '#7c3aed';
 
-  const STATUS_COLORS_CHART = { inbox:'#6366f1', approved:'#0ea5e9', sent:'#0ea5e9', replied:'#10b981', client:'#10b981', disapproved:'#ef4444', dead:'#9ca3af', scheduled:'#f59e0b', followup1:'#f59e0b', followup2:'#f97316' };
+  const STATUS_COLORS_CHART = { inbox:'#2563eb', approved:'#0ea5e9', sent:'#0ea5e9', replied:'#16a34a', client:'#16a34a', disapproved:'#dc2626', dead:'#9b9b98', scheduled:'#d97706', followup1:'#d97706', followup2:'#ea580c' };
 
   // Leads per day
   const ctx1 = document.getElementById('chartLeadsPerDay')?.getContext('2d');
@@ -4181,7 +4601,7 @@ async function loadStatsData(days) {
       type: 'line',
       data: {
         labels: detail.leadsPerDay.map(d => d.date.slice(5)),
-        datasets: [{ label: 'Leads', data: detail.leadsPerDay.map(d => d.count), borderColor: PURPLE, backgroundColor: PURPLE + '20', fill: true, tension: 0.4, pointRadius: 3 }]
+        datasets: [{ label: 'Leads', data: detail.leadsPerDay.map(d => d.count), borderColor: BLUE, backgroundColor: BLUE + '20', fill: true, tension: 0.4, pointRadius: 3 }]
       },
       options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     }));
@@ -4194,7 +4614,7 @@ async function loadStatsData(days) {
       type: 'bar',
       data: {
         labels: detail.pipelineByWeek.map(w => w.week.slice(-5)),
-        datasets: [{ label: '€ Waarde', data: detail.pipelineByWeek.map(w => w.value), backgroundColor: BLUE + 'cc', borderRadius: 4 }]
+        datasets: [{ label: '€ Waarde', data: detail.pipelineByWeek.map(w => w.value), backgroundColor: SKY + 'cc', borderRadius: 4 }]
       },
       options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
     }));
@@ -4222,7 +4642,7 @@ async function loadStatsData(days) {
       type: 'bar',
       data: {
         labels: top.map(([k]) => k),
-        datasets: [{ data: top.map(([,v]) => v), backgroundColor: PURPLE + 'cc', borderRadius: 4 }]
+        datasets: [{ data: top.map(([,v]) => v), backgroundColor: BLUE + 'cc', borderRadius: 4 }]
       },
       options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     }));
@@ -4249,7 +4669,7 @@ async function renderChat() {
     <div class="chat-layout">
       <div class="chat-sidebar">
         <div class="chat-sidebar-header">
-          <span style="font-size:15px;font-weight:700">Team Chat</span>
+          <span class="chat-sidebar-title">Team Chat</span>
           ${isAdmin() ? `<button class="btn btn-ghost btn-sm" onclick="createChatChannel()" title="Nieuw kanaal"><i class="ti ti-plus"></i></button>` : ''}
         </div>
         <div id="chatChannelList"></div>
@@ -4257,7 +4677,7 @@ async function renderChat() {
       <div class="chat-main" id="chatMain">
         <div class="chat-empty-state">
           <i class="ti ti-message-circle" style="font-size:40px;color:var(--border)"></i>
-          <p style="color:var(--text-secondary);margin-top:8px">Selecteer een kanaal</p>
+          <p class="text-secondary" style="margin-top:8px">Selecteer een kanaal</p>
         </div>
       </div>
     </div>
@@ -4297,10 +4717,10 @@ async function openChatChannel(channelId) {
   main.innerHTML = `
     <div class="chat-header">
       <div>
-        <span style="font-weight:700;font-size:15px">#${esc(ch?.name || '')}</span>
-        ${ch?.description ? `<span style="font-size:12px;color:var(--text-secondary);margin-left:8px">${esc(ch.description)}</span>` : ''}
+        <span class="chat-header-name">#${esc(ch?.name || '')}</span>
+        ${ch?.description ? `<span class="chat-header-desc">${esc(ch.description)}</span>` : ''}
       </div>
-      ${isAdmin() ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteChatChannel('${channelId}')"><i class="ti ti-trash"></i></button>` : ''}
+      ${isAdmin() ? `<button class="btn btn-ghost btn-sm btn-danger-ghost" onclick="deleteChatChannel('${channelId}')"><i class="ti ti-trash"></i></button>` : ''}
     </div>
     <div class="chat-messages" id="chatMessages"><div class="loading-state"><div class="spinner"></div></div></div>
     <form class="chat-input-row" id="chatForm" onsubmit="sendChatMessage(event,'${channelId}')">
@@ -4356,7 +4776,7 @@ function renderChatMessages(msgs) {
   const el = document.getElementById('chatMessages');
   if (!el) return;
   if (msgs.length === 0) {
-    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary);font-size:13px">Geen berichten nog. Stuur het eerste bericht!</div>';
+    el.innerHTML = '<div class="chat-messages-empty">Geen berichten nog. Stuur het eerste bericht!</div>';
     return;
   }
 
@@ -4378,7 +4798,7 @@ function buildChatMessageHTML(msg) {
   const isOwn = msg.userId === myId;
   const canDelete = isOwn || isAdmin();
   return `
-    <div class="chat-msg-avatar" style="background:${msg.role === 'admin' ? '#111' : '#6366f1'}">${(msg.name || msg.username)[0].toUpperCase()}</div>
+    <div class="chat-msg-avatar" style="background:${msg.role === 'admin' ? '#111' : '#2563eb'}">${(msg.name || msg.username)[0].toUpperCase()}</div>
     <div class="chat-msg-body">
       <div class="chat-msg-meta">
         <span class="chat-msg-name">${esc(msg.name || msg.username)}</span>
@@ -4448,7 +4868,7 @@ async function deleteChatChannel(id) {
     state._chatChannels = (state._chatChannels || []).filter(c => c.id !== id);
     renderChatChannelList(state._chatChannels);
     const main = document.getElementById('chatMain');
-    if (main) main.innerHTML = `<div class="chat-empty-state"><i class="ti ti-message-circle" style="font-size:40px;color:var(--border)"></i><p style="color:var(--text-secondary);margin-top:8px">Kanaal verwijderd</p></div>`;
+    if (main) main.innerHTML = `<div class="chat-empty-state"><i class="ti ti-message-circle" style="font-size:40px;color:var(--border)"></i><p class="text-secondary" style="margin-top:8px">Kanaal verwijderd</p></div>`;
     state._activeChannelId = null;
     if (state._chatChannels.length > 0) openChatChannel(state._chatChannels[0].id);
   } else toast('Verwijderen mislukt.', 'error');
@@ -4546,12 +4966,20 @@ async function deleteUser(id, name) {
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
+function switchSettingsTab(id) {
+  document.querySelectorAll('.settings-tab-pane').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.settings-nav-item[data-tab]').forEach(el => el.classList.remove('active'));
+  document.getElementById('stab-' + id)?.classList.add('active');
+  document.querySelector(`.settings-nav-item[data-tab="${id}"]`)?.classList.add('active');
+  localStorage.setItem('settingsTab', id);
+}
+
 async function renderSettings() {
   document.getElementById('appView').innerHTML = `
     <div class="page-header">
       <div>
+        <div class="page-label">Configuratie</div>
         <h1 class="page-title">Instellingen</h1>
-        <p class="page-subtitle">Beheer je account en automatisering</p>
       </div>
     </div>
     <div id="settingsContent"><div class="loading-state"><div class="spinner-lg"></div></div></div>
@@ -4561,241 +4989,136 @@ async function renderSettings() {
   state.settings = s;
 
   document.getElementById('settingsContent').innerHTML = `
+  <div class="settings-layout">
+    <nav class="settings-nav">
+      <button class="settings-nav-item active" data-tab="account" onclick="switchSettingsTab('account')"><i class="ti ti-user"></i> Account</button>
+      <button class="settings-nav-item" data-tab="website" onclick="switchSettingsTab('website')"><i class="ti ti-world"></i> Publieke pagina</button>
+      <button class="settings-nav-item" data-tab="email" onclick="switchSettingsTab('email')"><i class="ti ti-mail"></i> Email &amp; versturen</button>
+      <button class="settings-nav-item" data-tab="niches" onclick="switchSettingsTab('niches')"><i class="ti ti-filter"></i> Niches &amp; filters</button>
+      <button class="settings-nav-item" data-tab="payments" onclick="switchSettingsTab('payments')"><i class="ti ti-credit-card"></i> Betalingen</button>
+      <button class="settings-nav-item" data-tab="api" onclick="switchSettingsTab('api')"><i class="ti ti-key"></i> API &amp; integraties</button>
+      ${isAdmin() ? `<button class="settings-nav-item" data-tab="team" onclick="switchSettingsTab('team')"><i class="ti ti-users"></i> Team</button>` : ''}
+      <button class="settings-nav-item nav-danger" data-tab="danger" onclick="switchSettingsTab('danger')"><i class="ti ti-alert-triangle"></i> Gevaarlijke zone</button>
+    </nav>
+    <div class="settings-content">
 
-    <!-- Account -->
-    <div class="card settings-section">
-      <h2 class="settings-title"><i class="ti ti-user"></i> Mijn account</h2>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Agency naam</label>
-          <input type="text" id="agencyName" value="${esc(s.agencyName)}">
+      <!-- ── Account ── -->
+      <div class="settings-tab-pane active" id="stab-account">
+        <h2 class="settings-title"><i class="ti ti-user"></i> Mijn account</h2>
+        <div class="form-grid">
+          <div class="form-group"><label>Agency naam</label><input type="text" id="agencyName" value="${esc(s.agencyName)}"></div>
+          <div class="form-group"><label>Mijn naam</label><input type="text" id="myName" value="${esc(s.myName)}"></div>
+          <div class="form-group"><label>Mijn titel</label><input type="text" id="myTitle" value="${esc(s.myTitle)}"></div>
+          <div class="form-group"><label>Gebruikersnaam</label><input type="text" id="settingsUsername" value="${esc(s.username)}"></div>
         </div>
-        <div class="form-group">
-          <label>Mijn naam</label>
-          <input type="text" id="myName" value="${esc(s.myName)}">
+        <hr class="divider">
+        <h3 class="settings-subtitle">Wachtwoord wijzigen</h3>
+        <div class="form-grid">
+          <div class="form-group"><label>Huidig wachtwoord</label><input type="password" id="currentPassword" placeholder="••••••••"></div>
+          <div class="form-group"><label>Nieuw wachtwoord</label><input type="password" id="newPassword" placeholder="••••••••"></div>
         </div>
-        <div class="form-group">
-          <label>Mijn titel</label>
-          <input type="text" id="myTitle" value="${esc(s.myTitle)}">
-        </div>
-        <div class="form-group">
-          <label>Gebruikersnaam</label>
-          <input type="text" id="settingsUsername" value="${esc(s.username)}">
-        </div>
+        <button class="btn btn-primary" id="saveAccountBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
       </div>
-      <hr class="divider">
-      <h3 class="settings-subtitle">Wachtwoord wijzigen</h3>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Huidig wachtwoord</label>
-          <input type="password" id="currentPassword" placeholder="••••••••">
-        </div>
-        <div class="form-group">
-          <label>Nieuw wachtwoord</label>
-          <input type="password" id="newPassword" placeholder="••••••••">
-        </div>
-      </div>
-      <button class="btn btn-primary" id="saveAccountBtn">
-        <i class="ti ti-device-floppy"></i> Opslaan
-      </button>
-    </div>
 
-    <!-- Website -->
-    <div class="card settings-section">
-      <h2 class="settings-title">
-        <i class="ti ti-world"></i> Publieke website
-        <a href="/agency" target="_blank" rel="noopener" style="margin-left:auto;font-size:12px;font-weight:600;color:#6b7280;display:flex;align-items:center;gap:4px;text-decoration:none">
-          <i class="ti ti-external-link"></i> Bekijk website
-        </a>
-      </h2>
-      <p style="font-size:13px;color:#6b7280;margin-bottom:20px">Publieke landingspagina op <code>/agency</code> — deel deze link met potentiële klanten.</p>
-      <div class="form-grid">
-        <div class="form-group" style="grid-column:1/-1">
-          <label>Tagline</label>
-          <input type="text" id="websiteTagline" value="${esc(s.websiteTagline || 'Meer klanten. Minder werk. Volledig automatisch.')}">
-        </div>
-        <div class="form-group" style="grid-column:1/-1">
-          <label>Over ons tekst</label>
-          <textarea id="websiteAbout" rows="3" style="resize:vertical">${esc(s.websiteAbout || '')}</textarea>
-        </div>
-        <div class="form-group">
-          <label>Contactmail op website</label>
-          <input type="email" id="websiteContact" value="${esc(s.websiteContact || s.gmailAddress || '')}" placeholder="contact@jouwbedrijf.nl">
-        </div>
-      </div>
-    </div>
-
-    <!-- Gmail -->
-    <div class="card settings-section">
-      <h2 class="settings-title">
-        <i class="ti ti-mail"></i> Gmail instellen
-        ${s.gmailAddress ? `<span class="badge badge-green"><i class="ti ti-check"></i> Ingesteld</span>` : `<span class="badge badge-red">Niet ingesteld</span>`}
-      </h2>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Gmail adres</label>
-          <input type="email" id="gmailAddress" value="${s.gmailAddress || ''}" placeholder="jouw@gmail.com">
-        </div>
-        <div class="form-group">
-          <label>App-wachtwoord <a href="https://myaccount.google.com/apppasswords" target="_blank" class="link">Hoe maak ik dit aan?</a></label>
-          <input type="password" id="gmailPassword" placeholder="xxxx xxxx xxxx xxxx">
-        </div>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-primary" id="saveGmailBtn">
-          <i class="ti ti-device-floppy"></i> Opslaan
-        </button>
-        <button class="btn btn-ghost" id="testEmailBtn">
-          <i class="ti ti-send"></i> Stuur testmail
-        </button>
-      </div>
-      <div class="form-group" style="margin-top:14px">
-        <label class="toggle-wrap">
-          <input type="checkbox" id="replyDetection" ${s.replyDetection !== false ? 'checked' : ''}>
-          <span class="toggle"></span>
-          <span class="toggle-label">Reply detectie inschakelen</span>
-        </label>
-        <p style="font-size:12px;color:#6b7280;margin:6px 0 0 22px">Controleert elke 2 uur je Gmail inbox op antwoorden van prospects</p>
-      </div>
-      <div class="form-group" style="margin-top:14px">
-        <label class="toggle-wrap">
-          <input type="checkbox" id="webhookEnabled" ${s.webhookConfigured ? 'checked' : ''} onchange="document.getElementById('webhookPanel').style.display=this.checked?'block':'none'">
-          <span class="toggle"></span>
-          <span class="toggle-label">Real-time webhook inschakelen</span>
-        </label>
-        <p style="font-size:12px;color:#6b7280;margin:6px 0 0 22px">Detecteert replies direct via Google Pub/Sub — sneller dan polling elke 2 uur</p>
-      </div>
-      <div id="webhookPanel" style="display:${s.webhookConfigured ? 'block' : 'none'};margin-top:12px;padding:16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px">
-        <div class="form-group">
-          <label>Webhook token <span style="font-size:11px;color:#9ca3af">(geheime sleutel in de URL)</span></label>
-          <div style="display:flex;gap:8px">
-            <input type="text" id="webhookToken" value="${esc(s.webhookToken || '')}" placeholder="Genereer een token..." style="flex:1;font-family:monospace;font-size:13px" oninput="updateWebhookUrl()">
-            <button class="btn btn-ghost btn-sm" onclick="generateWebhookToken()"><i class="ti ti-refresh"></i> Genereer</button>
+      <!-- ── Publieke pagina ── -->
+      <div class="settings-tab-pane" id="stab-website">
+        <h2 class="settings-title">
+          <i class="ti ti-world"></i> Publieke website
+          <a href="/agency" target="_blank" rel="noopener" class="settings-header-link"><i class="ti ti-external-link"></i> Bekijk website</a>
+        </h2>
+        <p class="settings-note">Publieke landingspagina op <code>/agency</code> — deel deze link met potentiële klanten.</p>
+        <div class="form-grid">
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Tagline</label>
+            <input type="text" id="websiteTagline" value="${esc(s.websiteTagline || 'Meer klanten. Minder werk. Volledig automatisch.')}">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Over ons tekst</label>
+            <textarea id="websiteAbout" rows="3" style="resize:vertical">${esc(s.websiteAbout || '')}</textarea>
+          </div>
+          <div class="form-group">
+            <label>Contactmail op website</label>
+            <input type="email" id="websiteContact" value="${esc(s.websiteContact || s.gmailAddress || '')}" placeholder="contact@jouwbedrijf.nl">
           </div>
         </div>
-        <div class="form-group" style="margin-top:10px">
-          <label>Jouw webhook URL <span style="font-size:11px;color:#9ca3af">(gebruik dit als Pub/Sub push endpoint)</span></label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <code id="webhookUrlDisplay" style="flex:1;background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:6px 10px;font-size:12px;color:#374151;word-break:break-all;display:block">${s.webhookToken ? window.location.origin + '/api/gmail/webhook?token=' + s.webhookToken : 'Sla eerst een token op'}</code>
-            <button class="btn btn-ghost btn-sm btn-icon" onclick="copyWebhookUrl()"><i class="ti ti-copy"></i></button>
-          </div>
-        </div>
-        <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="saveWebhookSettings()">
-          <i class="ti ti-device-floppy"></i> Token opslaan
-        </button>
-        <div style="margin-top:16px">
-          <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:space-between;text-align:left" onclick="toggleWebhookInstructions()">
-            <span><i class="ti ti-info-circle"></i> Setup instructies — Google Cloud Pub/Sub</span>
-            <i class="ti ti-chevron-down" id="webhookInstrChevron" style="transition:transform 0.2s"></i>
-          </button>
-          <div id="webhookInstructions" style="display:none;margin-top:12px;font-size:13px;color:#374151;line-height:1.8;padding-left:4px">
-            <ol style="margin:0;padding-left:18px">
-              <li>Ga naar <strong>console.cloud.google.com</strong> en maak een nieuw project aan</li>
-              <li>Activeer <strong>Gmail API</strong> + <strong>Cloud Pub/Sub API</strong> via "APIs &amp; Services"</li>
-              <li>Maak een Pub/Sub topic aan: bijv. <code style="background:#e5e7eb;padding:1px 5px;border-radius:4px">gmail-replies</code></li>
-              <li>Maak een <strong>Push subscription</strong> aan — plak jouw webhook URL als endpoint</li>
-              <li>Geef het account <code style="background:#e5e7eb;padding:1px 5px;border-radius:4px">gmail-api-push@system.gserviceaccount.com</code> de rol <strong>Pub/Sub Publisher</strong> op het topic</li>
-              <li>Stel Gmail push notifications in via de <strong>Gmail API Explorer</strong> → <code style="background:#e5e7eb;padding:1px 5px;border-radius:4px">users.watch</code> met jouw topic naam</li>
-              <li>Genereer en sla een token op (zie boven) — de webhook is nu actief</li>
-            </ol>
-            <p style="margin:12px 0 0;padding:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:12px;color:#92400e">
-              ⚡ Wanneer de webhook actief is wordt de 2-uurlijkse IMAP polling automatisch uitgeschakeld.
-            </p>
-          </div>
-        </div>
+        <button class="btn btn-primary" id="saveWebsiteBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
       </div>
-    </div>
 
-    <!-- Services -->
-    <div class="card settings-section">
-      <h2 class="settings-title"><i class="ti ti-briefcase"></i> Diensten die ik verkoop</h2>
-      <div id="servicesTable" class="services-scroll">
-        ${(s.services || []).map((svc, i) => `
-          <div class="service-row" data-idx="${i}">
-            <input type="text" class="svc-name" value="${esc(svc.name)}" placeholder="Dienst naam">
-            <input type="number" class="svc-price" value="${svc.price}" placeholder="Prijs/mnd" style="width:120px">
-            <input type="text" class="svc-desc" value="${esc(svc.description)}" placeholder="Beschrijving">
-            <button class="btn btn-ghost btn-sm btn-icon" onclick="this.closest('.service-row').remove()"><i class="ti ti-trash"></i></button>
+      <!-- ── Email & versturen ── -->
+      <div class="settings-tab-pane" id="stab-email">
+        <h2 class="settings-title">
+          <i class="ti ti-mail"></i> Gmail instellen
+          ${s.gmailAddress ? `<span class="badge badge-green"><i class="ti ti-check"></i> Ingesteld</span>` : `<span class="badge badge-red">Niet ingesteld</span>`}
+        </h2>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Gmail adres</label>
+            <input type="email" id="gmailAddress" value="${s.gmailAddress || ''}" placeholder="jouw@gmail.com">
           </div>
-        `).join('')}
-      </div>
-      <div class="btn-row" style="margin-top:10px">
-        <button class="btn btn-ghost btn-sm" id="addServiceBtn">
-          <i class="ti ti-plus"></i> Toevoegen
-        </button>
-        <button class="btn btn-ghost btn-sm" id="loadDefaultServicesBtn">
-          <i class="ti ti-refresh"></i> Standaard laden
-        </button>
-        <button class="btn btn-primary" id="saveServicesBtn">
-          <i class="ti ti-device-floppy"></i> Opslaan
-        </button>
-      </div>
-    </div>
-
-    <!-- Automation -->
-    <div class="card settings-section">
-      <h2 class="settings-title"><i class="ti ti-robot"></i> Automatisering</h2>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Dagelijkse run tijd</label>
-          <input type="time" id="dailyRunTime" value="${s.dailyRunTime || '09:00'}">
-        </div>
-        <div class="form-group">
-          <label>Leads per dag</label>
-          <div class="radio-group">
-            ${[10,15,20].map(n => `
-              <label class="radio-label">
-                <input type="radio" name="leadsPerDay" value="${n}" ${s.leadsPerDay == n ? 'checked' : ''}> ${n}
-              </label>
-            `).join('')}
+          <div class="form-group">
+            <label>App-wachtwoord <a href="https://myaccount.google.com/apppasswords" target="_blank" class="link">Hoe maak ik dit aan?</a></label>
+            <input type="password" id="gmailPassword" placeholder="xxxx xxxx xxxx xxxx">
           </div>
         </div>
-        <div class="form-group" style="grid-column:1/-1">
-          <label style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px;display:block">Slimme auto-approve <span style="font-size:11px;color:#6b7280;font-weight:400">(alle actieve voorwaarden moeten kloppen)</span></label>
-          <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px">
-            <label class="toggle-wrap">
-              <input type="checkbox" id="smartAutoEnabled" ${s.smartAutoApprove?.enabled ? 'checked' : ''}>
-              <span class="toggle"></span>
-              <span class="toggle-label" style="font-weight:600">Auto-approve inschakelen</span>
-            </label>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:6px;border-top:1px solid #e5e7eb">
-              <div class="form-group" style="margin:0">
-                <label>Score drempel ≥ <span id="scoreVal">${s.smartAutoApprove?.scoreThreshold || s.autoApproveScore || 8.0}</span></label>
-                <input type="range" id="autoApproveScore" min="7" max="9.5" step="0.5" value="${s.smartAutoApprove?.scoreThreshold || s.autoApproveScore || 8.0}"
-                  oninput="document.getElementById('scoreVal').textContent=this.value">
-              </div>
-              <div class="form-group" style="margin:0">
-                <label>Minimum volgers</label>
-                <input type="number" id="smartMinFollowers" value="${s.smartAutoApprove?.minFollowers ?? 5000}" min="0" step="500">
-              </div>
-              <div class="form-group" style="margin:0">
-                <label class="toggle-wrap">
-                  <input type="checkbox" id="smartRequireNoAds" ${s.smartAutoApprove?.requireNoAds !== false ? 'checked' : ''}>
-                  <span class="toggle"></span>
-                  <span class="toggle-label">Geen advertenties</span>
-                </label>
-              </div>
-              <div class="form-group" style="margin:0">
-                <label class="toggle-wrap">
-                  <input type="checkbox" id="smartRequireWebsite" ${s.smartAutoApprove?.requireWebsite !== false ? 'checked' : ''}>
-                  <span class="toggle"></span>
-                  <span class="toggle-label">Heeft website</span>
-                </label>
-              </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="saveGmailBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
+          <button class="btn btn-ghost" id="testEmailBtn"><i class="ti ti-send"></i> Stuur testmail</button>
+        </div>
+        <div class="form-group" style="margin-top:14px">
+          <label class="toggle-wrap">
+            <input type="checkbox" id="replyDetection" ${s.replyDetection !== false ? 'checked' : ''}>
+            <span class="toggle"></span>
+            <span class="toggle-label">Reply detectie inschakelen</span>
+          </label>
+          <p class="toggle-hint">Controleert elke 2 uur je Gmail inbox op antwoorden van prospects</p>
+        </div>
+        <div class="form-group" style="margin-top:14px">
+          <label class="toggle-wrap">
+            <input type="checkbox" id="webhookEnabled" ${s.webhookConfigured ? 'checked' : ''} onchange="document.getElementById('webhookPanel').style.display=this.checked?'block':'none'">
+            <span class="toggle"></span>
+            <span class="toggle-label">Real-time webhook inschakelen</span>
+          </label>
+          <p class="toggle-hint">Detecteert replies direct via Google Pub/Sub — sneller dan polling elke 2 uur</p>
+        </div>
+        <div id="webhookPanel" class="settings-panel" style="display:${s.webhookConfigured ? 'block' : 'none'};margin-top:12px">
+          <div class="form-group">
+            <label>Webhook token <span class="text-muted">(geheime sleutel in de URL)</span></label>
+            <div style="display:flex;gap:8px">
+              <input type="text" id="webhookToken" value="${esc(s.webhookToken || '')}" placeholder="Genereer een token..." style="flex:1;font-family:monospace;font-size:13px" oninput="updateWebhookUrl()">
+              <button class="btn btn-ghost btn-sm" onclick="generateWebhookToken()"><i class="ti ti-refresh"></i> Genereer</button>
+            </div>
+          </div>
+          <div class="form-group" style="margin-top:10px">
+            <label>Jouw webhook URL <span class="text-muted">(gebruik dit als Pub/Sub push endpoint)</span></label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <code id="webhookUrlDisplay" class="webhook-url-code">${s.webhookToken ? window.location.origin + '/api/gmail/webhook?token=' + s.webhookToken : 'Sla eerst een token op'}</code>
+              <button class="btn btn-ghost btn-sm btn-icon" onclick="copyWebhookUrl()"><i class="ti ti-copy"></i></button>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="saveWebhookSettings()"><i class="ti ti-device-floppy"></i> Token opslaan</button>
+          <div style="margin-top:16px">
+            <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:space-between;text-align:left" onclick="toggleWebhookInstructions()">
+              <span><i class="ti ti-info-circle"></i> Setup instructies — Google Cloud Pub/Sub</span>
+              <i class="ti ti-chevron-down" id="webhookInstrChevron" style="transition:transform 0.2s"></i>
+            </button>
+            <div id="webhookInstructions" class="webhook-instructions" style="display:none">
+              <ol style="margin:0;padding-left:18px">
+                <li>Ga naar <strong>console.cloud.google.com</strong> en maak een nieuw project aan</li>
+                <li>Activeer <strong>Gmail API</strong> + <strong>Cloud Pub/Sub API</strong> via "APIs &amp; Services"</li>
+                <li>Maak een Pub/Sub topic aan: bijv. <code style="background:var(--border);padding:1px 5px;border-radius:4px">gmail-replies</code></li>
+                <li>Maak een <strong>Push subscription</strong> aan — plak jouw webhook URL als endpoint</li>
+                <li>Geef het account <code style="background:var(--border);padding:1px 5px;border-radius:4px">gmail-api-push@system.gserviceaccount.com</code> de rol <strong>Pub/Sub Publisher</strong> op het topic</li>
+                <li>Stel Gmail push notifications in via de <strong>Gmail API Explorer</strong> → <code style="background:var(--border);padding:1px 5px;border-radius:4px">users.watch</code> met jouw topic naam</li>
+                <li>Genereer en sla een token op (zie boven) — de webhook is nu actief</li>
+              </ol>
+              <p style="margin:12px 0 0;padding:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:12px;color:#92400e">
+                ⚡ Wanneer de webhook actief is wordt de 2-uurlijkse IMAP polling automatisch uitgeschakeld.
+              </p>
             </div>
           </div>
         </div>
-        <div class="form-group">
-          <label>Automatisering pauzeren</label>
-          <label class="toggle-wrap">
-            <input type="checkbox" id="automationPaused" ${s.automationPaused ? 'checked' : ''}>
-            <span class="toggle"></span>
-            <span class="toggle-label">Gepauzeerd</span>
-          </label>
-        </div>
-      </div>
-      <div style="border-top:1px solid #f3f4f6;margin-top:16px;padding-top:16px">
-        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:10px">Dagelijkse briefing email</label>
+        <hr class="divider" style="margin:20px 0">
+        <h3 class="settings-subtitle"><i class="ti ti-mail-cog" style="margin-right:5px"></i> Dagelijkse briefing email</h3>
         <div class="form-grid" style="margin-bottom:10px">
           <div class="form-group">
             <label class="toggle-wrap">
@@ -4803,83 +5126,16 @@ async function renderSettings() {
               <span class="toggle"></span>
               <span class="toggle-label">Briefing email inschakelen</span>
             </label>
-            <p style="font-size:12px;color:#6b7280;margin:4px 0 0 22px">Stuur dagelijks een overzicht met leads, reacties en pipelinewaarde</p>
+            <p class="toggle-hint">Stuur dagelijks een overzicht met leads, reacties en pipelinewaarde</p>
           </div>
           <div class="form-group">
             <label>Verzendtijd briefing</label>
             <input type="time" id="dailyBriefingTime" value="${s.dailyBriefingTime || '08:45'}">
           </div>
         </div>
-      </div>
-      <div style="border-top:1px solid #f3f4f6;margin-top:16px;padding-top:16px">
-        <div class="form-group">
-          <label class="toggle-wrap">
-            <input type="checkbox" id="monthlyReports" ${s.monthlyReports !== false ? 'checked' : ''}>
-            <span class="toggle"></span>
-            <span class="toggle-label">Automatische maandrapporten</span>
-          </label>
-          <p style="font-size:12px;color:#6b7280;margin:4px 0 0 22px">Genereert elke 1e van de maand automatisch een rapport voor elke actieve klant en publiceert het in hun portaal</p>
-        </div>
-        <!-- Bedrijfsgrootte filter -->
-        <div style="margin-top:18px;padding-top:18px;border-top:1px solid #f3f4f6">
-          <div class="form-group">
-            <label style="font-weight:600;font-size:14px"><i class="ti ti-building" style="margin-right:6px"></i>Doelgroep bedrijfsgrootte</label>
-            <p style="font-size:12px;color:#6b7280;margin:4px 0 10px">Leads buiten de geselecteerde groottes krijgen een lagere score (-0.5)</p>
-            <div style="display:flex;gap:14px;flex-wrap:wrap">
-              <label class="toggle-wrap" style="gap:8px">
-                <input type="checkbox" id="sizeSmall" ${(s.targetCompanySizes||['small','medium']).includes('small') ? 'checked' : ''}>
-                <span class="toggle"></span>
-                <span class="toggle-label">Klein (1–10 medewerkers)</span>
-              </label>
-              <label class="toggle-wrap" style="gap:8px">
-                <input type="checkbox" id="sizeMedium" ${(s.targetCompanySizes||['small','medium']).includes('medium') ? 'checked' : ''}>
-                <span class="toggle"></span>
-                <span class="toggle-label">Middel (10–50)</span>
-              </label>
-              <label class="toggle-wrap" style="gap:8px">
-                <input type="checkbox" id="sizeLarge" ${(s.targetCompanySizes||[]).includes('large') ? 'checked' : ''}>
-                <span class="toggle"></span>
-                <span class="toggle-label">Groot (50+)</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <!-- Backup -->
-        <div style="margin-top:18px;padding-top:18px;border-top:1px solid #f3f4f6">
-          <div class="form-group">
-            <label style="font-weight:600;font-size:14px"><i class="ti ti-database-export" style="margin-right:6px"></i>Dagelijkse data backup</label>
-          </div>
-          <div class="form-group">
-            <label class="toggle-wrap">
-              <input type="checkbox" id="backupEnabled" ${s.backupEnabled !== false ? 'checked' : ''}>
-              <span class="toggle"></span>
-              <span class="toggle-label">Automatische backup inschakelen</span>
-            </label>
-            <p style="font-size:12px;color:#6b7280;margin:4px 0 0 22px">Maakt dagelijks een volledige backup van al je data (leads, inbox, runs, stats)</p>
-          </div>
-          <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:10px">
-            <div class="form-group" style="margin:0">
-              <label>Backup tijd</label>
-              <input type="time" id="backupTime" value="${s.backupTime || '02:00'}" style="width:120px">
-            </div>
-            <div class="form-group" style="margin:0">
-              <label class="toggle-wrap">
-                <input type="checkbox" id="backupEmail" ${s.backupEmail !== false ? 'checked' : ''}>
-                <span class="toggle"></span>
-                <span class="toggle-label">Stuur backup als email bijlage</span>
-              </label>
-            </div>
-            <button class="btn btn-ghost btn-sm" onclick="triggerBackup()" id="backupNowBtn">
-              <i class="ti ti-database-export"></i> Backup nu uitvoeren
-            </button>
-          </div>
-          <div id="backupList" style="margin-top:12px"></div>
-        </div>
-      </div>
-      <div style="border-top:1px solid var(--border);padding-top:18px;margin-top:6px">
-        <div style="font-size:13px;font-weight:700;margin-bottom:12px"><i class="ti ti-mail-cog"></i> Automatische klant e-mails</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <hr class="divider" style="margin:20px 0">
+        <h3 class="settings-subtitle"><i class="ti ti-mail-cog" style="margin-right:5px"></i> Automatische klant e-mails</h3>
+        <div class="auto-emails-grid">
           ${[
             { key: 'welcome',        label: 'Welkomstmail bij projectstart' },
             { key: 'intakeReceived', label: 'Bevestiging intake ontvangen' },
@@ -4888,24 +5144,205 @@ async function renderSettings() {
             { key: 'monthlyUpdate',  label: 'Maandelijkse update' },
             { key: 'checkIn',        label: 'Halverwege check-in' },
           ].map(opt => `
-            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:6px 0">
+            <label class="auto-email-label">
               <input type="checkbox" id="ace_${opt.key}" ${(s.autoClientEmails?.[opt.key] !== false) ? 'checked' : ''} style="width:14px;height:14px">
               ${opt.label}
             </label>
           `).join('')}
         </div>
-        <p style="font-size:11px;color:#9ca3af;margin-top:8px"><i class="ti ti-info-circle"></i> Automatische e-mails worden verstuurd als Gmail geconfigureerd is en de klant een e-mailadres heeft.</p>
+        <p class="text-muted" style="margin-top:8px"><i class="ti ti-info-circle"></i> Automatische e-mails worden verstuurd als Gmail geconfigureerd is en de klant een e-mailadres heeft.</p>
+        <button class="btn btn-primary" style="margin-top:16px" id="saveEmailAutoBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
       </div>
 
-      <div style="border-top:1px solid var(--border);padding-top:18px;margin-top:6px">
-        <div style="font-size:13px;font-weight:700;margin-bottom:12px"><i class="ti ti-coin"></i> Automatische facturering</div>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-            <input type="checkbox" id="autoInvoiceEnabled" ${s.autoInvoiceEnabled ? 'checked' : ''} style="width:14px;height:14px">
-            Automatisch maandelijkse facturen aanmaken voor actieve klanten
+      <!-- ── Niches & filters ── -->
+      <div class="settings-tab-pane" id="stab-niches">
+        <h2 class="settings-title"><i class="ti ti-filter"></i> Niches &amp; filters</h2>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Dagelijkse run tijd</label>
+            <input type="time" id="dailyRunTime" value="${s.dailyRunTime || '09:00'}">
+          </div>
+          <div class="form-group">
+            <label>Leads per dag</label>
+            <div class="radio-group">
+              ${[10,15,20].map(n => `<label class="radio-label"><input type="radio" name="leadsPerDay" value="${n}" ${s.leadsPerDay == n ? 'checked' : ''}> ${n}</label>`).join('')}
+            </div>
+          </div>
+          <div class="form-group form-group-full">
+            <span class="settings-sublabel">Slimme auto-approve <span class="text-muted" style="font-weight:400">(alle actieve voorwaarden moeten kloppen)</span></span>
+            <div class="settings-panel settings-panel-flex">
+              <label class="toggle-wrap">
+                <input type="checkbox" id="smartAutoEnabled" ${s.smartAutoApprove?.enabled ? 'checked' : ''}>
+                <span class="toggle"></span>
+                <span class="toggle-label" style="font-weight:600">Auto-approve inschakelen</span>
+              </label>
+              <div class="auto-approve-grid">
+                <div class="form-group" style="margin:0">
+                  <label>Score drempel ≥ <span id="scoreVal">${s.smartAutoApprove?.scoreThreshold || s.autoApproveScore || 8.0}</span></label>
+                  <input type="range" id="autoApproveScore" min="7" max="9.5" step="0.5" value="${s.smartAutoApprove?.scoreThreshold || s.autoApproveScore || 8.0}" oninput="document.getElementById('scoreVal').textContent=this.value">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label>Minimum volgers</label>
+                  <input type="number" id="smartMinFollowers" value="${s.smartAutoApprove?.minFollowers ?? 5000}" min="0" step="500">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="toggle-wrap">
+                    <input type="checkbox" id="smartRequireNoAds" ${s.smartAutoApprove?.requireNoAds !== false ? 'checked' : ''}>
+                    <span class="toggle"></span>
+                    <span class="toggle-label">Geen advertenties</span>
+                  </label>
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="toggle-wrap">
+                    <input type="checkbox" id="smartRequireWebsite" ${s.smartAutoApprove?.requireWebsite !== false ? 'checked' : ''}>
+                    <span class="toggle"></span>
+                    <span class="toggle-label">Heeft website</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Automatisering pauzeren</label>
+            <label class="toggle-wrap">
+              <input type="checkbox" id="automationPaused" ${s.automationPaused ? 'checked' : ''}>
+              <span class="toggle"></span>
+              <span class="toggle-label">Gepauzeerd</span>
+            </label>
+          </div>
+        </div>
+        <hr class="divider" style="margin:16px 0">
+        <div class="form-group">
+          <label class="toggle-wrap">
+            <input type="checkbox" id="monthlyReports" ${s.monthlyReports !== false ? 'checked' : ''}>
+            <span class="toggle"></span>
+            <span class="toggle-label">Automatische maandrapporten</span>
+          </label>
+          <p class="toggle-hint">Genereert elke 1e van de maand automatisch een rapport voor elke actieve klant en publiceert het in hun portaal</p>
+        </div>
+        <hr class="divider" style="margin:16px 0">
+        <span class="settings-sublabel"><i class="ti ti-building" style="margin-right:6px"></i>Doelgroep bedrijfsgrootte</span>
+        <p class="toggle-hint" style="margin:4px 0 10px">Leads buiten de geselecteerde groottes krijgen een lagere score (-0.5)</p>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+          <label class="toggle-wrap">
+            <input type="checkbox" id="sizeSmall" ${(s.targetCompanySizes||['small','medium']).includes('small') ? 'checked' : ''}>
+            <span class="toggle"></span><span class="toggle-label">Klein (1–10 medewerkers)</span>
+          </label>
+          <label class="toggle-wrap">
+            <input type="checkbox" id="sizeMedium" ${(s.targetCompanySizes||['small','medium']).includes('medium') ? 'checked' : ''}>
+            <span class="toggle"></span><span class="toggle-label">Middel (10–50)</span>
+          </label>
+          <label class="toggle-wrap">
+            <input type="checkbox" id="sizeLarge" ${(s.targetCompanySizes||[]).includes('large') ? 'checked' : ''}>
+            <span class="toggle"></span><span class="toggle-label">Groot (50+)</span>
           </label>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <hr class="divider" style="margin:16px 0">
+        <span class="settings-sublabel"><i class="ti ti-database-export" style="margin-right:6px"></i>Dagelijkse data backup</span>
+        <div class="form-group" style="margin-top:10px">
+          <label class="toggle-wrap">
+            <input type="checkbox" id="backupEnabled" ${s.backupEnabled !== false ? 'checked' : ''}>
+            <span class="toggle"></span>
+            <span class="toggle-label">Automatische backup inschakelen</span>
+          </label>
+          <p class="toggle-hint">Maakt dagelijks een volledige backup van al je data (leads, inbox, runs, stats)</p>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:10px">
+          <div class="form-group" style="margin:0">
+            <label>Backup tijd</label>
+            <input type="time" id="backupTime" value="${s.backupTime || '02:00'}" style="width:120px">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="toggle-wrap">
+              <input type="checkbox" id="backupEmail" ${s.backupEmail !== false ? 'checked' : ''}>
+              <span class="toggle"></span>
+              <span class="toggle-label">Stuur backup als email bijlage</span>
+            </label>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="triggerBackup()" id="backupNowBtn">
+            <i class="ti ti-database-export"></i> Backup nu uitvoeren
+          </button>
+        </div>
+        <div id="backupList" style="margin-top:12px"></div>
+        <hr class="divider" style="margin:16px 0">
+        <span class="settings-sublabel"><i class="ti ti-ban" style="margin-right:6px"></i>Blacklist</span>
+        <p class="settings-note" style="margin:8px 0 12px">Geblokkeerde bedrijven, domeinen of niches worden voortaan overgeslagen bij elke run.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end">
+          <select id="blType"><option value="company">Bedrijfsnaam</option><option value="domain">Domein</option><option value="niche">Niche</option></select>
+          <input type="text" id="blValue" placeholder="bijv. Studio Bloom of studiodesign.nl" style="flex:1;min-width:180px">
+          <input type="text" id="blReason" placeholder="Reden (optioneel)" style="flex:1;min-width:140px">
+          <button class="btn btn-primary btn-sm" onclick="addBlacklistEntry()"><i class="ti ti-plus"></i> Toevoegen</button>
+        </div>
+        <div id="blacklistItems"></div>
+        <hr class="divider" style="margin:16px 0">
+        <button class="btn btn-primary" id="saveAutomationBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
+      </div>
+
+      <!-- ── Betalingen ── -->
+      <div class="settings-tab-pane" id="stab-payments">
+        <h2 class="settings-title"><i class="ti ti-briefcase"></i> Diensten die ik verkoop</h2>
+        <div id="servicesTable" class="services-scroll">
+          ${(s.services || []).map((svc, i) => `
+            <div class="service-row" data-idx="${i}">
+              <input type="text" class="svc-name" value="${esc(svc.name)}" placeholder="Dienst naam">
+              <input type="number" class="svc-price" value="${svc.price}" placeholder="Prijs/mnd" style="width:120px">
+              <input type="text" class="svc-desc" value="${esc(svc.description)}" placeholder="Beschrijving">
+              <button class="btn btn-ghost btn-sm btn-icon" onclick="this.closest('.service-row').remove()"><i class="ti ti-trash"></i></button>
+            </div>
+          `).join('')}
+        </div>
+        <div class="btn-row" style="margin-top:10px">
+          <button class="btn btn-ghost btn-sm" id="addServiceBtn"><i class="ti ti-plus"></i> Toevoegen</button>
+          <button class="btn btn-ghost btn-sm" id="loadDefaultServicesBtn"><i class="ti ti-refresh"></i> Standaard laden</button>
+          <button class="btn btn-primary" id="saveServicesBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
+        </div>
+        <hr class="divider" style="margin:20px 0">
+        <h2 class="settings-title"><i class="ti ti-credit-card"></i> Betaalmethoden</h2>
+        <p class="settings-note">Koppel één of meerdere betaalmethoden om automatisch factuurlinks te genereren voor klanten.</p>
+        <div style="margin-bottom:18px">
+          <span class="settings-sublabel">Standaard betaalmethode</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <label class="radio-card ${s.preferredPaymentMethod === 'stripe' ? 'radio-card-active' : ''}">
+              <input type="radio" name="preferredPayment" value="stripe" ${s.preferredPaymentMethod === 'stripe' || !s.preferredPaymentMethod ? 'checked' : ''}>
+              <i class="ti ti-brand-stripe"></i> Stripe
+              ${s.stripeConfigured ? '<span class="badge badge-green" style="font-size:10px">✓</span>' : ''}
+            </label>
+            <label class="radio-card ${s.preferredPaymentMethod === 'mollie' ? 'radio-card-active' : ''}">
+              <input type="radio" name="preferredPayment" value="mollie" ${s.preferredPaymentMethod === 'mollie' ? 'checked' : ''}>
+              <i class="ti ti-credit-card"></i> Mollie
+              ${s.mollieConfigured ? '<span class="badge badge-green" style="font-size:10px">✓</span>' : ''}
+            </label>
+            <label class="radio-card ${s.preferredPaymentMethod === 'paypal' ? 'radio-card-active' : ''}">
+              <input type="radio" name="preferredPayment" value="paypal" ${s.preferredPaymentMethod === 'paypal' ? 'checked' : ''}>
+              <i class="ti ti-brand-paypal"></i> PayPal
+              ${s.paypalConfigured ? '<span class="badge badge-green" style="font-size:10px">✓</span>' : ''}
+            </label>
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Stripe Secret Key <a href="https://dashboard.stripe.com/apikeys" target="_blank" class="link" style="font-size:11px">Waar vind ik dit?</a></label>
+            <input type="password" id="stripeSecretKey" placeholder="sk_live_... of sk_test_...">
+            ${s.stripeConfigured ? '<p style="font-size:11px;color:var(--success);margin-top:4px"><i class="ti ti-check"></i> Stripe ingesteld</p>' : ''}
+          </div>
+          <div class="form-group">
+            <label>Mollie API sleutel <a href="https://my.mollie.com/dashboard/developers/api-keys" target="_blank" class="link" style="font-size:11px">Waar vind ik dit?</a></label>
+            <input type="password" id="mollieApiKey" placeholder="live_... of test_...">
+            ${s.mollieConfigured ? '<p style="font-size:11px;color:var(--success);margin-top:4px"><i class="ti ti-check"></i> Mollie ingesteld</p>' : ''}
+          </div>
+          <div class="form-group">
+            <label>PayPal.me gebruikersnaam</label>
+            <input type="text" id="paypalMe" value="${esc(s.paypalMe || '')}" placeholder="jouwnaam (zonder paypal.me/)">
+            ${s.paypalConfigured ? '<p style="font-size:11px;color:var(--success);margin-top:4px"><i class="ti ti-check"></i> PayPal ingesteld</p>' : ''}
+          </div>
+        </div>
+        <hr class="divider" style="margin:16px 0">
+        <span class="settings-sublabel"><i class="ti ti-coin" style="margin-right:6px"></i>Automatische facturering</span>
+        <label class="auto-billing-label" style="margin-top:10px">
+          <input type="checkbox" id="autoInvoiceEnabled" ${s.autoInvoiceEnabled ? 'checked' : ''} style="width:14px;height:14px">
+          Automatisch maandelijkse facturen aanmaken voor actieve klanten
+        </label>
+        <div class="auto-billing-grid">
           <div class="form-group">
             <label>Factuurdag van de maand</label>
             <select id="autoInvoiceDay">
@@ -4917,116 +5354,39 @@ async function renderSettings() {
             <input type="number" id="paymentReminderDays" value="${s.paymentReminderDays || 7}" min="1" max="30">
           </div>
         </div>
-        <p style="font-size:11px;color:#9ca3af;margin-top:4px"><i class="ti ti-info-circle"></i> Herinneringen worden dagelijks om 09:00 gecheckt. Vereist een geconfigureerde betaalmethode.</p>
-      </div>
-
-      <button class="btn btn-primary" id="saveAutomationBtn">
-        <i class="ti ti-device-floppy"></i> Opslaan
-      </button>
-    </div>
-
-    <!-- Betalingen -->
-    <div class="card settings-section">
-      <h2 class="settings-title">
-        <i class="ti ti-credit-card"></i> Betalingen
-      </h2>
-      <p class="text-secondary" style="margin-bottom:18px;font-size:13px">Koppel één of meerdere betaalmethoden om automatisch factuurlinks te genereren voor klanten.</p>
-
-      <div style="margin-bottom:18px">
-        <label style="font-size:13px;font-weight:600;display:block;margin-bottom:8px">Standaard betaalmethode</label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <label class="radio-card ${s.preferredPaymentMethod === 'stripe' ? 'radio-card-active' : ''}">
-            <input type="radio" name="preferredPayment" value="stripe" ${s.preferredPaymentMethod === 'stripe' || !s.preferredPaymentMethod ? 'checked' : ''}>
-            <i class="ti ti-brand-stripe"></i> Stripe
-            ${s.stripeConfigured ? '<span class="badge badge-green" style="font-size:10px">✓</span>' : ''}
-          </label>
-          <label class="radio-card ${s.preferredPaymentMethod === 'mollie' ? 'radio-card-active' : ''}">
-            <input type="radio" name="preferredPayment" value="mollie" ${s.preferredPaymentMethod === 'mollie' ? 'checked' : ''}>
-            <i class="ti ti-credit-card"></i> Mollie
-            ${s.mollieConfigured ? '<span class="badge badge-green" style="font-size:10px">✓</span>' : ''}
-          </label>
-          <label class="radio-card ${s.preferredPaymentMethod === 'paypal' ? 'radio-card-active' : ''}">
-            <input type="radio" name="preferredPayment" value="paypal" ${s.preferredPaymentMethod === 'paypal' ? 'checked' : ''}>
-            <i class="ti ti-brand-paypal"></i> PayPal
-            ${s.paypalConfigured ? '<span class="badge badge-green" style="font-size:10px">✓</span>' : ''}
-          </label>
+        <p class="text-muted" style="margin-top:4px"><i class="ti ti-info-circle"></i> Herinneringen worden dagelijks om 09:00 gecheckt. Vereist een geconfigureerde betaalmethode.</p>
+        <div class="btn-row" style="margin-top:16px">
+          <button class="btn btn-primary" id="saveStripeBtn"><i class="ti ti-device-floppy"></i> Betaalmethoden opslaan</button>
+          <button class="btn btn-ghost" id="savePaymentsAutoBtn"><i class="ti ti-device-floppy"></i> Facturering opslaan</button>
         </div>
       </div>
 
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Stripe Secret Key <a href="https://dashboard.stripe.com/apikeys" target="_blank" class="link" style="font-size:11px">Waar vind ik dit?</a></label>
-          <input type="password" id="stripeSecretKey" placeholder="sk_live_... of sk_test_...">
-          ${s.stripeConfigured ? '<p style="font-size:11px;color:var(--success);margin-top:4px"><i class="ti ti-check"></i> Stripe ingesteld</p>' : ''}
-        </div>
-        <div class="form-group">
-          <label>Mollie API sleutel <a href="https://my.mollie.com/dashboard/developers/api-keys" target="_blank" class="link" style="font-size:11px">Waar vind ik dit?</a></label>
-          <input type="password" id="mollieApiKey" placeholder="live_... of test_...">
-          ${s.mollieConfigured ? '<p style="font-size:11px;color:var(--success);margin-top:4px"><i class="ti ti-check"></i> Mollie ingesteld</p>' : ''}
-        </div>
-        <div class="form-group">
-          <label>PayPal.me gebruikersnaam</label>
-          <input type="text" id="paypalMe" value="${esc(s.paypalMe || '')}" placeholder="jouwnaam (zonder paypal.me/)">
-          ${s.paypalConfigured ? '<p style="font-size:11px;color:var(--success);margin-top:4px"><i class="ti ti-check"></i> PayPal ingesteld</p>' : ''}
-        </div>
-      </div>
-      <button class="btn btn-primary" id="saveStripeBtn">
-        <i class="ti ti-device-floppy"></i> Opslaan
-      </button>
-    </div>
-
-    <!-- Blacklist -->
-    <div class="card settings-section">
-      <h2 class="settings-title"><i class="ti ti-ban"></i> Blacklist</h2>
-      <p style="font-size:13px;color:#6b7280;margin-bottom:20px">Geblokkeerde bedrijven, domeinen of niches worden voortaan overgeslagen bij elke run.</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end">
-        <select id="blType" style="padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-family:inherit;color:var(--text-primary);background:#fff">
-          <option value="company">Bedrijfsnaam</option>
-          <option value="domain">Domein</option>
-          <option value="niche">Niche</option>
-        </select>
-        <input type="text" id="blValue" placeholder="bijv. Studio Bloom of studiodesign.nl" style="flex:1;min-width:180px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-family:inherit">
-        <input type="text" id="blReason" placeholder="Reden (optioneel)" style="flex:1;min-width:140px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-family:inherit">
-        <button class="btn btn-primary btn-sm" onclick="addBlacklistEntry()"><i class="ti ti-plus"></i> Toevoegen</button>
-      </div>
-      <div id="blacklistItems"></div>
-    </div>
-
-    <!-- API Keys -->
-    <div class="card settings-section" id="apiKeysSection">
-      <div class="collapsible-header" id="apiKeysToggle">
-        <h2 class="settings-title" style="margin:0"><i class="ti ti-key"></i> API Sleutels</h2>
-        <i class="ti ti-chevron-down" id="apiKeysChevron"></i>
-      </div>
-      <div id="apiKeysContent" style="display:none;margin-top:14px">
-        <p class="text-secondary" style="font-size:13px;margin-bottom:16px">Gebruik API sleutels om externe integraties te authenticeren. Een sleutel wordt slechts <strong>één keer</strong> getoond.</p>
+      <!-- ── API & integraties ── -->
+      <div class="settings-tab-pane" id="stab-api">
+        <h2 class="settings-title"><i class="ti ti-key"></i> API Sleutels</h2>
+        <p class="settings-note">Gebruik API sleutels om externe integraties te authenticeren. Een sleutel wordt slechts <strong>één keer</strong> getoond.</p>
         <div id="apiKeysList" style="margin-bottom:16px"></div>
         <div style="display:flex;gap:10px;align-items:center">
-          <input type="text" id="newKeyLabel" placeholder="Label (bijv. Zapier integratie)" style="flex:1;height:36px;padding:0 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit">
+          <input type="text" id="newKeyLabel" placeholder="Label (bijv. Zapier integratie)" style="flex:1">
           <button class="btn btn-primary btn-sm" onclick="generateApiKey()"><i class="ti ti-plus"></i> Genereer sleutel</button>
         </div>
-        <div id="newKeyDisplay" style="display:none;margin-top:12px;padding:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:var(--radius-lg)">
-          <div style="font-size:12px;font-weight:700;color:#15803d;margin-bottom:6px">Sla deze sleutel op — wordt niet opnieuw getoond</div>
+        <div id="newKeyDisplay" class="new-key-display" style="display:none">
+          <div class="new-key-title">Sla deze sleutel op — wordt niet opnieuw getoond</div>
           <div style="display:flex;align-items:center;gap:8px">
-            <code id="newKeyValue" style="font-size:12px;background:#fff;padding:6px 10px;border-radius:6px;border:1px solid #bbf7d0;flex:1;word-break:break-all"></code>
+            <code id="newKeyValue" class="new-key-code"></code>
             <button class="btn btn-ghost btn-sm" onclick="copyApiKey()"><i class="ti ti-copy"></i></button>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Team / Users (admin only) -->
-    ${isAdmin() ? `
-    <div class="card settings-section" id="usersSection">
-      <div class="collapsible-header" id="usersToggle">
-        <h2 class="settings-title" style="margin:0"><i class="ti ti-users"></i> Team & gebruikers</h2>
-        <i class="ti ti-chevron-down" id="usersChevron"></i>
-      </div>
-      <div id="usersContent" style="display:none;margin-top:14px">
+      <!-- ── Team ── -->
+      ${isAdmin() ? `
+      <div class="settings-tab-pane" id="stab-team">
+        <h2 class="settings-title"><i class="ti ti-users"></i> Team &amp; gebruikers</h2>
         <div id="usersList" style="margin-bottom:16px"></div>
-        <div style="border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px">
-          <h3 style="font-size:14px;font-weight:700;margin-bottom:12px">Nieuwe gebruiker toevoegen</h3>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="settings-panel">
+          <span class="settings-sublabel">Nieuwe gebruiker toevoegen</span>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
             <div class="form-group"><label>Naam</label><input type="text" id="newUserName" placeholder="Jan Jansen"></div>
             <div class="form-group"><label>Gebruikersnaam</label><input type="text" id="newUserUsername" placeholder="jan"></div>
             <div class="form-group"><label>Wachtwoord</label><input type="password" id="newUserPassword" placeholder="••••••••"></div>
@@ -5040,26 +5400,26 @@ async function renderSettings() {
           <button class="btn btn-primary btn-sm" onclick="addUser()"><i class="ti ti-plus"></i> Gebruiker aanmaken</button>
         </div>
       </div>
-    </div>
-    ` : ''}
+      ` : ''}
 
-    <!-- Danger zone -->
-    <div class="card settings-section settings-danger">
-      <div class="collapsible-header" id="dangerZoneToggle">
-        <h2 class="settings-title" style="color:#ef4444;margin:0"><i class="ti ti-alert-triangle"></i> Gevaarlijke zone</h2>
-        <i class="ti ti-chevron-down" id="dangerZoneChevron" style="color:#ef4444"></i>
-      </div>
-      <div id="dangerZoneContent" style="display:none;margin-top:14px">
-        <p class="text-secondary" style="font-size:13px;margin-bottom:12px">Deze acties zijn onomkeerbaar.</p>
-        <div class="btn-row">
-          <button class="btn btn-danger" id="deleteLeadsBtn">Verwijder alle leads</button>
-          <button class="btn btn-danger" id="resetStatsBtn">Reset statistieken</button>
+      <!-- ── Gevaarlijke zone ── -->
+      <div class="settings-tab-pane" id="stab-danger">
+        <h2 class="settings-title" style="color:#dc2626"><i class="ti ti-alert-triangle"></i> Gevaarlijke zone</h2>
+        <p class="text-secondary" style="font-size:13px;margin-bottom:20px">Deze acties zijn onomkeerbaar. Wees zeker voordat je verder gaat.</p>
+        <div id="dangerZoneContent">
+          <div class="btn-row">
+            <button class="btn btn-danger" id="deleteLeadsBtn">Verwijder alle leads</button>
+            <button class="btn btn-danger" id="resetStatsBtn">Reset statistieken</button>
+          </div>
         </div>
       </div>
+
     </div>
+  </div>
   `;
 
   attachSettingsHandlers(s);
+  switchSettingsTab(localStorage.getItem('settingsTab') || 'account');
 }
 
 function attachSettingsHandlers(s) {
@@ -5218,12 +5578,23 @@ function attachSettingsHandlers(s) {
     });
   }
 
-  document.getElementById('dangerZoneToggle').addEventListener('click', () => {
-    const content = document.getElementById('dangerZoneContent');
-    const chevron = document.getElementById('dangerZoneChevron');
-    const open = content.style.display !== 'none';
-    content.style.display = open ? 'none' : '';
-    chevron.className = `ti ${open ? 'ti-chevron-down' : 'ti-chevron-up'}`;
+  document.getElementById('saveWebsiteBtn')?.addEventListener('click', async () => {
+    const body = {
+      websiteTagline: document.getElementById('websiteTagline')?.value,
+      websiteAbout:   document.getElementById('websiteAbout')?.value,
+      websiteContact: document.getElementById('websiteContact')?.value
+    };
+    const res = await api('/api/settings/account', { method: 'PATCH', body: JSON.stringify(body) });
+    if (res.ok) toast('Website opgeslagen', 'success');
+    else toast('Opslaan mislukt', 'error');
+  });
+
+  document.getElementById('saveEmailAutoBtn')?.addEventListener('click', () => {
+    document.getElementById('saveAutomationBtn')?.click();
+  });
+
+  document.getElementById('savePaymentsAutoBtn')?.addEventListener('click', () => {
+    document.getElementById('saveAutomationBtn')?.click();
   });
 
   document.getElementById('saveStripeBtn').addEventListener('click', async () => {
@@ -5484,6 +5855,16 @@ async function markAllNotificationsRead() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Topbar clock
+  function updateTopbarTime() {
+    const el = document.getElementById('topbarTime');
+    if (!el) return;
+    const now = new Date();
+    el.textContent = now.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  }
+  updateTopbarTime();
+  setInterval(updateTopbarTime, 30000);
+
   // Set user name + role badge from localStorage
   const name = localStorage.getItem('myName') || 'Admin';
   const role = getRole();

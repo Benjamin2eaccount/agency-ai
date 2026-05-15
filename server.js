@@ -459,6 +459,56 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
     } catch { /* optional */ }
   }
 
+  // Auto-generate website if lead has a website service and no site yet
+  const hasWebsiteService = (lead.services || []).some(s =>
+    s.name && (s.name.toLowerCase().includes('website') || s.name.toLowerCase().includes('site'))
+  );
+  if (hasWebsiteService && !lead.generatedSite) {
+    setImmediate(async () => {
+      try {
+        const freshLeads = readJSON('leads.json') || [];
+        const freshSettings = readJSON('settings.json') || {};
+        const freshIdx = freshLeads.findIndex(l => l.id === lead.id);
+        if (freshIdx === -1 || freshLeads[freshIdx].generatedSite) return;
+        const freshLead = freshLeads[freshIdx];
+
+        const colors = getColorScheme(freshLead.niche);
+        const serviceNames = (freshLead.services || []).map(s => s.name).join(', ') || 'AI-diensten';
+        const intakeCtx = '\n\nIntake antwoorden:\n' + Object.entries(freshLead.intakeAnswers || {}).map(([k, v]) => `- ${k}: ${v}`).join('\n');
+
+        let content;
+        try {
+          content = await aiJSON(`Genereer website content voor ${freshLead.companyName} (${freshLead.niche}, ${freshLead.location}). Diensten: ${serviceNames}.${intakeCtx}
+Antwoord ALLEEN als JSON: { "headline": "string", "subheadline": "string", "about": "string", "services": [{"icon":"emoji","title":"string","desc":"string"}], "ctaText": "string", "ctaSubtext": "string", "footerTagline": "string" }`);
+        } catch { content = { headline: `Welkom bij ${freshLead.companyName}`, subheadline: `Professionele ${freshLead.niche} diensten`, about: `${freshLead.companyName} biedt professionele diensten aan in ${freshLead.location}.`, services: [], ctaText: 'Neem contact op', ctaSubtext: 'We reageren binnen 24 uur', footerTagline: freshLead.companyName }; }
+
+        const servicesStr = (content.services || []).map(s => `${s.icon} ${s.title}: ${s.desc}`).join('\n');
+        let siteHtml = await aiCall(`Maak een volledige professionele HTML website voor ${freshLead.companyName} (${freshLead.niche}, ${freshLead.location}). Headline: ${content.headline}. Subheadline: ${content.subheadline}. About: ${content.about}. Diensten:\n${servicesStr}. CTA: ${content.ctaText}. Kleur: ${colors.primary}. Standalone HTML, alle CSS inline. Geef ALLEEN HTML terug.`);
+        siteHtml = siteHtml.trim().replace(/^```[a-z]*\n?/, '').replace(/```$/, '').trim();
+        if (!siteHtml.toLowerCase().includes('<!doctype') && !siteHtml.toLowerCase().includes('<html')) {
+          siteHtml = `<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${freshLead.companyName}</title></head><body>${siteHtml}</body></html>`;
+        }
+
+        const siteSlug = generateSiteSlug(freshLead.companyName);
+        const sitesDir = path.join(__dirname, 'public', 'sites', siteSlug);
+        fs.mkdirSync(sitesDir, { recursive: true });
+        fs.writeFileSync(path.join(sitesDir, 'index.html'), siteHtml, 'utf8');
+
+        const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+        const siteUrl = `${baseUrl}/sites/${siteSlug}`;
+
+        const updatedLeads = readJSON('leads.json') || [];
+        const updIdx = updatedLeads.findIndex(l => l.id === freshLead.id);
+        if (updIdx !== -1) {
+          updatedLeads[updIdx].generatedSite = { siteSlug, siteUrl, generatedAt: new Date().toISOString(), content, status: 'preview', feedback: [] };
+          addLeadHistory(updatedLeads, freshLead.id, { event: 'siteGenerated', label: `Website auto-gegenereerd na intake: ${siteUrl}` });
+          writeJSON('leads.json', updatedLeads);
+        }
+        console.log(`[Website] Auto-generated for ${freshLead.companyName}: ${siteUrl}`);
+      } catch (e) { console.error('[Website] Auto-generate failed:', e.message); }
+    });
+  }
+
   res.json({ ok: true });
 });
 
@@ -737,8 +787,24 @@ app.get('/api/portal/:token', (req, res) => {
     estimatedCompletion: lead.estimatedCompletion || null,
     services:            enrichedSvcs,
     reports:             (lead.reports || []).map(r => ({ title: r.title, month: r.month, createdAt: r.createdAt, content: r.content })),
-    delivery:            lead.delivery || null
+    delivery:            lead.delivery || null,
+    generatedSite:       lead.generatedSite ? { siteUrl: lead.generatedSite.siteUrl, status: lead.generatedSite.status, generatedAt: lead.generatedSite.generatedAt } : null
   });
+});
+
+app.post('/api/portal/:token/site-feedback', (req, res) => {
+  const { feedback } = req.body;
+  if (!feedback) return res.status(400).json({ error: 'Feedback verplicht' });
+  const leads = readJSON('leads.json') || [];
+  const lead  = leads.find(l => l.portalToken === req.params.token);
+  if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+  if (!lead.generatedSite) return res.status(400).json({ error: 'Geen website gegenereerd' });
+  if (!lead.generatedSite.feedback) lead.generatedSite.feedback = [];
+  lead.generatedSite.feedback.push({ text: feedback, time: new Date().toISOString(), by: lead.companyName || 'klant' });
+  const preview = feedback.length > 60 ? feedback.substring(0, 60) + '...' : feedback;
+  addLeadHistory(leads, lead.id, { event: 'siteFeedback', label: `Website feedback van klant: ${preview}` });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
 });
 
 app.post('/api/portal/:token/message', (req, res) => {
@@ -1481,6 +1547,234 @@ Antwoord ALLEEN als JSON: { "milestones": [{ "week": 1, "title": "string", "desc
   res.end();
 });
 
+// ─── Website Generator ───────────────────────────────────────────────────────
+
+function generateSiteSlug(name) {
+  return name.toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .substring(0, 40) + '-' + Date.now().toString(36);
+}
+
+function getColorScheme(niche) {
+  const schemes = {
+    horeca:     { primary: '#c2410c', accent: '#ea580c' },
+    kapper:     { primary: '#7c3aed', accent: '#8b5cf6' },
+    schoonheid: { primary: '#be185d', accent: '#ec4899' },
+    beauty:     { primary: '#be185d', accent: '#ec4899' },
+    fitness:    { primary: '#047857', accent: '#10b981' },
+    gezondheid: { primary: '#0369a1', accent: '#0ea5e9' },
+    tandarts:   { primary: '#0284c7', accent: '#38bdf8' },
+    advocaat:   { primary: '#1d4ed8', accent: '#3b82f6' },
+    accountant: { primary: '#1d4ed8', accent: '#3b82f6' },
+    vastgoed:   { primary: '#b45309', accent: '#f59e0b' },
+    auto:       { primary: '#374151', accent: '#6b7280' },
+    restaurant: { primary: '#c2410c', accent: '#ea580c' },
+    bakker:     { primary: '#92400e', accent: '#d97706' },
+    slager:     { primary: '#991b1b', accent: '#dc2626' },
+  };
+  const key = Object.keys(schemes).find(k => (niche || '').toLowerCase().includes(k));
+  return schemes[key] || { primary: '#4f46e5', accent: '#6366f1' };
+}
+
+app.post('/api/leads/:id/generate-site', requireAdmin, async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const send = (step, label, status, extra = {}) => {
+    res.write(`data: ${JSON.stringify({ step, label, status, ...extra })}\n\n`);
+  };
+
+  try {
+    const leads = readJSON('leads.json') || [];
+    const settings = readJSON('settings.json') || {};
+    const idx = leads.findIndex(l => l.id === req.params.id);
+    if (idx === -1) { send(0, 'Lead niet gevonden', 'error'); res.end(); return; }
+    const lead = leads[idx];
+
+    const serviceNames = (lead.services || []).map(s => s.name).join(', ') || 'AI-diensten';
+    const intakeContext = lead.intakeAnswers
+      ? '\n\nIntake antwoorden:\n' + Object.entries(lead.intakeAnswers).map(([k, v]) => `- ${k}: ${v}`).join('\n')
+      : '';
+    const colors = getColorScheme(lead.niche);
+
+    // Step 1 — Generate content
+    send(1, 'Website content genereren met AI', 'running');
+    let content = null;
+    try {
+      content = await aiJSON(`Genereer complete website content voor ${lead.companyName} (${lead.niche}, ${lead.location}).
+Diensten geleverd: ${serviceNames}.${intakeContext}
+Primaire kleur: ${colors.primary}.
+Antwoord ALLEEN als JSON:
+{
+  "headline": "Hoofdtitel (max 8 woorden, pakkend en specifiek voor dit bedrijf)",
+  "subheadline": "Ondertitel (1 zin, max 15 woorden, beschrijft de waarde)",
+  "about": "Over ons tekst (2-3 zinnen, persoonlijk en concreet)",
+  "services": [{ "icon": "emoji", "title": "string (max 4 woorden)", "desc": "1-2 zinnen" }],
+  "ctaText": "Call-to-action knoptekst (max 5 woorden)",
+  "ctaSubtext": "Ondertekst bij CTA (max 12 woorden)",
+  "footerTagline": "Footer slogan (max 10 woorden)"
+}`);
+    } catch {
+      content = {
+        headline: `Welkom bij ${lead.companyName}`,
+        subheadline: `Professionele ${lead.niche} diensten in ${lead.location}`,
+        about: `${lead.companyName} staat voor kwaliteit en betrouwbaarheid in ${lead.location}. Wij helpen onze klanten met professionele diensten op maat.`,
+        services: [{ icon: '⭐', title: serviceNames.split(',')[0].trim(), desc: 'Professionele service op maat voor uw behoeften.' }],
+        ctaText: 'Neem contact op',
+        ctaSubtext: 'We reageren binnen 24 uur',
+        footerTagline: `${lead.companyName} — Altijd voor u klaar`
+      };
+    }
+    send(1, 'Website content genereren met AI', 'done');
+
+    // Step 2 — Generate full HTML
+    send(2, 'Volledige HTML website bouwen', 'running');
+    let siteHtml = null;
+    const contactEmail = lead.contactEmail || '';
+    try {
+      const servicesStr = (content.services || []).map(s => `${s.icon} ${s.title}: ${s.desc}`).join('\n');
+      siteHtml = await aiCall(`Maak een COMPLETE professionele single-page website in HTML voor ${lead.companyName} (${lead.niche} in ${lead.location}).
+
+Gebruik deze content EXACT:
+- Headline: ${content.headline}
+- Subheadline: ${content.subheadline}
+- Over ons: ${content.about}
+- Diensten:\n${servicesStr}
+- CTA knop: ${content.ctaText}
+- CTA ondertekst: ${content.ctaSubtext}
+- Primaire kleur: ${colors.primary}
+- Accent kleur: ${colors.accent}
+${contactEmail ? `- Email: ${contactEmail}` : ''}
+
+VERPLICHTE structuur:
+1. Nav (logo/naam, links: Home | Diensten | Over ons | Contact)
+2. Hero (grote headline, subheadline, CTA knop, gradient achtergrond in primaire kleur)
+3. Diensten grid (3 kolommen op desktop, 1 op mobiel)
+4. Over ons sectie
+5. Contact sectie (email knop${contactEmail ? `, mailto:${contactEmail}` : ''})
+6. Footer
+
+TECHNISCHE VEREISTEN:
+- Volledig standalone HTML — alle CSS in <style> tag
+- Mobile responsive (flexbox/grid)
+- Smooth scroll (scroll-behavior: smooth)
+- Geen externe resources, geen JavaScript, geen afbeeldingen
+- Kleur ${colors.primary} voor knoppen, headings, accenten
+- Wit op primaire kleur voor hero CTA knop
+- Schone, moderne typografie (system font stack)
+- Geen placeholder tekst
+
+Geef ALLEEN de volledige HTML terug. Geen uitleg, geen markdown, geen backticks.`);
+    } catch (e) { send(0, 'HTML generatie mislukt: ' + e.message, 'error'); res.end(); return; }
+
+    // Strip markdown code fences if Claude wrapped it
+    siteHtml = siteHtml.trim();
+    if (siteHtml.startsWith('```')) {
+      siteHtml = siteHtml.replace(/^```[a-z]*\n?/, '').replace(/```$/, '').trim();
+    }
+    if (!siteHtml.toLowerCase().includes('<!doctype') && !siteHtml.toLowerCase().includes('<html')) {
+      siteHtml = `<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${lead.companyName}</title></head><body>${siteHtml}</body></html>`;
+    }
+    send(2, 'Volledige HTML website bouwen', 'done');
+
+    // Step 3 — Save to disk
+    send(3, 'Website opslaan en URL aanmaken', 'running');
+    const siteSlug = generateSiteSlug(lead.companyName);
+    const sitesDir = path.join(__dirname, 'public', 'sites', siteSlug);
+    fs.mkdirSync(sitesDir, { recursive: true });
+    fs.writeFileSync(path.join(sitesDir, 'index.html'), siteHtml, 'utf8');
+
+    const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const siteUrl = `${baseUrl}/sites/${siteSlug}`;
+
+    leads[idx].generatedSite = {
+      siteSlug, siteUrl,
+      generatedAt: new Date().toISOString(),
+      content, status: 'preview', feedback: []
+    };
+    addLeadHistory(leads, lead.id, { event: 'siteGenerated', label: `Website gegenereerd: ${siteUrl}` });
+    writeJSON('leads.json', leads);
+    send(3, 'Website opslaan en URL aanmaken', 'done');
+
+    // Step 4 — Send preview to client
+    send(4, 'Preview link versturen naar klant', 'running');
+    if (contactEmail && settings.gmailAddress && settings.gmailPassword) {
+      try {
+        const subject = `Je website preview is klaar — ${lead.companyName}`;
+        const body = `Hoi${lead.contactName ? ' ' + lead.contactName.split(' ')[0] : ''},\n\nJe website preview staat klaar! Bekijk hem via de link hieronder:\n\n${siteUrl}\n\nHeb je feedback of aanpassingen? Laat het gerust weten via het klantportaal of stuur een reply.\n\nMet vriendelijke groet,\n${settings.myName || settings.agencyName || 'Agency AI'}`;
+        await sendEmail({ to: contactEmail, subject, body, settings });
+        if (!leads[idx].clientEmailLog) leads[idx].clientEmailLog = [];
+        leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'sitePreview', subject, body, to: contactEmail, sentAt: new Date().toISOString(), sentBy: 'systeem' });
+        writeJSON('leads.json', leads);
+      } catch { /* optional */ }
+    }
+    send(4, 'Preview link versturen naar klant', 'done');
+
+    send(0, 'Website gegenereerd', 'complete', { siteUrl, siteSlug });
+  } catch (err) {
+    send(0, err.message, 'error');
+  }
+  res.end();
+});
+
+app.get('/api/leads/:id/site', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+  if (!lead.generatedSite) return res.json({ exists: false });
+  const { siteSlug } = lead.generatedSite;
+  let html = '';
+  try { html = fs.readFileSync(path.join(__dirname, 'public', 'sites', siteSlug, 'index.html'), 'utf8'); } catch { /* file may not exist */ }
+  res.json({ exists: true, ...lead.generatedSite, html });
+});
+
+app.patch('/api/leads/:id/site', requireAdmin, (req, res) => {
+  const { html } = req.body;
+  if (!html) return res.status(400).json({ error: 'HTML verplicht' });
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  if (!leads[idx].generatedSite) return res.status(400).json({ error: 'Geen website gegenereerd' });
+  const { siteSlug } = leads[idx].generatedSite;
+  try { fs.writeFileSync(path.join(__dirname, 'public', 'sites', siteSlug, 'index.html'), html, 'utf8'); }
+  catch (e) { return res.status(500).json({ error: e.message }); }
+  leads[idx].generatedSite.lastEditedAt = new Date().toISOString();
+  addLeadHistory(leads, leads[idx].id, { event: 'siteEdited', label: 'Website HTML bewerkt' });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+app.post('/api/leads/:id/site/feedback', (req, res) => {
+  const { feedback } = req.body;
+  if (!feedback) return res.status(400).json({ error: 'Feedback verplicht' });
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  if (!leads[idx].generatedSite) return res.status(400).json({ error: 'Geen website gegenereerd' });
+  if (!leads[idx].generatedSite.feedback) leads[idx].generatedSite.feedback = [];
+  leads[idx].generatedSite.feedback.push({ text: feedback, time: new Date().toISOString(), by: req.user?.name || 'team' });
+  addLeadHistory(leads, leads[idx].id, { event: 'siteFeedback', label: `Website feedback: ${feedback.substring(0, 60)}` });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+app.patch('/api/leads/:id/site/status', requireAdmin, (req, res) => {
+  const { status } = req.body;
+  if (!['preview', 'live'].includes(status)) return res.status(400).json({ error: 'Ongeldige status' });
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  if (!leads[idx].generatedSite) return res.status(400).json({ error: 'Geen website gegenereerd' });
+  leads[idx].generatedSite.status = status;
+  addLeadHistory(leads, leads[idx].id, { event: 'siteStatus', label: `Website status: ${status}` });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
 // ─── Automatic client communications ────────────────────────────────────────
 
 const CLIENT_EMAIL_TEMPLATES = {
@@ -1660,8 +1954,9 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
     try {
       const trackingToken = 'otk-' + item.leadId + '-' + Math.random().toString(36).substr(2, 8);
       inbox[idx].trackingToken = trackingToken;
+      const recipientEmail = item.contactEmail || settings.gmailAddress;
       await sendEmail({
-        to: settings.gmailAddress, // sends to own inbox as test; real leads get their email later
+        to: recipientEmail,
         subject: chosenEmail?.subject || item.email?.subject || 'Outreach email',
         body: chosenEmail?.body || item.email?.body || '',
         settings,
@@ -1676,7 +1971,7 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
       if (!stats.abStats) stats.abStats = { aApproved: 0, bApproved: 0 };
       stats.abStats[version === 'B' ? 'bApproved' : 'aApproved']++;
       writeJSON('stats.json', stats);
-      console.log(`[Email] Verstuurd (versie ${version}): "${chosenEmail?.subject}" -> ${settings.gmailAddress}`);
+      console.log(`[Email] Verstuurd (versie ${version}): "${chosenEmail?.subject}" -> ${recipientEmail}`);
     } catch (err) {
       console.error('[Email] Fout:', err.message);
       inbox[idx].status = 'approved'; // approved but not sent
@@ -2272,6 +2567,15 @@ async function checkWebsite(url) {
     const hasBooking    = /\b(boek|reserveer|afspraak|appointment|book|reservat)/i.test(html);
     const hasShop       = /\b(shop|winkel|bestel|kopen|cart|basket|checkout)/i.test(html);
     const hasCTA        = /\b(contact|contact us|meer info|neem contact|bel ons|call us)/i.test(html);
+
+    // Scrape contact email from page HTML
+    const rawEmails = html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
+    const scrapedEmail = rawEmails.find(e => {
+      const low = e.toLowerCase();
+      return !low.includes('noreply') && !low.includes('no-reply') && !low.includes('@example') &&
+             !low.match(/@(gmail|hotmail|yahoo|outlook)\./) &&
+             !low.match(/\.(png|jpg|gif|svg|css|js|woff)$/);
+    }) || null;
     const speedScore    = ms < 1500 ? 9 : ms < 3000 ? 7 : ms < 5000 ? 5 : 3;
 
     const problems = [];
@@ -2290,6 +2594,7 @@ async function checkWebsite(url) {
       hasBookingSystem: hasBooking,
       hasShop,
       hasCTA,
+      scrapedEmail,
       problems
     };
   } catch (err) {
@@ -2300,6 +2605,13 @@ async function checkWebsite(url) {
 // â"€â"€â"€ 6-agent pipeline â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 // â"€â"€ Per-lead processing helper (agents 2-6 + build item) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+function guessContactEmail(websiteUrl) {
+  if (!websiteUrl) return null;
+  const domain = websiteUrl.replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].toLowerCase();
+  if (!domain || !domain.includes('.')) return null;
+  return 'info@' + domain;
+}
+
 function isDuplicate(lead) {
   const existing = readJSON('leads.json') || [];
   if (!existing.length) return null;
@@ -2338,7 +2650,12 @@ async function processOneLead(lead, settings) {
 
   console.log(`  [Agent 2] Website checken: ${lead.websiteUrl}`);
   const website = await checkWebsite(lead.websiteUrl);
-  console.log(`  [Agent 2] Bereikbaar: ${website.reachable}, laadtijd: ${website.loadTimeMs || 'â€"'}ms`);
+  console.log(`  [Agent 2] Bereikbaar: ${website.reachable}, laadtijd: ${website.loadTimeMs || '—'}ms`);
+
+  // Determine contact email: scraped from HTML > finder-supplied > domain guess
+  const contactEmail = website.scrapedEmail || lead.contactEmail || guessContactEmail(lead.websiteUrl) || null;
+  const emailSource  = website.scrapedEmail ? 'gevonden' : (contactEmail ? 'geschat' : null);
+  if (contactEmail) console.log(`  [Email] ${contactEmail} (${emailSource})`);
 
   console.log(`  [Agent 3] Social media analyseren...`);
   let social;
@@ -2672,6 +2989,7 @@ Rules:
     score: Math.round(opportunity.score * 10) / 10,
     estimatedValue: opportunity.estimatedValue, urgency: opportunity.urgency,
     problems: opportunity.problems || [], services: opportunity.recommendedServices || [],
+    contactEmail, emailSource,
     website, social, email, emailA, emailB, linkedinDm, voicenoteScript, competitors,
     sendOptimalTime: getOptimalSendTime(lead.niche), createdAt: now
   };
@@ -2701,6 +3019,7 @@ Rules:
     score: item.score, urgency: item.urgency,
     status: item.status, estimatedValue: item.estimatedValue,
     problems: item.problems, services: item.services, emailOpener: opener,
+    contactEmail, emailSource,
     email: item.email, emailA: item.emailA, emailB: item.emailB, linkedinDm: item.linkedinDm,
     voicenoteScript: item.voicenoteScript,
     website: item.website, competitors, sendOptimalTime: item.sendOptimalTime,
@@ -2742,7 +3061,8 @@ Geef een JSON array terug (geen uitleg, alleen JSON):
   "estimatedFollowers": getal,
   "websiteUrl": "https://...",
   "linkedinCompanyUrl": "https://linkedin.com/company/bedrijfsnaam-slug",
-  "companySize": "small" of "medium" of "large"
+  "companySize": "small" of "medium" of "large",
+  "contactEmail": "meest waarschijnlijke zakelijke email — ALTIJD invullen — gebruik info@[domain] of contact@[domain] gebaseerd op websiteUrl. Geef alleen het emailadres."
 }]
 
 companySize: "small" voor ZZP/MKB (<10 medewerkers), "medium" voor middelgroot (10-50), "large" voor groot/corporate (50+).
@@ -4012,6 +4332,13 @@ app.post('/api/contact', async (req, res) => {
     } catch (_) { /* email is optional */ }
   }
   res.json({ ok: true });
+});
+
+// ─── Generated client sites ───────────────────────────────────────────────────
+app.get('/sites/:siteSlug', (req, res) => {
+  const sitePath = path.join(__dirname, 'public', 'sites', req.params.siteSlug, 'index.html');
+  if (!fs.existsSync(sitePath)) return res.status(404).send('<h1>Website niet gevonden</h1>');
+  res.sendFile(sitePath);
 });
 
 // ─── SPA fallback ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
