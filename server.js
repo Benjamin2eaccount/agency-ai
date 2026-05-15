@@ -186,17 +186,32 @@ function addLeadHistory(leads, leadId, event) {
 
 const NL_DAYS = ['zondag','maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag'];
 
+const SUB_NICHES = {
+  beauty:     ['kapsalon', 'nagelsalon', 'schoonheidssalon', 'tattoo studio', 'barbershop'],
+  food:       ['bakkerij', 'traiteur', 'foodtruck', 'ijssalon', 'slagerij'],
+  fitness:    ['personal trainer', 'yoga studio', 'crossfit box', 'sportschool', 'martial arts'],
+  retail:     ['kledingwinkel', 'schoenenwinkel', 'juwelier', 'boekenwinkel', 'cadeauwinkel'],
+  restaurant: ['Italiaans restaurant', 'sushi restaurant', 'café', 'eetcafé', 'steakhouse'],
+  horeca:     ['hotel', 'bed & breakfast', 'hostel', 'vakantiepark', 'camping'],
+  health:     ['tandarts', 'fysiotherapeut', 'chiropractor', 'opticien', 'apotheek'],
+  automotive: ['garagebedrijf', 'autoverkoop', 'wasstraat', 'bandendienst', 'schadeherstelbedrijf'],
+};
+
 function getOptimalSendTime(niche) {
   const n = (niche || '').toLowerCase();
   let targetDay, targetHour;
-  if (n.includes('restaurant') || n.includes('food') || n.includes('horeca')) {
+  if (n.includes('restaurant') || n.includes('food') || n.includes('horeca') || n.includes('café') || n.includes('eetcafé') || n.includes('bakkerij') || n.includes('ijssalon') || n.includes('traiteur')) {
     targetDay = 2; targetHour = 10;
-  } else if (n.includes('beauty') || n.includes('wellness') || n.includes('salon') || n.includes('spa')) {
+  } else if (n.includes('beauty') || n.includes('wellness') || n.includes('salon') || n.includes('spa') || n.includes('kapsalon') || n.includes('nagel') || n.includes('schoonheid') || n.includes('barbershop')) {
     targetDay = 1; targetHour = 9;
-  } else if (n.includes('fitness') || n.includes('sport') || n.includes('gym')) {
+  } else if (n.includes('fitness') || n.includes('sport') || n.includes('gym') || n.includes('yoga') || n.includes('crossfit') || n.includes('martial') || n.includes('personal trainer')) {
     targetDay = 2; targetHour = 8;
-  } else if (n.includes('retail') || n.includes('shop') || n.includes('webshop')) {
+  } else if (n.includes('retail') || n.includes('shop') || n.includes('webshop') || n.includes('winkel') || n.includes('juwelier') || n.includes('schoenen') || n.includes('kleding')) {
     targetDay = 3; targetHour = 10;
+  } else if (n.includes('health') || n.includes('tandarts') || n.includes('fysiotherapeut') || n.includes('apotheek') || n.includes('opticien')) {
+    targetDay = 2; targetHour = 11;
+  } else if (n.includes('automotive') || n.includes('garage') || n.includes('auto') || n.includes('banden')) {
+    targetDay = 3; targetHour = 9;
   } else {
     targetDay = 2; targetHour = 10;
   }
@@ -258,17 +273,22 @@ function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken) {
 </html>`;
 }
 
-async function sendEmail({ to, subject, body, html, settings, trackingToken }) {
+async function sendEmail({ to, subject, body, html, settings = {}, trackingToken }) {
+  const gmailAddress  = settings.gmailAddress  || process.env.GMAIL_ADDRESS;
+  const gmailPassword = settings.gmailPassword || process.env.GMAIL_APP_PASSWORD;
+  if (!gmailAddress || !gmailPassword) {
+    throw new Error('Gmail niet geconfigureerd — voeg GMAIL_ADDRESS en GMAIL_APP_PASSWORD toe als environment variables');
+  }
   const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 587,
     secure: false,
-    auth: { user: settings.gmailAddress, pass: settings.gmailPassword },
+    auth: { user: gmailAddress, pass: gmailPassword },
     tls: { rejectUnauthorized: false }
   });
   await transporter.verify();
   await transporter.sendMail({
-    from: `"${settings.agencyName}" <${settings.gmailAddress}>`,
+    from: `"${settings.agencyName || 'Agency AI'}" <${gmailAddress}>`,
     to,
     subject,
     text: body || '',
@@ -735,7 +755,7 @@ ${serviceCards ? `
     <div class="step"><div class="step-num">1</div><h3>Lead vinden</h3><p>AI zoekt dagelijks 15+ bedrijven die perfect passen bij jouw doelgroep.</p></div>
     <div class="step"><div class="step-num">2</div><h3>Bedrijf analyseren</h3><p>6 AI-agents onderzoeken website, social media, concurrenten en kansen.</p></div>
     <div class="step"><div class="step-num">3</div><h3>Email schrijven</h3><p>Volledig gepersonaliseerde outreach — klinkt menselijk, geen AI-taal.</p></div>
-    <div class="step"><div class="step-num">4</div><h3>Opvolgen</h3><p>Automatische follow-ups na 3 en 7 dagen. Replies worden direct gesignaleerd.</p></div>
+    <div class="step"><div class="step-num">4</div><h3>Opvolgen</h3><p>Automatische follow-ups na 2 en 5 dagen. Replies worden direct gesignaleerd.</p></div>
   </div>
 </section>
 
@@ -2179,15 +2199,17 @@ app.patch('/api/settings/automation', requireAdmin, (req, res) => {
 });
 
 app.post('/api/settings/test-email', async (req, res) => {
-  const settings = readJSON('settings.json');
-  if (!settings.gmailAddress || !settings.gmailPassword) {
-    return res.status(400).json({ error: 'Gmail nog niet ingesteld' });
+  const settings = readJSON('settings.json') || {};
+  const gmailAddress  = settings.gmailAddress  || process.env.GMAIL_ADDRESS;
+  const gmailPassword = settings.gmailPassword || process.env.GMAIL_APP_PASSWORD;
+  if (!gmailAddress || !gmailPassword) {
+    return res.status(400).json({ error: 'Gmail niet geconfigureerd — stel in via Settings of voeg GMAIL_ADDRESS + GMAIL_APP_PASSWORD toe als Railway env vars' });
   }
   try {
     await sendEmail({
-      to: settings.gmailAddress,
-      subject: 'Agency AI â€" Testmail âœ"',
-      body: `Hoi ${settings.myName},\n\nGmail is correct ingesteld.\n\nAgency AI kan nu emails versturen namens ${settings.agencyName}!\n\nVriendelijke groet,\n${settings.myName}\n${settings.agencyName}`,
+      to: gmailAddress,
+      subject: 'Agency AI — Testmail ✓',
+      body: `Hoi ${settings.myName || 'Admin'},\n\nGmail is correct ingesteld.\n\nAgency AI kan nu emails versturen namens ${settings.agencyName || 'Agency AI'}!\n\nVriendelijke groet,\n${settings.myName || 'Admin'}\n${settings.agencyName || 'Agency AI'}`,
       settings
     });
     res.json({ ok: true });
@@ -2771,8 +2793,11 @@ Analyseer wat die concurrenten waarschijnlijk beter doen aan online marketing.
   const seasonal  = getSeasonalContext(language);
   const todayEN   = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
+  const nicheLabel = lead.subNiche || lead.niche;
+
   const sharedContext = language === 'nl'
-    ? `Bedrijf: ${lead.companyName} (${lead.niche}, ${lead.location})
+    ? `Bedrijf: ${lead.companyName} (${nicheLabel}, ${lead.location})
+Bedrijfstype: ${lead.subNiche ? `${lead.subNiche} (categorie: ${lead.niche})` : lead.niche}
 Bedrijfsgrootte: ${companySize}
 Instagram: ${lead.estimatedFollowers ? lead.estimatedFollowers.toLocaleString() + ' volgers' : 'onbekend'}
 LinkedIn: ${social.linkedinCompanyFollowers ? social.linkedinCompanyFollowers.toLocaleString() + ' volgers' : 'onbekend'}${social.linkedinActive === false ? ' (inactief)' : ''}
@@ -2783,7 +2808,8 @@ Concurrentie in ${lead.location}: ${competitors?.competitorGap || 'niet beschikb
 Afzender: ${myName} van ${agencyName}
 Datum vandaag: ${todayNL}
 Seizoenscontext: ${seasonal.season} — ${seasonal.hook}`
-    : `Company: ${lead.companyName} (${lead.niche}, ${lead.location})
+    : `Company: ${lead.companyName} (${nicheLabel}, ${lead.location})
+Business type: ${lead.subNiche ? `${lead.subNiche} (category: ${lead.niche})` : lead.niche}
 Company size: ${companySize}
 Instagram: ${lead.estimatedFollowers ? lead.estimatedFollowers.toLocaleString() + ' followers' : 'unknown'}
 LinkedIn: ${social.linkedinCompanyFollowers ? social.linkedinCompanyFollowers.toLocaleString() + ' followers' : 'unknown'}${social.linkedinActive === false ? ' (inactive)' : ''}
@@ -2902,7 +2928,56 @@ ${sharedRules}
       ? { subject: `${lead.companyName} â€" groeikans`, body: `Hoi,\n\n${lead.companyName} heeft echt potentieel om te groeien met ${topService.toLowerCase()}.\n\nZou je open staan voor een kort gesprek?\n\nVriendelijke groet,\n${myName}` }
       : { subject: `${lead.companyName} â€" growth opportunity`, body: `Hi,\n\n${lead.companyName} has real potential to grow with ${topService.toLowerCase()}.\n\nWould you be open to a quick chat?\n\nBest,\n${myName}` };
   }
-  const email = emailA;
+  // Agent 5b: 3 subject line options
+  const subjectPrompt = language === 'nl'
+    ? `Bedenk 3 scherpe email-onderwerpregels voor een koude email.
+
+Bedrijf: ${lead.companyName} (${lead.niche}, ${lead.location})
+Probleem: ${topProblem}
+Dienst: ${topService}
+
+Regels voor elke onderwerpregel:
+- Max 7 woorden
+- Verwijs altijd naar iets SPECIFIEKS (bedrijfsnaam, stad, of het concrete probleem)
+- Formaat: nieuwsgierigheid wekken of probleem-bewustzijn — GEEN resultaatbelofte
+- VERBODEN: "AI", "marketing", "samenwerking", "vrijblijvend", "groeien", "helpen"
+- Klinkt menselijk, geen spam
+- Optie 1: probleemgericht (noem het specifieke probleem concreet)
+- Optie 2: nieuwsgierigheid of vraag-formaat
+- Optie 3: stad of niche-specifiek, persoonlijk
+
+Geef ALLEEN JSON terug: { "subjectOptions": ["optie1", "optie2", "optie3"] }`
+    : `Generate 3 sharp email subject lines for a cold email.
+
+Company: ${lead.companyName} (${lead.niche}, ${lead.location})
+Problem: ${topProblem}
+Service: ${topService}
+
+Rules for each subject line:
+- Max 7 words
+- Always reference something SPECIFIC (company name, city, or the concrete problem)
+- Format: curiosity or problem-awareness — NO results promise
+- BANNED: "AI", "marketing", "collaboration", "no obligation", "grow", "help"
+- Sounds like a real person, not spam
+- Option 1: problem-focused (name the specific problem concretely)
+- Option 2: curiosity or question format
+- Option 3: location or niche specific, personal
+
+Return ONLY JSON: { "subjectOptions": ["option1", "option2", "option3"] }`;
+
+  let subjectOptions = [];
+  try {
+    const subjectResult = await aiJSON(subjectPrompt);
+    subjectOptions = Array.isArray(subjectResult?.subjectOptions) ? subjectResult.subjectOptions : [];
+  } catch {}
+  if (subjectOptions.length < 3) {
+    subjectOptions = language === 'nl'
+      ? [emailA.subject, `Vraag over ${lead.companyName}`, `${lead.niche} in ${lead.location}`]
+      : [emailA.subject, `Question for ${lead.companyName}`, `${lead.niche} in ${lead.location}`];
+  }
+  subjectOptions = subjectOptions.slice(0, 3).map(s => String(s).trim());
+
+  const email = { ...emailA, subject: subjectOptions[0] };
 
   console.log(`  [Agent 6] LinkedIn DM + voicenote schrijven (${language})...`);
   const dmPrompt = language === 'nl'
@@ -2981,7 +3056,7 @@ Rules:
     id, leadId: id, status: 'pending', type: 'new',
     companyName: lead.companyName, location: lead.location, country: lead.country,
     language, companySize, emailOpener: opener,
-    niche: lead.niche, instagramHandle: lead.instagramHandle,
+    niche: lead.niche, subNiche: lead.subNiche || null, instagramHandle: lead.instagramHandle,
     estimatedFollowers: lead.estimatedFollowers, websiteUrl: lead.websiteUrl,
     linkedinCompanyUrl: lead.linkedinCompanyUrl || null,
     linkedinCompanyFollowers: social.linkedinCompanyFollowers || null,
@@ -2990,7 +3065,7 @@ Rules:
     estimatedValue: opportunity.estimatedValue, urgency: opportunity.urgency,
     problems: opportunity.problems || [], services: opportunity.recommendedServices || [],
     contactEmail, emailSource,
-    website, social, email, emailA, emailB, linkedinDm, voicenoteScript, competitors,
+    website, social, email, emailA, emailB, subjectOptions, linkedinDm, voicenoteScript, competitors,
     sendOptimalTime: getOptimalSendTime(lead.niche), createdAt: now
   };
   // Smart auto-approve: check all configured conditions
@@ -3009,7 +3084,7 @@ Rules:
   if (shouldAutoApprove) item.status = 'auto-approved';
 
   const leadRecord = {
-    id, companyName: lead.companyName, niche: lead.niche, location: lead.location,
+    id, companyName: lead.companyName, niche: lead.niche, subNiche: lead.subNiche || null, location: lead.location,
     country: lead.country, language, companySize,
     instagramHandle: lead.instagramHandle, estimatedFollowers: lead.estimatedFollowers,
     websiteUrl: lead.websiteUrl,
@@ -3020,7 +3095,7 @@ Rules:
     status: item.status, estimatedValue: item.estimatedValue,
     problems: item.problems, services: item.services, emailOpener: opener,
     contactEmail, emailSource,
-    email: item.email, emailA: item.emailA, emailB: item.emailB, linkedinDm: item.linkedinDm,
+    email: item.email, emailA: item.emailA, emailB: item.emailB, subjectOptions: item.subjectOptions, linkedinDm: item.linkedinDm,
     voicenoteScript: item.voicenoteScript,
     website: item.website, competitors, sendOptimalTime: item.sendOptimalTime,
     social: { engagementRate: social.engagementRate, postFrequency: social.postFrequency, growthPotential: social.growthPotential },
@@ -3032,18 +3107,35 @@ Rules:
 }
 
 async function runFindLeadsJob(overrides = {}) {
-  const settings = readJSON('settings.json');
+  if (!process.env.CLAUDE_API_KEY) {
+    throw new Error('CLAUDE_API_KEY niet ingesteld — voeg toe als Railway environment variable');
+  }
+  const settings = readJSON('settings.json') || {};
   if (settings.automationPaused) {
-    console.log('[Agency AI] Automatisering gepauzeerd â€" run overgeslagen');
+    console.log('[Agency AI] Automatisering gepauzeerd — run overgeslagen');
     return 0;
   }
 
   const count      = overrides.count      || settings.leadsPerDay || 15;
-  const nichesList = overrides.niches?.length ? overrides.niches.join(', ') : 'beauty, food, fitness, retail, restaurants';
   const services   = settings.services   || [];
   const myName     = settings.myName     || 'Ekow';
   const agencyName = settings.agencyName || 'Agency AI';
   const autoScore  = settings.autoApproveScore || 8.0;
+
+  // Build niche targeting list from settings or overrides
+  const targetSubNiches = settings.targetSubNiches || [];
+  const targetNiches    = settings.targetNiches    || [];
+  let nichesList;
+  if (overrides.niches?.length) {
+    nichesList = overrides.niches.join(', ');
+  } else if (targetSubNiches.length) {
+    nichesList = targetSubNiches.join(', ');
+  } else if (targetNiches.length) {
+    const expanded = targetNiches.flatMap(n => SUB_NICHES[n] || [n]);
+    nichesList = expanded.join(', ');
+  } else {
+    nichesList = Object.values(SUB_NICHES).flat().join(', ');
+  }
 
   console.log(`\n[Agency AI] â"€â"€â"€ Lead finder gestart: ${count} leads â"€â"€â"€`);
 
@@ -3057,7 +3149,8 @@ Geef een JSON array terug (geen uitleg, alleen JSON):
   "location": "Stad, Land",
   "country": "NL of ander land",
   "instagramHandle": "@handle",
-  "niche": "beauty" of "food" of "fitness" of "retail" of "restaurant",
+  "niche": "beauty" of "food" of "fitness" of "retail" of "restaurant" of "horeca" of "health" of "automotive",
+  "subNiche": "specifiek type — bijv. kapsalon, yoga studio, bakkerij (één van de opgegeven niches hieronder)",
   "estimatedFollowers": getal,
   "websiteUrl": "https://...",
   "linkedinCompanyUrl": "https://linkedin.com/company/bedrijfsnaam-slug",
@@ -3067,7 +3160,7 @@ Geef een JSON array terug (geen uitleg, alleen JSON):
 
 companySize: "small" voor ZZP/MKB (<10 medewerkers), "medium" voor middelgroot (10-50), "large" voor groot/corporate (50+).
 linkedinCompanyUrl: geef een realistisch LinkedIn company URL op basis van de bedrijfsnaam (lowercase, koppeltekens).
-Niches: .
+Doelgroep niches (gebruik ALLEEN deze types): ${nichesList}.
 Mix van locaties: Nederland, Belgie, Duitsland, UK, VS.
 Maak het realistisch â€" geen nep URLs. Gebruik domeinen die echt zouden kunnen bestaan.
 Geef exact ${count} bedrijven.`;
@@ -3079,7 +3172,7 @@ Geef exact ${count} bedrijven.`;
     leads = leads.slice(0, count);
   } catch (err) {
     console.error('[Agent 1] Fout:', err.message);
-    return 0;
+    throw new Error(`Agent 1 (Lead Finder) mislukt: ${err.message}`);
   }
   console.log(`[Agent 1] ${leads.length} leads gevonden`);
 
@@ -3190,11 +3283,13 @@ async function runFollowUpJob() {
     if (lead.status !== 'sent') continue;
     if (!lead.sentAt) continue;
 
-    const days    = daysSince(lead.sentAt);
-    const already = inbox.some(i => i.leadId === lead.id && (i.type === 'followup1' || i.type === 'followup2'));
+    const days     = daysSince(lead.sentAt);
+    const lang     = lead.language || 'nl';
+    const nicheCtx = lead.subNiche || lead.niche;
+    const origSubj = lead.email?.subject || lead.emailA?.subject || '';
 
-    // Mark dead after 10+ days with no reply and no pending follow-ups
-    if (days >= 10) {
+    // Mark dead after 8+ days with no reply and no pending follow-ups
+    if (days >= 8) {
       const hasPending = inbox.some(i => i.leadId === lead.id && i.status === 'pending');
       if (!hasPending) {
         lead.status = 'dead';
@@ -3205,28 +3300,46 @@ async function runFollowUpJob() {
       }
     }
 
-    // Follow-up 1: 3 days after sending, no reply yet
+    // Follow-up 1: day 2 after sending, no reply yet
     const hasFollowup1 = inbox.some(i => i.leadId === lead.id && i.type === 'followup1');
-    if (days >= 3 && days < 7 && !hasFollowup1) {
+    if (days >= 2 && days < 5 && !hasFollowup1) {
       console.log(`[Follow-up] Genereer follow-up 1 voor ${lead.companyName}...`);
       try {
-        const email = await aiJSON(`Schrijf een korte follow-up email. Geef JSON terug.
+        const fu1Prompt = lang === 'nl'
+          ? `Schrijf een korte follow-up email. Geef JSON terug.
 
-Context: Stuurden ${lead.companyName} (${lead.niche}, ${lead.location}) een email. Nog geen reactie na 3 dagen. Eerste opvolging.
+Context: Stuurden ${lead.companyName} (${nicheCtx}, ${lead.location}) 2 dagen geleden een koude email. Origineel onderwerp: "${origSubj}". Nog geen reactie. Eerste opvolging.
 Afzender: ${myName} van ${agencyName}
-Seizoen: ${getSeasonalContext('nl').season} (${getSeasonalContext('nl').event})
-Datum vandaag: ${new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
+Seizoen: ${getSeasonalContext('nl').season}
 
 Regels:
-- Klinkt als een snel berichtje van je telefoon getypt, niet vanachter een bureau
-- Start met exact: "Wilde dit even naar boven halen -" gevolgd door 1 concrete zin over hun ${lead.niche} bedrijf
+- Start exact met: "Wilde dit even naar boven halen -"
+- Noem in 1 zin iets specifieks over hun ${nicheCtx} in ${lead.location}
 - Max 50 woorden totaal
-- Eindig met 1 simpele vraag, bijv. "Past het komende week even?"
-- GEEN opsomming, GEEN uitleg over je dienst, GEEN excuses voor de opvolging
-- VERBODEN: "vrijblijvend", "innovatief", "ik hoop", "niet verplicht", "geen druk"
+- Eindig met 1 simpele vraag zoals "Past het komende week even?" of "Heb je 10 minuten?"
+- GEEN uitleg over je dienst, GEEN excuses voor de follow-up
+- Toon: snel getypt op telefoon, niet vanachter bureau
+- VERBODEN: "vrijblijvend", "innovatief", "ik hoop", "niet verplicht"
 
-{"subject": "Re: [origineel onderwerp]", "body": "volledige email"}`);
+{"subject": "Re: ${origSubj || lead.companyName}", "body": "volledige email"}`
+          : `Write a short follow-up email. Return JSON.
 
+Context: Sent ${lead.companyName} (${nicheCtx}, ${lead.location}) a cold email 2 days ago. Original subject: "${origSubj}". No reply yet. First follow-up.
+Sender: ${myName} from ${agencyName}
+Season: ${getSeasonalContext('en').season}
+
+Rules:
+- Start exactly with: "Just bumping this up -"
+- Mention 1 specific thing about their ${nicheCtx} in ${lead.location}
+- Max 50 words total
+- End with 1 simple question like "Worth a quick chat this week?" or "Got 10 minutes?"
+- NO explanation of your service, NO apology for following up
+- Tone: typed quickly on a phone, not from behind a desk
+- BANNED: "no obligation", "innovative", "I hope", "just checking in"
+
+{"subject": "Re: ${origSubj || lead.companyName}", "body": "full email"}`;
+
+        const email = await aiJSON(fu1Prompt);
         const item = {
           id: `fu1-${lead.id}-${Date.now()}`,
           leadId: lead.id,
@@ -3234,14 +3347,19 @@ Regels:
           type: 'followup1',
           companyName: lead.companyName,
           location: lead.location,
+          country: lead.country,
           niche: lead.niche,
+          subNiche: lead.subNiche || null,
+          language: lang,
           score: lead.score,
           estimatedValue: lead.estimatedValue,
+          contactEmail: lead.contactEmail,
           email,
+          sendOptimalTime: getOptimalSendTime(nicheCtx),
           createdAt: new Date().toISOString()
         };
         inbox.unshift(item);
-        addLeadHistory(leads, lead.id, { event: 'followup1', label: 'Follow-up 1 aangemaakt' });
+        addLeadHistory(leads, lead.id, { event: 'followup1', label: 'Follow-up 1 aangemaakt (dag 2)' });
         added++;
         console.log(`[Follow-up] Follow-up 1 aangemaakt voor ${lead.companyName}`);
       } catch (err) {
@@ -3249,28 +3367,44 @@ Regels:
       }
     }
 
-    // Follow-up 2: 7 days after sending, no reply yet
+    // Follow-up 2: day 5 after sending, no reply yet
     const hasFollowup2 = inbox.some(i => i.leadId === lead.id && i.type === 'followup2');
-    if (days >= 7 && days < 10 && !hasFollowup2) {
+    if (days >= 5 && days < 8 && !hasFollowup2) {
       console.log(`[Follow-up] Genereer follow-up 2 voor ${lead.companyName}...`);
       try {
-        const email = await aiJSON(`Schrijf een heel korte laatste follow-up email. Geef JSON terug.
+        const fu2Prompt = lang === 'nl'
+          ? `Schrijf een heel korte laatste follow-up email. Geef JSON terug.
 
-Context: ${lead.companyName} (${lead.niche}, ${lead.location}) heeft nergens op gereageerd. Laatste poging.
+Context: ${lead.companyName} (${nicheCtx}, ${lead.location}) heeft niet gereageerd op 2 eerdere emails. Dit is de laatste poging.
 Afzender: ${myName} van ${agencyName}
-Datum vandaag: ${new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
-Seizoen: ${getSeasonalContext('nl').season} (${getSeasonalContext('nl').event})
+Seizoen: ${getSeasonalContext('nl').season}
 
 Regels:
-- Start met exact: "Laatste berichtje -"
-- Max 40 woorden, zo beknopt mogelijk
-- Toon: luchtig en begripvol - deur openlaten, nul druk
-- Verwijzing naar hun niche of locatie (max 1 woord) om specifiek te klinken
-- Sluitzin: "Succes in ieder geval - en mocht timing later beter uitkomen, weet je me te vinden."
-- VERBODEN: "vrijblijvend", "innovatief", salesy taal, "ik hoop", excuses
+- Start exact met: "Laatste berichtje -"
+- Max 40 woorden
+- Toon: luchtig, geen druk, deur openlaten
+- 1 specifieke referentie aan hun niche (${nicheCtx}) of locatie (${lead.location})
+- Sluit af met: "Succes in ieder geval — en mocht timing later beter uitkomen, weet je me te vinden."
+- VERBODEN: salesy taal, excuses, "vrijblijvend", "ik hoop"
 
-{"subject": "Laatste berichtje - ${lead.companyName}", "body": "volledige email"}`);;
+{"subject": "Laatste berichtje — ${lead.companyName}", "body": "volledige email"}`
+          : `Write a very short final follow-up email. Return JSON.
 
+Context: ${lead.companyName} (${nicheCtx}, ${lead.location}) hasn't responded to 2 previous emails. This is the last attempt.
+Sender: ${myName} from ${agencyName}
+Season: ${getSeasonalContext('en').season}
+
+Rules:
+- Start exactly with: "Last message -"
+- Max 40 words
+- Tone: light, zero pressure, leave the door open
+- 1 specific reference to their niche (${nicheCtx}) or location (${lead.location})
+- Close with: "Good luck either way — and if timing ever works out, you know where to find me."
+- BANNED: salesy language, apologies, "no obligation", "I hope"
+
+{"subject": "Last message — ${lead.companyName}", "body": "full email"}`;
+
+        const email = await aiJSON(fu2Prompt);
         const item = {
           id: `fu2-${lead.id}-${Date.now()}`,
           leadId: lead.id,
@@ -3278,14 +3412,19 @@ Regels:
           type: 'followup2',
           companyName: lead.companyName,
           location: lead.location,
+          country: lead.country,
           niche: lead.niche,
+          subNiche: lead.subNiche || null,
+          language: lang,
           score: lead.score,
           estimatedValue: lead.estimatedValue,
+          contactEmail: lead.contactEmail,
           email,
+          sendOptimalTime: getOptimalSendTime(nicheCtx),
           createdAt: new Date().toISOString()
         };
         inbox.unshift(item);
-        addLeadHistory(leads, lead.id, { event: 'followup2', label: 'Follow-up 2 aangemaakt' });
+        addLeadHistory(leads, lead.id, { event: 'followup2', label: 'Follow-up 2 aangemaakt (dag 5)' });
         added++;
         console.log(`[Follow-up] Follow-up 2 aangemaakt voor ${lead.companyName}`);
       } catch (err) {

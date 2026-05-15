@@ -201,6 +201,17 @@ const NICHE_COLORS = {
   retail: 'purple', restaurant: 'amber', default: 'gray'
 };
 
+const APP_SUB_NICHES = {
+  beauty:     ['kapsalon', 'nagelsalon', 'schoonheidssalon', 'tattoo studio', 'barbershop'],
+  food:       ['bakkerij', 'traiteur', 'foodtruck', 'ijssalon', 'slagerij'],
+  fitness:    ['personal trainer', 'yoga studio', 'crossfit box', 'sportschool', 'martial arts'],
+  retail:     ['kledingwinkel', 'schoenenwinkel', 'juwelier', 'boekenwinkel', 'cadeauwinkel'],
+  restaurant: ['Italiaans restaurant', 'sushi restaurant', 'café', 'eetcafé', 'steakhouse'],
+  horeca:     ['hotel', 'bed & breakfast', 'hostel', 'vakantiepark', 'camping'],
+  health:     ['tandarts', 'fysiotherapeut', 'chiropractor', 'opticien', 'apotheek'],
+  automotive: ['garagebedrijf', 'autoverkoop', 'wasstraat', 'bandendienst', 'schadeherstelbedrijf'],
+};
+
 function nicheBadge(niche) {
   const color = NICHE_COLORS[niche?.toLowerCase()] || NICHE_COLORS.default;
   return `<span class="badge badge-${color}">${niche || 'Onbekend'}</span>`;
@@ -571,6 +582,7 @@ function buildInboxCard(item) {
         </div>
         <div class="inbox-card-meta">
           ${nicheBadge(item.niche)}
+          ${item.subNiche ? `<span class="sub-niche-pill">${esc(item.subNiche)}</span>` : ''}
           <span class="text-secondary" style="font-size:12px"><i class="ti ti-map-pin"></i> ${esc(item.location || '—')}</span>
           ${item.websiteUrl ? `<a href="${item.websiteUrl}" target="_blank" class="link" style="font-size:12px"><i class="ti ti-world"></i> Website</a>` : ''}
         </div>
@@ -614,6 +626,21 @@ function buildInboxCard(item) {
             `).join('')}
           </ul>
           ${item.estimatedValue ? `<div class="estimated-value">Geschatte maandwaarde: <strong>€${item.estimatedValue.toLocaleString('nl-NL')}</strong></div>` : ''}
+        </div>
+      ` : ''}
+
+      ${item.subjectOptions?.length >= 3 ? `
+        <div class="inbox-section inbox-subjects-section">
+          <div class="inbox-section-title"><i class="ti ti-tag" style="color:var(--accent)"></i> Onderwerpopties</div>
+          <div class="subject-chips" id="subjectChips-${item.id}">
+            ${item.subjectOptions.map((s, i) => `
+              <button class="subject-chip${i === 0 ? ' subject-chip-active' : ''}"
+                      onclick="selectSubject('${item.id}',${i})"
+                      title="${esc(s)}">
+                <span class="subject-chip-num">${i + 1}</span>
+                <span class="subject-chip-text">${esc(s)}</span>
+              </button>`).join('')}
+          </div>
         </div>
       ` : ''}
 
@@ -813,22 +840,73 @@ function viewEmail(id) {
   const version = card?.dataset.selectedVersion || 'A';
   const emailToShow = (version === 'B' && item.emailB) ? item.emailB : (item.emailA || item.email);
   const versionLabel = (item.emailA && item.emailB) ? ` (versie ${version})` : '';
+  const subjectIdx = parseInt(card?.dataset.selectedSubjectIdx || '0', 10);
+  const subject = item.subjectOptions?.[subjectIdx] || emailToShow.subject;
+
   openModal(`
     <div class="modal-header">
-      <h3>Email${versionLabel} — ${item.companyName}</h3>
+      <h3>Email${versionLabel} — ${esc(item.companyName)}</h3>
       <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
     </div>
+    ${item.subjectOptions?.length >= 3 ? `
+      <div class="modal-subject-picker">
+        <div class="modal-subject-picker-label">Kies onderwerp</div>
+        <div id="modalSubjectPicker-${id}">
+          ${item.subjectOptions.map((s, i) => `
+            <label class="modal-subject-option${i === subjectIdx ? ' modal-subject-option-active' : ''}"
+                   onclick="selectSubject('${id}',${i});updateModalSubject('${id}',${i})">
+              <input type="radio" name="subjectPick-${id}" value="${i}" ${i === subjectIdx ? 'checked' : ''}
+                     style="accent-color:var(--accent);flex-shrink:0">
+              <span>${esc(s)}</span>
+            </label>`).join('')}
+        </div>
+      </div>
+    ` : ''}
     <div class="email-preview">
-      <div class="email-subject"><strong>Onderwerp:</strong> ${emailToShow.subject}</div>
+      <div class="email-subject" id="modalEmailSubject-${id}"><strong>Onderwerp:</strong> ${esc(subject)}</div>
       <div class="email-body">${(emailToShow.body || '').replace(/\n/g, '<br>')}</div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="copyText(\`${(emailToShow.subject + '\n\n' + emailToShow.body).replace(/`/g, '\\`')}\`)">
+      <button class="btn btn-ghost" onclick="copyModalEmail('${id}')">
         <i class="ti ti-copy"></i> Kopiëren
       </button>
       <button class="btn btn-primary" onclick="closeModal()">Sluiten</button>
     </div>
   `);
+}
+
+function selectSubject(id, idx) {
+  const card = document.getElementById('card-' + id);
+  if (!card) return;
+  card.dataset.selectedSubjectIdx = idx;
+  document.querySelectorAll(`#subjectChips-${id} .subject-chip`).forEach((el, i) => {
+    el.classList.toggle('subject-chip-active', i === idx);
+  });
+}
+
+function updateModalSubject(id, idx) {
+  const item = state.inbox?.find(i => i.id === id);
+  if (!item?.subjectOptions) return;
+  const subject = item.subjectOptions[idx];
+  const el = document.getElementById('modalEmailSubject-' + id);
+  if (el) el.innerHTML = `<strong>Onderwerp:</strong> ${esc(subject)}`;
+  const picker = document.getElementById('modalSubjectPicker-' + id);
+  if (picker) {
+    picker.querySelectorAll('.modal-subject-option').forEach((lbl, i) => {
+      lbl.classList.toggle('modal-subject-option-active', i === idx);
+    });
+  }
+}
+
+function copyModalEmail(id) {
+  const item = state.inbox?.find(i => i.id === id);
+  if (!item) return;
+  const card = document.getElementById('card-' + id);
+  const version = card?.dataset.selectedVersion || 'A';
+  const emailToShow = (version === 'B' && item.emailB) ? item.emailB : (item.emailA || item.email);
+  const subjectIdx = parseInt(card?.dataset.selectedSubjectIdx || '0', 10);
+  const subject = item.subjectOptions?.[subjectIdx] || emailToShow.subject;
+  copyText(subject + '\n\n' + (emailToShow.body || ''));
 }
 
 function viewLinkedin(id) {
@@ -1076,7 +1154,7 @@ async function renderLeads() {
         ? (websiteOk ? '<span class="lc2-stat-online">● Online</span>' : '<span class="lc2-stat-offline">● Offline</span>')
         : '<span class="lc2-stat-val">—</span>';
       const dealWaarde = l.estimatedValue ? `€${(l.estimatedValue/1000).toFixed(0)}K` : '—';
-      const nichePill  = l.niche ? `<span class="pill pill-gray">${esc(l.niche)}</span>` : '';
+      const nichePill  = l.niche ? `<span class="pill pill-gray">${esc(l.niche)}</span>${l.subNiche ? `<span class="sub-niche-pill">${esc(l.subNiche)}</span>` : ''}` : '';
       const sizePill   = l.companySize ? `<span class="pill pill-gray">${l.companySize === 'small' ? 'Klein' : l.companySize === 'medium' ? 'Middel' : 'Groot'}</span>` : '';
       const urgPill    = l.urgency === 'critical' ? `<span class="pill pill-red">kritiek</span>` : (l.urgency === 'high' || l.urgency === 'hoog') ? `<span class="pill pill-amber">hoog</span>` : '';
       return `
@@ -5157,6 +5235,30 @@ async function renderSettings() {
       <!-- ── Niches & filters ── -->
       <div class="settings-tab-pane" id="stab-niches">
         <h2 class="settings-title"><i class="ti ti-filter"></i> Niches &amp; filters</h2>
+
+        <!-- Niche targeting -->
+        <span class="settings-sublabel"><i class="ti ti-target" style="margin-right:6px"></i>Doelgroep niches</span>
+        <p class="toggle-hint" style="margin:4px 0 10px">Kies welke niches én sub-niches Agent 1 mag targeten. Alles uitgevinkt = alle niches.</p>
+        <div id="nicheTargetingGrid" style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px">
+          ${Object.entries(APP_SUB_NICHES).map(([niche, subs]) => `
+            <div class="niche-target-group">
+              <label class="niche-target-header">
+                <input type="checkbox" class="niche-top-cb" data-niche="${niche}"
+                  ${(s.targetNiches||[]).includes(niche) || !(s.targetNiches?.length) ? 'checked' : ''}>
+                <span class="niche-target-name">${niche}</span>
+              </label>
+              <div class="niche-target-subs">
+                ${subs.map(sub => `
+                  <label class="sub-niche-cb-wrap">
+                    <input type="checkbox" class="sub-niche-cb" data-subniche="${sub}" data-niche="${niche}"
+                      ${(s.targetSubNiches||[]).includes(sub) || !(s.targetSubNiches?.length) ? 'checked' : ''}>
+                    <span>${sub}</span>
+                  </label>`).join('')}
+              </div>
+            </div>`).join('')}
+        </div>
+        <hr class="divider" style="margin:16px 0">
+
         <div class="form-grid">
           <div class="form-group">
             <label>Dagelijkse run tijd</label>
@@ -5540,6 +5642,8 @@ function attachSettingsHandlers(s) {
         document.getElementById('sizeMedium')?.checked ? 'medium' : null,
         document.getElementById('sizeLarge')?.checked  ? 'large'  : null
       ].filter(Boolean),
+      targetNiches: [...document.querySelectorAll('.niche-top-cb:checked')].map(el => el.dataset.niche),
+      targetSubNiches: [...document.querySelectorAll('.sub-niche-cb:checked')].map(el => el.dataset.subniche),
       autoClientEmails: {
         welcome:        document.getElementById('ace_welcome')?.checked ?? true,
         intakeReceived: document.getElementById('ace_intakeReceived')?.checked ?? true,
