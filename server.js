@@ -60,6 +60,7 @@ const DATA_DEFAULTS = {
 };
 Object.entries(DATA_DEFAULTS).forEach(([file, def]) => {
   if (!readJSON(file)) writeJSON(file, def);
+});
 
 if (!readJSON('settings.json')) {
   const hash = bcrypt.hashSync('agency2024', 12);
@@ -5664,14 +5665,20 @@ app.get('*', (req, res) => {
 // â"€â"€â"€ Start â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 pgInitPromise.then(() => {
-  app.listen(PORT, () => {
-    console.log("\nAgency AI draait op http://localhost:${PORT}".replace("", PORT));
-    console.log("Data directory: " + DATA_DIR);
-    if (!process.env.CLAUDE_API_KEY || process.env.CLAUDE_API_KEY === "your_anthropic_api_key_here") {
-      console.warn("⚠️  CLAUDE_API_KEY niet ingesteld — voeg toe aan .env");
+  const server = app.listen(PORT, () => {
+    console.log(`\nAgency AI draait op http://localhost:${PORT}`);
+    console.log(`Data directory: ${DATA_DIR}`);
+    if (!process.env.CLAUDE_API_KEY || process.env.CLAUDE_API_KEY === 'your_anthropic_api_key_here') {
+      console.warn('⚠️  CLAUDE_API_KEY niet ingesteld — voeg toe aan .env');
     }
-    console.log("\nAgency AI klaar voor deployment");
-    console.log("Ga naar railway.app om online te zetten\n");
+    console.log('\nAgency AI klaar voor deployment');
+    console.log('Ga naar railway.app om online te zetten\n');
   });
-});
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[Fout] Poort ${PORT} al in gebruik — slechts één instantie mag draaien`);
+      process.exit(1);
+    }
+    throw err;
+  });
 });
