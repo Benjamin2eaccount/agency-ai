@@ -96,6 +96,21 @@ if (!readJSON('users.json')) {
   }]);
 }
 
+// If ADMIN_PASSWORD env var is set, force-reset the admin account on startup
+if (process.env.ADMIN_PASSWORD) {
+  const users = readJSON('users.json') || [];
+  const idx = users.findIndex(u => u.role === 'admin');
+  const hash = bcrypt.hashSync(process.env.ADMIN_PASSWORD, 12);
+  if (idx >= 0) {
+    users[idx].password = hash;
+    users[idx].username = process.env.ADMIN_USERNAME || users[idx].username || 'admin';
+  } else {
+    users.push({ id: '1', username: process.env.ADMIN_USERNAME || 'admin', password: hash, name: 'Admin', role: 'admin', createdAt: new Date().toISOString() });
+  }
+  writeJSON('users.json', users);
+  console.log('[Startup] Admin wachtwoord gereset via ADMIN_PASSWORD env var');
+}
+
 // ── Web Push / VAPID setup ────────────────────────────────────────────────────
 (function initVapid() {
   const settings = readJSON('settings.json') || {};
@@ -2167,7 +2182,6 @@ Geef ALLEEN de volledige HTML terug. Geen uitleg, geen markdown, geen backticks.
 
     const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
     const siteUrl = `${baseUrl}/sites/${siteSlug}`;
-    const template = req.body?.template || 'modern';
 
     leads[idx].generatedSite = {
       siteSlug, siteUrl,
