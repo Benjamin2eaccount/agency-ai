@@ -405,10 +405,13 @@ async function sendEmail({ to, subject, body, html, settings: _settings = {}, tr
     host: 'smtp.gmail.com',
     port: 587,
     secure: false,
+    requireTLS: true,
     auth: { user: gmailAddress, pass: gmailPassword },
-    tls: { rejectUnauthorized: false }
+    tls: { rejectUnauthorized: false },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000
   });
-  await transporter.verify();
   await transporter.sendMail({
     from: `"${agencyName}" <${gmailAddress}>`,
     to,
@@ -2874,20 +2877,46 @@ app.patch('/api/settings/automation', requireAdmin, (req, res) => {
 });
 
 app.post('/api/settings/test-email', requireAdmin, async (req, res) => {
+  console.log('[TestMail] Starting test...');
   const s = readJSON('settings.json') || {};
-  const gmailAddress = s.gmailAddress || process.env.GMAIL_ADDRESS;
-  if (!isGmailReady(s)) {
-    return res.status(400).json({ error: 'Gmail niet ingesteld. Vul het Gmail-adres en app-wachtwoord in en sla op.' });
+  const gmailAddress  = s.gmailAddress  || process.env.GMAIL_ADDRESS;
+  const gmailPassword = getGmailPassword(s) || process.env.GMAIL_APP_PASSWORD;
+
+  console.log('[TestMail] Using address:', gmailAddress || '(none)');
+  console.log('[TestMail] Password set:', !!gmailPassword);
+
+  if (!gmailAddress || !gmailPassword) {
+    console.log('[TestMail] Credentials missing — aborting');
+    return res.status(400).json({ success: false, error: 'Gmail niet ingesteld. Vul het Gmail-adres en app-wachtwoord in en sla op.' });
   }
+
   try {
-    await sendEmail({
+    console.log('[TestMail] Creating transporter...');
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      auth: { user: gmailAddress, pass: gmailPassword },
+      tls: { rejectUnauthorized: false },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000
+    });
+
+    console.log('[TestMail] Sending mail...');
+    await transporter.sendMail({
+      from: `"${s.agencyName || 'Agency AI'}" <${gmailAddress}>`,
       to: gmailAddress,
       subject: 'Agency AI — Testmail ✓',
-      body: `Hoi ${s.myName || 'Admin'},\n\nGmail is correct ingesteld!\n\nAgency AI kan nu emails versturen namens ${s.agencyName || 'Agency AI'}.\n\nVriendelijke groet,\n${s.myName || 'Admin'}\n${s.agencyName || 'Agency AI'}`
+      text: `Hoi ${s.myName || 'Admin'},\n\nGmail is correct ingesteld!\n\nAgency AI kan nu emails versturen namens ${s.agencyName || 'Agency AI'}.\n\nVriendelijke groet,\n${s.myName || 'Admin'}\n${s.agencyName || 'Agency AI'}`
     });
-    res.json({ ok: true, message: `Testmail verstuurd naar ${gmailAddress}` });
+
+    console.log('[TestMail] Success — mail sent to', gmailAddress);
+    return res.json({ success: true, ok: true, message: `Testmail verstuurd naar ${gmailAddress}` });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[TestMail] Failed:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
