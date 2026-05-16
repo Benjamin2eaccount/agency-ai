@@ -6499,6 +6499,28 @@ async function renderSettings() {
           <button class="btn btn-primary" id="saveGmailBtn"><i class="ti ti-device-floppy"></i> Opslaan &amp; testen</button>
         </div>
         <div id="gmailTestResult" style="margin-top:12px;display:none"></div>
+
+        <hr class="divider" style="margin:20px 0">
+        <h3 class="settings-subtitle">
+          <i class="ti ti-mail-fast" style="margin-right:5px"></i> Resend
+          ${s.resendConfigured
+            ? `<span class="badge badge-green"><i class="ti ti-check"></i> Actief — wordt gebruikt als verzender</span>`
+            : `<span class="badge" style="background:var(--surface-2);color:var(--text-secondary)">Optioneel</span>`}
+        </h3>
+        <p class="settings-note" style="margin-bottom:12px">Resend werkt op Railway zonder SMTP-poortproblemen. Gratis tot 100 emails/dag. Maak een account aan op <a href="https://resend.com" target="_blank" class="link">resend.com</a> en voeg je API sleutel toe. <strong>Wanneer ingesteld heeft Resend prioriteit boven Gmail SMTP.</strong></p>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Resend API sleutel ${s.resendConfigured ? '<span class="badge badge-green" style="font-size:11px">Ingesteld</span>' : ''}</label>
+            <input type="password" id="resendApiKey" placeholder="${s.resendConfigured ? '(laat leeg om ongewijzigd te laten)' : 're_...'}">
+          </div>
+          <div class="form-group">
+            <label>Verzendadres <span class="text-muted">(bijv. noreply@jouwdomein.nl)</span></label>
+            <input type="text" id="resendFromAddress" value="${esc(s.resendFromAddress || '')}" placeholder="noreply@jouwdomein.nl">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="saveResendBtn"><i class="ti ti-device-floppy"></i> Resend opslaan</button>
+        <div id="resendSaveResult" style="margin-top:10px;display:none"></div>
+
         <div class="form-group" style="margin-top:14px">
           <label class="toggle-wrap">
             <input type="checkbox" id="replyDetection" ${s.replyDetection !== false ? 'checked' : ''}>
@@ -7018,6 +7040,24 @@ function attachSettingsHandlers(s) {
   loadAiRateStatus();
   loadAgencyProfiles();
   loadWebhooksList();
+
+  document.getElementById('saveResendBtn')?.addEventListener('click', async () => {
+    const resultEl = document.getElementById('resendSaveResult');
+    const keyVal  = document.getElementById('resendApiKey')?.value?.trim() || '';
+    const fromVal = document.getElementById('resendFromAddress')?.value?.trim() || '';
+    const body = { resendFromAddress: fromVal };
+    if (keyVal) body.resendApiKey = keyVal;
+    const res = await api('/api/settings/resend', { method: 'PATCH', body: JSON.stringify(body) });
+    resultEl.style.display = 'block';
+    if (res.ok) {
+      resultEl.innerHTML = `<div style="padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;color:#16a34a;font-size:13px"><i class="ti ti-circle-check"></i> Resend opgeslagen — wordt nu gebruikt voor alle emails</div>`;
+      document.getElementById('resendApiKey').value = '';
+      state.settings.resendConfigured = true;
+    } else {
+      const d = await res.json();
+      resultEl.innerHTML = `<div style="padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:13px"><i class="ti ti-x-circle"></i> ${esc(d.error || 'Opslaan mislukt')}</div>`;
+    }
+  });
 
   document.getElementById('saveClaudeKeyBtn')?.addEventListener('click', async () => {
     const btn = document.getElementById('saveClaudeKeyBtn');
