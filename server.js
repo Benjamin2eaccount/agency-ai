@@ -454,6 +454,18 @@ function isGmailReady(s) {
   return !!(s && (s.gmailAddress || process.env.GMAIL_ADDRESS) && getGmailPassword(s));
 }
 
+// Claude API key: encrypted DB value → env var fallback
+// Always call with fresh settings object from readJSON
+function getClaudeApiKey(s) {
+  if (s && s.claudeApiKeyEncrypted) {
+    try { return decryptApiKey(s.claudeApiKeyEncrypted); } catch {}
+  }
+  return process.env.CLAUDE_API_KEY || '';
+}
+function isClaudeReady(s) {
+  return !!(getClaudeApiKey(s));
+}
+
 function authMiddleware(req, res, next) {
   const header = req.headers['authorization'];
   if (!header || !header.startsWith('Bearer ')) {
@@ -1068,12 +1080,14 @@ app.post('/api/claude', async (req, res) => {
   if (!prompt) return res.status(400).json({ error: 'Prompt verplicht' });
 
   try {
+    const apiKey = getClaudeApiKey(readJSON('settings.json') || {});
+    if (!apiKey) return res.status(400).json({ error: 'Claude API sleutel niet ingesteld' });
     const { default: fetch } = await import('node-fetch');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.CLAUDE_API_KEY,
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
@@ -1145,8 +1159,8 @@ app.get('/health', (req, res) => {
   const settings  = readJSON('settings.json') || {};
   const runs      = readJSON('runs.json') || [];
   const lastRun   = runs.length ? runs[runs.length - 1] : null;
-  const apiKeyOk  = !!(process.env.CLAUDE_API_KEY && process.env.CLAUDE_API_KEY !== 'your_anthropic_api_key_here');
-  const gmailOk   = !!(settings.gmailAddress || process.env.GMAIL_ADDRESS);
+  const apiKeyOk  = isClaudeReady(settings);
+  const gmailOk   = isGmailReady(settings);
   const pgOk      = !!process.env.DATABASE_URL;
   const mem       = process.memoryUsage();
 
@@ -2684,6 +2698,7 @@ app.get('/api/settings', (req, res) => {
   delete safe.password;
   delete safe.gmailPassword;
   delete safe.gmailPasswordEncrypted;
+  delete safe.claudeApiKeyEncrypted;
   delete safe.stripeSecretKey;
   delete safe.mollieApiKey;
   safe.stripeConfigured = !!(s.stripeSecretKey);
@@ -2695,6 +2710,8 @@ app.get('/api/settings', (req, res) => {
   safe.paymentReminderDays = s.paymentReminderDays || 7;
   safe.gmailConfigured = isGmailReady(s);
   safe.gmailPasswordSet = !!(s.gmailPasswordEncrypted || (s.gmailPassword && s.gmailPassword !== '__encrypted__') || process.env.GMAIL_APP_PASSWORD);
+  safe.claudeKeyConfigured = isClaudeReady(s);
+  safe.claudeKeyFromEnv = !!(process.env.CLAUDE_API_KEY) && !s.claudeApiKeyEncrypted;
   res.json(safe);
 });
 
@@ -2806,6 +2823,17 @@ app.patch('/api/settings/gmail', requireAdmin, (req, res) => {
 app.patch('/api/settings/services', requireAdmin, (req, res) => {
   const settings = readJSON('settings.json');
   settings.services = req.body.services;
+  writeJSON('settings.json', settings);
+  res.json({ ok: true });
+});
+
+app.patch('/api/settings/claude-key', requireAdmin, (req, res) => {
+  const { claudeApiKey } = req.body;
+  if (!claudeApiKey || !claudeApiKey.trim()) {
+    return res.status(400).json({ error: 'API sleutel is verplicht' });
+  }
+  const settings = readJSON('settings.json');
+  settings.claudeApiKeyEncrypted = encryptApiKey(claudeApiKey.trim());
   writeJSON('settings.json', settings);
   res.json({ ok: true });
 });
@@ -3271,12 +3299,17 @@ function aiRateCheck() {
 
 async function aiCall(prompt) {
   aiRateCheck();
+  const s = readJSON('settings.json') || {};
+  const apiKey = getClaudeApiKey(s);
+  if (!apiKey) {
+    throw new Error('Claude API sleutel niet ingesteld. Voeg toe via Instellingen → API & integraties of stel CLAUDE_API_KEY in als Railway environment variable.');
+  }
   const { default: fetch } = await import('node-fetch');
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': process.env.CLAUDE_API_KEY,
+      'x-api-key': apiKey,
       'anthropic-version': '2023-06-01'
     },
     body: JSON.stringify({
@@ -3851,8 +3884,9 @@ Rules:
 }
 
 async function runFindLeadsJob(overrides = {}) {
-  if (!process.env.CLAUDE_API_KEY) {
-    throw new Error('CLAUDE_API_KEY niet ingesteld — voeg toe als Railway environment variable');
+  const settings0 = readJSON('settings.json') || {};
+  if (!isClaudeReady(settings0)) {
+    throw new Error('Claude API sleutel niet ingesteld. Voeg toe via Instellingen → API & integraties of stel CLAUDE_API_KEY in als Railway environment variable.');
   }
   const settings = readJSON('settings.json') || {};
   if (settings.automationPaused) {

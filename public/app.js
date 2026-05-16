@@ -6864,7 +6864,24 @@ async function renderSettings() {
 
       <!-- ── API & integraties ── -->
       <div class="settings-tab-pane" id="stab-api">
-        <h2 class="settings-title"><i class="ti ti-key"></i> API Sleutels</h2>
+        <h2 class="settings-title">
+          <i class="ti ti-brand-openai"></i> Claude API Sleutel
+          ${s.claudeKeyConfigured
+            ? s.claudeKeyFromEnv
+              ? `<span class="badge badge-blue" title="Geladen uit Railway environment variable">Env var actief</span>`
+              : `<span class="badge badge-green"><i class="ti ti-check"></i> Opgeslagen in database</span>`
+            : `<span class="badge badge-amber"><i class="ti ti-alert-triangle"></i> Niet ingesteld</span>`}
+        </h2>
+        <p class="settings-note">Vereist voor alle AI-functies (leads zoeken, emails schrijven, analyses). Haal je sleutel op via <a href="https://console.anthropic.com/settings/keys" target="_blank" class="link">console.anthropic.com</a>.</p>
+        <div class="form-group" style="margin-bottom:12px">
+          <label>Anthropic API sleutel ${s.claudeKeyConfigured && !s.claudeKeyFromEnv ? '<span class="badge badge-green" style="font-size:11px">Ingesteld</span>' : ''}</label>
+          <input type="password" id="claudeApiKeyInput" placeholder="${s.claudeKeyConfigured ? '(laat leeg om ongewijzigd te laten)' : 'sk-ant-...'}">
+        </div>
+        <div id="claudeKeyResult" style="margin-bottom:8px;display:none"></div>
+        <button class="btn btn-primary btn-sm" id="saveClaudeKeyBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
+
+        <hr style="margin:28px 0;border:none;border-top:1px solid var(--border)">
+        <h2 class="settings-title"><i class="ti ti-key"></i> Agency AI API Sleutels</h2>
         <p class="settings-note">Gebruik API sleutels om externe integraties te authenticeren. Een sleutel wordt slechts <strong>één keer</strong> getoond.</p>
         <div id="apiKeysList" style="margin-bottom:16px"></div>
         <div style="display:flex;gap:10px;align-items:center">
@@ -7001,6 +7018,27 @@ function attachSettingsHandlers(s) {
   loadAiRateStatus();
   loadAgencyProfiles();
   loadWebhooksList();
+
+  document.getElementById('saveClaudeKeyBtn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('saveClaudeKeyBtn');
+    const resultEl = document.getElementById('claudeKeyResult');
+    const val = document.getElementById('claudeApiKeyInput')?.value?.trim() || '';
+    if (!val) { toast('Voer een API sleutel in', 'error'); return; }
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Opslaan...';
+    const res = await api('/api/settings/claude-key', { method: 'PATCH', body: JSON.stringify({ claudeApiKey: val }) });
+    const data = await res.json();
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-device-floppy"></i> Opslaan';
+    resultEl.style.display = 'block';
+    if (res.ok) {
+      resultEl.innerHTML = `<div style="padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;color:#16a34a;font-size:13px"><i class="ti ti-circle-check"></i> Claude API sleutel opgeslagen in database</div>`;
+      document.getElementById('claudeApiKeyInput').value = '';
+      state.settings.claudeKeyConfigured = true;
+    } else {
+      resultEl.innerHTML = `<div style="padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:13px"><i class="ti ti-x-circle"></i> ${esc(data.error || 'Opslaan mislukt')}</div>`;
+    }
+  });
 
   document.getElementById('saveGaBtn')?.addEventListener('click', async () => {
     const gaId = document.getElementById('gaId')?.value?.trim() || '';
