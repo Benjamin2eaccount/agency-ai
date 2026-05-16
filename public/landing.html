@@ -1089,6 +1089,54 @@ async function submitContact(e) {
     document.querySelectorAll('[data-lang="nl"]').forEach(b => b.classList.add('active'));
   }
 })();
+
+// ── Google Analytics 4 ───────────────────────────────────────────────────────
+(async function initGA() {
+  try {
+    const cfg = await fetch('/api/public-config').then(r => r.json());
+    const id  = cfg.gaId;
+    if (!id || !/^G-[A-Z0-9]+$/i.test(id)) return;
+
+    // Load gtag.js
+    const s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(id);
+    document.head.appendChild(s);
+
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){ window.dataLayer.push(arguments); }
+    window.gtag = gtag;
+    gtag('js', new Date());
+    gtag('config', id, { anonymize_ip: true });
+
+    // Track CTA clicks
+    document.querySelectorAll('a[href="#contact"], .btn-primary, .btn-hero').forEach(el => {
+      el.addEventListener('click', () => {
+        gtag('event', 'cta_click', { event_category: 'engagement', event_label: el.textContent.trim().slice(0, 40) });
+      });
+    });
+
+    // Track contact form submit
+    const form = document.getElementById('contactForm');
+    if (form) {
+      form.addEventListener('submit', () => {
+        gtag('event', 'generate_lead', { event_category: 'contact_form', event_label: 'landing_page' });
+      });
+    }
+
+    // Track scroll depth (25 / 50 / 75 / 90 %)
+    const depths = new Set();
+    window.addEventListener('scroll', () => {
+      const pct = Math.round((window.scrollY + window.innerHeight) / document.body.scrollHeight * 100);
+      [25, 50, 75, 90].forEach(d => {
+        if (pct >= d && !depths.has(d)) {
+          depths.add(d);
+          gtag('event', 'scroll_depth', { event_category: 'engagement', event_label: d + '%', value: d });
+        }
+      });
+    }, { passive: true });
+  } catch {}
+})();
 </script>
 </body>
 </html>

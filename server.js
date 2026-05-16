@@ -9,12 +9,20 @@ const jwt = require('jsonwebtoken');
 const cron = require('node-cron');
 const nodemailer = require('nodemailer');
 const Stripe = require('stripe');
-const { readJSON, writeJSON } = require('./database');
+const webpush = require('web-push');
+const { readJSON, writeJSON, pgInitPromise } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'agency_ai_secret';
 const DATA_DIR = path.join(__dirname, 'data');
+
+// ── In-memory error log (last 100, resets on restart) ─────────────────────────
+const RUN_ERRORS = [];
+function logError(type, message, details = null) {
+  RUN_ERRORS.unshift({ time: new Date().toISOString(), type, message, details: details || null });
+  if (RUN_ERRORS.length > 100) RUN_ERRORS.pop();
+}
 
 const DEFAULT_SERVICES = [
   { name: 'Meta advertenties met AI',             price: 750,  billing: 'maandelijks', description: 'Facebook & Instagram ads opgezet en beheerd met AI-optimalisatie' },
@@ -45,12 +53,13 @@ const DATA_DEFAULTS = {
   'stats.json':      { leadsFound: 0, emailsSent: 0, replies: 0, pipelineValue: 0, weeklyData: [], newReplies: [], abStats: { aApproved: 0, bApproved: 0 } },
   'memory.json':     {},
   'blacklist.json':  [],
-  'notifications.json': [],
-  'contacts.json':      []
+  'notifications.json':   [],
+  'contacts.json':        [],
+  'push-subscriptions.json': [],
+  'webhooks.json': []
 };
 Object.entries(DATA_DEFAULTS).forEach(([file, def]) => {
   if (!readJSON(file)) writeJSON(file, def);
-});
 
 if (!readJSON('settings.json')) {
   const hash = bcrypt.hashSync('agency2024', 12);
@@ -87,9 +96,64 @@ if (!readJSON('users.json')) {
   }]);
 }
 
+// ── Web Push / VAPID setup ────────────────────────────────────────────────────
+(function initVapid() {
+  const settings = readJSON('settings.json') || {};
+  if (!settings.vapidPublicKey || !settings.vapidPrivateKey) {
+    const keys = webpush.generateVAPIDKeys();
+    settings.vapidPublicKey  = keys.publicKey;
+    settings.vapidPrivateKey = keys.privateKey;
+    writeJSON('settings.json', settings);
+  }
+  if (!settings.zapierIncomingToken) {
+    settings.zapierIncomingToken = crypto.randomBytes(20).toString('hex');
+    writeJSON('settings.json', settings);
+  }
+  webpush.setVapidDetails(
+    'mailto:' + (settings.gmailAddress || 'admin@agency.ai'),
+    settings.vapidPublicKey,
+    settings.vapidPrivateKey
+  );
+})();
+
+async function sendPushToAll(title, body, url) {
+  const settings = readJSON('settings.json') || {};
+  const subs = readJSON('push-subscriptions.json') || [];
+  if (!subs.length) return;
+  const payload = JSON.stringify({ title, body, url: url || '/app' });
+  const dead = [];
+  await Promise.allSettled(subs.map(async sub => {
+    try {
+      await webpush.sendNotification(sub.subscription, payload, {
+        vapidDetails: {
+          subject: 'mailto:' + (settings.gmailAddress || 'admin@agency.ai'),
+          publicKey:  settings.vapidPublicKey,
+          privateKey: settings.vapidPrivateKey,
+        }
+      });
+    } catch (err) {
+      if (err.statusCode === 404 || err.statusCode === 410) dead.push(sub.id);
+    }
+  }));
+  if (dead.length) {
+    const cleaned = subs.filter(s => !dead.includes(s.id));
+    writeJSON('push-subscriptions.json', cleaned);
+  }
+}
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+
+// ─── Public config (no auth) ─────────────────────────────────────────────────
+app.get('/api/public-config', (req, res) => {
+  const s = readJSON('settings.json') || {};
+  res.json({
+    agencyName:  s.agencyName  || 'Agency AI',
+    calendlyUrl: s.calendlyUrl || null,
+    gaId:        s.gaId        || null
+  });
+});
 
 // ─── Clean URL routes (must come after static so files still work) ───────────
 app.get('/', (req, res) => { console.log('[route] GET / → landing.html'); res.sendFile(path.join(__dirname, 'public', 'landing.html')); });
@@ -97,6 +161,7 @@ app.get('/login',        (_, res) => res.sendFile(path.join(__dirname, 'public',
 app.get('/client',       (_, res) => res.sendFile(path.join(__dirname, 'public', 'client-login.html')));
 app.get('/client-login', (_, res) => res.sendFile(path.join(__dirname, 'public', 'client-login.html')));
 app.get('/app',          (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/status',       (_, res) => res.sendFile(path.join(__dirname, 'public', 'status.html')));
 
 // readJSON / writeJSON are provided by database.js (SQLite-backed)
 
@@ -135,6 +200,42 @@ function addNotification(type, title, body, leadId) {
   });
   if (notifications.length > 200) notifications.splice(200);
   writeJSON('notifications.json', notifications);
+
+  const pushTypes = ['reply_received', 'intake_submitted', 'high_score_lead', 'payment_overdue', 'run_complete', 'calendly_booking'];
+  if (pushTypes.includes(type)) {
+    const url = leadId ? `/app#lead-${leadId}` : '/app';
+    sendPushToAll(title, body, url).catch(() => {});
+  }
+}
+
+// ─── Outgoing webhook helper ──────────────────────────────────────────────────
+
+async function fireWebhooks(event, payload) {
+  const hooks = (readJSON('webhooks.json') || []).filter(h => h.active !== false && (h.events || []).includes(event));
+  if (!hooks.length) return;
+  const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload });
+  for (const hook of hooks) {
+    try {
+      const r = await fetch(hook.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'AgencyAI-Webhook/1.0' },
+        body,
+        signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
+      });
+      const all = readJSON('webhooks.json') || [];
+      const idx = all.findIndex(h => h.id === hook.id);
+      if (idx !== -1) {
+        all[idx].lastTriggeredAt = new Date().toISOString();
+        all[idx].lastStatus = r.ok ? 'ok' : `${r.status}`;
+        writeJSON('webhooks.json', all);
+      }
+    } catch (e) {
+      console.warn(`[Webhook] ${hook.url} fout:`, e.message);
+      const all = readJSON('webhooks.json') || [];
+      const idx = all.findIndex(h => h.id === hook.id);
+      if (idx !== -1) { all[idx].lastStatus = 'error'; writeJSON('webhooks.json', all); }
+    }
+  }
 }
 
 function getSeasonalContext(lang = 'nl') {
@@ -273,12 +374,17 @@ function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken) {
 </html>`;
 }
 
-async function sendEmail({ to, subject, body, html, settings = {}, trackingToken }) {
-  const gmailAddress  = settings.gmailAddress  || process.env.GMAIL_ADDRESS;
-  const gmailPassword = settings.gmailPassword || process.env.GMAIL_APP_PASSWORD;
+async function sendEmail({ to, subject, body, html, settings: _settings = {}, trackingToken }) {
+  // Always read fresh settings from DB so Railway restarts don't lose credentials
+  const s = readJSON('settings.json') || {};
+  const gmailAddress  = s.gmailAddress  || process.env.GMAIL_ADDRESS  || _settings.gmailAddress;
+  const gmailPassword = getGmailPassword(s) || _settings.gmailPassword;
   if (!gmailAddress || !gmailPassword) {
-    throw new Error('Gmail niet geconfigureerd — voeg GMAIL_ADDRESS en GMAIL_APP_PASSWORD toe als environment variables');
+    throw new Error('Gmail niet ingesteld. Ga naar Instellingen → Email & versturen.');
   }
+  const agencyName = s.agencyName || _settings.agencyName || 'Agency AI';
+  const myName     = s.myName     || _settings.myName     || 'Admin';
+  const myTitle    = s.myTitle    || _settings.myTitle     || '';
   const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 587,
@@ -288,12 +394,13 @@ async function sendEmail({ to, subject, body, html, settings = {}, trackingToken
   });
   await transporter.verify();
   await transporter.sendMail({
-    from: `"${settings.agencyName || 'Agency AI'}" <${gmailAddress}>`,
+    from: `"${agencyName}" <${gmailAddress}>`,
     to,
     subject,
     text: body || '',
-    html: html || buildEmailHTML(body, settings.agencyName, settings.myName, settings.myTitle, trackingToken)
+    html: html || buildEmailHTML(body, agencyName, myName, myTitle, trackingToken)
   });
+  addActivity('email_sent', `Email verstuurd → ${to}`, { cost: 0 });
 }
 
 // â"€â"€â"€ Auth middleware â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -312,6 +419,23 @@ function decryptApiKey(stored) {
 }
 function hashApiKey(key) {
   return crypto.createHash('sha256').update(key).digest('hex');
+}
+
+// Gmail password: encrypt/decrypt using same AES key
+function encryptGmailPassword(plain) { return encryptApiKey(plain); }
+function decryptGmailPassword(enc)   { return decryptApiKey(enc); }
+
+// Always call this to get the real Gmail app-password.
+// Priority: encrypted DB value → raw DB value (legacy) → env var
+function getGmailPassword(s) {
+  if (s.gmailPasswordEncrypted) {
+    try { return decryptGmailPassword(s.gmailPasswordEncrypted); } catch {}
+  }
+  if (s.gmailPassword && s.gmailPassword !== '__encrypted__') return s.gmailPassword;
+  return process.env.GMAIL_APP_PASSWORD || '';
+}
+function isGmailReady(s) {
+  return !!(s && (s.gmailAddress || process.env.GMAIL_ADDRESS) && getGmailPassword(s));
 }
 
 function authMiddleware(req, res, next) {
@@ -455,12 +579,13 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
   leads[idx].intakeSubmittedAt = new Date().toISOString();
   addLeadHistory(leads, leads[idx].id, { event: 'intakeSubmitted', label: 'Intake ingevuld door klant' });
   addNotification('intake_submitted', `Intake ingevuld: ${leads[idx].companyName}`, `De intake is ingevuld door ${leads[idx].contactName || leads[idx].companyName}`, leads[idx].id);
+  fireWebhooks('intake.submitted', { leadId: leads[idx].id, companyName: leads[idx].companyName, niche: leads[idx].niche, contactEmail: leads[idx].contactEmail, submittedAt: leads[idx].intakeSubmittedAt });
   writeJSON('leads.json', leads);
 
   const settings = readJSON('settings.json') || {};
 
   // Notify team
-  if (settings.gmailAddress && settings.gmailPassword) {
+  if (isGmailReady(settings)) {
     try {
       const answersText = Object.entries(req.body.answers || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
       await sendEmail({ to: settings.gmailAddress, subject: `[Intake ingevuld] ${leads[idx].companyName}`, body: `De intake van ${leads[idx].companyName} is ingevuld.\n\nAntwoorden:\n${answersText}`, settings });
@@ -469,7 +594,7 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
 
   // Auto-send intake confirmation email to client
   const lead = leads[idx];
-  if (settings.autoClientEmails?.intakeReceived !== false && lead.email && settings.gmailAddress && settings.gmailPassword) {
+  if (settings.autoClientEmails?.intakeReceived !== false && lead.email && isGmailReady(settings)) {
     try {
       const email = await generateClientEmail(lead, 'intakeReceived', settings);
       await sendEmail({ to: lead.email, subject: email.subject, body: email.body, settings });
@@ -808,7 +933,8 @@ app.get('/api/portal/:token', (req, res) => {
     services:            enrichedSvcs,
     reports:             (lead.reports || []).map(r => ({ title: r.title, month: r.month, createdAt: r.createdAt, content: r.content })),
     delivery:            lead.delivery || null,
-    generatedSite:       lead.generatedSite ? { siteUrl: lead.generatedSite.siteUrl, status: lead.generatedSite.status, generatedAt: lead.generatedSite.generatedAt } : null
+    generatedSite:       lead.generatedSite ? { siteUrl: lead.generatedSite.siteUrl, status: lead.generatedSite.status, generatedAt: lead.generatedSite.generatedAt } : null,
+    calendlyUrl:         settings.calendlyUrl || null
   });
 });
 
@@ -997,7 +1123,61 @@ app.post('/api/analyze-company', requireAdmin, async (req, res) => {
   }
 });
 
-// â"€â"€â"€ Stats â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ── Health check (public) ──────────────────────────────────────────────────────
+
+app.get('/health', (req, res) => {
+  const settings  = readJSON('settings.json') || {};
+  const runs      = readJSON('runs.json') || [];
+  const lastRun   = runs.length ? runs[runs.length - 1] : null;
+  const apiKeyOk  = !!(process.env.CLAUDE_API_KEY && process.env.CLAUDE_API_KEY !== 'your_anthropic_api_key_here');
+  const gmailOk   = !!(settings.gmailAddress || process.env.GMAIL_ADDRESS);
+  const pgOk      = !!process.env.DATABASE_URL;
+  const mem       = process.memoryUsage();
+
+  const checks = { claude_api: apiKeyOk, gmail: gmailOk, postgres: pgOk };
+  const criticalOk = apiKeyOk;
+  const allOk = apiKeyOk && gmailOk;
+
+  const now        = Date.now();
+  const callsToday = _aiCallLog.filter(e => e.ts >= now - 86400000).length;
+  const leads      = readJSON('leads.json') || [];
+  const inbox      = readJSON('inbox.json') || [];
+
+  res.json({
+    status:       allOk ? 'ok' : criticalOk ? 'degraded' : 'down',
+    uptime:       Math.floor(process.uptime()),
+    uptimeLabel:  formatUptime(process.uptime()),
+    checks,
+    lastRun:      lastRun ? { time: lastRun.createdAt, leadsFound: lastRun.leadsFound || 0 } : null,
+    recentErrors: RUN_ERRORS.slice(0, 5),
+    version:      require('./package.json').version,
+    nodeVersion:  process.version,
+    memUsageMb:   Math.round(mem.rss / 1024 / 1024),
+    heapUsedMb:   Math.round(mem.heapUsed / 1024 / 1024),
+    aiCallsToday: callsToday,
+    stats: {
+      totalLeads:   leads.length,
+      clients:      leads.filter(l => l.status === 'client').length,
+      pending:      inbox.filter(i => !i.status || i.status === 'pending').length,
+    },
+    agencyName: settings.agencyName || 'Agency AI',
+    checkedAt:  new Date().toISOString(),
+  });
+});
+
+function formatUptime(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return h > 0 ? `${h}u ${m}m` : `${m}m`;
+}
+
+// ── Error log (admin only) ────────────────────────────────────────────────────
+
+app.get('/api/errors', requireAdmin, (req, res) => {
+  res.json(RUN_ERRORS);
+});
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
 
 app.get('/api/stats', (req, res) => {
   const stored = readJSON('stats.json') || {};
@@ -1155,16 +1335,19 @@ app.post('/api/leads/bulk-delete', requireAdmin, (req, res) => {
 });
 
 app.get('/api/leads/check-duplicate', (req, res) => {
-  const { name, domain } = req.query;
-  if (!name && !domain) return res.json({ duplicate: false });
+  const { name, domain, email } = req.query;
+  if (!name && !domain && !email) return res.json({ duplicate: false });
   const leads = readJSON('leads.json') || [];
-  const nameLower = (name || '').toLowerCase().trim();
-  const domLower  = (domain || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase().trim();
+  const nameLower  = (name   || '').toLowerCase().trim();
+  const domLower   = (domain || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase().trim();
+  const emailLower = (email  || '').toLowerCase().trim();
   const found = leads.find(l => {
-    const ln = (l.companyName || '').toLowerCase().trim();
-    const ld = (l.websiteUrl  || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase().trim();
-    if (nameLower && ln && nameLower === ln) return true;
-    if (domLower  && ld && domLower  === ld) return true;
+    const ln = (l.companyName  || '').toLowerCase().trim();
+    const ld = (l.websiteUrl   || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase().trim();
+    const le = (l.contactEmail || l.email || '').toLowerCase().trim();
+    if (nameLower  && ln && nameLower  === ln) return true;
+    if (domLower   && ld && domLower   === ld) return true;
+    if (emailLower && le && emailLower === le) return true;
     return false;
   });
   res.json(found ? { duplicate: true, id: found.id, companyName: found.companyName, status: found.status, score: found.score } : { duplicate: false });
@@ -1326,7 +1509,7 @@ app.patch('/api/leads/:id/tasks/:taskId', async (req, res) => {
       const weekTasks = (leads[idx].tasks || []).filter(t => (t.week||1) === week);
       const allDone = weekTasks.length > 0 && weekTasks.every(t => t.status === 'klaar');
       const lead = leads[idx];
-      if (allDone && lead.email && settings.gmailAddress && settings.gmailPassword) {
+      if (allDone && lead.email && isGmailReady(settings)) {
         // Only send once (check log)
         const alreadySent = (lead.clientEmailLog || []).some(e => e.trigger === 'weekComplete' && e.week === week);
         if (!alreadySent) {
@@ -1409,7 +1592,7 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
     send(3, 'Welkomstmail versturen', 'running');
     const clientEmail = lead.email || lead.contactEmail || '';
     let emailSent = false;
-    if (clientEmail && settings.gmailAddress && settings.gmailPassword) {
+    if (clientEmail && isGmailReady(settings)) {
       try {
         const welcomeBody = `Beste ${lead.contactName || lead.companyName},\n\nWelkom! We zijn verheugd om samen te werken.\n\nVia de onderstaande link kun je jouw intake-vragenlijst invullen, zodat we zo snel mogelijk kunnen starten:\n${intakeUrl}\n\nHeb je vragen? Stuur dan gerust een bericht via je klantportaal:\n${portalUrl}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.myTitle || ''}\n${settings.agencyName}`;
         await sendEmail({ to: clientEmail, subject: `Welkom bij ${settings.agencyName} — volgende stappen`, body: welcomeBody, settings });
@@ -1451,7 +1634,7 @@ Antwoord ALLEEN als JSON: { "tasks": [{ "title": "string", "description": "strin
     // Step 7 — Team briefing email
     send(7, 'Team briefing versturen', 'running');
     let briefingSent = false;
-    if (settings.gmailAddress && settings.gmailPassword) {
+    if (isGmailReady(settings)) {
       try {
         const briefBody = `Nieuw project gestart: ${lead.companyName}\n\nNiche: ${lead.niche} | Locatie: ${lead.location}\nDiensten: ${(lead.services || []).map(s => s.name).join(', ')}\nGeschat maandbedrag: €${lead.estimatedValue || 0}\n\nProjectplan: ${projectPlan?.title || ''}\n${projectPlan?.overview || ''}\n\nIntake link (voor klant): ${intakeUrl}\nKlantportaal: ${portalUrl}\n\nWeek 1 focus: ${projectPlan?.weeks?.[0]?.focus || 'Onboarding'}`;
         await sendEmail({ to: settings.gmailAddress, subject: `[Project gestart] ${lead.companyName}`, body: briefBody, settings });
@@ -1476,6 +1659,255 @@ Antwoord ALLEEN als JSON: { "tasks": [{ "title": "string", "description": "strin
     send(0, err.message, 'error');
   }
   res.end();
+});
+
+// ─── Proposal Generator (SSE 3-step) ────────────────────────────────────────
+
+app.post('/api/leads/:id/generate-proposal', requireAdmin, async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  const send = obj => res.write('data: ' + JSON.stringify(obj) + '\n\n');
+
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.id === req.params.id);
+  if (!lead) { send({ error: 'Lead niet gevonden' }); return res.end(); }
+
+  const settings = readJSON('settings.json') || {};
+  const agencyName = settings.agencyName || 'Agency AI';
+  const myName     = settings.myName     || 'Ekow';
+  const myTitle    = settings.myTitle    || 'AI Growth Specialist';
+
+  try {
+    // Step 1: analyse
+    send({ step: 1, label: 'Lead data analyseren' });
+    const services = (lead.services || []).slice(0, 6);
+    const totalMonthly = services.filter(s => s.billing !== 'eenmalig').reduce((a, s) => a + (s.price || 0), 0);
+    const totalOneTime = services.filter(s => s.billing === 'eenmalig').reduce((a, s) => a + (s.price || 0), 0);
+    const problems = (lead.problems || []).slice(0, 3).join(', ');
+
+    // Step 2: write proposal
+    send({ step: 2, label: 'Voorstel schrijven' });
+    const lang = lead.language || 'nl';
+    const proposalPrompt = lang === 'nl'
+      ? `Schrijf een professionele zakelijke offerte in HTML voor ${lead.companyName}.
+
+Gegevens:
+- Bedrijf: ${lead.companyName}, ${lead.niche}, ${lead.location}
+- Contactpersoon: ${lead.contactName || 'de eigenaar'}
+- Gesignaleerde problemen: ${problems || 'online aanwezigheid verbeteren'}
+- Voorgestelde diensten: ${services.map(s => `${s.name} (€${s.price} ${s.billing})`).join(', ') || 'Maatwerk pakket'}
+- Maandelijkse investering: €${totalMonthly.toLocaleString('nl-NL')}${totalOneTime ? ` + €${totalOneTime.toLocaleString('nl-NL')} eenmalig` : ''}
+- Agency: ${agencyName}
+- Contactpersoon agency: ${myName}, ${myTitle}
+
+Structuur (HTML met inline CSS, professioneel maar leesbaar):
+1. Header met agency logo tekst + datum
+2. Persoonlijke aanhef
+3. Situatieanalyse (2-3 zinnen over hun situatie)
+4. Aanpak / wat wij doen (3-4 bullet points)
+5. Dienstenlijst met prijzen in een nette tabel
+6. Investering overzicht (maandelijks + eenmalig)
+7. Planning (3 stappen: week 1, week 2-3, week 4+)
+8. Waarom ${agencyName}? (3 punten)
+9. Volgende stap / CTA
+10. Ondertekening
+
+Gebruik een professioneel kleurenschema met blauw (#2563eb) accent. Max 800 woorden. Geef ALLEEN de HTML terug, geen uitleg.`
+      : `Write a professional business proposal in HTML for ${lead.companyName}.
+
+Details:
+- Company: ${lead.companyName}, ${lead.niche}, ${lead.location}
+- Contact: ${lead.contactName || 'the owner'}
+- Issues identified: ${problems || 'improve online presence'}
+- Proposed services: ${services.map(s => `${s.name} (€${s.price} ${s.billing})`).join(', ') || 'Custom package'}
+- Monthly investment: €${totalMonthly.toLocaleString('en')}${totalOneTime ? ` + €${totalOneTime.toLocaleString('en')} one-time` : ''}
+- Agency: ${agencyName}
+- Contact at agency: ${myName}, ${myTitle}
+
+Structure (HTML with inline CSS, professional but readable):
+1. Header with agency name + date
+2. Personal greeting
+3. Situation analysis (2-3 sentences)
+4. Approach / what we do (3-4 bullet points)
+5. Services list with pricing in a clean table
+6. Investment overview (monthly + one-time)
+7. Timeline (3 steps: week 1, week 2-3, week 4+)
+8. Why ${agencyName}? (3 points)
+9. Next step / CTA
+10. Signature
+
+Use a professional colour scheme with blue (#2563eb) accent. Max 800 words. Return ONLY the HTML, no explanation.`;
+
+    const proposalHtml = await aiCall(proposalPrompt);
+
+    // Step 3: save
+    send({ step: 3, label: 'Opslaan & weergeven' });
+    const idx = leads.findIndex(l => l.id === req.params.id);
+    const generatedAt = new Date().toISOString();
+    leads[idx].proposal = proposalHtml.trim();
+    leads[idx].proposalGeneratedAt = generatedAt;
+    addLeadHistory(leads, req.params.id, { event: 'proposalGenerated', label: 'Voorstel gegenereerd' });
+    writeJSON('leads.json', leads);
+
+    send({ done: true, proposal: leads[idx].proposal, generatedAt });
+    res.end();
+  } catch (err) {
+    send({ error: err.message });
+    res.end();
+  }
+});
+
+app.post('/api/leads/:id/proposal/send', authMiddleware, async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.id === req.params.id);
+  if (!lead?.proposal) return res.status(400).json({ error: 'Geen voorstel beschikbaar' });
+
+  const settings = readJSON('settings.json') || {};
+  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld' });
+
+  const to = lead.contactEmail;
+  if (!to) return res.status(400).json({ error: 'Geen email adres bekend' });
+
+  try {
+    await sendEmail({
+      to,
+      subject: `Voorstel van ${settings.agencyName || 'Agency AI'} voor ${lead.companyName}`,
+      body: `Beste ${lead.contactName || 'eigenaar'},\n\nHierbij sturen wij ons voorstel voor ${lead.companyName}.\n\nBekijk het voorstel in de bijlage of reply op deze email voor vragen.\n\nMet vriendelijke groet,\n${settings.myName || 'Ekow'}\n${settings.myTitle || 'AI Growth Specialist'}\n${settings.agencyName || 'Agency AI'}`,
+      settings,
+      html: lead.proposal
+    });
+    const idx = leads.findIndex(l => l.id === req.params.id);
+    leads[idx].proposalSentAt = new Date().toISOString();
+    addLeadHistory(leads, req.params.id, { event: 'proposalSent', label: `Voorstel verstuurd naar ${to}` });
+    writeJSON('leads.json', leads);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Contract Generator ──────────────────────────────────────────────────────
+
+app.post('/api/leads/:id/generate-contract', requireAdmin, async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  const send = obj => res.write('data: ' + JSON.stringify(obj) + '\n\n');
+
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.id === req.params.id);
+  if (!lead) { send({ error: 'Lead niet gevonden' }); return res.end(); }
+
+  const settings = readJSON('settings.json') || {};
+  const agencyName = settings.agencyName || 'Agency AI';
+  const myName     = settings.myName     || 'Ekow';
+  const myTitle    = settings.myTitle    || 'AI Growth Specialist';
+  const agencyAddress = settings.agencyAddress || '';
+  const btwNumber  = settings.btwNumber  || '';
+
+  try {
+    send({ step: 1, label: 'Contractgegevens ophalen' });
+    const services = (lead.services || []).slice(0, 8);
+    const totalMonthly = services.filter(s => s.billing !== 'eenmalig').reduce((a, s) => a + (s.price || 0), 0);
+    const totalOneTime = services.filter(s => s.billing === 'eenmalig').reduce((a, s) => a + (s.price || 0), 0);
+    const today = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+    const lang = lead.language || 'nl';
+
+    send({ step: 2, label: 'Contract opstellen' });
+    const prompt = lang === 'nl'
+      ? `Schrijf een professionele dienstverleningsovereenkomst in HTML met inline CSS voor onderstaande partijen.
+
+Gegevens:
+- Opdrachtgever: ${lead.companyName}, ${lead.location}${lead.contactName ? `, t.a.v. ${lead.contactName}` : ''}
+- Opdrachtnemer: ${agencyName}${agencyAddress ? `, ${agencyAddress}` : ''}${myName ? `, vertegenwoordigd door ${myName} (${myTitle})` : ''}${btwNumber ? `, BTW: ${btwNumber}` : ''}
+- Diensten: ${services.map(s => `${s.name} (€${s.price} ${s.billing})`).join('; ') || 'Maatwerk AI-diensten'}
+- Maandelijkse vergoeding: €${totalMonthly.toLocaleString('nl-NL')}${totalOneTime ? ` + €${totalOneTime.toLocaleString('nl-NL')} eenmalig` : ''}
+- Datum: ${today}
+
+Structuur (HTML met inline CSS, professioneel zakelijk, zwart-wit met blauwe accenten #2563eb):
+1. Koptekst met naam overeenkomst, partijen, datum
+2. Artikel 1 — Opdracht & scope (verwijs naar specifieke diensten)
+3. Artikel 2 — Looptijd (12 maanden, automatisch verlengbaar met 30 dagen opzegtermijn)
+4. Artikel 3 — Vergoeding & betaling (bedragen, betaaltermijn 14 dagen, mogelijkheid om BTW toe te voegen)
+5. Artikel 4 — Intellectueel eigendom (resultaten zijn eigendom opdrachtgever na volledige betaling)
+6. Artikel 5 — Vertrouwelijkheid (beide partijen, 2 jaar na beëindiging)
+7. Artikel 6 — Aansprakelijkheid (beperkt tot 3× maandvergoeding)
+8. Artikel 7 — Overmacht
+9. Artikel 8 — Beëindiging
+10. Artikel 9 — Toepasselijk recht (Nederlands recht, rechtbank Amsterdam)
+11. Ondertekeningsblok (twee kolommen: opdrachtgever | opdrachtnemer, naam/functie/datum/handtekening-lijn)
+
+Gebruik nette tabellen en witruimte. Geef ALLEEN de HTML terug.`
+      : `Write a professional service agreement in HTML with inline CSS for the following parties.
+
+Details:
+- Client: ${lead.companyName}, ${lead.location}${lead.contactName ? `, attn. ${lead.contactName}` : ''}
+- Service provider: ${agencyName}${agencyAddress ? `, ${agencyAddress}` : ''}${myName ? `, represented by ${myName} (${myTitle})` : ''}${btwNumber ? `, VAT: ${btwNumber}` : ''}
+- Services: ${services.map(s => `${s.name} (€${s.price} ${s.billing})`).join('; ') || 'Custom AI services'}
+- Monthly fee: €${totalMonthly.toLocaleString('en')}${totalOneTime ? ` + €${totalOneTime.toLocaleString('en')} one-time` : ''}
+- Date: ${today}
+
+Structure (HTML with inline CSS, professional, black/white with blue accents #2563eb):
+1. Header with agreement title, parties, date
+2. Article 1 — Scope of services (reference specific services)
+3. Article 2 — Duration (12 months, auto-renewable with 30-day notice)
+4. Article 3 — Fees & payment (amounts, 14-day payment term)
+5. Article 4 — Intellectual property (results owned by client after full payment)
+6. Article 5 — Confidentiality (both parties, 2 years after termination)
+7. Article 6 — Liability (limited to 3× monthly fee)
+8. Article 7 — Force majeure
+9. Article 8 — Termination
+10. Article 9 — Governing law (Dutch law, Amsterdam court)
+11. Signature block (two columns: client | provider, name/title/date/signature line)
+
+Use clean tables and white space. Return ONLY the HTML.`;
+
+    const contractHtml = await aiCall(prompt);
+
+    send({ step: 3, label: 'Contract opslaan' });
+    const idx = leads.findIndex(l => l.id === req.params.id);
+    const generatedAt = new Date().toISOString();
+    leads[idx].contract = contractHtml.trim();
+    leads[idx].contractGeneratedAt = generatedAt;
+    addLeadHistory(leads, req.params.id, { event: 'contractGenerated', label: 'Contract gegenereerd' });
+    writeJSON('leads.json', leads);
+
+    send({ done: true, contract: leads[idx].contract, generatedAt });
+    res.end();
+  } catch (err) {
+    send({ error: err.message });
+    res.end();
+  }
+});
+
+app.post('/api/leads/:id/contract/send', authMiddleware, async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.id === req.params.id);
+  if (!lead?.contract) return res.status(400).json({ error: 'Geen contract beschikbaar' });
+
+  const settings = readJSON('settings.json') || {};
+  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld' });
+
+  const to = lead.contactEmail;
+  if (!to) return res.status(400).json({ error: 'Geen email adres bekend' });
+
+  try {
+    await sendEmail({
+      to,
+      subject: `Dienstverleningsovereenkomst — ${settings.agencyName || 'Agency AI'} × ${lead.companyName}`,
+      body: `Beste ${lead.contactName || 'eigenaar'},\n\nHierbij sturen wij de dienstverleningsovereenkomst ter ondertekening.\n\nLees het contract door, onderteken en stuur een scan/foto terug.\n\nMet vriendelijke groet,\n${settings.myName || 'Ekow'}\n${settings.myTitle || 'AI Growth Specialist'}\n${settings.agencyName || 'Agency AI'}`,
+      settings,
+      html: lead.contract
+    });
+    const idx = leads.findIndex(l => l.id === req.params.id);
+    leads[idx].contractSentAt = new Date().toISOString();
+    addLeadHistory(leads, req.params.id, { event: 'contractSent', label: `Contract verstuurd naar ${to}` });
+    writeJSON('leads.json', leads);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── AI Delivery Generator (SSE 4-step) ─────────────────────────────────────
@@ -1549,7 +1981,7 @@ Antwoord ALLEEN als JSON: { "milestones": [{ "week": 1, "title": "string", "desc
     writeJSON('leads.json', leads);
 
     // Auto-send AI delivery email to client
-    if (settings.autoClientEmails?.deliveryReady !== false && lead.email && settings.gmailAddress && settings.gmailPassword) {
+    if (settings.autoClientEmails?.deliveryReady !== false && lead.email && isGmailReady(settings)) {
       try {
         const email = await generateClientEmail(leads[idx], 'deliveryReady', settings);
         await sendEmail({ to: lead.email, subject: email.subject, body: email.body, settings });
@@ -1655,9 +2087,18 @@ Antwoord ALLEEN als JSON:
     send(2, 'Volledige HTML website bouwen', 'running');
     let siteHtml = null;
     const contactEmail = lead.contactEmail || '';
+    const template = req.body?.template || 'modern';
+    const templateStyle = {
+      modern:    'Modern en clean: veel witruimte, subtiele schaduwen, gradient hero, afgeronde hoeken, blue/white kleurenschema.',
+      bold:      'Bold en impactvol: donkere hero (#0f172a), grote headlines, hoge contrast, opvallende CTA knop in accent kleur.',
+      minimal:   'Minimalistisch: extreem veel witruimte, dunne borders, grijstinten, kleine elegante typografie, geen afbeeldingen.',
+      corporate: 'Corporate/zakelijk: strak grid, professionele blauwe tinten, duidelijke hiërarchie, formele toon.'
+    }[template] || 'Modern en clean.';
     try {
       const servicesStr = (content.services || []).map(s => `${s.icon} ${s.title}: ${s.desc}`).join('\n');
       siteHtml = await aiCall(`Maak een COMPLETE professionele single-page website in HTML voor ${lead.companyName} (${lead.niche} in ${lead.location}).
+
+Stijl template: ${templateStyle}
 
 Gebruik deze content EXACT:
 - Headline: ${content.headline}
@@ -1706,15 +2147,35 @@ Geef ALLEEN de volledige HTML terug. Geen uitleg, geen markdown, geen backticks.
     const siteSlug = generateSiteSlug(lead.companyName);
     const sitesDir = path.join(__dirname, 'public', 'sites', siteSlug);
     fs.mkdirSync(sitesDir, { recursive: true });
+
+    // Auto-inject GA4 if configured
+    if (settings.gaId && /^G-[A-Z0-9]+$/i.test(settings.gaId)) {
+      const gaSnippet = `<!-- Google Analytics -->\n<script async src="https://www.googletagmanager.com/gtag/js?id=${settings.gaId}"></script>\n<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${settings.gaId}',{anonymize_ip:true});</script>`;
+      siteHtml = siteHtml.replace(/<\/head>/i, gaSnippet + '\n</head>');
+    }
+
+    // Archive previous version (max 3)
+    const existingHtmlPath = path.join(sitesDir, 'index.html');
+    if (fs.existsSync(existingHtmlPath) && leads[idx].generatedSite) {
+      const prevHtml = fs.readFileSync(existingHtmlPath, 'utf8');
+      if (!leads[idx].generatedSite.versions) leads[idx].generatedSite.versions = [];
+      leads[idx].generatedSite.versions.unshift({ html: prevHtml, savedAt: leads[idx].generatedSite.generatedAt || new Date().toISOString(), template: leads[idx].generatedSite.template || 'modern' });
+      if (leads[idx].generatedSite.versions.length > 3) leads[idx].generatedSite.versions.splice(3);
+    }
+
     fs.writeFileSync(path.join(sitesDir, 'index.html'), siteHtml, 'utf8');
 
     const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
     const siteUrl = `${baseUrl}/sites/${siteSlug}`;
+    const template = req.body?.template || 'modern';
 
     leads[idx].generatedSite = {
       siteSlug, siteUrl,
       generatedAt: new Date().toISOString(),
-      content, status: 'preview', feedback: []
+      template,
+      content, status: leads[idx].generatedSite?.status || 'preview',
+      feedback: leads[idx].generatedSite?.feedback || [],
+      versions: leads[idx].generatedSite?.versions || []
     };
     addLeadHistory(leads, lead.id, { event: 'siteGenerated', label: `Website gegenereerd: ${siteUrl}` });
     writeJSON('leads.json', leads);
@@ -1722,7 +2183,7 @@ Geef ALLEEN de volledige HTML terug. Geen uitleg, geen markdown, geen backticks.
 
     // Step 4 — Send preview to client
     send(4, 'Preview link versturen naar klant', 'running');
-    if (contactEmail && settings.gmailAddress && settings.gmailPassword) {
+    if (contactEmail && isGmailReady(settings)) {
       try {
         const subject = `Je website preview is klaar — ${lead.companyName}`;
         const body = `Hoi${lead.contactName ? ' ' + lead.contactName.split(' ')[0] : ''},\n\nJe website preview staat klaar! Bekijk hem via de link hieronder:\n\n${siteUrl}\n\nHeb je feedback of aanpassingen? Laat het gerust weten via het klantportaal of stuur een reply.\n\nMet vriendelijke groet,\n${settings.myName || settings.agencyName || 'Agency AI'}`;
@@ -1778,6 +2239,71 @@ app.post('/api/leads/:id/site/feedback', (req, res) => {
   if (!leads[idx].generatedSite.feedback) leads[idx].generatedSite.feedback = [];
   leads[idx].generatedSite.feedback.push({ text: feedback, time: new Date().toISOString(), by: req.user?.name || 'team' });
   addLeadHistory(leads, leads[idx].id, { event: 'siteFeedback', label: `Website feedback: ${feedback.substring(0, 60)}` });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+// SEO meta inject
+app.post('/api/leads/:id/site/seo', requireAdmin, (req, res) => {
+  const { title, description, keywords } = req.body || {};
+  const leads = readJSON('leads.json') || [];
+  const idx   = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const site  = leads[idx].generatedSite;
+  if (!site) return res.status(400).json({ error: 'Geen website gegenereerd' });
+  const htmlPath = path.join(__dirname, 'public', 'sites', site.siteSlug, 'index.html');
+  let html;
+  try { html = fs.readFileSync(htmlPath, 'utf8'); } catch { return res.status(500).json({ error: 'HTML bestand niet gevonden' }); }
+
+  // Replace or inject <title>
+  if (title) {
+    if (/<title>/i.test(html)) { html = html.replace(/<title>[^<]*<\/title>/i, `<title>${title}</title>`); }
+    else { html = html.replace(/<head>/i, `<head>\n<title>${title}</title>`); }
+  }
+  // Replace or inject meta description
+  const descTag = `<meta name="description" content="${description || ''}">`;
+  if (/<meta\s+name="description"/i.test(html)) { html = html.replace(/<meta\s+name="description"[^>]*>/i, descTag); }
+  else { html = html.replace(/<\/title>/i, `</title>\n${descTag}`); }
+
+  // Keywords
+  if (keywords) {
+    const kwTag = `<meta name="keywords" content="${keywords}">`;
+    if (/<meta\s+name="keywords"/i.test(html)) { html = html.replace(/<meta\s+name="keywords"[^>]*>/i, kwTag); }
+    else { html = html.replace(/<\/title>/i, `</title>\n${kwTag}`); }
+  }
+
+  try { fs.writeFileSync(htmlPath, html, 'utf8'); } catch (e) { return res.status(500).json({ error: e.message }); }
+  leads[idx].generatedSite.seo = { title, description, keywords, updatedAt: new Date().toISOString() };
+  addLeadHistory(leads, leads[idx].id, { event: 'siteSeo', label: 'Website SEO meta tags bijgewerkt' });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+// Version revert
+app.post('/api/leads/:id/site/revert/:versionIdx', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx   = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const site  = leads[idx].generatedSite;
+  if (!site) return res.status(400).json({ error: 'Geen website gegenereerd' });
+  const vIdx  = parseInt(req.params.versionIdx, 10);
+  const versions = site.versions || [];
+  if (isNaN(vIdx) || vIdx < 0 || vIdx >= versions.length) return res.status(400).json({ error: 'Ongeldige versie index' });
+
+  const htmlPath = path.join(__dirname, 'public', 'sites', site.siteSlug, 'index.html');
+  // Archive current before reverting
+  let currentHtml = '';
+  try { currentHtml = fs.readFileSync(htmlPath, 'utf8'); } catch {}
+  if (currentHtml) { versions.unshift({ html: currentHtml, savedAt: site.generatedAt || new Date().toISOString(), template: site.template || 'modern' }); }
+
+  const target = versions.splice(vIdx + (currentHtml ? 1 : 0), 1)[0];
+  if (versions.length > 3) versions.splice(3);
+
+  try { fs.writeFileSync(htmlPath, target.html, 'utf8'); } catch (e) { return res.status(500).json({ error: e.message }); }
+  leads[idx].generatedSite.versions = versions;
+  leads[idx].generatedSite.generatedAt = target.savedAt;
+  leads[idx].generatedSite.template = target.template || 'modern';
+  addLeadHistory(leads, leads[idx].id, { event: 'siteReverted', label: `Website teruggezet naar versie van ${new Date(target.savedAt).toLocaleDateString('nl-NL')}` });
   writeJSON('leads.json', leads);
   res.json({ ok: true });
 });
@@ -1891,7 +2417,7 @@ app.post('/api/leads/:id/client-email', requireAdmin, async (req, res) => {
 
     const to = lead.email || lead.contactEmail || '';
     if (!to) return res.status(400).json({ error: 'Geen email adres bekend voor dit bedrijf' });
-    if (!settings.gmailAddress || !settings.gmailPassword) return res.status(400).json({ error: 'Gmail niet geconfigureerd' });
+    if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet geconfigureerd' });
 
     await sendEmail({ to, subject: email.subject, body: email.body, settings });
 
@@ -1953,6 +2479,35 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
   inbox[idx].approvedAt = new Date().toISOString();
   inbox[idx].sentVersion = version;
 
+  // Email duplicate check — warn if this email was already sent to
+  const allLeads = readJSON('leads.json') || [];
+  const emailToCheck = (item.contactEmail || '').toLowerCase().trim();
+  const emailDup = emailToCheck
+    ? allLeads.find(l =>
+        l.id !== item.leadId &&
+        (l.contactEmail || l.email || '').toLowerCase().trim() === emailToCheck &&
+        ['sent', 'replied', 'client', 'scheduled'].includes(l.status))
+    : null;
+  if (emailDup) {
+    inbox[idx].emailDuplicateWarning = { id: emailDup.id, companyName: emailDup.companyName, status: emailDup.status };
+    console.warn(`[DupEmail] ${item.contactEmail} ook gebruikt door ${emailDup.companyName} (${emailDup.status})`);
+  }
+
+  // LinkedIn DM items: no email to send — just mark as sent and update lead
+  if (item.type === 'linkedinDm') {
+    inbox[idx].status = 'sent';
+    inbox[idx].sentAt = new Date().toISOString();
+    writeJSON('inbox.json', inbox);
+    const leads = readJSON('leads.json') || [];
+    const leadIdx = leads.findIndex(l => l.id === item.leadId);
+    if (leadIdx !== -1) {
+      leads[leadIdx].linkedinDmSentAt = inbox[idx].sentAt;
+      addLeadHistory(leads, item.leadId, { event: 'linkedinDmSent', label: 'LinkedIn DM gekopieerd & verstuurd' });
+      writeJSON('leads.json', leads);
+    }
+    return res.json(inbox[idx]);
+  }
+
   // Handle scheduled send
   if (req.body?.scheduled && item.sendOptimalTime) {
     inbox[idx].status    = 'scheduled';
@@ -1970,7 +2525,7 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
     return res.json(inbox[idx]);
   }
 
-  if (settings.gmailAddress && settings.gmailPassword) {
+  if (isGmailReady(settings)) {
     try {
       const trackingToken = 'otk-' + item.leadId + '-' + Math.random().toString(36).substr(2, 8);
       inbox[idx].trackingToken = trackingToken;
@@ -2028,6 +2583,11 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
       updateMemory(leads[leadIdx].niche, leads[leadIdx].country, 'sent');
     }
     writeJSON('leads.json', leads);
+  }
+
+  if (inbox[idx].status === 'sent' && item.type !== 'referral' && item.type !== 'linkedinDm') {
+    const lead = (readJSON('leads.json') || []).find(l => l.id === item.leadId);
+    fireWebhooks('lead.approved', { leadId: item.leadId, companyName: item.companyName, niche: item.niche, score: item.score, emailSubject: chosenEmail?.subject, sentAt: inbox[idx].sentAt, lead: lead ? { id: lead.id, status: lead.status, location: lead.location, estimatedValue: lead.estimatedValue } : null });
   }
 
   res.json(inbox[idx]);
@@ -2108,6 +2668,7 @@ app.get('/api/settings', (req, res) => {
   const safe = { ...s };
   delete safe.password;
   delete safe.gmailPassword;
+  delete safe.gmailPasswordEncrypted;
   delete safe.stripeSecretKey;
   delete safe.mollieApiKey;
   safe.stripeConfigured = !!(s.stripeSecretKey);
@@ -2117,12 +2678,14 @@ app.get('/api/settings', (req, res) => {
   safe.autoInvoiceEnabled = s.autoInvoiceEnabled || false;
   safe.autoInvoiceDay = s.autoInvoiceDay || 1;
   safe.paymentReminderDays = s.paymentReminderDays || 7;
+  safe.gmailConfigured = isGmailReady(s);
+  safe.gmailPasswordSet = !!(s.gmailPasswordEncrypted || (s.gmailPassword && s.gmailPassword !== '__encrypted__') || process.env.GMAIL_APP_PASSWORD);
   res.json(safe);
 });
 
 app.patch('/api/settings/account', async (req, res) => {
   const settings = readJSON('settings.json');
-  const { agencyName, myName, myTitle, username, newPassword, currentPassword, websiteTagline, websiteAbout, websiteContact } = req.body;
+  const { agencyName, myName, myTitle, username, newPassword, currentPassword, websiteTagline, websiteAbout, websiteContact, calendlyUrl } = req.body;
 
   if (agencyName) settings.agencyName = agencyName;
   if (myName) settings.myName = myName;
@@ -2131,6 +2694,9 @@ app.patch('/api/settings/account', async (req, res) => {
   if (websiteTagline !== undefined) settings.websiteTagline = websiteTagline;
   if (websiteAbout   !== undefined) settings.websiteAbout   = websiteAbout;
   if (websiteContact !== undefined) settings.websiteContact = websiteContact;
+  if (calendlyUrl    !== undefined) settings.calendlyUrl    = calendlyUrl;
+  const { gaId } = req.body;
+  if (gaId !== undefined) settings.gaId = gaId;
 
   if (newPassword) {
     if (!currentPassword) return res.status(400).json({ error: 'Huidig wachtwoord verplicht' });
@@ -2148,11 +2714,73 @@ app.patch('/api/settings/account', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Agency Profiles ──────────────────────────────────────────────────────────
+
+app.get('/api/agency-profiles', authMiddleware, (req, res) => {
+  const settings = readJSON('settings.json') || {};
+  res.json(settings.agencyProfiles || []);
+});
+
+app.post('/api/agency-profiles', requireAdmin, (req, res) => {
+  const settings = readJSON('settings.json');
+  if (!settings.agencyProfiles) settings.agencyProfiles = [];
+  const { agencyName, myName, myTitle, agencyAddress, brandColor } = req.body;
+  if (!agencyName) return res.status(400).json({ error: 'Agency naam verplicht' });
+  const profile = {
+    id: 'prof-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+    agencyName, myName: myName || '', myTitle: myTitle || '', agencyAddress: agencyAddress || '', brandColor: brandColor || '#2563eb',
+    createdAt: new Date().toISOString()
+  };
+  settings.agencyProfiles.push(profile);
+  writeJSON('settings.json', settings);
+  res.json(profile);
+});
+
+app.patch('/api/agency-profiles/:id', requireAdmin, (req, res) => {
+  const settings = readJSON('settings.json');
+  const profs = settings.agencyProfiles || [];
+  const idx = profs.findIndex(p => p.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Profiel niet gevonden' });
+  const { agencyName, myName, myTitle, agencyAddress, brandColor } = req.body;
+  if (agencyName)      profs[idx].agencyName    = agencyName;
+  if (myName !== undefined) profs[idx].myName   = myName;
+  if (myTitle !== undefined) profs[idx].myTitle  = myTitle;
+  if (agencyAddress !== undefined) profs[idx].agencyAddress = agencyAddress;
+  if (brandColor)      profs[idx].brandColor    = brandColor;
+  settings.agencyProfiles = profs;
+  writeJSON('settings.json', settings);
+  res.json(profs[idx]);
+});
+
+app.delete('/api/agency-profiles/:id', requireAdmin, (req, res) => {
+  const settings = readJSON('settings.json');
+  settings.agencyProfiles = (settings.agencyProfiles || []).filter(p => p.id !== req.params.id);
+  writeJSON('settings.json', settings);
+  res.json({ ok: true });
+});
+
+app.post('/api/agency-profiles/:id/activate', requireAdmin, (req, res) => {
+  const settings = readJSON('settings.json');
+  const prof = (settings.agencyProfiles || []).find(p => p.id === req.params.id);
+  if (!prof) return res.status(404).json({ error: 'Profiel niet gevonden' });
+  settings.agencyName     = prof.agencyName;
+  settings.myName         = prof.myName         || settings.myName;
+  settings.myTitle        = prof.myTitle        || settings.myTitle;
+  settings.agencyAddress  = prof.agencyAddress  || settings.agencyAddress || '';
+  settings.brandColor     = prof.brandColor     || '#2563eb';
+  settings.activeProfileId = prof.id;
+  writeJSON('settings.json', settings);
+  res.json({ ok: true, settings: { agencyName: settings.agencyName, myName: settings.myName, myTitle: settings.myTitle, brandColor: settings.brandColor } });
+});
+
 app.patch('/api/settings/gmail', requireAdmin, (req, res) => {
   const settings = readJSON('settings.json');
   const { gmailAddress, gmailPassword, replyDetection, webhookToken, webhookConfigured } = req.body;
   if (gmailAddress !== undefined) settings.gmailAddress = gmailAddress;
-  if (gmailPassword !== undefined) settings.gmailPassword = gmailPassword;
+  if (gmailPassword !== undefined && gmailPassword !== '') {
+    settings.gmailPasswordEncrypted = encryptGmailPassword(gmailPassword);
+    settings.gmailPassword = '__encrypted__';
+  }
   if (replyDetection !== undefined) settings.replyDetection = replyDetection;
   if (webhookToken !== undefined) settings.webhookToken = webhookToken;
   if (webhookConfigured !== undefined) settings.webhookConfigured = webhookConfigured;
@@ -2191,6 +2819,10 @@ app.patch('/api/settings/automation', requireAdmin, (req, res) => {
   if (req.body.autoInvoiceEnabled !== undefined) settings.autoInvoiceEnabled = req.body.autoInvoiceEnabled;
   if (req.body.autoInvoiceDay !== undefined) settings.autoInvoiceDay = req.body.autoInvoiceDay;
   if (req.body.paymentReminderDays !== undefined) settings.paymentReminderDays = req.body.paymentReminderDays;
+  if (req.body.btwEnabled !== undefined) settings.btwEnabled = req.body.btwEnabled;
+  if (req.body.btwRate !== undefined) settings.btwRate = req.body.btwRate;
+  if (req.body.btwNumber !== undefined) settings.btwNumber = req.body.btwNumber;
+  if (req.body.aiRateLimits !== undefined) settings.aiRateLimits = req.body.aiRateLimits;
   writeJSON('settings.json', settings);
   scheduleCron(); // re-schedule if run time changed
   scheduleBriefingCron(); // re-schedule briefing if time changed
@@ -2198,21 +2830,19 @@ app.patch('/api/settings/automation', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/settings/test-email', async (req, res) => {
-  const settings = readJSON('settings.json') || {};
-  const gmailAddress  = settings.gmailAddress  || process.env.GMAIL_ADDRESS;
-  const gmailPassword = settings.gmailPassword || process.env.GMAIL_APP_PASSWORD;
-  if (!gmailAddress || !gmailPassword) {
-    return res.status(400).json({ error: 'Gmail niet geconfigureerd — stel in via Settings of voeg GMAIL_ADDRESS + GMAIL_APP_PASSWORD toe als Railway env vars' });
+app.post('/api/settings/test-email', requireAdmin, async (req, res) => {
+  const s = readJSON('settings.json') || {};
+  const gmailAddress = s.gmailAddress || process.env.GMAIL_ADDRESS;
+  if (!isGmailReady(s)) {
+    return res.status(400).json({ error: 'Gmail niet ingesteld. Vul het Gmail-adres en app-wachtwoord in en sla op.' });
   }
   try {
     await sendEmail({
       to: gmailAddress,
       subject: 'Agency AI — Testmail ✓',
-      body: `Hoi ${settings.myName || 'Admin'},\n\nGmail is correct ingesteld.\n\nAgency AI kan nu emails versturen namens ${settings.agencyName || 'Agency AI'}!\n\nVriendelijke groet,\n${settings.myName || 'Admin'}\n${settings.agencyName || 'Agency AI'}`,
-      settings
+      body: `Hoi ${s.myName || 'Admin'},\n\nGmail is correct ingesteld!\n\nAgency AI kan nu emails versturen namens ${s.agencyName || 'Agency AI'}.\n\nVriendelijke groet,\n${s.myName || 'Admin'}\n${s.agencyName || 'Agency AI'}`
     });
-    res.json({ ok: true });
+    res.json({ ok: true, message: `Testmail verstuurd naar ${gmailAddress}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2405,7 +3035,7 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
 
     // Auto-send payment email to client
     const lead = leads[idx];
-    if (lead.email && settings.gmailAddress && settings.gmailPassword) {
+    if (lead.email && isGmailReady(settings)) {
       try {
         const linksText = newPayments.map((p, i) => `${newPayments.length > 1 ? `Deel ${i+1}/${newPayments.length}: ` : ''}€${p.amount} → ${p.paymentUrl}`).join('\n');
         await sendEmail({
@@ -2453,7 +3083,7 @@ app.post('/api/leads/:id/payments/:payId/remind', requireAdmin, async (req, res)
   if (!pay) return res.status(404).json({ error: 'Betaling niet gevonden' });
   const lead = leads[idx];
   if (!lead.email) return res.status(400).json({ error: 'Geen e-mailadres bekend' });
-  if (!settings.gmailAddress || !settings.gmailPassword) return res.status(400).json({ error: 'Gmail niet geconfigureerd' });
+  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet geconfigureerd' });
 
   try {
     const reminderEmail = await aiJSON(`Schrijf een vriendelijke maar dringende betalingsherinnering.
@@ -2486,6 +3116,52 @@ app.get('/api/upsell', (req, res) => {
   res.json(stats.upsellOpportunities || []);
 });
 
+app.get('/api/referrals', authMiddleware, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const referredLeads = leads.filter(l => l.referredBy);
+  const clients = leads.filter(l => l.referralEmailSent || referredLeads.some(r => r.referredBy === l.id));
+  const data = clients.map(c => ({
+    id: c.id,
+    companyName: c.companyName,
+    niche: c.niche,
+    location: c.location,
+    referralSentAt: c.referralSentAt || null,
+    referralEmailSent: c.referralEmailSent || false,
+    referrals: referredLeads
+      .filter(l => l.referredBy === c.id)
+      .map(l => ({ id: l.id, companyName: l.companyName, status: l.status, createdAt: l.createdAt }))
+  }));
+  const totalSent     = leads.filter(l => l.referralEmailSent).length;
+  const totalReferred = referredLeads.length;
+  const converted     = referredLeads.filter(l => l.status === 'client').length;
+  res.json({
+    stats: { totalSent, totalReferred, converted, conversionRate: totalReferred > 0 ? Math.round(converted / totalReferred * 100) : 0 },
+    clients: data,
+    referredLeads: referredLeads.map(l => {
+      const referrer = leads.find(r => r.id === l.referredBy);
+      return { id: l.id, companyName: l.companyName, status: l.status, createdAt: l.createdAt, referrerName: referrer?.companyName || '?' };
+    })
+  });
+});
+
+app.post('/api/leads/:id/set-referrer', authMiddleware, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const { referrerId } = req.body;
+  if (referrerId && !leads.find(l => l.id === referrerId)) return res.status(400).json({ error: 'Referrer niet gevonden' });
+  const prev = leads[idx].referredBy;
+  leads[idx].referredBy = referrerId || null;
+  if (referrerId && referrerId !== prev) {
+    const referrer = leads.find(l => l.id === referrerId);
+    addLeadHistory(leads, req.params.id, { event: 'referralLinked', label: `Doorverwezen door ${referrer?.companyName || referrerId}` });
+  } else if (!referrerId && prev) {
+    addLeadHistory(leads, req.params.id, { event: 'referralUnlinked', label: 'Referral-koppeling verwijderd' });
+  }
+  writeJSON('leads.json', leads);
+  res.json(leads[idx]);
+});
+
 app.post('/api/upsell/:leadId/email', async (req, res) => {
   const settings = readJSON('settings.json');
   const stats    = readJSON('stats.json') || {};
@@ -2510,7 +3186,7 @@ app.post('/api/upsell/:leadId/email', async (req, res) => {
 
 app.post('/api/upsell/:leadId/send', async (req, res) => {
   const settings = readJSON('settings.json');
-  if (!settings.gmailAddress || !settings.gmailPassword) return res.status(400).json({ error: 'Gmail niet ingesteld' });
+  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld' });
   const { subject, body } = req.body;
   if (!subject || !body) return res.status(400).json({ error: 'Subject en body vereist' });
   try {
@@ -2540,7 +3216,46 @@ function calcCostUsd(tokIn, tokOut) {
   return (tokIn / 1e6) * PRICE_IN_PER_M + (tokOut / 1e6) * PRICE_OUT_PER_M;
 }
 
+// ── AI Rate Limiter ──────────────────────────────────────────────────────────
+const _aiCallLog = []; // { ts: number } — in-memory sliding window, resets on restart
+
+function aiRateCheck() {
+  const settings  = readJSON('settings.json') || {};
+  const lim       = settings.aiRateLimits || {};
+  const maxPerMin  = lim.maxCallsPerMinute || 10;
+  const maxPerHour = lim.maxCallsPerHour   || 100;
+  const maxPerDay  = lim.maxCallsPerDay    || 500;
+  const maxCostDay = typeof lim.maxDailyCostUsd === 'number' ? lim.maxDailyCostUsd : 10.0;
+
+  const now = Date.now();
+  // Prune entries older than 24h
+  while (_aiCallLog.length && _aiCallLog[0].ts < now - 86400000) _aiCallLog.shift();
+
+  const lastMin  = _aiCallLog.filter(e => e.ts >= now - 60000).length;
+  const lastHour = _aiCallLog.filter(e => e.ts >= now - 3600000).length;
+  const lastDay  = _aiCallLog.length;
+
+  if (lastMin  >= maxPerMin)  throw new Error(`AI rate limit: max ${maxPerMin} calls/minuut bereikt (${lastMin}/${maxPerMin})`);
+  if (lastHour >= maxPerHour) throw new Error(`AI rate limit: max ${maxPerHour} calls/uur bereikt (${lastHour}/${maxPerHour})`);
+  if (lastDay  >= maxPerDay)  throw new Error(`AI rate limit: max ${maxPerDay} calls/dag bereikt (${lastDay}/${maxPerDay})`);
+
+  // Check today's API cost from activity log
+  if (maxCostDay > 0) {
+    const logFile = path.join(DATA_DIR, 'activity.json');
+    const today   = new Date().toISOString().slice(0, 10);
+    let todayCost = 0;
+    try {
+      if (fs.existsSync(logFile)) {
+        const log = JSON.parse(fs.readFileSync(logFile, 'utf8').replace(/^﻿/, ''));
+        todayCost = log.filter(e => e.timestamp?.startsWith(today)).reduce((s, e) => s + (e.costUsd || 0), 0);
+      }
+    } catch {}
+    if (todayCost >= maxCostDay) throw new Error(`AI daglimiet bereikt: $${todayCost.toFixed(3)} van $${maxCostDay}`);
+  }
+}
+
 async function aiCall(prompt) {
+  aiRateCheck();
   const { default: fetch } = await import('node-fetch');
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -2560,6 +3275,7 @@ async function aiCall(prompt) {
   const usage = data.usage || {};
   _sessionTokensIn  += usage.input_tokens  || 0;
   _sessionTokensOut += usage.output_tokens || 0;
+  _aiCallLog.push({ ts: Date.now() });
   return data.content[0].text;
 }
 
@@ -2637,13 +3353,16 @@ function guessContactEmail(websiteUrl) {
 function isDuplicate(lead) {
   const existing = readJSON('leads.json') || [];
   if (!existing.length) return null;
-  const nameLower   = (lead.companyName || '').toLowerCase().trim();
-  const domainRaw   = (lead.websiteUrl  || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
+  const nameLower  = (lead.companyName  || '').toLowerCase().trim();
+  const domainRaw  = (lead.websiteUrl   || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
+  const emailLower = (lead.contactEmail || lead.email || '').toLowerCase().trim();
   for (const e of existing) {
-    const eName   = (e.companyName || '').toLowerCase().trim();
-    const eDomain = (e.websiteUrl  || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
-    if (nameLower && eName && nameLower === eName) return e;
-    if (domainRaw && eDomain && domainRaw === eDomain) return e;
+    const eName   = (e.companyName  || '').toLowerCase().trim();
+    const eDomain = (e.websiteUrl   || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
+    const eEmail  = (e.contactEmail || e.email || '').toLowerCase().trim();
+    if (nameLower  && eName   && nameLower  === eName)   return e;
+    if (domainRaw  && eDomain && domainRaw  === eDomain) return e;
+    if (emailLower && eEmail  && emailLower === eEmail && e.id !== lead.id)  return e;
   }
   return null;
 }
@@ -2820,6 +3539,16 @@ Competitor context in ${lead.location}: ${competitors?.competitorGap || 'not ava
 Sender: ${myName} from ${agencyName}
 Today's date: ${todayEN}
 Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
+
+  const calendlyUrl = settings.calendlyUrl || '';
+  const calendlyCta = calendlyUrl
+    ? (language === 'nl'
+        ? `\nCalendly link: ${calendlyUrl} — sluit de CTA af met deze link als directe uitnodiging om in te plannen`
+        : `\nCalendly link: ${calendlyUrl} — end the CTA with this link as a direct booking invitation`)
+    : '';
+
+  // Append Calendly CTA instruction to shared context
+  const sharedContextFinal = sharedContext + calendlyCta;
 
   const sharedRules = language === 'nl'
     ? `- Aanhef: small -> "Hoi [naam]," of "Hey,"; medium -> "Hoi," of "Hi,"; large -> "Hallo ${lead.companyName},"
@@ -3171,7 +3900,7 @@ Geef exact ${count} bedrijven.`;
     if (!Array.isArray(leads)) leads = [leads];
     leads = leads.slice(0, count);
   } catch (err) {
-    console.error('[Agent 1] Fout:', err.message);
+    logError('agent1', `Agent 1 (Lead Finder) mislukt`, err.message);
     throw new Error(`Agent 1 (Lead Finder) mislukt: ${err.message}`);
   }
   console.log(`[Agent 1] ${leads.length} leads gevonden`);
@@ -3243,6 +3972,7 @@ Geef exact ${count} bedrijven.`;
     const highScoreCount = inboxItems.filter(i => i.score >= 8).length;
     addNotification('run_complete', `Run klaar: ${inboxItems.length} leads gevonden`,
       `${pendingCount} wachten op goedkeuring${highScoreCount > 0 ? ` · ${highScoreCount} met score 8+` : ''}`);
+    fireWebhooks('run.complete', { leadsFound: inboxItems.length, pendingCount, highScoreCount, totalValue, completedAt: new Date().toISOString() });
   }
   console.log(`\n[Agency AI] â"€â"€â"€ Run klaar: ${inboxItems.length} leads, â‚¬${totalValue} pipeline â"€â"€â"€\n`);
   return inboxItems.length;
@@ -3255,7 +3985,7 @@ app.post('/api/find-leads', requireAdmin, async (req, res) => {
     const found = await runFindLeadsJob(req.body || {});
     res.json({ ok: true, found });
   } catch (err) {
-    console.error('[find-leads] Fout:', err.message);
+    logError('run', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -3363,7 +4093,7 @@ Rules:
         added++;
         console.log(`[Follow-up] Follow-up 1 aangemaakt voor ${lead.companyName}`);
       } catch (err) {
-        console.error(`[Follow-up] Fout bij ${lead.companyName}:`, err.message);
+        logError('followup1', `Follow-up 1 mislukt voor ${lead.companyName}`, err.message);
       }
     }
 
@@ -3428,7 +4158,67 @@ Rules:
         added++;
         console.log(`[Follow-up] Follow-up 2 aangemaakt voor ${lead.companyName}`);
       } catch (err) {
-        console.error(`[Follow-up] Fout bij ${lead.companyName}:`, err.message);
+        logError('followup2', `Follow-up 2 mislukt voor ${lead.companyName}`, err.message);
+      }
+    }
+
+    // LinkedIn DM: day 7 (after both email FUs, before dead)
+    const hasLinkedinDmItem = inbox.some(i => i.leadId === lead.id && i.type === 'linkedinDm');
+    if (days >= 7 && days < 8 && !hasLinkedinDmItem && !lead.linkedinDmSentAt) {
+      console.log(`[Follow-up] Genereer LinkedIn DM voor ${lead.companyName}...`);
+      try {
+        const dmPrompt = lang === 'nl'
+          ? `Schrijf een korte LinkedIn DM voor een prospect die niet heeft gereageerd op 2 emails. Max 280 tekens. Geen JSON, alleen de tekst.
+
+Bedrijf: ${lead.companyName} (${nicheCtx}, ${lead.location})
+Afzender: ${myName} van ${agencyName}
+
+Regels:
+- Eerste zin: verwijzing naar hun branche/locatie, niet naar de emails
+- Max 1 concrete belofte of vraag
+- Toon: informeel, direct, menselijk — geen pitch
+- Sluit af met je voornaam
+- Absoluut max 280 tekens`
+          : `Write a short LinkedIn DM for a prospect who hasn't replied to 2 emails. Max 280 chars. No JSON, just the text.
+
+Company: ${lead.companyName} (${nicheCtx}, ${lead.location})
+Sender: ${myName} from ${agencyName}
+
+Rules:
+- First sentence: reference to their industry/location, not the emails
+- Max 1 concrete promise or question
+- Tone: casual, direct, human — not a pitch
+- Sign off with your first name only
+- Hard limit: 280 characters`;
+
+        let dmText = (await aiCall(dmPrompt)).trim().substring(0, 280);
+        if (!dmText) dmText = lang === 'nl'
+          ? `Hoi! Zag ${lead.companyName} — jullie doen interessant werk in ${lead.location}. Wij helpen vergelijkbare bedrijven groeien met AI. Gratis audit beschikbaar. Even kennismaken? — ${myName}`
+          : `Hi! Came across ${lead.companyName} — great work in the ${lead.location} area. We help similar businesses grow with AI. Free audit available. Worth a quick chat? — ${myName}`;
+
+        const item = {
+          id: `lkd-${lead.id}-${Date.now()}`,
+          leadId: lead.id,
+          status: 'pending',
+          type: 'linkedinDm',
+          companyName: lead.companyName,
+          location: lead.location,
+          country: lead.country,
+          niche: lead.niche,
+          subNiche: lead.subNiche || null,
+          language: lang,
+          score: lead.score,
+          estimatedValue: lead.estimatedValue,
+          linkedinUrl: lead.social?.linkedinUrl || null,
+          linkedinDm: dmText,
+          createdAt: new Date().toISOString()
+        };
+        inbox.unshift(item);
+        addLeadHistory(leads, lead.id, { event: 'linkedinDmCreated', label: 'LinkedIn DM aangemaakt (dag 7)' });
+        added++;
+        console.log(`[Follow-up] LinkedIn DM aangemaakt voor ${lead.companyName}`);
+      } catch (err) {
+        logError('linkedin_dm', `LinkedIn DM mislukt voor ${lead.companyName}`, err.message);
       }
     }
   }
@@ -3461,7 +4251,7 @@ function toImapDate(d) {
 
 async function checkReplies() {
   const settings = readJSON('settings.json');
-  if (!settings.gmailAddress || !settings.gmailPassword) return 0;
+  if (!isGmailReady(settings)) return 0;
   if (settings.replyDetection === false) return 0;
 
   let imapSimple;
@@ -3472,8 +4262,8 @@ async function checkReplies() {
 
   const config = {
     imap: {
-      user: settings.gmailAddress,
-      password: settings.gmailPassword,
+      user: settings.gmailAddress || process.env.GMAIL_ADDRESS,
+      password: getGmailPassword(settings),
       host: 'imap.gmail.com',
       port: 993,
       tls: true,
@@ -3496,6 +4286,7 @@ async function checkReplies() {
     const leads  = readJSON('leads.json') || [];
     const stats  = readJSON('stats.json') || {};
     let repliesFound = 0;
+    let bouncesFound = 0;
     const newNames = [];
 
     for (const msg of messages) {
@@ -3533,14 +4324,63 @@ async function checkReplies() {
         newNames.push(matched.companyName);
         addActivity('reply', 'Reply ontvangen van ' + matched.companyName, { meta: { companyName: matched.companyName, leadId: matched.id } });
         addNotification('reply_received', `Reply: ${matched.companyName}`, `${matched.companyName} heeft gereageerd op jouw email`, matched.id);
+        fireWebhooks('lead.replied', { leadId: matched.id, companyName: matched.companyName, niche: matched.niche, score: matched.score, location: matched.location, contactEmail: matched.contactEmail, repliedAt: matched.repliedAt });
         console.log(`[Reply] Reply gedetecteerd voor ${matched.companyName}`);
       }
     }
 
+    // ── Bounce detection ─────────────────────────────────────────────────────
+    try {
+      const bounceSince = new Date();
+      bounceSince.setDate(bounceSince.getDate() - 14);
+      const bounceCriteria = [['SINCE', toImapDate(bounceSince)], ['FROM', 'MAILER-DAEMON']];
+      const bounceFetch   = { bodies: ['HEADER.FIELDS (FROM SUBJECT TO)', 'TEXT'], markSeen: false };
+      const bounceMessages = await connection.search(bounceCriteria, bounceFetch);
+
+      const EMAIL_RE = /[\w.+%-]+@[\w-]+\.[a-z]{2,}/gi;
+
+      for (const msg of bounceMessages) {
+        const hdr  = msg.parts.find(p => p.which === 'HEADER.FIELDS (FROM SUBJECT TO)');
+        const body = msg.parts.find(p => p.which === 'TEXT');
+        if (!hdr) continue;
+
+        const hdrRaw  = hdr.body;
+        const subj    = (hdrRaw.match(/^Subject:\s*(.+)/im)?.[1] || '').toLowerCase();
+        const isBounce = /delivery.*(fail|status|report)|undeliver|failure notice|mail delivery|non.delivery|returned mail|bounce/i.test(subj);
+        if (!isBounce) continue;
+
+        const bodyText   = typeof body?.body === 'string' ? body.body : '';
+        const candidates = [...new Set([...bodyText.matchAll(EMAIL_RE)].map(m => m[0].toLowerCase()))];
+
+        for (const failedEmail of candidates) {
+          const hit = leads.find(l =>
+            !l.emailBounced &&
+            l.sentAt &&
+            !['dead'].includes(l.status) &&
+            l.contactEmail?.toLowerCase() === failedEmail
+          );
+          if (hit) {
+            hit.emailBounced = true;
+            hit.bouncedAt    = new Date().toISOString();
+            addLeadHistory(leads, hit.id, { event: 'bounced', label: `Email gebounced — ongeldig adres (${failedEmail})` });
+            addActivity('bounce', `Bounce: ${hit.companyName}`, { meta: { companyName: hit.companyName, leadId: hit.id, email: failedEmail } });
+            addNotification('email_bounced', `Bounce: ${hit.companyName}`, `Email naar ${failedEmail} is niet aangekomen`, hit.id);
+            bouncesFound++;
+            console.log(`[Reply] Bounce gedetecteerd voor ${hit.companyName} (${failedEmail})`);
+            break;
+          }
+        }
+      }
+    } catch (bounceErr) {
+      console.warn('[Reply] Bounce check overgeslagen:', bounceErr.message);
+    }
+
     connection.end();
 
-    if (repliesFound > 0) {
+    if (repliesFound > 0 || bouncesFound > 0) {
       writeJSON('leads.json', leads);
+    }
+    if (repliesFound > 0) {
       writeJSON('stats.json', {
         ...stats,
         replies: (stats.replies || 0) + repliesFound,
@@ -3548,7 +4388,7 @@ async function checkReplies() {
       });
     }
 
-    console.log(`[Reply] Check klaar: ${repliesFound} nieuwe replies`);
+    console.log(`[Reply] Check klaar: ${repliesFound} replies, ${bouncesFound} bounces`);
     return repliesFound;
   } catch (err) {
     console.error('[Reply check] Fout:', err.message);
@@ -3714,6 +4554,161 @@ app.get('/api/stats/costs', (req, res) => {
     totalTokensOut: stats.totalApiTokensOut || 0,
     totalCostUsd:   Math.round((stats.totalApiCostUsd || 0) * 10000) / 10000,
     todayCostUsd:   Math.round(todayCostUsd * 10000) / 10000
+  });
+});
+
+// ─── A/B email stats ──────────────────────────────────────────────────────────
+
+app.get('/api/stats/ab', authMiddleware, (req, res) => {
+  const leads = (readJSON('leads.json') || []).filter(l => l.sentVersion);
+  const sentStatuses = ['sent', 'replied', 'client', 'scheduled'];
+
+  const empty = () => ({ sent: 0, replied: 0, opened: 0, bounced: 0 });
+  const tot = { A: empty(), B: empty() };
+  const byNiche = {};
+
+  for (const l of leads) {
+    const v = l.sentVersion === 'B' ? 'B' : 'A';
+    tot[v].sent++;
+    if (['replied', 'client'].includes(l.status)) tot[v].replied++;
+    if (l.emailOpened) tot[v].opened++;
+    if (l.emailBounced) tot[v].bounced++;
+
+    const niche = l.niche || 'overig';
+    if (!byNiche[niche]) byNiche[niche] = { A: empty(), B: empty() };
+    byNiche[niche][v].sent++;
+    if (['replied', 'client'].includes(l.status)) byNiche[niche][v].replied++;
+    if (l.emailOpened) byNiche[niche][v].opened++;
+    if (l.emailBounced) byNiche[niche][v].bounced++;
+  }
+
+  const rate = (n, d) => d > 0 ? Math.round(n / d * 1000) / 10 : null;
+  const stats = (v) => ({
+    sent:       tot[v].sent,
+    replied:    tot[v].replied,
+    opened:     tot[v].opened,
+    bounced:    tot[v].bounced,
+    replyRate:  rate(tot[v].replied, tot[v].sent),
+    openRate:   rate(tot[v].opened,  tot[v].sent),
+    bounceRate: rate(tot[v].bounced, tot[v].sent),
+  });
+
+  const a = stats('A');
+  const b = stats('B');
+  let winner = null;
+  if (a.sent > 0 && b.sent > 0) {
+    if ((a.replyRate ?? 0) > (b.replyRate ?? 0)) winner = 'A';
+    else if ((b.replyRate ?? 0) > (a.replyRate ?? 0)) winner = 'B';
+    else winner = 'tie';
+  }
+
+  const niches = Object.entries(byNiche).map(([niche, d]) => ({
+    niche,
+    A: { sent: d.A.sent, replyRate: rate(d.A.replied, d.A.sent) },
+    B: { sent: d.B.sent, replyRate: rate(d.B.replied, d.B.sent) },
+    winner: d.A.sent > 0 && d.B.sent > 0
+      ? ((d.A.replied / d.A.sent) > (d.B.replied / d.B.sent) ? 'A' : (d.B.replied / d.B.sent) > (d.A.replied / d.A.sent) ? 'B' : 'tie')
+      : null
+  })).sort((x, y) => (y.A.sent + y.B.sent) - (x.A.sent + x.B.sent));
+
+  res.json({ A: a, B: b, winner, niches, totalLeadsWithVersion: leads.length });
+});
+
+app.get('/api/stats/pnl', authMiddleware, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const logFile = path.join(DATA_DIR, 'activity.json');
+  let activityLog = [];
+  try {
+    if (fs.existsSync(logFile)) activityLog = JSON.parse(fs.readFileSync(logFile, 'utf8').replace(/^﻿/, ''));
+  } catch { activityLog = []; }
+
+  const USD_TO_EUR = 0.92;
+  const buckets = {};
+  const getM = key => { if (!buckets[key]) buckets[key] = { revenue: 0, costs: 0 }; return buckets[key]; };
+
+  leads.forEach(lead => {
+    (lead.payments || []).forEach(pay => {
+      if (pay.status === 'paid' && pay.paidAt) {
+        getM(pay.paidAt.slice(0, 7)).revenue += pay.amount || 0;
+      }
+    });
+  });
+
+  activityLog.forEach(entry => {
+    if (entry.costUsd && entry.timestamp) {
+      getM(entry.timestamp.slice(0, 7)).costs += (entry.costUsd || 0) * USD_TO_EUR;
+    }
+  });
+
+  const now = new Date();
+  const months = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const b = buckets[key] || { revenue: 0, costs: 0 };
+    const revenue = Math.round(b.revenue * 100) / 100;
+    const costs   = Math.round(b.costs   * 100) / 100;
+    months.push({ month: key, revenue, costs, profit: Math.round((revenue - costs) * 100) / 100 });
+  }
+
+  const totalRevenue = Math.round(months.reduce((s, m) => s + m.revenue, 0) * 100) / 100;
+  const totalCosts   = Math.round(months.reduce((s, m) => s + m.costs,   0) * 100) / 100;
+  const totalProfit  = Math.round((totalRevenue - totalCosts) * 100) / 100;
+  const margin       = totalRevenue > 0 ? Math.round(totalProfit / totalRevenue * 100) : 0;
+
+  res.json({ months, totalRevenue, totalCosts, totalProfit, margin });
+});
+
+app.get('/api/ai/rate-status', authMiddleware, (req, res) => {
+  const settings   = readJSON('settings.json') || {};
+  const lim        = settings.aiRateLimits || {};
+  const now        = Date.now();
+  while (_aiCallLog.length && _aiCallLog[0].ts < now - 86400000) _aiCallLog.shift();
+  const callsLastMinute = _aiCallLog.filter(e => e.ts >= now - 60000).length;
+  const callsLastHour   = _aiCallLog.filter(e => e.ts >= now - 3600000).length;
+  const callsLastDay    = _aiCallLog.length;
+
+  const logFile = path.join(DATA_DIR, 'activity.json');
+  const today   = new Date().toISOString().slice(0, 10);
+  let costLastDay = 0;
+  try {
+    if (fs.existsSync(logFile)) {
+      const log = JSON.parse(fs.readFileSync(logFile, 'utf8').replace(/^﻿/, ''));
+      costLastDay = log.filter(e => e.timestamp?.startsWith(today)).reduce((s, e) => s + (e.costUsd || 0), 0);
+    }
+  } catch {}
+
+  const limits = {
+    maxCallsPerMinute: lim.maxCallsPerMinute || 10,
+    maxCallsPerHour:   lim.maxCallsPerHour   || 100,
+    maxCallsPerDay:    lim.maxCallsPerDay    || 500,
+    maxDailyCostUsd:   typeof lim.maxDailyCostUsd === 'number' ? lim.maxDailyCostUsd : 10.0
+  };
+  res.json({ callsLastMinute, callsLastHour, callsLastDay, costLastDay: Math.round(costLastDay * 10000) / 10000, limits });
+});
+
+// ─── Chrome Extension compact data ───────────────────────────────────────────
+
+app.get('/api/extension/data', authMiddleware, (req, res) => {
+  const inbox  = readJSON('inbox.json') || [];
+  const leads  = readJSON('leads.json') || [];
+  const stats  = readJSON('stats.json') || {};
+  const pending = inbox.filter(i => !i.sentAt && !i.disapprovedAt).slice(0, 20).map(i => ({
+    id: i.id, companyName: i.companyName, niche: i.niche, score: i.score,
+    location: i.location, emailSubject: i.emailA?.subject || i.emailSubject || '',
+    estimatedValue: i.estimatedValue, createdAt: i.createdAt, subNiche: i.subNiche || ''
+  }));
+  const recentLeads = leads.slice(0, 5).map(l => ({
+    id: l.id, companyName: l.companyName, status: l.status, score: l.score, niche: l.niche
+  }));
+  res.json({
+    pending,
+    pendingCount: pending.length,
+    totalLeads: leads.length,
+    clientCount: leads.filter(l => l.status === 'client').length,
+    pipelineValue: stats.pipelineValue || 0,
+    recentLeads,
+    serverVersion: '1.0'
   });
 });
 
@@ -3906,7 +4901,7 @@ app.post('/api/leads/:id/blacklist', (req, res) => {
 async function sendDailyBriefing() {
   const settings = readJSON('settings.json');
   if (settings.dailyBriefingEnabled === false) return;
-  if (!settings.gmailAddress || !settings.gmailPassword) return;
+  if (!isGmailReady(settings)) return;
 
   const inbox  = readJSON('inbox.json') || [];
   const leads  = readJSON('leads.json') || [];
@@ -4065,7 +5060,7 @@ async function runMonthlyReports() {
     }
 
     // Email notification if portal exists
-    if (client.portalToken && settings.gmailAddress && settings.gmailPassword) {
+    if (client.portalToken && isGmailReady(settings)) {
       try {
         const portalUrl = 'http://localhost:' + (process.env.PORT || 3000) + '/portal/' + client.portalToken;
         const subject = lang === 'nl'
@@ -4197,12 +5192,12 @@ async function runDailyBackup(manual = false) {
   }
 
   // Email backup if configured
-  if (settings.backupEmail !== false && settings.gmailAddress && settings.gmailPassword) {
+  if (settings.backupEmail !== false && isGmailReady(settings)) {
     try {
       const nodemailer = require('nodemailer');
       const transporter = nodemailer.createTransport({
         host: 'smtp.gmail.com', port: 587, secure: false,
-        auth: { user: settings.gmailAddress, pass: settings.gmailPassword }
+        auth: { user: settings.gmailAddress || process.env.GMAIL_ADDRESS, pass: getGmailPassword(settings) }
       });
       await transporter.sendMail({
         from:    settings.gmailAddress,
@@ -4249,7 +5244,7 @@ function scheduleCron() {
   if (cronJob) cronJob.stop();
   cronJob = cron.schedule(schedule, () => {
     console.log(`[Cron] Dagelijkse run gestart om ${time}`);
-    runFindLeadsJob().catch(err => console.error('[Cron] Fout:', err.message));
+    runFindLeadsJob().catch(err => logError('cron_run', 'Dagelijkse run mislukt', err.message));
   });
   console.log(`[Cron] Dagelijkse run ingepland om ${time} (${schedule})`);
 }
@@ -4257,7 +5252,7 @@ function scheduleCron() {
 // Follow-up cron: daily at 10:00
 cron.schedule('0 10 * * *', () => {
   console.log('[Cron] Follow-up check gestart');
-  runFollowUpJob().catch(err => console.error('[Cron Follow-up] Fout:', err.message));
+  runFollowUpJob().catch(err => logError('cron_followup', 'Follow-up cron mislukt', err.message));
 });
 
 let briefingCronJob = null;
@@ -4311,7 +5306,7 @@ cron.schedule('* * * * *', async () => {
   if (!due.length) return;
 
   const settings = readJSON('settings.json');
-  if (!settings.gmailAddress || !settings.gmailPassword) return;
+  if (!isGmailReady(settings)) return;
 
   const leads = readJSON('leads.json') || [];
   let changed = false;
@@ -4389,7 +5384,7 @@ cron.schedule('0 9 * * *', async () => {
           addLeadHistory(freshLeads, lead.id, { event: 'autoInvoice', label: `Automatische factuur aangemaakt: €${total}` });
           writeJSON('leads.json', freshLeads);
         }
-        if (lead.email && settings.gmailAddress && settings.gmailPassword) {
+        if (lead.email && isGmailReady(settings)) {
           await sendEmail({ to: lead.email, subject: `Factuur ${today.toLocaleDateString('nl-NL', {month:'long'})} — ${settings.agencyName}`, body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder de factuur voor deze maand:\n\n${desc}\nBedrag: €${total}\nBetaallink: ${url}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`, settings });
         }
         console.log(`[AutoInvoice] €${total} → ${lead.companyName}`);
@@ -4409,7 +5404,7 @@ cron.schedule('0 9 * * *', async () => {
       // Don't spam: only send if no reminder in last 7 days
       const lastReminder = pay.lastReminderAt ? new Date(pay.lastReminderAt) : null;
       if (lastReminder && (today - lastReminder) < 7 * 86400000) continue;
-      if (!lead.email || !settings.gmailAddress || !settings.gmailPassword) continue;
+      if (!lead.email || !isGmailReady(settings)) continue;
       try {
         const reminderEmail = await aiJSON(`Schrijf een vriendelijke betalingsherinnering. Klant: ${lead.companyName}. Bedrag: €${pay.amount}. ${daysOverdue} dagen te laat. Betaallink: ${pay.paymentUrl}. Max 100 woorden. JSON: { "subject": "...", "body": "..." }`);
         await sendEmail({ to: lead.email, subject: reminderEmail.subject, body: reminderEmail.body, settings });
@@ -4446,6 +5441,150 @@ app.patch('/api/notifications/:id/read', authMiddleware, (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── Calendly webhook (public) ───────────────────────────────────────────────
+app.post('/api/webhooks/calendly', (req, res) => {
+  try {
+    const event = req.body?.event;
+    const payload = req.body?.payload;
+    if (event === 'invitee.created' && payload) {
+      const inviteeName  = payload.name  || payload.first_name || 'Iemand';
+      const inviteeEmail = payload.email || '';
+      const eventName    = payload.event_type?.name || 'Gesprek';
+      const startTime    = payload.scheduled_event?.start_time || payload.event?.start_time || '';
+      const startLabel   = startTime ? new Date(startTime).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' }) : '';
+
+      // Match to a lead by email
+      const leads = readJSON('leads.json') || [];
+      const lead  = leads.find(l => l.contactEmail?.toLowerCase() === inviteeEmail.toLowerCase());
+      if (lead) {
+        const idx = leads.findIndex(l => l.id === lead.id);
+        leads[idx].calendlyBooking = { name: inviteeName, email: inviteeEmail, eventName, startTime, bookedAt: new Date().toISOString() };
+        addLeadHistory(leads, lead.id, { event: 'calendlyBooked', label: `Gesprek ingepland: ${eventName}${startLabel ? ' op ' + startLabel : ''}` });
+        addNotification('calendly_booking', `Gesprek ingepland: ${inviteeName}`, `${eventName}${startLabel ? ' op ' + startLabel : ''}`, lead.id);
+        writeJSON('leads.json', leads);
+      } else {
+        addNotification('calendly_booking', `Nieuw gesprek: ${inviteeName}`, `${eventName}${startLabel ? ' op ' + startLabel : ''} (${inviteeEmail})`);
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Outgoing webhooks CRUD ───────────────────────────────────────────────────
+
+app.get('/api/webhooks', authMiddleware, (req, res) => {
+  res.json(readJSON('webhooks.json') || []);
+});
+
+app.post('/api/webhooks', requireAdmin, (req, res) => {
+  const { label, url, events } = req.body || {};
+  if (!url) return res.status(400).json({ error: 'URL verplicht' });
+  if (!Array.isArray(events) || !events.length) return res.status(400).json({ error: 'Minimaal één event verplicht' });
+  const hooks = readJSON('webhooks.json') || [];
+  const hook = { id: Date.now().toString(36) + Math.random().toString(36).substr(2,4), label: label || '', url, events, active: true, createdAt: new Date().toISOString(), lastTriggeredAt: null, lastStatus: null };
+  hooks.push(hook);
+  writeJSON('webhooks.json', hooks);
+  res.json(hook);
+});
+
+app.patch('/api/webhooks/:id', requireAdmin, (req, res) => {
+  const hooks = readJSON('webhooks.json') || [];
+  const idx = hooks.findIndex(h => h.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Niet gevonden' });
+  if (req.body.label   !== undefined) hooks[idx].label  = req.body.label;
+  if (req.body.url     !== undefined) hooks[idx].url    = req.body.url;
+  if (req.body.events  !== undefined) hooks[idx].events = req.body.events;
+  if (req.body.active  !== undefined) hooks[idx].active = req.body.active;
+  writeJSON('webhooks.json', hooks);
+  res.json(hooks[idx]);
+});
+
+app.delete('/api/webhooks/:id', requireAdmin, (req, res) => {
+  const hooks = (readJSON('webhooks.json') || []).filter(h => h.id !== req.params.id);
+  writeJSON('webhooks.json', hooks);
+  res.json({ ok: true });
+});
+
+app.post('/api/webhooks/:id/test', requireAdmin, async (req, res) => {
+  const hook = (readJSON('webhooks.json') || []).find(h => h.id === req.params.id);
+  if (!hook) return res.status(404).json({ error: 'Niet gevonden' });
+  try {
+    const r = await fetch(hook.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'AgencyAI-Webhook/1.0' },
+      body: JSON.stringify({ event: 'test', timestamp: new Date().toISOString(), data: { message: 'Dit is een testbericht van Agency AI.' } }),
+      signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
+    });
+    const hooks = readJSON('webhooks.json') || [];
+    const idx   = hooks.findIndex(h => h.id === hook.id);
+    if (idx !== -1) { hooks[idx].lastTriggeredAt = new Date().toISOString(); hooks[idx].lastStatus = r.ok ? 'ok' : `${r.status}`; writeJSON('webhooks.json', hooks); }
+    res.json({ ok: r.ok, status: r.status });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Incoming Zapier trigger (public, guarded by token) ───────────────────────
+
+app.post('/api/zapier/trigger', async (req, res) => {
+  const settings = readJSON('settings.json') || {};
+  const token    = req.headers['x-zapier-token'] || req.body?.token || '';
+  if (!token || token !== settings.zapierIncomingToken) {
+    return res.status(401).json({ error: 'Ongeldig token' });
+  }
+  const { action, companyName, websiteUrl, niche, location, country, instagramHandle } = req.body || {};
+  if (action === 'add_lead') {
+    if (!companyName) return res.status(400).json({ error: 'companyName verplicht' });
+    const lead = { companyName, websiteUrl: websiteUrl || '', niche: niche || 'retail', location: location || '', country: country || 'NL', instagramHandle: instagramHandle || '', estimatedFollowers: 0, companySize: 'small' };
+    const dup = isDuplicate(lead);
+    if (dup) return res.status(409).json({ error: `Duplicaat: ${dup.companyName}`, existing: { id: dup.id, status: dup.status } });
+    try {
+      const result = await processOneLead(lead, settings);
+      if (!result) return res.status(400).json({ error: 'Bedrijf staat op de blacklist' });
+      const { item, leadRecord } = result;
+      const inbox    = readJSON('inbox.json')  || [];
+      const allLeads = readJSON('leads.json')  || [];
+      writeJSON('inbox.json',  [item, ...inbox]);
+      writeJSON('leads.json',  [leadRecord, ...allLeads]);
+      const statsObj = readJSON('stats.json') || {};
+      writeJSON('stats.json', { ...statsObj, leadsFound: (statsObj.leadsFound || 0) + 1, pipelineValue: (statsObj.pipelineValue || 0) + (item.estimatedValue || 0) });
+      return res.json({ ok: true, leadId: leadRecord.id, score: item.score });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+  return res.status(400).json({ error: `Onbekende actie: ${action}` });
+});
+
+// ─── Push notifications ───────────────────────────────────────────────────────
+
+app.get('/api/push/vapid-public-key', (req, res) => {
+  const settings = readJSON('settings.json') || {};
+  res.json({ publicKey: settings.vapidPublicKey || null });
+});
+
+app.post('/api/push/subscribe', authMiddleware, (req, res) => {
+  const { subscription } = req.body;
+  if (!subscription?.endpoint) return res.status(400).json({ error: 'Ongeldige subscription' });
+  const subs = readJSON('push-subscriptions.json') || [];
+  const exists = subs.find(s => s.subscription.endpoint === subscription.endpoint);
+  if (!exists) {
+    subs.push({ id: Date.now().toString(36), userId: req.user.id, subscription, createdAt: new Date().toISOString() });
+    writeJSON('push-subscriptions.json', subs);
+  }
+  res.json({ ok: true });
+});
+
+app.delete('/api/push/unsubscribe', authMiddleware, (req, res) => {
+  const { endpoint } = req.body;
+  if (!endpoint) return res.status(400).json({ error: 'Endpoint ontbreekt' });
+  const subs = readJSON('push-subscriptions.json') || [];
+  writeJSON('push-subscriptions.json', subs.filter(s => s.subscription.endpoint !== endpoint));
+  res.json({ ok: true });
+});
+
 // ─── Contact form (public) ───────────────────────────────────────────────────
 app.post('/api/contact', async (req, res) => {
   const { name, company, email, phone, service, message } = req.body;
@@ -4460,7 +5599,7 @@ app.post('/api/contact', async (req, res) => {
   });
   writeJSON('contacts.json', contacts);
   const settings = readJSON('settings.json') || {};
-  if (settings.gmailAddress && settings.gmailPassword) {
+  if (isGmailReady(settings)) {
     try {
       await sendEmail({
         to: settings.gmailAddress,
@@ -4471,6 +5610,23 @@ app.post('/api/contact', async (req, res) => {
     } catch (_) { /* email is optional */ }
   }
   res.json({ ok: true });
+});
+
+// ─── Chrome extension download (zip) ──────────────────────────────────────────
+app.get('/extension-download', (req, res) => {
+  const extDir = path.join(__dirname, 'public', 'extension');
+  if (!fs.existsSync(extDir)) return res.status(404).json({ error: 'Extensie niet gevonden' });
+  const archiver = (() => { try { return require('archiver'); } catch { return null; } })();
+  if (!archiver) {
+    // fallback: redirect to the extension folder so the user can download manually
+    return res.redirect('/extension/manifest.json');
+  }
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', 'attachment; filename="agency-ai-extension.zip"');
+  const archive = archiver('zip', { zlib: { level: 9 } });
+  archive.pipe(res);
+  archive.directory(extDir, false);
+  archive.finalize();
 });
 
 // ─── Generated client sites ───────────────────────────────────────────────────
@@ -4493,12 +5649,15 @@ app.get('*', (req, res) => {
 
 // â"€â"€â"€ Start â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-app.listen(PORT, () => {
-  console.log(`\nAgency AI draait op http://localhost:${PORT}`);
-  console.log(`Data directory: ${DATA_DIR}`);
-  if (!process.env.CLAUDE_API_KEY || process.env.CLAUDE_API_KEY === 'your_anthropic_api_key_here') {
-    console.warn('âš   CLAUDE_API_KEY niet ingesteld â€" voeg toe aan .env');
-  }
-  console.log('\nAgency AI klaar voor deployment');
-  console.log('Ga naar railway.app om online te zetten\n');
+pgInitPromise.then(() => {
+  app.listen(PORT, () => {
+    console.log("\nAgency AI draait op http://localhost:${PORT}".replace("", PORT));
+    console.log("Data directory: " + DATA_DIR);
+    if (!process.env.CLAUDE_API_KEY || process.env.CLAUDE_API_KEY === "your_anthropic_api_key_here") {
+      console.warn("⚠️  CLAUDE_API_KEY niet ingesteld — voeg toe aan .env");
+    }
+    console.log("\nAgency AI klaar voor deployment");
+    console.log("Ga naar railway.app om online te zetten\n");
+  });
+});
 });

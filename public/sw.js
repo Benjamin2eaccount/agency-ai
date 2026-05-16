@@ -21,6 +21,32 @@ self.addEventListener('activate', e => {
   );
 });
 
+self.addEventListener('push', e => {
+  if (!e.data) return;
+  let data = {};
+  try { data = e.data.json(); } catch { data = { title: 'Agency AI', body: e.data.text(), url: '/app' }; }
+  e.waitUntil(
+    self.registration.showNotification(data.title || 'Agency AI', {
+      body: data.body || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      data: { url: data.url || '/app' }
+    })
+  );
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = e.notification.data?.url || '/app';
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      const existing = list.find(c => c.url.includes('/app') && 'focus' in c);
+      if (existing) return existing.focus();
+      return clients.openWindow(url);
+    })
+  );
+});
+
 self.addEventListener('fetch', e => {
   // Skip non-GET and API calls — always go to network for those
   if (e.request.method !== 'GET' || e.request.url.includes('/api/')) {

@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Systeemstatus</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green:  #16a34a;
+    --amber:  #d97706;
+    --red:    #dc2626;
+    --blue:   #2563eb;
+    --bg:     #f8fafc;
+    --card:   #ffffff;
+    --border: #e2e8f0;
+    --text:   #0f172a;
+    --muted:  #64748b;
+    --light:  #f1f5f9;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: #0f172a;
+    color: #fff;
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .logo {
+    width: 36px; height: 36px;
+    background: var(--blue);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 900; color: #fff;
+    flex-shrink: 0;
+  }
+  .header-name { font-size: 18px; font-weight: 700; }
+  .header-sub  { font-size: 12px; color: #94a3b8; margin-top: 1px; }
+  .header-right { margin-left: auto; font-size: 12px; color: #64748b; }
+
+  /* ── Main ── */
+  main { flex: 1; max-width: 760px; margin: 0 auto; width: 100%; padding: 40px 20px; }
+
+  /* ── Status banner ── */
+  .status-banner {
+    border-radius: 16px;
+    padding: 28px 32px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 32px;
+    border: 1px solid transparent;
+  }
+  .status-banner.ok      { background: #f0fdf4; border-color: #bbf7d0; }
+  .status-banner.degraded { background: #fffbeb; border-color: #fde68a; }
+  .status-banner.down    { background: #fef2f2; border-color: #fecaca; }
+
+  .status-dot {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .status-dot::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    opacity: 0.3;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .status-dot.ok      { background: var(--green); }
+  .status-dot.ok::after { background: var(--green); }
+  .status-dot.degraded { background: var(--amber); }
+  .status-dot.degraded::after { background: var(--amber); }
+  .status-dot.down    { background: var(--red); }
+  .status-dot.down::after { background: var(--red); }
+  @keyframes pulse { 0%,100% { transform: scale(1); opacity:.3; } 50% { transform: scale(1.5); opacity:.1; } }
+
+  .status-text-primary { font-size: 22px; font-weight: 800; }
+  .status-text-primary.ok      { color: var(--green); }
+  .status-text-primary.degraded { color: var(--amber); }
+  .status-text-primary.down    { color: var(--red); }
+  .status-text-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+  .uptime-badge {
+    margin-left: auto;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 18px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .uptime-badge .num { font-size: 22px; font-weight: 800; color: var(--text); }
+  .uptime-badge .lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Section titles ── */
+  .section-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 12px;
+    margin-top: 32px;
+  }
+
+  /* ── Service cards ── */
+  .services { display: flex; flex-direction: column; gap: 10px; }
+  .service-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .service-icon {
+    width: 36px; height: 36px;
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .service-icon.ok      { background: #f0fdf4; }
+  .service-icon.degraded { background: #fffbeb; }
+  .service-icon.down    { background: #fef2f2; }
+  .service-icon.optional { background: var(--light); }
+  .service-label { font-size: 14px; font-weight: 600; }
+  .service-desc  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .service-badge {
+    margin-left: auto;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .service-badge.ok      { background: #dcfce7; color: var(--green); }
+  .service-badge.degraded { background: #fef9c3; color: var(--amber); }
+  .service-badge.down    { background: #fee2e2; color: var(--red); }
+  .service-badge.optional { background: var(--light); color: var(--muted); }
+
+  /* ── Stats row ── */
+  .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+  }
+  .stat-card .num { font-size: 28px; font-weight: 800; color: var(--text); }
+  .stat-card .lbl { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  /* ── Error log ── */
+  .error-list { display: flex; flex-direction: column; gap: 8px; }
+  .error-item {
+    background: #fff5f5;
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    padding: 12px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .error-icon { font-size: 16px; flex-shrink: 0; }
+  .error-msg  { font-size: 13px; font-weight: 600; color: var(--red); }
+  .error-time { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .no-errors  { display: flex; align-items: center; gap: 10px; color: var(--green); font-size: 14px; font-weight: 600; }
+
+  /* ── Last run ── */
+  .last-run-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .last-run-icon { font-size: 22px; }
+  .last-run-label { font-size: 14px; font-weight: 600; }
+  .last-run-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 28px;
+    font-size: 12px;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+  }
+  footer a { color: var(--blue); text-decoration: none; }
+
+  /* ── Refresh bar ── */
+  .refresh-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .refresh-bar .ts { font-size: 12px; color: var(--muted); }
+  .refresh-btn {
+    padding: 5px 14px;
+    background: var(--light);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .refresh-btn:hover { background: #e2e8f0; }
+
+  .skeleton { background: linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: 8px; height: 22px; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  @media (max-width: 520px) {
+    .header { padding: 14px 18px; }
+    main { padding: 24px 14px; }
+    .status-banner { flex-wrap: wrap; }
+    .uptime-badge { width: 100%; text-align: left; display: flex; align-items: center; gap: 12px; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">A</div>
+  <div>
+    <div class="header-name" id="headerName">Agency AI</div>
+    <div class="header-sub">Systeemstatus</div>
+  </div>
+  <div class="header-right" id="headerRight"></div>
+</div>
+
+<main>
+  <div class="refresh-bar">
+    <span class="ts" id="checkedAt">Laden...</span>
+    <button class="refresh-btn" onclick="load()">↻ Vernieuwen</button>
+  </div>
+
+  <!-- Status banner -->
+  <div class="status-banner" id="statusBanner">
+    <div class="skeleton" style="width:20px;height:20px;border-radius:50%;flex-shrink:0"></div>
+    <div class="skeleton" style="width:200px"></div>
+  </div>
+
+  <!-- Service checks -->
+  <div class="section-title">Services</div>
+  <div class="services" id="servicesList">
+    <div class="skeleton" style="height:68px"></div>
+    <div class="skeleton" style="height:68px;margin-top:10px"></div>
+    <div class="skeleton" style="height:68px;margin-top:10px"></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="section-title">Statistieken</div>
+  <div class="stats-row" id="statsRow">
+    <div class="skeleton" style="height:90px"></div>
+    <div class="skeleton" style="height:90px"></div>
+    <div class="skeleton" style="height:90px"></div>
+  </div>
+
+  <!-- Last run -->
+  <div class="section-title">Laatste dagelijkse run</div>
+  <div id="lastRunSection"></div>
+
+  <!-- Errors -->
+  <div class="section-title">Recente foutmeldingen</div>
+  <div id="errorSection"></div>
+</main>
+
+<footer>
+  Status pagina van <strong id="footerName">Agency AI</strong> &mdash; automatisch ververst elke 60 seconden
+</footer>
+
+<script>
+function fmt(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function svcState(ok, optional) {
+  if (optional && !ok) return 'optional';
+  return ok ? 'ok' : 'down';
+}
+
+function statusLabel(s) {
+  return s === 'ok' ? 'Alles operationeel' : s === 'degraded' ? 'Gedeeltelijk verstoord' : 'Storing gedetecteerd';
+}
+
+async function load() {
+  try {
+    const r = await fetch('/health');
+    if (!r.ok) throw new Error(r.status);
+    const h = await r.json();
+    render(h);
+  } catch (e) {
+    document.getElementById('statusBanner').className = 'status-banner down';
+    document.getElementById('statusBanner').innerHTML = `
+      <div class="status-dot down"></div>
+      <div>
+        <div class="status-text-primary down">Geen verbinding</div>
+        <div class="status-text-sub">Kan de server niet bereiken. Probeer de pagina te vernieuwen.</div>
+      </div>`;
+  }
+}
+
+function render(h) {
+  const status = h.status || 'ok';
+
+  // Header
+  if (h.agencyName) {
+    document.getElementById('headerName').textContent = h.agencyName;
+    document.getElementById('footerName').textContent = h.agencyName;
+    document.title = h.agencyName + ' — Systeemstatus';
+  }
+
+  // Checked at
+  document.getElementById('checkedAt').textContent = 'Bijgewerkt: ' + fmt(h.checkedAt);
+
+  // Banner
+  const banner = document.getElementById('statusBanner');
+  banner.className = 'status-banner ' + status;
+  banner.innerHTML = `
+    <div class="status-dot ${status}"></div>
+    <div>
+      <div class="status-text-primary ${status}">${statusLabel(status)}</div>
+      <div class="status-text-sub">v${h.version || '1.0'} &nbsp;·&nbsp; Node ${h.nodeVersion || ''} &nbsp;·&nbsp; Geheugen: ${h.memUsageMb || '—'} MB</div>
+    </div>
+    <div class="uptime-badge">
+      <div class="num">${h.uptimeLabel || '—'}</div>
+      <div class="lbl">Uptime</div>
+    </div>`;
+
+  // Services
+  const services = [
+    { icon: '🧠', label: 'Claude AI',    desc: 'Taal&shy;model voor lead analyse en emails', ok: h.checks?.claude_api, optional: false },
+    { icon: '📧', label: 'Gmail SMTP',   desc: 'Email verzending en reply detectie',          ok: h.checks?.gmail,      optional: true },
+    { icon: '🗄️', label: 'PostgreSQL',   desc: 'Persistente opslag (Railway plugin)',         ok: h.checks?.postgres,   optional: true },
+    { icon: '⚡', label: `AI calls vandaag: ${h.aiCallsToday ?? '—'}`, desc: 'Claude API aanroepen afgelopen 24 uur', ok: true, optional: true },
+  ];
+  document.getElementById('servicesList').innerHTML = services.map(s => {
+    const state = svcState(s.ok, s.optional);
+    const badgeLabel = state === 'ok' ? 'Operationeel' : state === 'optional' ? 'Niet vereist' : 'Storing';
+    return `<div class="service-card">
+      <div class="service-icon ${state}">${s.icon}</div>
+      <div>
+        <div class="service-label">${s.label}</div>
+        <div class="service-desc">${s.desc}</div>
+      </div>
+      <span class="service-badge ${state}">${badgeLabel}</span>
+    </div>`;
+  }).join('');
+
+  // Stats
+  const st = h.stats || {};
+  document.getElementById('statsRow').innerHTML = [
+    { num: st.totalLeads ?? '—',  lbl: 'Totaal leads' },
+    { num: st.clients    ?? '—',  lbl: 'Klanten' },
+    { num: st.pending    ?? '—',  lbl: 'In inbox' },
+  ].map(s => `<div class="stat-card"><div class="num">${s.num}</div><div class="lbl">${s.lbl}</div></div>`).join('');
+
+  // Last run
+  const lr = document.getElementById('lastRunSection');
+  if (h.lastRun) {
+    lr.innerHTML = `<div class="last-run-card">
+      <div class="last-run-icon">🚀</div>
+      <div>
+        <div class="last-run-label">${fmt(h.lastRun.time)}</div>
+        <div class="last-run-sub">${h.lastRun.leadsFound} leads gevonden</div>
+      </div>
+    </div>`;
+  } else {
+    lr.innerHTML = `<div class="last-run-card"><div class="last-run-sub" style="color:var(--muted)">Nog geen run uitgevoerd.</div></div>`;
+  }
+
+  // Errors
+  const errEl = document.getElementById('errorSection');
+  const errs  = h.recentErrors || [];
+  if (!errs.length) {
+    errEl.innerHTML = `<div class="no-errors">✅ Geen recente fouten</div>`;
+  } else {
+    errEl.innerHTML = `<div class="error-list">${errs.map(e => `
+      <div class="error-item">
+        <div class="error-icon">⚠️</div>
+        <div>
+          <div class="error-msg">${esc(e.message)}</div>
+          <div class="error-time">${fmt(e.time)}</div>
+        </div>
+      </div>`).join('')}</div>`;
+  }
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

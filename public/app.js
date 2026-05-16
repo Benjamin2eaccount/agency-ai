@@ -264,6 +264,13 @@ async function renderDashboard() {
   const weekCounts = getWeekCounts(stats.weeklyData || [], weekLabels);
 
   document.getElementById('dashboardContent').innerHTML = `
+    ${!settings?.gmailConfigured ? `
+      <div class="alert-banner alert-banner-amber" onclick="setView('settings');setTimeout(()=>document.querySelector('[data-tab=email]')?.click(),100)" style="cursor:pointer;margin-bottom:16px">
+        <i class="ti ti-mail-off" style="font-size:16px"></i>
+        <strong>Gmail niet ingesteld</strong>
+        <span style="color:var(--text-secondary);font-weight:400">— emails kunnen niet worden verstuurd. Klik om in te stellen &rarr;</span>
+      </div>
+    ` : ''}
     ${pending > 0 ? `
       <div class="alert-banner" onclick="setView('inbox')" style="cursor:pointer;margin-bottom:20px">
         <i class="ti ti-inbox" style="font-size:16px"></i>
@@ -367,6 +374,7 @@ async function renderDashboard() {
     </div>
 
     <div id="upsellSection"></div>
+    <div id="referralSection"></div>
   `;
 
   // Weekly chart
@@ -446,6 +454,45 @@ async function renderDashboard() {
       </div>
     `;
   }
+
+  // Referral overzicht
+  const ref = await apiJSON('/api/referrals').catch(() => null);
+  const refSection = document.getElementById('referralSection');
+  if (refSection && ref) {
+    const { stats: rs, referredLeads } = ref;
+    refSection.innerHTML = `
+      <div class="card" style="margin-top:0">
+        <div class="card-header">
+          <h3 class="card-title"><i class="ti ti-users-group" style="color:var(--accent);margin-right:6px"></i>Referral programma</h3>
+          ${rs.totalSent > 0 ? `<span class="badge badge-blue">${rs.totalSent} verzoek${rs.totalSent !== 1 ? 'en' : ''} verstuurd</span>` : ''}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:4px 0 14px">
+          ${[
+            { label: 'Verzoeken verstuurd', value: rs.totalSent,    color: '#2563eb' },
+            { label: 'Doorverwezen leads',  value: rs.totalReferred, color: '#7c3aed' },
+            { label: 'Geconverteerd',       value: rs.converted,    color: '#16a34a' }
+          ].map(k => `
+            <div style="text-align:center;padding:10px;background:var(--surface-2);border-radius:var(--radius)">
+              <div style="font-size:22px;font-weight:800;color:${k.color}">${k.value}</div>
+              <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${k.label}</div>
+            </div>
+          `).join('')}
+        </div>
+        ${referredLeads.length > 0 ? `
+          <div class="card-label" style="margin-bottom:8px">Doorverwezen leads</div>
+          ${referredLeads.slice(0, 5).map(l => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border-light);cursor:pointer" onclick="openLeadDetail('${l.id}')">
+              <div>
+                <div style="font-size:13px;font-weight:600">${esc(l.companyName)}</div>
+                <div style="font-size:11px;color:var(--text-muted)">via ${esc(l.referrerName)}</div>
+              </div>
+              <span class="badge badge-${l.status === 'client' ? 'green' : l.status === 'replied' ? 'blue' : 'gray'}">${STATUS_LABELS[l.status] || l.status}</span>
+            </div>
+          `).join('')}
+        ` : `<div style="font-size:13px;color:var(--text-muted);padding:8px 0">Nog geen doorverwezen leads. Koppel referrers via de lead-detail pagina.</div>`}
+      </div>
+    `;
+  }
 }
 
 // ─── Inbox ────────────────────────────────────────────────────────────────────
@@ -456,6 +503,18 @@ async function renderInbox() {
         <div class="page-label">Beoordelen</div>
         <h1 class="page-title">Inbox</h1>
       </div>
+      <div class="inbox-kb-legend" title="Toetsenbordsnelkoppelingen">
+        <span class="kb-key">A</span><span class="kb-hint">Goedkeuren</span>
+        <span class="kb-key">R</span><span class="kb-hint">Afwijzen</span>
+        <span class="kb-key">E</span><span class="kb-hint">Email</span>
+        <span class="kb-key">S</span><span class="kb-hint">Volgende</span>
+        <span class="kb-key">↑↓</span><span class="kb-hint">Navigeren</span>
+      </div>
+    </div>
+    <div id="swipeHint" style="display:none">
+      <i class="ti ti-hand-finger"></i>
+      <span>Swipe rechts = goedkeuren &nbsp;·&nbsp; swipe links = afwijzen</span>
+      <button onclick="dismissSwipeHint()" aria-label="Sluiten"><i class="ti ti-x"></i></button>
     </div>
     <div id="inboxContent"><div class="loading-state"><div class="spinner-lg"></div></div></div>
   `;
@@ -471,12 +530,12 @@ async function renderInbox() {
 
   const container = document.getElementById('inboxContent');
 
-  if (!settings.gmailAddress) {
+  if (!settings.gmailConfigured) {
     container.innerHTML += `
-      <div class="alert-banner" onclick="setView('settings')" style="cursor:pointer;margin-bottom:20px">
+      <div class="alert-banner alert-banner-amber" onclick="setView('settings');setTimeout(()=>document.querySelector('[data-tab=email]')?.click(),100)" style="cursor:pointer;margin-bottom:20px">
         <i class="ti ti-mail-off" style="font-size:16px"></i>
         <strong>Gmail niet ingesteld</strong>
-        <span style="color:var(--text-secondary);font-weight:400">— klik hier om in te stellen</span>
+        <span style="color:var(--text-secondary);font-weight:400">— emails kunnen niet verstuurd worden. Klik om in te stellen &rarr;</span>
       </div>
     `;
   }
@@ -553,9 +612,40 @@ async function renderInbox() {
   container.innerHTML = html;
   attachInboxHandlers();
   initSwipeHandlers();
+  initInboxKeyboard();
+}
+
+function buildLinkedinDmCard(item) {
+  const charCount = (item.linkedinDm || '').length;
+  const dmEsc = esc(item.linkedinDm || '');
+  const dmRaw = (item.linkedinDm || '').replace(/`/g, '\\`');
+  return `
+    <div class="inbox-card linkedin-dm-card" data-id="${item.id}" id="card-${item.id}">
+      <div class="linkedin-dm-header">
+        <span class="linkedin-dm-badge"><i class="ti ti-brand-linkedin"></i> LinkedIn DM — dag 7</span>
+        <span class="linkedin-dm-company">${esc(item.companyName)}</span>
+        <span class="linkedin-dm-meta">${esc(item.location)} &middot; score ${(item.score||0).toFixed(1)}</span>
+      </div>
+      <div class="linkedin-dm-body">${dmEsc.replace(/\n/g, '<br>')}</div>
+      <div class="linkedin-dm-footer">
+        <span class="char-count" style="font-size:11px;color:var(--text-muted)">${charCount}/280 tekens</span>
+        <div style="display:flex;gap:8px">
+          ${item.linkedinUrl ? `<a class="btn btn-ghost btn-sm" href="${esc(item.linkedinUrl)}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> Profiel</a>` : ''}
+          <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText(\`${dmRaw}\`).then(()=>toast('DM gekopieerd!','success'))">
+            <i class="ti ti-copy"></i> Kopiëren
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="markLinkedinDmSent('${item.id}')">
+            <i class="ti ti-check"></i> Verstuurd
+          </button>
+        </div>
+      </div>
+    </div>`;
 }
 
 function buildInboxCard(item) {
+  // LinkedIn DM cards get a dedicated compact layout
+  if (item.type === 'linkedinDm') return buildLinkedinDmCard(item);
+
   const score = item.score || 0;
   const colorClass = scoreColor(score);
   const typeLabel = item.type === 'followup1' ? 'Follow-up #1' :
@@ -568,6 +658,13 @@ function buildInboxCard(item) {
     : `<span class="badge badge-blue">${typeLabel}</span>`;
   const langFlag = item.language === 'nl' ? '🇳🇱' : item.language === 'en' ? '🇬🇧' : '';
 
+  // Email duplicate check: flag if this email already received outreach on another lead
+  const emailAlreadySent = item.contactEmail && (state.leads || []).some(l =>
+    l.id !== item.leadId &&
+    (l.contactEmail || '').toLowerCase() === item.contactEmail.toLowerCase() &&
+    ['sent', 'replied', 'client', 'scheduled'].includes(l.status)
+  );
+
   return `
     <div class="inbox-card" data-id="${item.id}" id="card-${item.id}" data-selected-version="A">
       <label class="inbox-checkbox-wrap" onclick="event.stopPropagation()">
@@ -578,6 +675,8 @@ function buildInboxCard(item) {
         <div class="inbox-card-title-row">
           <h3 class="inbox-company">${esc(item.companyName)}${langFlag ? ` <span class="lang-flag">${langFlag}</span>` : ''}</h3>
           ${typeBadge}
+          ${item.emailBounced ? `<span class="badge badge-red" style="font-size:10px"><i class="ti ti-mail-off"></i> Gebounced</span>` : ''}
+          ${emailAlreadySent ? `<span class="badge badge-amber" style="font-size:10px" title="Dit e-mailadres werd al gebruikt voor een andere lead"><i class="ti ti-alert-triangle"></i> Al gecontacteerd</span>` : ''}
           ${item.status === 'auto-approved' ? `<span class="badge badge-green" style="font-size:10px"><i class="ti ti-bolt"></i> Auto-goedgekeurd</span>` : ''}
         </div>
         <div class="inbox-card-meta">
@@ -684,6 +783,7 @@ function buildInboxCard(item) {
           <button class="btn btn-ghost btn-sm" onclick="viewLinkedin('${item.id}')">
             <i class="ti ti-brand-linkedin"></i> LinkedIn
           </button>
+          ${state.settings?.calendlyUrl ? `<a class="btn btn-ghost btn-sm calendly-btn" href="${esc(state.settings.calendlyUrl)}" target="_blank" rel="noopener"><i class="ti ti-calendar-event"></i> Plan gesprek</a>` : ''}
         </div>
         <div class="inbox-primary-actions">
           <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="disapprove('${item.id}')">
@@ -728,19 +828,269 @@ function selectVersion(id, version) {
 }
 
 function initSwipeHandlers() {
+  const THRESHOLD = 90;
+
+  // One-time swipe hint
+  if (!localStorage.getItem('swipeHintDismissed')) {
+    const hint = document.getElementById('swipeHint');
+    if (hint) hint.style.display = 'flex';
+  }
+
   document.querySelectorAll('.inbox-card').forEach(card => {
-    let startX = 0;
-    card.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
+    // Inject overlay layers once
+    if (!card.querySelector('.swipe-overlay-approve')) {
+      const ok = document.createElement('div');
+      ok.className = 'swipe-overlay swipe-overlay-approve';
+      ok.innerHTML = '<i class="ti ti-check"></i> Goedkeuren';
+      card.appendChild(ok);
+
+      const no = document.createElement('div');
+      no.className = 'swipe-overlay swipe-overlay-reject';
+      no.innerHTML = '<i class="ti ti-x"></i> Afwijzen';
+      card.appendChild(no);
+    }
+
+    let startX = 0, startY = 0, swiping = false, locked = false;
+    const id = card.dataset.id;
+
+    card.addEventListener('touchstart', e => {
+      if (locked) return;
+      startX   = e.touches[0].clientX;
+      startY   = e.touches[0].clientY;
+      swiping  = false;
+    }, { passive: true });
+
+    card.addEventListener('touchmove', e => {
+      if (locked) return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      if (!swiping && Math.abs(dy) > Math.abs(dx) + 5) return; // vertical scroll
+      swiping = true;
+
+      const progress   = Math.min(Math.abs(dx) / THRESHOLD, 1);
+      const okEl       = card.querySelector('.swipe-overlay-approve');
+      const noEl       = card.querySelector('.swipe-overlay-reject');
+
+      card.style.transition = 'none';
+      card.style.transform  = `translateX(${dx}px)`;
+
+      if (dx > 0) {
+        card.style.boxShadow = `0 0 0 2px rgba(22,163,74,${progress * 0.6})`;
+        if (okEl) okEl.style.opacity = String(progress);
+        if (noEl) noEl.style.opacity = '0';
+      } else {
+        card.style.boxShadow = `0 0 0 2px rgba(220,38,38,${progress * 0.6})`;
+        if (noEl) noEl.style.opacity = String(progress);
+        if (okEl) okEl.style.opacity = '0';
+      }
+
+      if (Math.abs(dx) >= THRESHOLD) navigator.vibrate?.(8);
+    }, { passive: true });
+
     card.addEventListener('touchend', e => {
+      if (locked || !swiping) { resetSwipeCard(card); return; }
       const dx = e.changedTouches[0].clientX - startX;
-      const id = card.dataset.id;
-      if (dx > 80) approve(id);
-      else if (dx < -80) disapprove(id);
+      if (dx > THRESHOLD) {
+        locked = true;
+        dismissSwipeHint();
+        swipeCardOff(card, 'right', () => approve(id));
+      } else if (dx < -THRESHOLD) {
+        locked = true;
+        dismissSwipeHint();
+        swipeCardOff(card, 'left', () => disapprove(id));
+      } else {
+        resetSwipeCard(card);
+      }
     }, { passive: true });
   });
 }
 
+function resetSwipeCard(card) {
+  card.style.transition  = 'transform 0.35s cubic-bezier(.25,.46,.45,.94), box-shadow 0.35s';
+  card.style.transform   = '';
+  card.style.boxShadow   = '';
+  card.querySelectorAll('.swipe-overlay').forEach(el => { el.style.opacity = '0'; });
+}
+
+function swipeCardOff(card, direction, cb) {
+  const vw = window.innerWidth || 400;
+  card.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+  card.style.transform  = `translateX(${direction === 'right' ? vw + 60 : -(vw + 60)}px)`;
+  card.style.opacity    = '0';
+  setTimeout(cb, 300);
+}
+
+// ─── Push notifications ────────────────────────────────────────────────────────
+async function initPushNotifications(reg) {
+  if (!('PushManager' in window)) return;
+  const { publicKey } = await apiJSON('/api/push/vapid-public-key').catch(() => ({}));
+  if (!publicKey) return;
+  window._vapidPublicKey = publicKey;
+
+  const existing = await reg.pushManager.getSubscription();
+  if (existing) {
+    window._pushSubscription = existing;
+    updatePushBtn(true);
+  } else {
+    updatePushBtn(false);
+  }
+}
+
+function updatePushBtn(subscribed) {
+  document.querySelectorAll('.push-toggle-btn').forEach(btn => {
+    btn.dataset.subscribed = subscribed ? '1' : '0';
+    btn.innerHTML = subscribed
+      ? '<i class="ti ti-bell-off"></i> Notificaties uit'
+      : '<i class="ti ti-bell-ringing"></i> Notificaties aan';
+    btn.title = subscribed ? 'Push notificaties uitschakelen' : 'Push notificaties inschakelen';
+  });
+}
+
+async function togglePushSubscription() {
+  if (!('PushManager' in window) || !window._swReg) {
+    toast('Push notificaties worden niet ondersteund door deze browser', 'error');
+    return;
+  }
+  const btn = document.querySelector('.push-toggle-btn');
+  const subscribed = btn?.dataset.subscribed === '1';
+
+  if (subscribed && window._pushSubscription) {
+    await window._pushSubscription.unsubscribe();
+    await api('/api/push/unsubscribe', { method: 'DELETE', body: JSON.stringify({ endpoint: window._pushSubscription.endpoint }) });
+    window._pushSubscription = null;
+    updatePushBtn(false);
+    toast('Push notificaties uitgeschakeld', 'info');
+    return;
+  }
+
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') {
+    toast('Toestemming geweigerd — sta notificaties toe in je browser', 'error');
+    return;
+  }
+  try {
+    const sub = await window._swReg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(window._vapidPublicKey)
+    });
+    window._pushSubscription = sub;
+    await api('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription: sub.toJSON() }) });
+    updatePushBtn(true);
+    toast('Push notificaties ingeschakeld!', 'success');
+  } catch (err) {
+    toast('Kon niet abonneren op push notificaties', 'error');
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+function dismissSwipeHint() {
+  localStorage.setItem('swipeHintDismissed', '1');
+  const hint = document.getElementById('swipeHint');
+  if (hint) { hint.style.opacity = '0'; setTimeout(() => hint.remove(), 300); }
+}
+
+// ─── Inbox keyboard shortcuts ─────────────────────────────────────────────────
+let _inboxKbListener = null;
+
+function initInboxKeyboard() {
+  if (_inboxKbListener) document.removeEventListener('keydown', _inboxKbListener);
+
+  _inboxKbListener = function(e) {
+    if (state.view !== 'inbox') return;
+    // Don't fire when typing in inputs/textareas
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    // Don't fire when a modal is open
+    if (document.getElementById('modal')?.style.display !== 'none' &&
+        document.getElementById('modal')?.style.display !== '') return;
+
+    const cards = [...document.querySelectorAll('#inboxContent .inbox-card:not([style*="opacity: 0"])')]
+      .filter(c => !c.closest('.trash-section'));
+
+    if (!cards.length) return;
+
+    let idx = cards.findIndex(c => c.classList.contains('kb-focused'));
+    if (idx === -1) idx = 0;
+
+    switch (e.key) {
+      case 'ArrowDown':
+      case 's':
+      case 'S':
+        e.preventDefault();
+        setInboxFocus(cards, Math.min(idx + 1, cards.length - 1));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setInboxFocus(cards, Math.max(idx - 1, 0));
+        break;
+      case 'a':
+      case 'A':
+        if (cards[idx]) { approve(cards[idx].dataset.id); clearInboxFocus(cards); }
+        break;
+      case 'r':
+      case 'R':
+        if (cards[idx]) { disapprove(cards[idx].dataset.id); clearInboxFocus(cards); }
+        break;
+      case 'e':
+      case 'E':
+        if (cards[idx]) viewEmail(cards[idx].dataset.id);
+        break;
+    }
+  };
+
+  document.addEventListener('keydown', _inboxKbListener);
+  // Focus first card automatically
+  const cards = [...document.querySelectorAll('#inboxContent .inbox-card')]
+    .filter(c => !c.closest('.trash-section'));
+  if (cards.length) setInboxFocus(cards, 0);
+}
+
+function setInboxFocus(cards, idx) {
+  cards.forEach((c, i) => c.classList.toggle('kb-focused', i === idx));
+  cards[idx]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function clearInboxFocus(cards) {
+  cards.forEach(c => c.classList.remove('kb-focused'));
+}
+
+async function markLinkedinDmSent(id) {
+  const card = document.getElementById('card-' + id);
+  await api(`/api/inbox/${id}/approve`, { method: 'PATCH' });
+  toast('LinkedIn DM gemarkeerd als verstuurd', 'success');
+  if (card) {
+    card.style.transition = 'all 0.3s';
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(-8px)';
+    setTimeout(() => card.remove(), 320);
+  }
+}
+
 async function approve(id) {
+  if (!state.settings?.gmailConfigured) {
+    openModal(`
+      <div style="text-align:center;padding:8px 0">
+        <div style="font-size:40px;margin-bottom:12px">✉️</div>
+        <h3 style="margin:0 0 8px;font-size:18px">Gmail niet ingesteld</h3>
+        <p style="color:var(--text-secondary);margin:0 0 20px;font-size:14px">Stel eerst Gmail in voordat je emails kunt versturen.</p>
+        <div style="display:flex;gap:10px;justify-content:center">
+          <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
+          <button class="btn btn-primary" onclick="closeModal();setView('settings');setTimeout(()=>document.querySelector('[data-tab=email]')?.click(),100)">
+            <i class="ti ti-settings"></i> Naar Instellingen
+          </button>
+        </div>
+      </div>
+    `);
+    return;
+  }
+
   const card = document.getElementById('card-' + id);
   card.style.transition = 'all 0.3s';
   card.style.background = '#f0fdf4';
@@ -757,7 +1107,11 @@ async function approve(id) {
     return;
   }
 
-  toast('Email verstuurd! ✓', 'success');
+  if (data.emailDuplicateWarning) {
+    toast(`Waarschuwing: ${esc(data.emailDuplicateWarning.companyName)} heeft hetzelfde e-mailadres (status: ${data.emailDuplicateWarning.status})`, 'warning');
+  } else {
+    toast('Email verstuurd! ✓', 'success');
+  }
   setTimeout(() => {
     card.style.opacity = '0';
     card.style.transform = 'translateY(-8px)';
@@ -932,6 +1286,170 @@ function viewLinkedin(id) {
 
 function copyText(text, msg) {
   navigator.clipboard.writeText(text).then(() => toast(msg || 'Gekopieerd!', 'success'));
+}
+
+// ─── Proposal generator ───────────────────────────────────────────────────────
+async function generateProposal(leadId) {
+  const btn = document.getElementById(`propGenBtn-${leadId}`);
+  const prog = document.getElementById(`propProgress-${leadId}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Genereren...'; }
+  if (prog) prog.style.display = '';
+
+  const steps = ['propStep1', 'propStep2', 'propStep3'];
+  function setStep(i, done) {
+    const el = document.getElementById(`${steps[i]}-${leadId}`);
+    if (!el) return;
+    el.className = `proposal-step ${done ? 'done' : 'active'}`;
+    el.querySelector('i').className = done ? 'ti ti-circle-check' : 'ti ti-loader-2';
+    if (!done) el.querySelector('i').style.animation = 'spin 1s linear infinite';
+    else el.querySelector('i').style.animation = '';
+  }
+
+  try {
+    const res = await fetch(`/api/leads/${leadId}/generate-proposal`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    });
+    if (!res.ok || !res.body) throw new Error('Server error');
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const ev = JSON.parse(line.slice(6));
+          if (ev.step !== undefined) setStep(ev.step - 1, false);
+          if (ev.done) {
+            steps.forEach((_, i) => setStep(i, true));
+            const lead = state.leads.find(l => l.id === leadId);
+            if (lead && ev.proposal) {
+              lead.proposal = ev.proposal;
+              lead.proposalGeneratedAt = ev.generatedAt;
+            }
+            setTimeout(() => openLeadDetail(leadId), 300);
+          }
+        } catch {}
+      }
+    }
+  } catch (err) {
+    toast('Voorstel genereren mislukt: ' + err.message, 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-file-text"></i> Genereer voorstel'; }
+    if (prog) prog.style.display = 'none';
+  }
+}
+
+function downloadProposal(leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead?.proposal) return;
+  const blob = new Blob([`<!DOCTYPE html><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:40px auto;padding:0 24px;line-height:1.6}</style>${lead.proposal}`], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `voorstel-${lead.companyName.replace(/\s+/g,'-').toLowerCase()}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function sendProposalEmail(leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead?.proposal) return;
+  if (!confirm(`Voorstel versturen naar ${lead.contactEmail || lead.companyName}?`)) return;
+  const res = await api(`/api/leads/${leadId}/proposal/send`, { method: 'POST' });
+  if (res.ok) toast('Voorstel verstuurd!', 'success');
+  else toast('Versturen mislukt', 'error');
+}
+
+async function generateContract(leadId) {
+  const btn  = document.getElementById(`contractGenBtn-${leadId}`);
+  const prog = document.getElementById(`contractProgress-${leadId}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Genereren...'; }
+  if (prog) prog.style.display = '';
+
+  const steps = ['contractStep1', 'contractStep2', 'contractStep3'];
+  function setStep(i, done) {
+    const el = document.getElementById(`${steps[i]}-${leadId}`);
+    if (!el) return;
+    el.className = `proposal-step ${done ? 'done' : 'active'}`;
+    el.querySelector('i').className = done ? 'ti ti-circle-check' : 'ti ti-loader-2';
+    if (!done) el.querySelector('i').style.animation = 'spin 1s linear infinite';
+    else el.querySelector('i').style.animation = '';
+  }
+
+  try {
+    const res = await fetch(`/api/leads/${leadId}/generate-contract`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    });
+    if (!res.ok || !res.body) throw new Error('Server error');
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const ev = JSON.parse(line.slice(6));
+          if (ev.step !== undefined) setStep(ev.step - 1, false);
+          if (ev.done) {
+            steps.forEach((_, i) => setStep(i, true));
+            const lead = state.leads.find(l => l.id === leadId);
+            if (lead && ev.contract) {
+              lead.contract = ev.contract;
+              lead.contractGeneratedAt = ev.generatedAt;
+            }
+            setTimeout(() => { openLeadDetail(leadId); switchDetailTab('contract'); }, 300);
+          }
+          if (ev.error) throw new Error(ev.error);
+        } catch {}
+      }
+    }
+  } catch (err) {
+    toast('Contract genereren mislukt: ' + err.message, 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-file-certificate"></i> Genereer contract'; }
+    if (prog) prog.style.display = 'none';
+  }
+}
+
+function downloadContract(leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead?.contract) return;
+  const blob = new Blob([`<!DOCTYPE html><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:40px auto;padding:0 24px;line-height:1.6}</style>${lead.contract}`], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `contract-${lead.companyName.replace(/\s+/g, '-').toLowerCase()}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function sendContractEmail(leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead?.contract) return;
+  if (!confirm(`Contract versturen naar ${lead.contactEmail || lead.companyName}?`)) return;
+  const res = await api(`/api/leads/${leadId}/contract/send`, { method: 'POST' });
+  if (res.ok) {
+    toast('Contract verstuurd!', 'success');
+    const idx = state.leads.findIndex(l => l.id === leadId);
+    if (idx !== -1) state.leads[idx].contractSentAt = new Date().toISOString();
+    openLeadDetail(leadId);
+  } else {
+    toast('Versturen mislukt', 'error');
+  }
 }
 
 function exportLeadsCSV(statusFilter) {
@@ -1719,6 +2237,8 @@ function openLeadDetail(id) {
       <button class="detail-tab"        data-tab="reports"   onclick="switchDetailTab('reports')">Rapporten${lead.reports?.length > 0 ? `<span class="tab-badge">${lead.reports.length}</span>` : ''}</button>
       ${lead.intakeToken ? `<button class="detail-tab" data-tab="intake" onclick="switchDetailTab('intake')">${lead.intakeSubmittedAt ? '<i class="ti ti-clipboard-check" style="color:#10b981;margin-right:4px"></i>' : '<i class="ti ti-clipboard-list" style="margin-right:4px"></i>'}Intake</button>` : ''}
       ${lead.projectPlan ? `<button class="detail-tab" data-tab="project" onclick="switchDetailTab('project')"><i class="ti ti-rocket" style="margin-right:4px"></i>Project</button>` : ''}
+      <button class="detail-tab" data-tab="proposal"  onclick="switchDetailTab('proposal')">${lead.proposal  ? '<i class="ti ti-file-check" style="margin-right:4px;color:var(--success)"></i>' : '<i class="ti ti-file-text" style="margin-right:4px"></i>'}Voorstel</button>
+      <button class="detail-tab" data-tab="contract" onclick="switchDetailTab('contract')">${lead.contract  ? '<i class="ti ti-file-certificate" style="margin-right:4px;color:var(--success)"></i>' : '<i class="ti ti-file-certificate" style="margin-right:4px"></i>'}Contract</button>
     </div>
 
     <!-- ── Tab: Overzicht ── -->
@@ -1727,6 +2247,8 @@ function openLeadDetail(id) {
         <span class="score-number score-${scoreColor(lead.score || 0)}" style="font-size:28px;font-weight:800">${(lead.score || 0).toFixed(1)}</span>
         <span class="text-secondary">/10 &nbsp;·&nbsp; €${(lead.estimatedValue || 0).toLocaleString('nl-NL')}/mnd</span>
         ${lead.urgency ? `<span class="badge badge-${lead.urgency === 'critical' ? 'danger' : lead.urgency === 'high' ? 'warning' : 'blue'}" style="font-size:10px">${lead.urgency}</span>` : ''}
+        ${lead.emailBounced ? `<span class="badge badge-red" style="font-size:10px"><i class="ti ti-mail-off"></i> Email gebounced</span>` : ''}
+        ${lead.contactEmail && (state.leads || []).some(l => l.id !== lead.id && (l.contactEmail||'').toLowerCase() === lead.contactEmail.toLowerCase() && ['sent','replied','client','scheduled'].includes(l.status)) ? `<span class="badge badge-amber" style="font-size:10px" title="Dit e-mailadres is ook gekoppeld aan een andere lead"><i class="ti ti-alert-triangle"></i> Email duplicaat</span>` : ''}
       </div>
 
       ${lead.emailOpener ? `<div class="opener-preview" style="margin-bottom:12px"><i class="ti ti-quote"></i><span>${lead.emailOpener}</span></div>` : ''}
@@ -1777,6 +2299,41 @@ function openLeadDetail(id) {
           ).join('')}
         </select>
       </div>
+
+      <div class="detail-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div class="detail-section-title" style="margin:0"><i class="ti ti-users-group" style="margin-right:4px;color:var(--accent)"></i>Referral</div>
+          <button class="btn btn-ghost btn-sm" onclick="linkReferral('${lead.id}')">
+            <i class="ti ti-link"></i> ${lead.referredBy ? 'Wijzigen' : 'Koppel referrer'}
+          </button>
+        </div>
+        ${lead.referredBy ? (() => {
+          const referrer = state.leads.find(l => l.id === lead.referredBy);
+          return referrer
+            ? `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--accent-light);border:1px solid #bfdbfe;border-radius:8px;font-size:13px">
+                <i class="ti ti-user-check" style="color:var(--accent)"></i>
+                <span>Doorverwezen door <strong style="cursor:pointer;color:var(--accent)" onclick="openLeadDetail('${referrer.id}')">${esc(referrer.companyName)}</strong></span>
+                <button class="btn btn-ghost btn-sm" style="margin-left:auto;padding:2px 6px;font-size:11px" onclick="unlinkReferral('${lead.id}')"><i class="ti ti-x"></i></button>
+              </div>`
+            : `<div style="font-size:12px;color:var(--text-muted)">Referrer-id ingesteld maar niet gevonden.</div>`;
+        })() : `<div style="font-size:12px;color:var(--text-muted)">Niet doorverwezen — koppel een bestaande klant als referrer.</div>`}
+        ${lead.referralEmailSent ? `
+          <div style="margin-top:8px;font-size:12px;color:var(--success)"><i class="ti ti-send"></i> Referral-verzoek verstuurd${lead.referralSentAt ? ' op ' + new Date(lead.referralSentAt).toLocaleDateString('nl-NL') : ''}</div>
+        ` : ''}
+      </div>
+
+      ${state.settings?.calendlyUrl ? `
+        <div class="detail-section">
+          <div class="detail-section-title"><i class="ti ti-calendar-event" style="color:#006bff"></i> Gesprek inplannen</div>
+          <a class="btn btn-ghost btn-sm calendly-btn" href="${esc(state.settings.calendlyUrl)}" target="_blank" rel="noopener">
+            <i class="ti ti-calendar-event"></i> Calendly openen
+          </a>
+          ${lead.calendlyBooking ? `
+            <div style="margin-top:8px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:12px;color:#1d4ed8">
+              <i class="ti ti-check"></i> <strong>${esc(lead.calendlyBooking.eventName)}</strong> ingepland${lead.calendlyBooking.startTime ? ' op ' + new Date(lead.calendlyBooking.startTime).toLocaleString('nl-NL', {dateStyle:'short',timeStyle:'short'}) : ''}
+            </div>` : ''}
+        </div>
+      ` : ''}
 
       ${['approved','scheduled','sent','replied'].includes(lead.status) && !lead.projectStartedAt ? `
         <div class="detail-section">
@@ -2181,6 +2738,91 @@ function openLeadDetail(id) {
       ` : ''}
     </div>
     ` : ''}
+
+    <!-- ── Tab: Contract ── -->
+    <div class="detail-tab-content" data-tab-content="contract" style="display:none">
+      <div class="detail-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div class="detail-section-title" style="margin:0">Dienstverleningsovereenkomst</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${lead.contract ? `
+              <button class="btn btn-ghost btn-sm" onclick="downloadContract('${lead.id}')">
+                <i class="ti ti-download"></i> Download
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick="sendContractEmail('${lead.id}')">
+                <i class="ti ti-mail"></i> Verstuur
+              </button>
+            ` : ''}
+            <button class="btn btn-primary btn-sm" onclick="generateContract('${lead.id}')" id="contractGenBtn-${lead.id}">
+              <i class="ti ti-file-certificate"></i> ${lead.contract ? 'Regenereer' : 'Genereer contract'}
+            </button>
+          </div>
+        </div>
+        ${lead.contract ? `
+          <div class="proposal-preview">
+            <iframe id="contractFrame-${lead.id}" sandbox="allow-same-origin" style="width:100%;border:none;min-height:520px"></iframe>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:8px">
+            Gegenereerd op ${new Date(lead.contractGeneratedAt).toLocaleDateString('nl-NL')}
+            ${lead.contractSentAt ? ` · <span style="color:var(--success)"><i class="ti ti-check"></i> Verstuurd op ${new Date(lead.contractSentAt).toLocaleDateString('nl-NL')}</span>` : ''}
+          </div>
+        ` : `
+          <div class="empty-state" style="padding:32px 0;text-align:center">
+            <i class="ti ti-file-certificate" style="font-size:36px;color:var(--text-muted);display:block;margin-bottom:10px"></i>
+            <div style="color:var(--text-secondary);font-size:14px">Nog geen contract gegenereerd</div>
+            <div style="color:var(--text-muted);font-size:12px;margin-top:4px">Klik op "Genereer contract" om een juridisch contract op te stellen</div>
+          </div>
+        `}
+        <div id="contractProgress-${lead.id}" style="display:none">
+          <div class="proposal-progress">
+            <div id="contractStep1-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Contractgegevens ophalen</div>
+            <div id="contractStep2-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Contract opstellen</div>
+            <div id="contractStep3-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Contract opslaan</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Tab: Voorstel ── -->
+    <div class="detail-tab-content" data-tab-content="proposal" style="display:none">
+      <div class="detail-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div class="detail-section-title" style="margin:0">Offerte / voorstel</div>
+          <div style="display:flex;gap:8px">
+            ${lead.proposal ? `
+              <button class="btn btn-ghost btn-sm" onclick="downloadProposal('${lead.id}')">
+                <i class="ti ti-download"></i> Download
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick="sendProposalEmail('${lead.id}')">
+                <i class="ti ti-mail"></i> Verstuur
+              </button>
+            ` : ''}
+            <button class="btn btn-primary btn-sm" onclick="generateProposal('${lead.id}')" id="propGenBtn-${lead.id}">
+              <i class="ti ti-file-text"></i> ${lead.proposal ? 'Regenereer' : 'Genereer voorstel'}
+            </button>
+          </div>
+        </div>
+        ${lead.proposal ? `
+          <div class="proposal-preview">
+            <iframe id="proposalFrame-${lead.id}" sandbox="allow-same-origin" style="width:100%;border:none;min-height:480px"></iframe>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:8px">Gegenereerd op ${new Date(lead.proposalGeneratedAt).toLocaleDateString('nl-NL')}</div>
+        ` : `
+          <div class="empty-state" style="padding:32px 0;text-align:center">
+            <i class="ti ti-file-description" style="font-size:36px;color:var(--text-muted);display:block;margin-bottom:10px"></i>
+            <div style="color:var(--text-secondary);font-size:14px">Nog geen voorstel gegenereerd</div>
+            <div style="color:var(--text-muted);font-size:12px;margin-top:4px">Klik op "Genereer voorstel" om een professionele offerte te maken</div>
+          </div>
+        `}
+        <div id="propProgress-${lead.id}" style="display:none">
+          <div class="proposal-progress">
+            <div id="propStep1-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Lead data analyseren</div>
+            <div id="propStep2-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Voorstel schrijven</div>
+            <div id="propStep3-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Opslaan & weergeven</div>
+          </div>
+        </div>
+      </div>
+    </div>
   `;
 
   // Attach hover-show for task delete buttons
@@ -2205,6 +2847,16 @@ function switchDetailTab(tabName) {
     const lead = state.leads.find(l => l.id === state.currentLeadId);
     if (lead?.clientMessages) lead.clientMessages.forEach(m => { m.read = true; });
   }
+  if (tabName === 'proposal' && state.currentLeadId) {
+    const lead = state.leads.find(l => l.id === state.currentLeadId);
+    const frame = document.getElementById(`proposalFrame-${state.currentLeadId}`);
+    if (frame && lead?.proposal) frame.srcdoc = lead.proposal;
+  }
+  if (tabName === 'contract' && state.currentLeadId) {
+    const lead = state.leads.find(l => l.id === state.currentLeadId);
+    const frame = document.getElementById(`contractFrame-${state.currentLeadId}`);
+    if (frame && lead?.contract) frame.srcdoc = lead.contract;
+  }
 }
 
 function buildWebsiteTab(lead) {
@@ -2216,57 +2868,88 @@ function buildWebsiteTab(lead) {
       <span style="font-size:13px">${label}</span>
     </div>`;
 
+  const SITE_TEMPLATES = [
+    { id: 'modern',    label: 'Modern',    icon: '✨', desc: 'Clean, witruimte, gradient hero' },
+    { id: 'bold',      label: 'Bold',      icon: '⚡', desc: 'Donkere hero, hoog contrast' },
+    { id: 'minimal',   label: 'Minimaal',  icon: '◻',  desc: 'Wit, subtiel, elegant' },
+    { id: 'corporate', label: 'Corporate', icon: '🏢', desc: 'Zakelijk, blauw, formeel' },
+  ];
+
   const generatorSection = site ? `
     <div class="detail-section site-gen-section">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <div style="display:flex;align-items:center;gap:8px">
           <div class="detail-section-title" style="margin:0">Gegenereerde website</div>
           <span class="site-status-badge ${site.status === 'live' ? 'site-status-live' : 'site-status-preview'}">${site.status === 'live' ? 'Live' : 'Preview'}</span>
+          ${site.template ? `<span style="font-size:11px;color:var(--text-secondary);background:var(--surface-2);padding:2px 8px;border-radius:20px">${site.template}</span>` : ''}
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <a href="${site.siteUrl}" target="_blank" class="btn btn-sm btn-outline"><i class="ti ti-external-link"></i> Bekijk live</a>
-          <button class="btn btn-sm btn-ghost" onclick="editSiteHTML('${lead.id}')"><i class="ti ti-code"></i> HTML bewerken</button>
-          <button class="btn btn-sm btn-ghost" onclick="sendSiteFeedback('${lead.id}')"><i class="ti ti-message"></i> Feedback</button>
+          <a href="${site.siteUrl}" target="_blank" class="btn btn-sm btn-outline"><i class="ti ti-external-link"></i> Bekijk</a>
+          <button class="btn btn-sm btn-ghost" onclick="editSiteHTML('${lead.id}')"><i class="ti ti-code"></i> HTML</button>
+          <button class="btn btn-sm btn-ghost" onclick="openSeoPanel('${lead.id}')"><i class="ti ti-search"></i> SEO</button>
           <button class="btn btn-sm btn-ghost" onclick="downloadSiteHTML('${lead.id}')"><i class="ti ti-download"></i> Download</button>
           ${site.status === 'preview'
             ? `<button class="btn btn-sm" style="background:#10b981;color:#fff;border:none" onclick="setSiteStatus('${lead.id}','live')"><i class="ti ti-rocket"></i> Zet live</button>`
-            : `<button class="btn btn-sm btn-ghost" onclick="setSiteStatus('${lead.id}','preview')"><i class="ti ti-eye-off"></i> Terug naar preview</button>`}
-          <button class="btn btn-sm" style="background:#111;color:#fff;border:none" onclick="generateSite('${lead.id}')"><i class="ti ti-refresh"></i> Regenereer</button>
+            : `<button class="btn btn-sm btn-ghost" onclick="setSiteStatus('${lead.id}','preview')"><i class="ti ti-eye-off"></i> Preview</button>`}
+          <button class="btn btn-sm" style="background:#111;color:#fff;border:none" onclick="openRegenerateModal('${lead.id}')"><i class="ti ti-refresh"></i> Regenereer</button>
         </div>
       </div>
 
       <div class="site-preview-wrap">
-        <iframe src="${site.siteUrl}" class="site-preview-iframe" title="Website preview" loading="lazy" sandbox="allow-same-origin allow-scripts"></iframe>
+        <iframe src="${site.siteUrl}?_t=${Date.now()}" class="site-preview-iframe" title="Website preview" loading="lazy" sandbox="allow-same-origin allow-scripts"></iframe>
       </div>
 
       <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-size:12px;color:var(--text-muted)">URL:</span>
-        <a href="${site.siteUrl}" target="_blank" style="font-size:12px;color:#6366f1;word-break:break-all">${site.siteUrl}</a>
+        <a href="${site.siteUrl}" target="_blank" style="font-size:12px;color:var(--accent);word-break:break-all">${site.siteUrl}</a>
         <button class="btn btn-ghost" style="padding:2px 8px;font-size:11px" onclick="navigator.clipboard.writeText('${site.siteUrl}');toast('URL gekopieerd!')"><i class="ti ti-copy"></i></button>
       </div>
+
+      ${(site.versions || []).length ? `
+        <div style="margin-top:14px">
+          <div style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+            <span><i class="ti ti-history"></i> Versiegeschiedenis (${site.versions.length})</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${(site.versions || []).map((v, i) => `
+              <div class="site-version-card">
+                <div>
+                  <div style="font-size:12px;font-weight:600">${new Date(v.savedAt).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })}</div>
+                  <div style="font-size:11px;color:var(--text-secondary)">${v.template || 'modern'} template</div>
+                </div>
+                <button class="btn btn-ghost btn-sm" onclick="revertSiteVersion('${lead.id}', ${i})"><i class="ti ti-history"></i> Terugzetten</button>
+              </div>`).join('')}
+          </div>
+        </div>
+      ` : ''}
 
       ${site.feedback?.length ? `
         <div style="margin-top:12px">
           <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px">Feedback (${site.feedback.length})</div>
           ${site.feedback.map(f => `
-            <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;color:var(--text-muted);margin-bottom:4px">
-              <span style="color:var(--text)">${f.text}</span>
-              <span style="margin-left:8px;opacity:.6">${f.by} · ${new Date(f.time).toLocaleDateString('nl-NL')}</span>
-            </div>
-          `).join('')}
+            <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:4px">
+              <span>${esc(f.text)}</span>
+              <span style="margin-left:8px;opacity:.6">${esc(f.by)} · ${new Date(f.time).toLocaleDateString('nl-NL')}</span>
+            </div>`).join('')}
         </div>
       ` : ''}
     </div>
   ` : `
     <div class="detail-section">
-      <div style="text-align:center;padding:24px 16px">
-        <div style="font-size:32px;margin-bottom:10px">🌐</div>
-        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">Website generator</div>
-        <div style="font-size:13px;color:var(--text-muted);margin-bottom:18px">Genereer een professionele website op basis van de bedrijfsinformatie en intake antwoorden.</div>
-        <button class="btn" style="background:#111;color:#fff;border:none;padding:10px 20px" onclick="generateSite('${lead.id}')">
+      <div style="font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:10px">Kies een template</div>
+      <div class="site-template-grid" id="siteTemplateGrid">
+        ${SITE_TEMPLATES.map(t => `
+          <div class="site-template-card ${t.id === 'modern' ? 'selected' : ''}" onclick="selectSiteTemplate('${t.id}',this)">
+            <div class="site-template-icon">${t.icon}</div>
+            <div class="site-template-label">${t.label}</div>
+            <div class="site-template-desc">${t.desc}</div>
+          </div>`).join('')}
+      </div>
+      <div style="text-align:center;padding:16px 0 8px">
+        <button class="btn" style="background:#111;color:#fff;border:none;padding:12px 28px;font-size:14px" onclick="generateSite('${lead.id}')">
           <i class="ti ti-wand"></i> Website genereren
         </button>
-        ${!lead.intakeAnswers ? `<div style="font-size:12px;color:var(--text-muted);margin-top:10px">Tip: na intake invullen krijg je betere resultaten.</div>` : ''}
+        ${!lead.intakeAnswers ? `<div style="font-size:12px;color:var(--text-muted);margin-top:10px"><i class="ti ti-info-circle"></i> Tip: intake invullen geeft betere resultaten.</div>` : ''}
       </div>
     </div>
   `;
@@ -2862,8 +3545,8 @@ function createPayment(leadId) {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-group">
-          <label>Bedrag (€)</label>
-          <input type="number" id="payAmount" value="${defaultAmount}" min="1">
+          <label>Bedrag excl. BTW (€)</label>
+          <input type="number" id="payAmount" value="${defaultAmount}" min="1" oninput="updateBtwBreakdown('pay')">
         </div>
         <div class="form-group" id="splitPartsGroup" style="display:none">
           <label>Aantal delen</label>
@@ -2873,6 +3556,11 @@ function createPayment(leadId) {
           </select>
         </div>
       </div>
+      ${s.btwEnabled ? `<div class="btw-breakdown" id="btwBreakdownPay">
+        <div class="btw-row"><span>Excl. BTW</span><span id="btwExclPay">€ ${defaultAmount.toFixed(2).replace('.',',')}</span></div>
+        <div class="btw-row"><span>BTW ${s.btwRate !== undefined ? s.btwRate : 21}%</span><span id="btwAmtPay">€ ${(defaultAmount * (s.btwRate !== undefined ? s.btwRate : 21) / 100).toFixed(2).replace('.',',')}</span></div>
+        <div class="btw-row btw-total"><span>Incl. BTW</span><span id="btwInclPay">€ ${(defaultAmount * (1 + (s.btwRate !== undefined ? s.btwRate : 21) / 100)).toFixed(2).replace('.',',')}</span></div>
+      </div>` : ''}
       <div class="form-group">
         <label>Omschrijving</label>
         <input type="text" id="payDesc" value="${esc(defaultDesc)}">
@@ -2913,17 +3601,23 @@ function updatePayTypeUI() {
 }
 
 async function savePayment(leadId) {
-  const amount  = parseInt(document.getElementById('payAmount')?.value || 0);
+  const amountExcl = parseFloat(document.getElementById('payAmount')?.value || 0);
   const desc    = document.getElementById('payDesc')?.value?.trim();
   const method  = document.getElementById('payMethod')?.value || 'stripe';
   const dueDate = document.getElementById('payDue')?.value;
   const type    = document.querySelector('input[name="payType"]:checked')?.value || 'subscription';
   const splitParts = parseInt(document.getElementById('splitParts')?.value || 2);
   const billing = type === 'subscription' ? 'maandelijks' : 'eenmalig';
-  if (!amount || amount < 1) return toast('Voer een geldig bedrag in', 'error');
+  if (!amountExcl || amountExcl < 1) return toast('Voer een geldig bedrag in', 'error');
+  const s = state.settings || {};
+  const btwEnabled = s.btwEnabled || false;
+  const btwRate    = s.btwRate !== undefined ? s.btwRate : 21;
+  const btwAmt     = btwEnabled ? Math.round(amountExcl * btwRate) / 100 : 0;
+  const amount     = btwEnabled ? Math.round((amountExcl + btwAmt) * 100) / 100 : amountExcl;
+  const description = btwEnabled ? `${desc} (incl. ${btwRate}% BTW)` : desc;
   const btn = document.getElementById('savePayBtn');
   btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...';
-  const res  = await api(`/api/leads/${leadId}/payments`, { method: 'POST', body: JSON.stringify({ type, amount, description: desc, billing, method, dueDate, splitParts }) });
+  const res  = await api(`/api/leads/${leadId}/payments`, { method: 'POST', body: JSON.stringify({ type, amount, description, billing, method, dueDate, splitParts }) });
   const data = await res.json();
   if (!res.ok) { toast(data.error || 'Aanmaken mislukt', 'error'); btn.disabled = false; btn.innerHTML = '<i class="ti ti-send"></i> Factuur aanmaken'; return; }
   const lead = state.leads.find(l => l.id === leadId);
@@ -3150,9 +3844,14 @@ function generateSite(leadId) {
     </div>
   `);
 
+  const selectedTemplate = document.querySelector('#siteTemplateGrid .selected')?.dataset?.template
+    || document.querySelector('.site-template-card.selected')?.dataset?.template
+    || (window._selectedSiteTemplate ?? 'modern');
+
   fetch(`/api/leads/${leadId}/generate-site`, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${localStorage.getItem('agencyToken')}` }
+    headers: { 'Authorization': `Bearer ${localStorage.getItem('agencyToken')}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template: selectedTemplate })
   }).then(res => {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -3250,6 +3949,70 @@ async function submitSiteFeedback(leadId) {
   const res = await apiFetch(`/api/leads/${leadId}/site/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ feedback }) });
   if (res.ok) { toast('Feedback opgeslagen!'); closeModal(); renderLeadDetail(leadId); }
   else { toast('Feedback opslaan mislukt'); }
+}
+
+function selectSiteTemplate(templateId, el) {
+  window._selectedSiteTemplate = templateId;
+  document.querySelectorAll('.site-template-card').forEach(c => c.classList.remove('selected'));
+  if (el) { el.classList.add('selected'); el.dataset.template = templateId; }
+}
+
+function openRegenerateModal(leadId) {
+  const SITE_TEMPLATES = [
+    { id: 'modern',    label: 'Modern',    icon: '✨', desc: 'Clean, witruimte, gradient hero' },
+    { id: 'bold',      label: 'Bold',      icon: '⚡', desc: 'Donkere hero, hoog contrast' },
+    { id: 'minimal',   label: 'Minimaal',  icon: '◻',  desc: 'Wit, subtiel, elegant' },
+    { id: 'corporate', label: 'Corporate', icon: '🏢', desc: 'Zakelijk, blauw, formeel' },
+  ];
+  openModal(`<div class="modal-header"><h3 class="modal-title">Website regenereren</h3></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">De huidige versie wordt opgeslagen in de versiegeschiedenis. Kies een template voor de nieuwe versie.</p>
+      <div class="site-template-grid" id="regenTemplateGrid">
+        ${SITE_TEMPLATES.map(t => `
+          <div class="site-template-card ${t.id === 'modern' ? 'selected' : ''}" data-template="${t.id}" onclick="selectSiteTemplate('${t.id}',this)">
+            <div class="site-template-icon">${t.icon}</div>
+            <div class="site-template-label">${t.label}</div>
+            <div class="site-template-desc">${t.desc}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
+      <button class="btn btn-primary" onclick="closeModal();generateSite('${leadId}')"><i class="ti ti-wand"></i> Genereren</button>
+    </div>`);
+}
+
+async function openSeoPanel(leadId) {
+  const data = await apiJSON(`/api/leads/${leadId}/site`);
+  if (!data?.exists) { toast('Geen website gevonden', 'error'); return; }
+  const seo = data.seo || {};
+  openModal(`<div class="modal-header"><h3 class="modal-title"><i class="ti ti-search"></i> SEO meta tags</h3></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">Deze tags worden direct in de HTML van de website geïnjecteerd en helpen Google de pagina beter te indexeren.</p>
+      <div class="form-group"><label>Paginatitel (title tag)</label><input type="text" id="seoTitle" placeholder="${esc(data.content?.headline || '')}" value="${esc(seo.title || '')}"></div>
+      <div class="form-group"><label>Meta description (max 160 tekens)</label><textarea id="seoDesc" style="height:80px;resize:vertical" placeholder="Korte beschrijving voor in Google zoekresultaten...">${esc(seo.description || '')}</textarea></div>
+      <div class="form-group"><label>Keywords (komma-gescheiden)</label><input type="text" id="seoKeywords" placeholder="kapsalon amsterdam, haarkleur, highlights" value="${esc(seo.keywords || '')}"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
+      <button class="btn btn-primary" onclick="saveSeoMeta('${leadId}')"><i class="ti ti-device-floppy"></i> SEO opslaan</button>
+    </div>`);
+}
+
+async function saveSeoMeta(leadId) {
+  const title    = document.getElementById('seoTitle')?.value?.trim() || '';
+  const description = document.getElementById('seoDesc')?.value?.trim() || '';
+  const keywords = document.getElementById('seoKeywords')?.value?.trim() || '';
+  const res = await api(`/api/leads/${leadId}/site/seo`, { method: 'POST', body: JSON.stringify({ title, description, keywords }) });
+  if (res?.ok) { toast('SEO tags opgeslagen.', 'success'); closeModal(); renderLeadDetail(leadId); }
+  else toast('SEO opslaan mislukt.', 'error');
+}
+
+async function revertSiteVersion(leadId, versionIdx) {
+  if (!confirm(`Versie ${versionIdx + 1} terugzetten? De huidige versie wordt gearchiveerd.`)) return;
+  const res = await api(`/api/leads/${leadId}/site/revert/${versionIdx}`, { method: 'POST' });
+  if (res?.ok) { toast('Versie teruggezet.', 'success'); renderLeadDetail(leadId); }
+  else toast('Terugzetten mislukt.', 'error');
 }
 
 async function downloadSiteHTML(leadId) {
@@ -3455,6 +4218,57 @@ async function toggleLeadTask(leadId, taskIndex, done) {
   await api(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify({ tasks: lead.tasks }) });
 }
 
+// ─── Referral linking ────────────────────────────────────────────────────────
+
+function linkReferral(leadId) {
+  const clients = state.leads.filter(l => l.status === 'client' && l.id !== leadId);
+  if (!clients.length) return toast('Nog geen klanten om te koppelen', 'error');
+  const lead = state.leads.find(l => l.id === leadId);
+
+  openModal(`
+    <div class="modal-header">
+      <h3><i class="ti ti-users-group"></i> Referrer koppelen</h3>
+      <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div style="padding:16px 24px;display:flex;flex-direction:column;gap:14px">
+      <p style="font-size:13px;color:var(--text-secondary)">Selecteer welke klant deze lead heeft doorverwezen.</p>
+      <div class="form-group">
+        <label>Doorverwezen door</label>
+        <select id="referrerSelect" style="width:100%">
+          <option value="">— Geen referrer —</option>
+          ${clients.map(c => `<option value="${c.id}" ${lead?.referredBy === c.id ? 'selected' : ''}>${esc(c.companyName)} (${esc(c.location || c.niche || '')})</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
+      <button class="btn btn-primary" onclick="saveReferralLink('${leadId}')"><i class="ti ti-link"></i> Opslaan</button>
+    </div>
+  `);
+}
+
+async function saveReferralLink(leadId) {
+  const referrerId = document.getElementById('referrerSelect')?.value || null;
+  const res = await api(`/api/leads/${leadId}/set-referrer`, { method: 'POST', body: JSON.stringify({ referrerId: referrerId || null }) });
+  if (!res.ok) return toast('Opslaan mislukt', 'error');
+  const data = await res.json();
+  const idx = state.leads.findIndex(l => l.id === leadId);
+  if (idx !== -1) state.leads[idx].referredBy = data.referredBy || null;
+  closeModal();
+  toast(referrerId ? 'Referrer gekoppeld' : 'Referrer-koppeling verwijderd', 'success');
+  openLeadDetail(leadId);
+}
+
+async function unlinkReferral(leadId) {
+  if (!confirm('Referral-koppeling verwijderen?')) return;
+  const res = await api(`/api/leads/${leadId}/set-referrer`, { method: 'POST', body: JSON.stringify({ referrerId: null }) });
+  if (!res.ok) return toast('Verwijderen mislukt', 'error');
+  const idx = state.leads.findIndex(l => l.id === leadId);
+  if (idx !== -1) state.leads[idx].referredBy = null;
+  toast('Referral-koppeling verwijderd', 'success');
+  openLeadDetail(leadId);
+}
+
 // ─── Stripe invoice ───────────────────────────────────────────────────────────
 
 async function generateCaseStudy(leadId, btn) {
@@ -3556,9 +4370,14 @@ function createInvoice(leadId) {
         <input type="text" id="invoiceDesc" value="${esc(defaultDesc)}">
       </div>
       <div class="form-group">
-        <label>Bedrag (€)</label>
-        <input type="number" id="invoiceAmount" value="${lead.estimatedValue || 800}" min="1">
+        <label>Bedrag ${s.btwEnabled ? 'excl. BTW ' : ''}(€)</label>
+        <input type="number" id="invoiceAmount" value="${lead.estimatedValue || 800}" min="1" oninput="updateBtwBreakdown('invoice')">
       </div>
+      ${s.btwEnabled ? (() => { const base = lead.estimatedValue || 800; const rate = s.btwRate !== undefined ? s.btwRate : 21; const btw = base * rate / 100; return `<div class="btw-breakdown" id="btwBreakdownInvoice">
+        <div class="btw-row"><span>Excl. BTW</span><span id="btwExclInvoice">€ ${base.toFixed(2).replace('.',',')}</span></div>
+        <div class="btw-row"><span>BTW ${rate}%</span><span id="btwAmtInvoice">€ ${btw.toFixed(2).replace('.',',')}</span></div>
+        <div class="btw-row btw-total"><span>Incl. BTW</span><span id="btwInclInvoice">€ ${(base+btw).toFixed(2).replace('.',',')}</span></div>
+      </div>`; })() : ''}
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
@@ -3599,6 +4418,24 @@ function updateInvoiceBillingUI() {
   }
 }
 
+function updateBtwBreakdown(prefix) {
+  const s = state.settings || {};
+  if (!s.btwEnabled) return;
+  const amountEl = document.getElementById(prefix === 'pay' ? 'payAmount' : 'invoiceAmount');
+  const base = parseFloat(amountEl?.value || 0);
+  const rate = s.btwRate !== undefined ? s.btwRate : 21;
+  const btw  = Math.round(base * rate) / 100;
+  const incl = Math.round((base + btw) * 100) / 100;
+  const fmt  = v => '€ ' + v.toFixed(2).replace('.', ',');
+  const sfx  = prefix === 'pay' ? 'Pay' : 'Invoice';
+  const exEl = document.getElementById('btwExcl' + sfx);
+  const bEl  = document.getElementById('btwAmt'  + sfx);
+  const iEl  = document.getElementById('btwIncl' + sfx);
+  if (exEl) exEl.textContent = fmt(base);
+  if (bEl)  bEl.textContent  = fmt(btw);
+  if (iEl)  iEl.textContent  = fmt(incl);
+}
+
 async function submitInvoice(leadId) {
   const lead    = state.leads.find(l => l.id === leadId);
   const desc    = document.getElementById('invoiceDesc')?.value || '';
@@ -3615,9 +4452,16 @@ async function submitInvoice(leadId) {
   const endpointMap = { stripe: '/api/stripe/invoice', mollie: '/api/mollie/invoice', paypal: '/api/paypal/invoice' };
   const endpoint = endpointMap[method] || '/api/stripe/invoice';
 
+  const s2 = state.settings || {};
+  const btwEnabled2 = s2.btwEnabled || false;
+  const btwRate2    = s2.btwRate !== undefined ? s2.btwRate : 21;
+  const btwAmt2     = btwEnabled2 ? Math.round(amount * btwRate2) / 100 : 0;
+  const amountIncl  = btwEnabled2 ? Math.round((amount + btwAmt2) * 100) / 100 : amount;
+  const descWithBtw = btwEnabled2 ? `${desc} (incl. ${btwRate2}% BTW)` : desc;
+
   const res  = await api(endpoint, {
     method: 'POST',
-    body: JSON.stringify({ companyName: lead?.companyName, description: desc, amount, billing })
+    body: JSON.stringify({ companyName: lead?.companyName, description: descWithBtw, amount: amountIncl, billing })
   });
   const data = await res.json();
 
@@ -4128,16 +4972,255 @@ async function renderRuns() {
       </div>
       <div id="activityLog"><div class="loading-state"><div class="spinner"></div></div></div>
     </div>
+
+    <!-- Systeemstatus & foutmeldingen -->
+    <div class="card" style="margin-top:16px">
+      <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-heartbeat" style="color:var(--danger)"></i> Systeemstatus</h3>
+        <div style="display:flex;gap:8px">
+          <a class="btn btn-ghost btn-sm" href="/status" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> Statuspagina</a>
+          <button class="btn btn-ghost btn-sm" onclick="loadSystemHealth()"><i class="ti ti-refresh"></i> Vernieuwen</button>
+        </div>
+      </div>
+      <div id="healthPanel"><div class="loading-state"><div class="spinner"></div></div></div>
+    </div>
   `;
 
   // Load costs + activity after render
   loadCostStats();
   loadActivityLog();
   loadTemplates();
+  loadSystemHealth();
 }
 
-const ACTIVITY_ICONS = { run: 'ti-player-play', email: 'ti-send', reply: 'ti-message-reply', backup: 'ti-database-export', followup: 'ti-clock-hour-4' };
-const ACTIVITY_COLORS = { run: '#2563eb', email: '#16a34a', reply: '#ea580c', backup: '#9b9b98', followup: '#7c3aed' };
+async function loadSystemHealth() {
+  const panel = document.getElementById('healthPanel');
+  if (!panel) return;
+
+  const [health, errors, rateStatus] = await Promise.all([
+    fetch('/health').then(r => r.json()).catch(() => null),
+    apiJSON('/api/errors').catch(() => []),
+    apiJSON('/api/ai/rate-status').catch(() => null)
+  ]);
+
+  if (!health) {
+    panel.innerHTML = `<div class="error-state"><i class="ti ti-alert-circle"></i> Kon status niet laden</div>`;
+    return;
+  }
+
+  const aiThrottled = rateStatus && (
+    rateStatus.callsLastMinute >= rateStatus.limits.maxCallsPerMinute * 0.9 ||
+    rateStatus.callsLastDay    >= rateStatus.limits.maxCallsPerDay    * 0.9 ||
+    rateStatus.costLastDay     >= rateStatus.limits.maxDailyCostUsd   * 0.9
+  );
+  const checks = [
+    { key: 'claude_api', label: 'Claude API',   icon: 'ti-brain',         ok: health.checks?.claude_api },
+    { key: 'gmail',      label: 'Gmail SMTP',   icon: 'ti-mail',          ok: health.checks?.gmail },
+    { key: 'postgres',   label: 'PostgreSQL',   icon: 'ti-database',      ok: health.checks?.postgres, optional: true },
+    ...(rateStatus ? [{ key: 'ai_rate', label: `AI calls vandaag: ${rateStatus.callsLastDay}/${rateStatus.limits.maxCallsPerDay}`, icon: 'ti-gauge', ok: !aiThrottled, optional: true }] : []),
+  ];
+
+  const statusColor = health.status === 'ok' ? 'var(--success)' : 'var(--warning)';
+  const statusLabel = health.status === 'ok' ? 'Alles operationeel' : 'Aandacht vereist';
+
+  const errorRows = (errors || []).slice(0, 10);
+  const typeIcon  = { run: 'ti-player-play', agent1: 'ti-search', cron_run: 'ti-clock', followup1: 'ti-mail-forward', followup2: 'ti-mail-forward', cron_followup: 'ti-clock' };
+
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <div style="width:10px;height:10px;border-radius:50%;background:${statusColor};flex-shrink:0"></div>
+      <span style="font-size:13px;font-weight:600;color:var(--text-primary)">${statusLabel}</span>
+      <span class="text-muted" style="font-size:12px">• Uptime: ${health.uptimeLabel || '—'}</span>
+      ${health.lastRun ? `<span class="text-muted" style="font-size:12px">• Laatste run: ${formatDate(health.lastRun.time)} (${health.lastRun.leadsFound} leads)</span>` : ''}
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+      ${checks.map(c => `
+        <div class="health-check-pill ${c.ok ? 'health-ok' : c.optional ? 'health-warn' : 'health-err'}">
+          <i class="ti ${c.icon}"></i>
+          <span>${c.label}</span>
+          <i class="ti ${c.ok ? 'ti-check' : 'ti-x'}" style="font-size:11px"></i>
+        </div>`).join('')}
+    </div>
+    ${errorRows.length ? `
+      <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">
+        Recente fouten (${errorRows.length})
+      </div>
+      <div class="error-log-list">
+        ${errorRows.map(e => `
+          <div class="error-log-row">
+            <i class="ti ${typeIcon[e.type] || 'ti-alert-circle'}" style="color:var(--danger);flex-shrink:0"></i>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:600;color:var(--text-primary)">${esc(e.message)}</div>
+              ${e.details ? `<div class="error-log-detail">${esc(e.details)}</div>` : ''}
+            </div>
+            <span class="error-log-time">${new Date(e.time).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})} ${formatDate(e.time)}</span>
+          </div>`).join('')}
+      </div>` : `
+      <div style="display:flex;align-items:center;gap:8px;color:var(--success);font-size:13px">
+        <i class="ti ti-circle-check"></i> Geen recente fouten
+      </div>`}
+  `;
+}
+
+// ── Agency Profiles ──────────────────────────────────────────────────────────
+
+async function loadAgencyProfiles() {
+  const list = document.getElementById('agencyProfilesList');
+  if (!list) return;
+  const profiles = await apiJSON('/api/agency-profiles').catch(() => []) || [];
+  const activeId = state.settings?.activeProfileId;
+  if (!profiles.length) {
+    list.innerHTML = `<div style="font-size:13px;color:var(--text-muted)">Nog geen profielen aangemaakt. Maak een profiel aan om snel te wisselen van agency-identiteit.</div>`;
+    return;
+  }
+  list.innerHTML = profiles.map(p => `
+    <div style="border:1.5px solid ${p.id === activeId ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius);padding:12px 14px;background:${p.id === activeId ? 'var(--accent-light)' : 'var(--surface)'};display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="width:14px;height:14px;border-radius:3px;background:${esc(p.brandColor || '#2563eb')};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700;color:var(--text-primary)">${esc(p.agencyName)}</div>
+        <div style="font-size:12px;color:var(--text-secondary)">${esc(p.myName || '')}${p.myTitle ? ' · ' + esc(p.myTitle) : ''}${p.agencyAddress ? ' · ' + esc(p.agencyAddress) : ''}</div>
+      </div>
+      ${p.id === activeId ? `<span class="badge badge-blue" style="font-size:10px"><i class="ti ti-check"></i> Actief</span>` : `<button class="btn btn-primary btn-sm" onclick="activateAgencyProfile('${p.id}')"><i class="ti ti-bolt"></i> Activeer</button>`}
+      <button class="btn btn-ghost btn-sm" onclick="openProfileModal('${p.id}')"><i class="ti ti-edit"></i></button>
+      <button class="btn btn-ghost btn-sm" onclick="deleteAgencyProfile('${p.id}')" style="color:var(--danger)"><i class="ti ti-trash"></i></button>
+    </div>
+  `).join('');
+}
+
+function openProfileModal(profileId) {
+  const profiles = [];
+  const existing = profileId ? (state.settings?.agencyProfiles || []).find(p => p.id === profileId) : null;
+  openModal(`
+    <div class="modal-header">
+      <h3><i class="ti ti-building"></i> ${existing ? 'Profiel bewerken' : 'Nieuw agency profiel'}</h3>
+      <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div style="padding:16px 24px;display:flex;flex-direction:column;gap:14px">
+      <div class="form-grid">
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Agency naam *</label>
+          <input type="text" id="profAgencyName" value="${esc(existing?.agencyName || '')}" placeholder="Growth Lab BV">
+        </div>
+        <div class="form-group">
+          <label>Mijn naam</label>
+          <input type="text" id="profMyName" value="${esc(existing?.myName || '')}" placeholder="Jan de Vries">
+        </div>
+        <div class="form-group">
+          <label>Functietitel</label>
+          <input type="text" id="profMyTitle" value="${esc(existing?.myTitle || '')}" placeholder="AI Growth Specialist">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Kantooradres</label>
+          <input type="text" id="profAddress" value="${esc(existing?.agencyAddress || '')}" placeholder="Keizersgracht 1, Amsterdam">
+        </div>
+        <div class="form-group">
+          <label>Merkkleur</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="color" id="profColor" value="${existing?.brandColor || '#2563eb'}" style="width:44px;height:36px;border:1px solid var(--border);border-radius:6px;cursor:pointer">
+            <input type="text"  id="profColorHex" value="${existing?.brandColor || '#2563eb'}" style="width:90px" oninput="document.getElementById('profColor').value=this.value">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
+      <button class="btn btn-primary" onclick="saveAgencyProfile('${profileId || ''}')"><i class="ti ti-device-floppy"></i> Opslaan</button>
+    </div>
+  `);
+  document.getElementById('profColor')?.addEventListener('input', e => {
+    const hex = document.getElementById('profColorHex');
+    if (hex) hex.value = e.target.value;
+  });
+}
+
+async function saveAgencyProfile(profileId) {
+  const agencyName    = document.getElementById('profAgencyName')?.value?.trim();
+  const myName        = document.getElementById('profMyName')?.value?.trim() || '';
+  const myTitle       = document.getElementById('profMyTitle')?.value?.trim() || '';
+  const agencyAddress = document.getElementById('profAddress')?.value?.trim() || '';
+  const brandColor    = document.getElementById('profColorHex')?.value?.trim() || '#2563eb';
+  if (!agencyName) return toast('Agency naam is verplicht', 'error');
+
+  const isEdit = !!profileId;
+  const res = await api(
+    isEdit ? `/api/agency-profiles/${profileId}` : '/api/agency-profiles',
+    { method: isEdit ? 'PATCH' : 'POST', body: JSON.stringify({ agencyName, myName, myTitle, agencyAddress, brandColor }) }
+  );
+  if (!res.ok) return toast('Opslaan mislukt', 'error');
+  const profile = await res.json();
+
+  if (!state.settings.agencyProfiles) state.settings.agencyProfiles = [];
+  if (isEdit) {
+    const idx = state.settings.agencyProfiles.findIndex(p => p.id === profileId);
+    if (idx !== -1) state.settings.agencyProfiles[idx] = profile;
+  } else {
+    state.settings.agencyProfiles.push(profile);
+  }
+  closeModal();
+  toast(isEdit ? 'Profiel bijgewerkt' : 'Profiel aangemaakt', 'success');
+  loadAgencyProfiles();
+}
+
+async function activateAgencyProfile(profileId) {
+  const res = await api(`/api/agency-profiles/${profileId}/activate`, { method: 'POST' });
+  if (!res.ok) return toast('Activeren mislukt', 'error');
+  const data = await res.json();
+  if (state.settings) {
+    state.settings.activeProfileId = profileId;
+    state.settings.agencyName  = data.settings.agencyName;
+    state.settings.myName      = data.settings.myName;
+    state.settings.myTitle     = data.settings.myTitle;
+    state.settings.brandColor  = data.settings.brandColor;
+    // Reflect in account form fields immediately
+    const el = id => document.getElementById(id);
+    if (el('agencyName')) el('agencyName').value = data.settings.agencyName || '';
+    if (el('myName'))     el('myName').value     = data.settings.myName     || '';
+    if (el('myTitle'))    el('myTitle').value     = data.settings.myTitle   || '';
+  }
+  toast(`Profiel "${data.settings.agencyName}" is nu actief`, 'success');
+  loadAgencyProfiles();
+}
+
+async function deleteAgencyProfile(profileId) {
+  if (!confirm('Profiel verwijderen?')) return;
+  const res = await api(`/api/agency-profiles/${profileId}`, { method: 'DELETE' });
+  if (!res.ok) return toast('Verwijderen mislukt', 'error');
+  if (state.settings?.agencyProfiles) {
+    state.settings.agencyProfiles = state.settings.agencyProfiles.filter(p => p.id !== profileId);
+  }
+  toast('Profiel verwijderd', 'success');
+  loadAgencyProfiles();
+}
+
+async function loadAiRateStatus() {
+  const bar = document.getElementById('aiRateStatusBar');
+  if (!bar) return;
+  const d = await apiJSON('/api/ai/rate-status').catch(() => null);
+  if (!d) { bar.innerHTML = ''; return; }
+  const pct = v => Math.min(100, Math.round(v * 100));
+  const pill = (label, used, max, warn) => {
+    const p = pct(used / max);
+    const color = p >= 90 ? 'var(--danger)' : p >= 70 ? 'var(--warning)' : 'var(--success)';
+    return `<div style="font-size:12px;margin-bottom:4px;display:flex;align-items:center;gap:8px">
+      <span style="width:130px;color:var(--text-secondary)">${label}</span>
+      <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${p}%;background:${color};border-radius:3px;transition:width .3s"></div>
+      </div>
+      <span style="font-size:11px;color:${color};font-weight:600;width:60px;text-align:right">${used} / ${max}</span>
+    </div>`;
+  };
+  bar.innerHTML = `
+    <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Huidig API gebruik</div>
+      ${pill('Calls / minuut', d.callsLastMinute, d.limits.maxCallsPerMinute)}
+      ${pill('Calls / uur',    d.callsLastHour,   d.limits.maxCallsPerHour)}
+      ${pill('Calls / dag',    d.callsLastDay,    d.limits.maxCallsPerDay)}
+      ${pill('Kosten vandaag ($)', d.costLastDay, d.limits.maxDailyCostUsd)}
+    </div>`;
+}
+
+const ACTIVITY_ICONS = { run: 'ti-player-play', email: 'ti-send', reply: 'ti-message-reply', backup: 'ti-database-export', followup: 'ti-clock-hour-4', bounce: 'ti-mail-off' };
+const ACTIVITY_COLORS = { run: '#2563eb', email: '#16a34a', reply: '#ea580c', backup: '#9b9b98', followup: '#7c3aed', bounce: '#dc2626' };
 
 async function loadCostStats() {
   try {
@@ -4566,11 +5649,15 @@ async function renderStats() {
 
 async function loadStatsData(days) {
   destroyStatsCharts();
-  const [summary, detail] = await Promise.all([
+  const [summary, detail, pnl, ab] = await Promise.all([
     apiJSON('/api/stats'),
-    apiJSON(`/api/stats/detailed?days=${days}`)
+    apiJSON(`/api/stats/detailed?days=${days}`),
+    apiJSON('/api/stats/pnl'),
+    apiJSON('/api/stats/ab')
   ]);
   if (!summary || !detail) return;
+  const pnlData = pnl || { months: [], totalRevenue: 0, totalCosts: 0, totalProfit: 0, margin: 0 };
+  const abData = ab || null;
 
   const body = document.getElementById('statsBody');
   if (!body) return;
@@ -4664,6 +5751,116 @@ async function loadStatsData(days) {
           `).join('')}
       </div>
     </div>
+
+    <!-- ── Winst & Verlies ── -->
+    <hr style="margin:28px 0;border:none;border-top:1px solid var(--border)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h2 style="font-size:18px;font-weight:700;color:var(--text-primary)"><i class="ti ti-test-pipe" style="margin-right:6px;color:#7c3aed"></i>A/B Email Resultaten</h2>
+      <span class="text-muted" style="font-size:12px">${abData?.totalLeadsWithVersion || 0} leads met versie-data</span>
+    </div>
+    ${abData && abData.totalLeadsWithVersion > 0 ? `
+    <div class="ab-compare-row">
+      ${['A','B'].map(v => {
+        const d = abData[v];
+        const isWinner = abData.winner === v;
+        const fmt1 = x => x === null ? '—' : x + '%';
+        return `<div class="ab-version-card ${isWinner ? 'ab-winner' : ''}">
+          ${isWinner ? '<div class="ab-winner-badge"><i class="ti ti-trophy"></i> Winnaar</div>' : ''}
+          <div class="ab-version-label">Versie ${v}</div>
+          <div class="ab-version-sent">${d.sent} verstuurd</div>
+          <div class="ab-metrics">
+            <div class="ab-metric">
+              <div class="ab-metric-value ${isWinner ? 'ab-metric-highlight' : ''}">${fmt1(d.replyRate)}</div>
+              <div class="ab-metric-label">Reply rate</div>
+            </div>
+            <div class="ab-metric">
+              <div class="ab-metric-value">${fmt1(d.openRate)}</div>
+              <div class="ab-metric-label">Open rate</div>
+            </div>
+            <div class="ab-metric">
+              <div class="ab-metric-value">${d.replied}</div>
+              <div class="ab-metric-label">Replies</div>
+            </div>
+            <div class="ab-metric">
+              <div class="ab-metric-value" style="color:var(--danger)">${fmt1(d.bounceRate)}</div>
+              <div class="ab-metric-label">Bounce rate</div>
+            </div>
+          </div>
+          <div class="ab-bar-wrap">
+            <div class="ab-bar" style="width:${Math.min(100, d.replyRate ?? 0) * 4}%;background:${isWinner ? 'var(--accent)' : 'var(--border)'}"></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="card chart-card" style="margin-top:16px">
+      <h3 class="chart-title">Reply rate vergelijking per niche</h3>
+      <canvas id="chartAB" height="160"></canvas>
+    </div>
+    ${abData.niches.filter(n => n.A.sent > 0 || n.B.sent > 0).length > 0 ? `
+    <div class="card" style="overflow:hidden;margin-bottom:0;margin-top:16px">
+      <table class="pnl-table">
+        <thead><tr><th>Niche</th><th>Versie A (gestuurd)</th><th>Versie B (gestuurd)</th><th>Reply A</th><th>Reply B</th><th>Winnaar</th></tr></thead>
+        <tbody>
+          ${abData.niches.filter(n => n.A.sent > 0 || n.B.sent > 0).map(n => `
+            <tr class="pnl-row">
+              <td style="font-weight:600;text-transform:capitalize">${esc(n.niche)}</td>
+              <td>${n.A.sent}</td>
+              <td>${n.B.sent}</td>
+              <td class="${n.winner === 'A' ? 'pnl-pos' : ''}">${n.A.replyRate !== null ? n.A.replyRate + '%' : '—'}</td>
+              <td class="${n.winner === 'B' ? 'pnl-pos' : ''}">${n.B.replyRate !== null ? n.B.replyRate + '%' : '—'}</td>
+              <td>${n.winner === 'tie' ? '🤝 Gelijk' : n.winner ? `<span class="ab-niche-winner">Versie ${n.winner}</span>` : '—'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}
+    ` : `<div class="card" style="padding:28px;text-align:center;color:var(--text-secondary);font-size:13px">
+      <i class="ti ti-test-pipe" style="font-size:28px;margin-bottom:8px;display:block;opacity:.3"></i>
+      Nog geen A/B data beschikbaar. Stuur emails goed via de inbox om A/B test data te verzamelen.
+    </div>`}
+
+    <hr style="margin:28px 0;border:none;border-top:1px solid var(--border)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h2 style="font-size:18px;font-weight:700;color:var(--text-primary)"><i class="ti ti-trending-up" style="margin-right:6px;color:var(--accent)"></i>Winst & Verlies</h2>
+      <span class="text-muted" style="font-size:12px">Laatste 12 maanden · AI-kosten in EUR (koers 0.92)</span>
+    </div>
+    <div class="stats-grid" style="margin-bottom:20px;grid-template-columns:repeat(4,1fr)">
+      ${[
+        { label: 'Omzet (betaald)',  value: '€' + Math.round(pnlData.totalRevenue), icon: 'ti-cash',         color: '#16a34a' },
+        { label: 'AI Kosten',        value: '€' + Math.round(pnlData.totalCosts),   icon: 'ti-brain',        color: '#dc2626' },
+        { label: 'Netto Winst',      value: '€' + Math.round(pnlData.totalProfit),  icon: 'ti-trending-up',  color: pnlData.totalProfit >= 0 ? '#16a34a' : '#dc2626' },
+        { label: 'Marge',            value: pnlData.margin + '%',                   icon: 'ti-percentage',   color: pnlData.margin >= 0 ? '#7c3aed' : '#dc2626' }
+      ].map(k => `
+        <div class="stat-card">
+          <div class="stat-icon" style="background:${k.color}20;color:${k.color}"><i class="ti ${k.icon}"></i></div>
+          <div>
+            <div class="stat-value">${k.value}</div>
+            <div class="stat-label">${k.label}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="card chart-card" style="margin-bottom:16px">
+      <h3 class="chart-title">Maandelijkse omzet vs kosten</h3>
+      <canvas id="chartPnL" height="180"></canvas>
+    </div>
+    <div class="card" style="overflow:hidden;margin-bottom:0">
+      <table class="pnl-table">
+        <thead><tr><th>Maand</th><th>Omzet</th><th>AI Kosten</th><th>Winst</th><th>Marge</th></tr></thead>
+        <tbody>
+          ${pnlData.months.filter(m => m.revenue > 0 || m.costs > 0).map(m => {
+            const mg = m.revenue > 0 ? Math.round(m.profit / m.revenue * 100) : (m.costs > 0 ? -100 : 0);
+            const nl = new Date(m.month + '-02').toLocaleDateString('nl-NL', { month: 'short', year: 'numeric' });
+            return `<tr class="pnl-row">
+              <td style="font-weight:600">${nl}</td>
+              <td class="pnl-pos">€ ${Math.round(m.revenue).toLocaleString('nl-NL')}</td>
+              <td class="pnl-neg">€ ${Math.round(m.costs).toLocaleString('nl-NL')}</td>
+              <td class="${m.profit >= 0 ? 'pnl-pos' : 'pnl-neg'}">€ ${Math.round(m.profit).toLocaleString('nl-NL')}</td>
+              <td style="color:${mg >= 0 ? 'var(--success)' : 'var(--danger)'};font-weight:600">${mg}%</td>
+            </tr>`;
+          }).join('') || '<tr><td colspan="5" class="text-muted" style="padding:20px;text-align:center;font-size:13px">Nog geen betaalde facturen geregistreerd.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
   `;
 
   // Chart colours
@@ -4736,6 +5933,49 @@ async function loadStatsData(days) {
         datasets: [{ data: Object.values(detail.scoreBuckets), backgroundColor: [RED+'cc', AMBER+'cc', BLUE+'cc', GREEN+'cc', PURPLE+'cc'], borderRadius: 4 }]
       },
       options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    }));
+  }
+
+  // A/B chart (reply rate per niche)
+  const ctxAB = document.getElementById('chartAB')?.getContext('2d');
+  if (ctxAB && abData && abData.niches.length) {
+    const niches = abData.niches.filter(n => n.A.sent > 0 || n.B.sent > 0).slice(0, 8);
+    _statsCharts.push(new Chart(ctxAB, {
+      type: 'bar',
+      data: {
+        labels: niches.map(n => n.niche),
+        datasets: [
+          { label: 'Versie A reply%', data: niches.map(n => n.A.replyRate ?? 0), backgroundColor: BLUE + 'cc', borderRadius: 4 },
+          { label: 'Versie B reply%', data: niches.map(n => n.B.replyRate ?? 0), backgroundColor: PURPLE + 'cc', borderRadius: 4 }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 10 } } },
+        scales: { y: { beginAtZero: true, ticks: { callback: v => v + '%' } } }
+      }
+    }));
+  }
+
+  // P&L chart
+  const ctxPnL = document.getElementById('chartPnL')?.getContext('2d');
+  if (ctxPnL && pnlData.months.length) {
+    const labels = pnlData.months.map(m => new Date(m.month + '-02').toLocaleDateString('nl-NL', { month: 'short', year: '2-digit' }));
+    _statsCharts.push(new Chart(ctxPnL, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Omzet',    data: pnlData.months.map(m => m.revenue), backgroundColor: GREEN + 'cc', borderRadius: 4 },
+          { label: 'AI Kosten',data: pnlData.months.map(m => m.costs),   backgroundColor: RED   + 'cc', borderRadius: 4 },
+          { label: 'Winst',    data: pnlData.months.map(m => m.profit),  backgroundColor: BLUE  + 'cc', borderRadius: 4 }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 10 } } },
+        scales: { y: { beginAtZero: true, ticks: { callback: v => '€' + v } } }
+      }
     }));
   }
 }
@@ -5000,6 +6240,101 @@ function copyApiKey() {
   if (val) navigator.clipboard.writeText(val).then(() => toast('Sleutel gekopieerd.', 'success'));
 }
 
+function copyExtensionUrl() {
+  const val = document.getElementById('extensionServerUrl')?.textContent;
+  if (val) navigator.clipboard.writeText(val).then(() => toast('Server URL gekopieerd.', 'success'));
+}
+
+// ─── Zapier & Webhooks ────────────────────────────────────────────────────────
+
+function copyZapierUrl() {
+  const val = document.getElementById('zapierTriggerUrl')?.textContent;
+  if (val) navigator.clipboard.writeText(val).then(() => toast('Zapier URL gekopieerd.', 'success'));
+}
+
+function copyZapierToken() {
+  const val = document.getElementById('zapierTokenDisplay')?.textContent;
+  if (val) navigator.clipboard.writeText(val).then(() => toast('Token gekopieerd.', 'success'));
+}
+
+const WEBHOOK_EVENTS = [
+  { value: 'lead.approved',   label: 'Lead goedgekeurd & verstuurd' },
+  { value: 'lead.replied',    label: 'Reply ontvangen' },
+  { value: 'run.complete',    label: 'Dagelijkse run klaar' },
+  { value: 'intake.submitted', label: 'Intake ingevuld' },
+];
+
+async function loadWebhooksList() {
+  const el = document.getElementById('webhooksList');
+  if (!el) return;
+  const hooks = await apiJSON('/api/webhooks') || [];
+  if (!hooks.length) {
+    el.innerHTML = '<p class="settings-note">Nog geen webhooks geconfigureerd.</p>';
+    return;
+  }
+  el.innerHTML = hooks.map(h => {
+    const status = h.lastStatus === 'ok' ? 'success' : h.lastStatus ? 'error' : 'idle';
+    const statusLabel = h.lastStatus === 'ok' ? 'OK' : h.lastStatus || 'Niet getest';
+    const statusColor = status === 'success' ? 'var(--success)' : status === 'error' ? 'var(--danger)' : 'var(--text-secondary)';
+    const eventLabels = (h.events || []).map(e => WEBHOOK_EVENTS.find(ev => ev.value === e)?.label || e).join(', ');
+    return `<div class="webhook-card">
+      <div class="webhook-card-header">
+        <div>
+          <div class="webhook-card-label">${esc(h.label || h.url)}</div>
+          <div class="webhook-card-url">${esc(h.url)}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span style="font-size:11px;color:${statusColor};font-weight:600">${statusLabel}</span>
+          <button class="btn btn-ghost btn-sm" onclick="testWebhook('${h.id}')"><i class="ti ti-send"></i> Test</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteWebhook('${h.id}')"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>
+      <div class="webhook-card-events">${esc(eventLabels)}</div>
+      ${h.lastTriggeredAt ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:4px">Laatste trigger: ${new Date(h.lastTriggeredAt).toLocaleString('nl-NL')}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function openWebhookModal() {
+  const evChecks = WEBHOOK_EVENTS.map(e =>
+    `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px">
+      <input type="checkbox" name="whEvent" value="${e.value}"> ${e.label}
+    </label>`).join('');
+  openModal(`<div class="modal-header"><h3 class="modal-title">Webhook toevoegen</h3></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Webhook URL</label><input type="url" id="whUrl" placeholder="https://hooks.zapier.com/hooks/catch/..."></div>
+      <div class="form-group"><label>Label (optioneel)</label><input type="text" id="whLabel" placeholder="Slack notificatie"></div>
+      <div class="form-group"><label>Events</label>${evChecks}</div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Annuleren</button><button class="btn btn-primary" onclick="saveWebhook()">Opslaan</button></div>`);
+}
+
+async function saveWebhook() {
+  const url    = document.getElementById('whUrl')?.value?.trim();
+  const label  = document.getElementById('whLabel')?.value?.trim() || '';
+  const events = [...document.querySelectorAll('input[name="whEvent"]:checked')].map(el => el.value);
+  if (!url) return toast('Vul een webhook URL in.', 'error');
+  if (!events.length) return toast('Selecteer minimaal één event.', 'error');
+  const res = await api('/api/webhooks', { method: 'POST', body: JSON.stringify({ url, label, events }) });
+  if (res?.ok) { closeModal(); toast('Webhook toegevoegd.', 'success'); loadWebhooksList(); }
+  else toast('Fout bij opslaan.', 'error');
+}
+
+async function testWebhook(id) {
+  const res  = await api(`/api/webhooks/${id}/test`, { method: 'POST' });
+  const data = res?.ok ? await res.json().catch(() => ({})) : {};
+  if (res?.ok && data.ok) toast('Testbericht verstuurd.', 'success');
+  else toast(`Fout: ${data.error || res?.status}`, 'error');
+  loadWebhooksList();
+}
+
+async function deleteWebhook(id) {
+  if (!confirm('Webhook verwijderen?')) return;
+  await api(`/api/webhooks/${id}`, { method: 'DELETE' });
+  toast('Webhook verwijderd.', 'success');
+  loadWebhooksList();
+}
+
 // ─── Users management helpers ─────────────────────────────────────────────────
 
 async function loadUsersList() {
@@ -5096,6 +6431,18 @@ async function renderSettings() {
           <div class="form-group"><label>Nieuw wachtwoord</label><input type="password" id="newPassword" placeholder="••••••••"></div>
         </div>
         <button class="btn btn-primary" id="saveAccountBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
+        <hr class="divider" style="margin:24px 0">
+        <h3 class="settings-subtitle"><i class="ti ti-building" style="margin-right:6px"></i>Agency profielen <span class="text-muted" style="font-size:12px;font-weight:400">— wissel snel van identiteit zonder alles opnieuw in te stellen</span></h3>
+        ${s.activeProfileId ? `<div style="font-size:12px;color:var(--success);margin-bottom:10px"><i class="ti ti-check"></i> Actief profiel: <strong>${esc((s.agencyProfiles||[]).find(p=>p.id===s.activeProfileId)?.agencyName || '—')}</strong></div>` : ''}
+        <div id="agencyProfilesList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px"></div>
+        <button class="btn btn-ghost btn-sm" onclick="openProfileModal()"><i class="ti ti-plus"></i> Nieuw profiel</button>
+        <hr class="divider" style="margin:24px 0">
+        <h3 class="settings-subtitle"><i class="ti ti-brand-zapier" style="color:#ff4a00;margin-right:6px"></i>Zapier inkomend token</h3>
+        <p class="settings-note">Dit token beschermt je inkomende Zapier trigger. Voeg het toe als header <code>x-zapier-token</code> in je Zapier webhook-actie.</p>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+          <code id="zapierTokenDisplay" class="ext-url-code" style="flex:1;filter:blur(4px);transition:filter .2s;cursor:pointer" onclick="this.style.filter='none'" title="Klik om zichtbaar te maken">${esc(s.zapierIncomingToken || '—')}</code>
+          <button class="btn btn-ghost btn-sm" onclick="copyZapierToken()"><i class="ti ti-copy"></i></button>
+        </div>
       </div>
 
       <!-- ── Publieke pagina ── -->
@@ -5126,22 +6473,32 @@ async function renderSettings() {
       <div class="settings-tab-pane" id="stab-email">
         <h2 class="settings-title">
           <i class="ti ti-mail"></i> Gmail instellen
-          ${s.gmailAddress ? `<span class="badge badge-green"><i class="ti ti-check"></i> Ingesteld</span>` : `<span class="badge badge-red">Niet ingesteld</span>`}
+          ${s.gmailConfigured
+            ? `<span class="badge badge-green"><i class="ti ti-check"></i> Gmail actief</span>`
+            : `<span class="badge badge-amber"><i class="ti ti-alert-triangle"></i> Niet ingesteld</span>`}
         </h2>
+
+        <div class="extension-install-card" style="margin-bottom:18px">
+          <div class="ext-step"><div class="ext-step-num">1</div><div class="ext-step-desc">Ga naar <a href="https://myaccount.google.com/security" target="_blank" class="link">myaccount.google.com</a> → Beveiliging → Verificatie in 2 stappen (moet aan staan)</div></div>
+          <div class="ext-step"><div class="ext-step-num">2</div><div class="ext-step-desc">Zoek op "App-wachtwoorden" onderaan de beveiligingspagina → klik erop</div></div>
+          <div class="ext-step"><div class="ext-step-num">3</div><div class="ext-step-desc">Kies app: "Overige" → geef naam "Agency AI" → klik Genereren</div></div>
+          <div class="ext-step"><div class="ext-step-num">4</div><div class="ext-step-desc">Kopieer het <strong>16-tekens wachtwoord</strong> (spaties negeren) en plak het hieronder</div></div>
+        </div>
+
         <div class="form-grid">
           <div class="form-group">
             <label>Gmail adres</label>
             <input type="email" id="gmailAddress" value="${s.gmailAddress || ''}" placeholder="jouw@gmail.com">
           </div>
           <div class="form-group">
-            <label>App-wachtwoord <a href="https://myaccount.google.com/apppasswords" target="_blank" class="link">Hoe maak ik dit aan?</a></label>
-            <input type="password" id="gmailPassword" placeholder="xxxx xxxx xxxx xxxx">
+            <label>App-wachtwoord ${s.gmailPasswordSet ? '<span class="badge badge-green" style="font-size:11px">Ingesteld</span>' : ''}</label>
+            <input type="password" id="gmailPassword" placeholder="${s.gmailPasswordSet ? '(laat leeg om ongewijzigd te laten)' : 'xxxx xxxx xxxx xxxx'}">
           </div>
         </div>
         <div class="btn-row">
-          <button class="btn btn-primary" id="saveGmailBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
-          <button class="btn btn-ghost" id="testEmailBtn"><i class="ti ti-send"></i> Stuur testmail</button>
+          <button class="btn btn-primary" id="saveGmailBtn"><i class="ti ti-device-floppy"></i> Opslaan &amp; testen</button>
         </div>
+        <div id="gmailTestResult" style="margin-top:12px;display:none"></div>
         <div class="form-group" style="margin-top:14px">
           <label class="toggle-wrap">
             <input type="checkbox" id="replyDetection" ${s.replyDetection !== false ? 'checked' : ''}>
@@ -5377,6 +6734,28 @@ async function renderSettings() {
         </div>
         <div id="blacklistItems"></div>
         <hr class="divider" style="margin:16px 0">
+        <span class="settings-sublabel"><i class="ti ti-brain" style="margin-right:6px"></i>AI API limieten</span>
+        <p class="settings-note" style="margin:8px 0 12px">Voorkom onverwachte kosten door limieten in te stellen. De server gooit een fout en slaat de actie over wanneer een limiet bereikt is.</p>
+        <div class="auto-billing-grid">
+          <div class="form-group">
+            <label>Max calls / minuut</label>
+            <input type="number" id="aiMaxPerMin" value="${(s.aiRateLimits?.maxCallsPerMinute) ?? 10}" min="1" max="60">
+          </div>
+          <div class="form-group">
+            <label>Max calls / uur</label>
+            <input type="number" id="aiMaxPerHour" value="${(s.aiRateLimits?.maxCallsPerHour) ?? 100}" min="1" max="1000">
+          </div>
+          <div class="form-group">
+            <label>Max calls / dag</label>
+            <input type="number" id="aiMaxPerDay" value="${(s.aiRateLimits?.maxCallsPerDay) ?? 500}" min="1" max="5000">
+          </div>
+          <div class="form-group">
+            <label>Max kosten / dag ($)</label>
+            <input type="number" id="aiMaxCostDay" value="${(s.aiRateLimits?.maxDailyCostUsd) ?? 10}" min="0" step="0.5">
+          </div>
+        </div>
+        <div id="aiRateStatusBar" style="margin-top:10px"></div>
+        <hr class="divider" style="margin:16px 0">
         <button class="btn btn-primary" id="saveAutomationBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
       </div>
 
@@ -5439,6 +6818,26 @@ async function renderSettings() {
           </div>
         </div>
         <hr class="divider" style="margin:16px 0">
+        <span class="settings-sublabel"><i class="ti ti-receipt-tax" style="margin-right:6px"></i>BTW instellingen</span>
+        <label class="auto-billing-label" style="margin-top:10px">
+          <input type="checkbox" id="btwEnabled" ${s.btwEnabled ? 'checked' : ''} style="width:14px;height:14px" onchange="document.getElementById('btwSettingsGrid').style.display=this.checked?'':'none'">
+          BTW berekening inschakelen op facturen
+        </label>
+        <div class="auto-billing-grid" id="btwSettingsGrid" style="${s.btwEnabled ? '' : 'display:none'}">
+          <div class="form-group">
+            <label>BTW tarief</label>
+            <select id="btwRate">
+              <option value="21" ${(s.btwRate === undefined || s.btwRate === 21) ? 'selected' : ''}>21% (standaard)</option>
+              <option value="9"  ${s.btwRate === 9  ? 'selected' : ''}>9% (laag tarief)</option>
+              <option value="0"  ${s.btwRate === 0  ? 'selected' : ''}>0% (vrijgesteld)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>BTW nummer</label>
+            <input type="text" id="btwNumber" value="${esc(s.btwNumber || '')}" placeholder="NL000000000B01">
+          </div>
+        </div>
+        <hr class="divider" style="margin:16px 0">
         <span class="settings-sublabel"><i class="ti ti-coin" style="margin-right:6px"></i>Automatische facturering</span>
         <label class="auto-billing-label" style="margin-top:10px">
           <input type="checkbox" id="autoInvoiceEnabled" ${s.autoInvoiceEnabled ? 'checked' : ''} style="width:14px;height:14px">
@@ -5478,6 +6877,77 @@ async function renderSettings() {
             <code id="newKeyValue" class="new-key-code"></code>
             <button class="btn btn-ghost btn-sm" onclick="copyApiKey()"><i class="ti ti-copy"></i></button>
           </div>
+        </div>
+
+        <hr style="margin:28px 0;border:none;border-top:1px solid var(--border)">
+        <h2 class="settings-title"><i class="ti ti-brand-google-analytics" style="color:#e37400"></i> Google Analytics</h2>
+        <p class="settings-note">Voeg je GA4 Measurement ID toe om bezoekersdata van de landingspagina bij te houden.</p>
+        <div class="form-group" style="margin-bottom:12px">
+          <label>GA4 Measurement ID</label>
+          <input type="text" id="gaId" placeholder="G-XXXXXXXXXX" value="${esc(s.gaId || '')}">
+        </div>
+        <button class="btn btn-primary btn-sm" id="saveGaBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
+
+        <hr style="margin:28px 0;border:none;border-top:1px solid var(--border)">
+        <h2 class="settings-title"><i class="ti ti-calendar-event" style="color:#006bff"></i> Calendly</h2>
+        <p class="settings-note">Koppel je Calendly link om automatisch een boekingsknop toe te voegen aan outreach emails en de klantenportaal.</p>
+        <div class="form-group" style="margin-bottom:12px">
+          <label>Calendly URL</label>
+          <input type="url" id="calendlyUrl" placeholder="https://calendly.com/jouw-naam/gesprek" value="${esc(s.calendlyUrl || '')}">
+        </div>
+        <div class="settings-note" style="margin-bottom:12px">
+          <strong>Calendly webhook:</strong> Stel in Calendly → Integraties → Webhooks de URL in als:<br>
+          <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">${window.location.origin}/api/webhooks/calendly</code>
+        </div>
+        <button class="btn btn-primary btn-sm" id="saveCalendlyBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
+
+        <hr style="margin:28px 0;border:none;border-top:1px solid var(--border)">
+        <h2 class="settings-title"><i class="ti ti-brand-zapier" style="color:#ff4a00"></i> Zapier &amp; Webhooks</h2>
+        <p class="settings-note">Stuur automatisch data naar externe tools (Zapier, Make, Slack, CRM) wanneer er iets gebeurt in Agency AI. Of laat Zapier leads toevoegen via de inkomende trigger.</p>
+
+        <div style="margin-bottom:20px">
+          <span class="settings-sublabel">Inkomende Zapier trigger URL</span>
+          <p class="settings-note" style="margin:6px 0">Gebruik deze URL in Zapier als webhook-actie om een bedrijf toe te voegen aan je pipeline.</p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <code id="zapierTriggerUrl" class="ext-url-code" style="flex:1">${window.location.origin}/api/zapier/trigger</code>
+            <button class="btn btn-ghost btn-sm" onclick="copyZapierUrl()"><i class="ti ti-copy"></i> Kopieer</button>
+          </div>
+          <p class="settings-note" style="margin-top:8px">Voeg de header <code>x-zapier-token</code> toe met de waarde van je token (zichtbaar via Instellingen → Account). Stuur als body: <code>action: "add_lead"</code>, <code>companyName</code>, optioneel <code>websiteUrl</code>, <code>niche</code>, <code>location</code>.</p>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <span class="settings-sublabel">Uitgaande webhooks</span>
+            <button class="btn btn-primary btn-sm" onclick="openWebhookModal()"><i class="ti ti-plus"></i> Toevoegen</button>
+          </div>
+          <div id="webhooksList"></div>
+        </div>
+
+        <hr style="margin:28px 0;border:none;border-top:1px solid var(--border)">
+        <h2 class="settings-title"><i class="ti ti-puzzle" style="color:#4f46e5"></i> Chrome Extensie</h2>
+        <p class="settings-note">Gebruik de Chrome extensie om bedrijven direct vanuit de browser toe te voegen aan je pipeline. De extensie gebruikt je API sleutel voor authenticatie.</p>
+        <div class="extension-install-card">
+          <div class="ext-step"><span class="ext-step-num">1</span><div>
+            <strong>Download de extensie</strong>
+            <div class="ext-step-desc">Download de extensiebestanden en zet ze in een lokale map.</div>
+            <a class="btn btn-primary btn-sm" href="/extension-download" download style="margin-top:8px"><i class="ti ti-download"></i> Download extensie (.zip)</a>
+          </div></div>
+          <div class="ext-step"><span class="ext-step-num">2</span><div>
+            <strong>Installeer in Chrome</strong>
+            <div class="ext-step-desc">Ga naar <code>chrome://extensions</code> → zet "Ontwikkelaarsmodus" aan → klik "Uitgepakt laden" → selecteer de map.</div>
+          </div></div>
+          <div class="ext-step"><span class="ext-step-num">3</span><div>
+            <strong>Configureer server URL</strong>
+            <div class="ext-step-desc">Klik op het extensie-icoon en vul de server URL in:</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+              <code id="extensionServerUrl" class="ext-url-code">${window.location.origin}</code>
+              <button class="btn btn-ghost btn-sm" onclick="copyExtensionUrl()"><i class="ti ti-copy"></i></button>
+            </div>
+          </div></div>
+          <div class="ext-step"><span class="ext-step-num">4</span><div>
+            <strong>Gebruik een API sleutel</strong>
+            <div class="ext-step-desc">Genereer een API sleutel hierboven (label bijv. "Chrome Extensie") en plak deze in de extensie-instellingen.</div>
+          </div></div>
         </div>
       </div>
 
@@ -5527,6 +6997,29 @@ async function renderSettings() {
 function attachSettingsHandlers(s) {
   loadBackupList();
   loadBlacklist();
+  loadApiKeysList();
+  loadAiRateStatus();
+  loadAgencyProfiles();
+  loadWebhooksList();
+
+  document.getElementById('saveGaBtn')?.addEventListener('click', async () => {
+    const gaId = document.getElementById('gaId')?.value?.trim() || '';
+    if (gaId && !/^G-[A-Z0-9]+$/i.test(gaId)) {
+      toast('Ongeldig GA4 ID — gebruik formaat G-XXXXXXXXXX', 'error');
+      return;
+    }
+    const res = await api('/api/settings/account', { method: 'PATCH', body: JSON.stringify({ gaId }) });
+    if (res.ok) toast('Google Analytics opgeslagen', 'success');
+    else toast('Opslaan mislukt', 'error');
+  });
+
+  document.getElementById('saveCalendlyBtn')?.addEventListener('click', async () => {
+    const calendlyUrl = document.getElementById('calendlyUrl')?.value?.trim() || '';
+    const res = await api('/api/settings/account', { method: 'PATCH', body: JSON.stringify({ calendlyUrl }) });
+    if (res.ok) toast('Calendly opgeslagen', 'success');
+    else toast('Opslaan mislukt', 'error');
+  });
+
   document.getElementById('saveAccountBtn').addEventListener('click', async () => {
     const body = {
       agencyName: document.getElementById('agencyName').value,
@@ -5552,28 +7045,45 @@ function attachSettingsHandlers(s) {
   });
 
   document.getElementById('saveGmailBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('saveGmailBtn');
+    const resultEl = document.getElementById('gmailTestResult');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Opslaan...';
+    resultEl.style.display = 'none';
+
+    const pwVal = document.getElementById('gmailPassword').value.trim();
     const body = {
-      gmailAddress: document.getElementById('gmailAddress').value,
-      gmailPassword: document.getElementById('gmailPassword').value,
+      gmailAddress: document.getElementById('gmailAddress').value.trim(),
       replyDetection: document.getElementById('replyDetection')?.checked ?? true,
       webhookToken: document.getElementById('webhookToken')?.value || '',
       webhookConfigured: document.getElementById('webhookEnabled')?.checked ?? false
     };
-    const res = await api('/api/settings/gmail', { method: 'PATCH', body: JSON.stringify(body) });
-    if (res.ok) toast('Gmail opgeslagen', 'success');
-    else toast('Opslaan mislukt', 'error');
-  });
+    if (pwVal) body.gmailPassword = pwVal;
 
-  document.getElementById('testEmailBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('testEmailBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Verzenden...';
-    const res = await api('/api/settings/test-email', { method: 'POST' });
-    const data = await res.json();
+    const saveRes = await api('/api/settings/gmail', { method: 'PATCH', body: JSON.stringify(body) });
+    if (!saveRes.ok) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-device-floppy"></i> Opslaan &amp; testen';
+      resultEl.style.display = 'block';
+      resultEl.innerHTML = `<div style="padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:13px"><i class="ti ti-x-circle"></i> Opslaan mislukt</div>`;
+      return;
+    }
+
+    btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Verbinding testen...';
+    const testRes = await api('/api/settings/test-email', { method: 'POST' });
+    const testData = await testRes.json();
+
     btn.disabled = false;
-    btn.innerHTML = '<i class="ti ti-send"></i> Stuur testmail';
-    if (res.ok) toast('Testmail verstuurd! Check je inbox.', 'success');
-    else toast(data.error, 'error');
+    btn.innerHTML = '<i class="ti ti-device-floppy"></i> Opslaan &amp; testen';
+    resultEl.style.display = 'block';
+
+    if (testRes.ok) {
+      resultEl.innerHTML = `<div style="padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;color:#16a34a;font-size:13px"><i class="ti ti-circle-check"></i> ${esc(testData.message || 'Testmail verstuurd! Check je inbox.')}</div>`;
+      state.settings.gmailConfigured = true;
+      state.settings.gmailPasswordSet = true;
+    } else {
+      resultEl.innerHTML = `<div style="padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:13px"><i class="ti ti-x-circle"></i> <strong>Verbinding mislukt:</strong> ${esc(testData.error || 'Onbekende fout')}</div>`;
+    }
   });
 
   document.getElementById('addServiceBtn').addEventListener('click', () => {
@@ -5655,6 +7165,15 @@ function attachSettingsHandlers(s) {
       autoInvoiceEnabled:   document.getElementById('autoInvoiceEnabled')?.checked ?? false,
       autoInvoiceDay:       parseInt(document.getElementById('autoInvoiceDay')?.value || 1),
       paymentReminderDays:  parseInt(document.getElementById('paymentReminderDays')?.value || 7),
+      btwEnabled:  document.getElementById('btwEnabled')?.checked ?? false,
+      btwRate:     parseInt(document.getElementById('btwRate')?.value || 21),
+      btwNumber:   document.getElementById('btwNumber')?.value?.trim() || '',
+      aiRateLimits: {
+        maxCallsPerMinute: parseInt(document.getElementById('aiMaxPerMin')?.value  || 10),
+        maxCallsPerHour:   parseInt(document.getElementById('aiMaxPerHour')?.value || 100),
+        maxCallsPerDay:    parseInt(document.getElementById('aiMaxPerDay')?.value  || 500),
+        maxDailyCostUsd:   parseFloat(document.getElementById('aiMaxCostDay')?.value || 10)
+      }
     };
     const res = await api('/api/settings/automation', { method: 'PATCH', body: JSON.stringify(body) });
     if (res.ok) toast('Automatisering opgeslagen', 'success');
@@ -5873,7 +7392,9 @@ async function openNotificationPanel() {
     intake_submitted: 'ti-clipboard-check',
     high_score_lead:  'ti-star',
     payment_overdue:  'ti-alert-triangle',
-    run_complete:     'ti-check'
+    run_complete:     'ti-check',
+    email_bounced:    'ti-mail-off',
+    calendly_booking: 'ti-calendar-event'
   };
 
   const notifHTML = data.notifications.length === 0
@@ -5891,10 +7412,16 @@ async function openNotificationPanel() {
           ${!n.read ? '<div class="notif-dot"></div>' : ''}
         </div>`).join('');
 
+  const pushSubscribed = window._pushSubscription ? '1' : '0';
   const headerHTML = `
     <div class="notif-panel-header">
       <span>Meldingen</span>
-      ${data.unread > 0 ? `<button class="notif-read-all" onclick="markAllNotificationsRead()">Alles gelezen</button>` : ''}
+      <div style="display:flex;gap:6px;align-items:center;margin-left:auto">
+        ${'PushManager' in window ? `<button class="push-toggle-btn notif-push-btn" data-subscribed="${pushSubscribed}" onclick="togglePushSubscription()" title="${pushSubscribed === '1' ? 'Notificaties uitschakelen' : 'Notificaties inschakelen'}">
+          <i class="ti ti-bell${pushSubscribed === '1' ? '-off' : '-ringing'}"></i>
+        </button>` : ''}
+        ${data.unread > 0 ? `<button class="notif-read-all" onclick="markAllNotificationsRead()">Alles gelezen</button>` : ''}
+      </div>
     </div>`;
 
   if (window.innerWidth < 768) {
@@ -6010,9 +7537,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('notifBtnMobile')?.addEventListener('click', openNotificationPanel);
   startNotificationPolling();
 
-  // Service worker
+  // Service worker + push notifications
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      window._swReg = reg;
+      initPushNotifications(reg);
+    }).catch(() => {});
   }
 
   // Load initial view
