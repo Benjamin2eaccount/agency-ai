@@ -3243,6 +3243,33 @@ function buildPortalTab(lead) {
   `;
 }
 
+async function testImapConnection() {
+  const btn = document.getElementById('testImapBtn');
+  const result = document.getElementById('imapTestResult');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner"></div> Verbinden...'; }
+  if (result) result.style.display = 'none';
+
+  try {
+    const res = await api('/api/settings/test-imap', { method: 'POST' });
+    const d   = await res.json();
+    if (result) {
+      result.style.display = '';
+      if (d.success) {
+        result.innerHTML = `<div class="inline-result inline-result-ok"><i class="ti ti-check"></i> ${esc(d.message)}</div>`;
+      } else {
+        result.innerHTML = `<div class="inline-result inline-result-err"><i class="ti ti-x"></i> ${esc(d.error)}</div>`;
+      }
+    }
+  } catch (e) {
+    if (result) {
+      result.style.display = '';
+      result.innerHTML = `<div class="inline-result inline-result-err"><i class="ti ti-x"></i> ${esc(e.message)}</div>`;
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-plug-connected"></i> Test IMAP verbinding'; }
+  }
+}
+
 function generateWebhookToken() {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let token = '';
@@ -6566,6 +6593,26 @@ async function renderSettings() {
         <hr class="divider" style="margin:24px 0">
         <h3 class="settings-subtitle"><i class="ti ti-mail" style="margin-right:5px"></i> Gmail — alleen voor reply detectie (IMAP)</h3>
         <p class="settings-note" style="margin-bottom:12px">Gmail wordt <strong>niet</strong> gebruikt voor verzenden. Vul dit in als je wilt dat Agency AI automatisch antwoorden van prospects detecteert via je Gmail inbox.</p>
+
+        <details class="imap-instructions-wrap" style="margin-bottom:16px;border:1px solid var(--border);border-radius:10px;padding:0">
+          <summary style="padding:10px 14px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-secondary);list-style:none;display:flex;align-items:center;gap:7px">
+            <i class="ti ti-info-circle" style="color:var(--accent)"></i> Stap 1 — IMAP inschakelen in Gmail
+            <i class="ti ti-chevron-down" style="margin-left:auto;font-size:12px"></i>
+          </summary>
+          <div style="padding:12px 16px 14px;font-size:13px;line-height:1.8;border-top:1px solid var(--border)">
+            <ol style="margin:0;padding-left:18px;color:var(--text-secondary)">
+              <li>Ga naar <strong>Gmail</strong> op je computer (niet de app)</li>
+              <li>Klik rechtsboven op het tandwiel <i class="ti ti-settings" style="font-size:11px"></i> → <strong>Alle instellingen bekijken</strong></li>
+              <li>Ga naar het tabblad <strong>Doorsturen en POP/IMAP</strong></li>
+              <li>Zet <strong>IMAP-toegang</strong> op <em>IMAP inschakelen</em></li>
+              <li>Klik op <strong>Wijzigingen opslaan</strong></li>
+            </ol>
+            <p style="margin:10px 0 0;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text-muted)">
+              <i class="ti ti-lock"></i> Stap 2 — App-wachtwoord: ga naar <strong>myaccount.google.com → Beveiliging → 2-stapsverificatie → App-wachtwoorden</strong>. Kies <em>E-mail + Windows/Mac</em> en kopieer het 16-cijferige wachtwoord.
+            </p>
+          </div>
+        </details>
+
         <div class="form-grid">
           <div class="form-group">
             <label>Gmail adres</label>
@@ -6576,8 +6623,12 @@ async function renderSettings() {
             <input type="password" id="gmailPassword" placeholder="${s.gmailPasswordSet ? '(laat leeg om ongewijzigd te laten)' : 'xxxx xxxx xxxx xxxx'}">
           </div>
         </div>
-        <button class="btn btn-ghost btn-sm" id="saveGmailBtn"><i class="ti ti-device-floppy"></i> Gmail opslaan</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" id="saveGmailBtn"><i class="ti ti-device-floppy"></i> Gmail opslaan</button>
+          <button class="btn btn-ghost btn-sm" id="testImapBtn" onclick="testImapConnection()"><i class="ti ti-plug-connected"></i> Test IMAP verbinding</button>
+        </div>
         <div id="gmailTestResult" style="margin-top:12px;display:none"></div>
+        <div id="imapTestResult" style="margin-top:8px;display:none"></div>
 
         <div class="form-group" style="margin-top:14px">
           <label class="toggle-wrap">

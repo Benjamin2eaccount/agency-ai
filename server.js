@@ -2950,6 +2950,42 @@ app.post('/api/settings/test-email', requireAdmin, async (req, res) => {
   }
 });
 
+app.post('/api/settings/test-imap', requireAdmin, async (req, res) => {
+  console.log('[TestIMAP] Starting...');
+  const s    = readJSON('settings.json') || {};
+  const user = s.gmailAddress || process.env.GMAIL_ADDRESS;
+  const pass = getGmailPassword(s);
+
+  if (!user) return res.status(400).json({ success: false, error: 'Gmail adres niet ingesteld' });
+  if (!pass) return res.status(400).json({ success: false, error: 'Gmail app-wachtwoord niet ingesteld' });
+
+  let imapSimple;
+  try { imapSimple = require('imap-simple'); }
+  catch { return res.status(500).json({ success: false, error: 'imap-simple module niet beschikbaar' }); }
+
+  let connection;
+  try {
+    connection = await imapSimple.connect({
+      imap: { user, password: pass, host: 'imap.gmail.com', port: 993, tls: true,
+              tlsOptions: { rejectUnauthorized: false }, authTimeout: 10000 }
+    });
+    const box = await connection.openBox('INBOX');
+    const total = box?.messages?.total ?? '?';
+    connection.end();
+    console.log('[TestIMAP] OK — inbox messages:', total);
+    return res.json({ success: true, message: `IMAP verbinding geslaagd ✓ — ${total} berichten gevonden`, user });
+  } catch (err) {
+    if (connection) try { connection.end(); } catch {}
+    console.error('[TestIMAP] Fout:', err.message);
+    const friendly = err.message.includes('Invalid credentials') || err.message.includes('AUTHENTICATIONFAILED')
+      ? 'Ongeldige inloggegevens — controleer Gmail adres en app-wachtwoord'
+      : err.message.includes('IMAP access') || err.message.includes('disabled')
+      ? 'IMAP is uitgeschakeld in Gmail — zie instructies hieronder'
+      : err.message;
+    return res.status(500).json({ success: false, error: friendly });
+  }
+});
+
 app.patch('/api/settings/stripe', requireAdmin, (req, res) => {
   const settings = readJSON('settings.json');
   const { stripeSecretKey, mollieApiKey, paypalMe, preferredPaymentMethod } = req.body;
@@ -4493,19 +4529,22 @@ async function checkReplies() {
   if (!isGmailReady(settings)) return 0;
   if (settings.replyDetection === false) return 0;
 
-  let imapSimple;
-  try { imapSimple = require('imap-simple'); } catch {
-    console.error('[Reply] imap-simple niet beschikbaar');
+  let imapSimple, simpleParser;
+  try {
+    imapSimple = require('imap-simple');
+    ({ simpleParser } = require('mailparser'));
+  } catch (e) {
+    console.error('[Reply] imap-simple of mailparser niet beschikbaar:', e.message);
     return 0;
   }
 
-  const config = {
+  const imapConfig = {
     imap: {
-      user: settings.gmailAddress || process.env.GMAIL_ADDRESS,
-      password: getGmailPassword(settings),
-      host: 'imap.gmail.com',
-      port: 993,
-      tls: true,
+      user:       settings.gmailAddress || process.env.GMAIL_ADDRESS,
+      password:   getGmailPassword(settings),
+      host:       'imap.gmail.com',
+      port:       993,
+      tls:        true,
       tlsOptions: { rejectUnauthorized: false },
       authTimeout: 10000
     }
@@ -4513,13 +4552,14 @@ async function checkReplies() {
 
   let connection;
   try {
-    connection = await imapSimple.connect(config);
+    connection = await imapSimple.connect(imapConfig);
     await connection.openBox('INBOX');
 
     const since = new Date();
-    since.setDate(since.getDate() - 3);
+    since.setDate(since.getDate() - 7);
     const searchCriteria = [['SINCE', toImapDate(since)]];
-    const fetchOptions = { bodies: ['HEADER.FIELDS (FROM SUBJECT)', 'TEXT'], markSeen: false };
+    // Fetch full RFC822 message so mailparser can do proper MIME decoding
+    const fetchOptions = { bodies: ['RFC822'], markSeen: false };
 
     const messages = await connection.search(searchCriteria, fetchOptions);
     const leads  = readJSON('leads.json') || [];
@@ -4530,18 +4570,23 @@ async function checkReplies() {
     const aiReplyQueue = [];
 
     for (const msg of messages) {
-      const part = msg.parts.find(p => p.which === 'HEADER.FIELDS (FROM SUBJECT)');
-      if (!part) continue;
-      const raw = part.body;
-      const subjectMatch = raw.match(/^Subject:\s*(.+)/im);
-      if (!subjectMatch) continue;
-      const subject = subjectMatch[1].trim().toLowerCase();
+      const rfc822 = msg.parts.find(p => p.which === 'RFC822');
+      if (!rfc822) continue;
+
+      let parsed;
+      try { parsed = await simpleParser(rfc822.body); }
+      catch (parseErr) { console.warn('[Reply] Mailparser fout:', parseErr.message); continue; }
+
+      const subject = (parsed.subject || '').toLowerCase().trim();
       if (!/^re:/i.test(subject)) continue;
       const cleanSubject = subject.replace(/^(re:\s*)+/i, '').trim();
+      const msgId = parsed.messageId || `uid-${msg.attributes.uid}`;
 
       const matched = leads.find(l => {
-        if (['replied', 'client', 'dead'].includes(l.status)) return false;
         if (!l.sentAt) return false;
+        if (['client', 'dead'].includes(l.status)) return false;
+        // Skip if we already processed this exact message ID
+        if (l.processedMessageIds?.includes(msgId)) return false;
         const orig = (l.email?.subject || '').toLowerCase().trim();
         if (!orig) return false;
         return cleanSubject === orig ||
@@ -4550,17 +4595,27 @@ async function checkReplies() {
       });
 
       if (matched) {
-        // Extract reply body text for AI response
-        const bodyPart  = msg.parts.find(p => p.which === 'TEXT');
-        const rawBody   = typeof bodyPart?.body === 'string' ? bodyPart.body : '';
-        const replyText = extractReplyText(rawBody);
+        // Mark as read in Gmail (never delete)
+        try { await connection.addFlags(msg.attributes.uid, ['\\Seen']); }
+        catch (flagErr) { console.warn('[Reply] Mark-as-read mislukt:', flagErr.message); }
+
+        // Track message ID to prevent reprocessing
+        if (!matched.processedMessageIds) matched.processedMessageIds = [];
+        matched.processedMessageIds.push(msgId);
+        if (matched.processedMessageIds.length > 20) {
+          matched.processedMessageIds = matched.processedMessageIds.slice(-20);
+        }
+
+        // Extract clean reply text (mailparser already decoded charset + base64)
+        const bodyText = parsed.text ||
+          (parsed.html || '').replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, ' ');
+        const replyText = extractReplyText(bodyText);
 
         matched.status        = 'replied';
         matched.repliedAt     = new Date().toISOString();
         matched.lastReplyText = replyText || '';
         matched.lastReplyAt   = matched.repliedAt;
-        const fromLine = raw.match(/^From:\s*(.+)/im);
-        matched.lastReplyFrom = fromLine ? fromLine[1].trim() : (matched.contactEmail || '');
+        matched.lastReplyFrom = parsed.from?.text || (matched.contactEmail || '');
 
         addLeadHistory(leads, matched.id, {
           event: 'replied',
@@ -4575,7 +4630,7 @@ async function checkReplies() {
         addActivity('reply', 'Reply ontvangen van ' + matched.companyName, { meta: { companyName: matched.companyName, leadId: matched.id } });
         addNotification('reply_received', `Reply: ${matched.companyName}`, `${matched.companyName} heeft gereageerd op jouw email`, matched.id);
         fireWebhooks('lead.replied', { leadId: matched.id, companyName: matched.companyName, niche: matched.niche, score: matched.score, location: matched.location, contactEmail: matched.contactEmail, repliedAt: matched.repliedAt });
-        console.log(`[Reply] Reply gedetecteerd voor ${matched.companyName}`);
+        console.log(`[Reply] Reply gedetecteerd: ${matched.companyName} (${msgId})`);
 
         if (settings.aiAutoReply !== false && replyText) {
           aiReplyQueue.push({ lead: { ...matched }, replyText });
