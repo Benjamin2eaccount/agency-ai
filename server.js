@@ -3360,9 +3360,25 @@ async function aiCall(prompt) {
 
 async function aiJSON(prompt) {
   const text = await aiCall(prompt);
-  const match = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/(\[[\s\S]*\]|\{[\s\S]*\})/s);
-  try { return JSON.parse(match ? match[1] : text); }
-  catch { throw new Error('Claude JSON parse mislukt: ' + text.substring(0, 200)); }
+
+  // Strip markdown code fences (Claude often wraps JSON in ```json ... ```)
+  let clean = text
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+
+  // Try direct parse on cleaned text first
+  try { return JSON.parse(clean); } catch {}
+
+  // Fallback: extract first JSON object or array
+  const match = clean.match(/(\[[\s\S]*\]|\{[\s\S]*\})/s);
+  if (match) {
+    try { return JSON.parse(match[1]); } catch {}
+  }
+
+  console.error('[aiJSON] Parse failed. Raw response (500 chars):', text.substring(0, 500));
+  throw new Error('Claude JSON parse mislukt: ' + text.substring(0, 200));
 }
 
 // â"€â"€â"€ Website checker (Agent 2) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
