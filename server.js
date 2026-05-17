@@ -389,6 +389,18 @@ function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken) {
 </html>`;
 }
 
+// Sanitize email subject: replace fancy Unicode chars with ASCII equivalents
+function sanitizeSubject(s) {
+  return String(s || '')
+    .replace(/[–—−]/g, '-')   // en-dash, em-dash, minus sign → hyphen
+    .replace(/[‘’ʼ]/g, "'")   // smart single quotes → apostrophe
+    .replace(/[“”]/g, '"')         // smart double quotes → plain quote
+    .replace(/…/g, '...')               // ellipsis → three dots
+    .replace(/ /g, ' ')                 // non-breaking space → space
+    .replace(/[^\x20-\x7E]/g, '')           // strip all remaining non-printable-ASCII
+    .trim();
+}
+
 async function sendEmail({ to, subject, body, html, settings: _settings = {}, trackingToken }) {
   const s = readJSON('settings.json') || {};
   const agencyName  = s.agencyName  || _settings.agencyName || 'Agency AI';
@@ -397,6 +409,7 @@ async function sendEmail({ to, subject, body, html, settings: _settings = {}, tr
   const htmlBody    = html || buildEmailHTML(body, agencyName, myName, myTitle, trackingToken);
   const resendKey   = s.resendApiKey || process.env.RESEND_API_KEY;
   const fromAddress = s.resendFromAddress || process.env.RESEND_FROM_ADDRESS || 'noreply@agencyai.info';
+  const cleanSubject = sanitizeSubject(subject);
 
   if (!resendKey) {
     throw new Error('Email niet ingesteld. Voeg RESEND_API_KEY toe als Railway environment variable of via Instellingen → Email.');
@@ -406,7 +419,7 @@ async function sendEmail({ to, subject, body, html, settings: _settings = {}, tr
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: `"${agencyName}" <${fromAddress}>`, to, subject, html: htmlBody, text: body || '' }),
+    body: JSON.stringify({ from: `"${agencyName}" <${fromAddress}>`, to, subject: cleanSubject, html: htmlBody, text: body || '' }),
     signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
   });
   const d = await r.json();
@@ -2579,7 +2592,17 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
     try {
       const trackingToken = 'otk-' + item.leadId + '-' + Math.random().toString(36).substr(2, 8);
       inbox[idx].trackingToken = trackingToken;
-      const recipientEmail = item.contactEmail || settings.gmailAddress;
+      // Accept manually entered email from frontend (for leads without verified email)
+      const manualEmail    = req.body?.manualEmail?.trim() || null;
+      if (manualEmail) {
+        inbox[idx].contactEmail = manualEmail;
+        inbox[idx].emailSource  = 'handmatig';
+        // Also save to lead
+        const allLeads2 = readJSON('leads.json') || [];
+        const li2 = allLeads2.findIndex(l => l.id === item.leadId);
+        if (li2 !== -1) { allLeads2[li2].contactEmail = manualEmail; allLeads2[li2].emailSource = 'handmatig'; writeJSON('leads.json', allLeads2); }
+      }
+      const recipientEmail = inbox[idx].contactEmail || settings.gmailAddress;
       await sendEmail({
         to: recipientEmail,
         subject: chosenEmail?.subject || item.email?.subject || 'Outreach email',
@@ -3472,14 +3495,35 @@ async function checkWebsite(url) {
     const hasShop       = /\b(shop|winkel|bestel|kopen|cart|basket|checkout)/i.test(html);
     const hasCTA        = /\b(contact|contact us|meer info|neem contact|bel ons|call us)/i.test(html);
 
-    // Scrape contact email from page HTML
-    const rawEmails = html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
-    const scrapedEmail = rawEmails.find(e => {
+    // Scrape email: prioritise mailto: href links (explicit, reliable)
+    const isValidScrapedEmail = e => {
       const low = e.toLowerCase();
       return !low.includes('noreply') && !low.includes('no-reply') && !low.includes('@example') &&
-             !low.match(/@(gmail|hotmail|yahoo|outlook)\./) &&
-             !low.match(/\.(png|jpg|gif|svg|css|js|woff)$/);
-    }) || null;
+             !low.match(/@(gmail|hotmail|yahoo|outlook|live|msn)\.(com|nl|be)/) &&
+             !low.match(/\.(png|jpg|gif|svg|css|js|woff|ttf|ico)$/) &&
+             low.includes('@') && low.includes('.');
+    };
+    const mailtoLinks = [...html.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1].trim());
+    const rawHtmlEmails = html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
+    let scrapedEmail = mailtoLinks.find(isValidScrapedEmail)
+                    || rawHtmlEmails.find(isValidScrapedEmail)
+                    || null;
+
+    // If nothing found on homepage, try /contact page
+    if (!scrapedEmail) {
+      try {
+        const contactUrl = new URL('/contact', url).href;
+        if (contactUrl !== url) {
+          const cRes = await fetch(contactUrl, { timeout: 5000, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AgencyAI/1.0)' } });
+          if (cRes.ok) {
+            const cHtml = await cRes.text();
+            const cMailto = [...cHtml.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1].trim());
+            const cRaw    = cHtml.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
+            scrapedEmail  = cMailto.find(isValidScrapedEmail) || cRaw.find(isValidScrapedEmail) || null;
+          }
+        }
+      } catch {} // contact page is optional
+    }
     const speedScore    = ms < 1500 ? 9 : ms < 3000 ? 7 : ms < 5000 ? 5 : 3;
 
     const problems = [];
@@ -3559,10 +3603,12 @@ async function processOneLead(lead, settings) {
   const website = await checkWebsite(lead.websiteUrl);
   console.log(`  [Agent 2] Bereikbaar: ${website.reachable}, laadtijd: ${website.loadTimeMs || '—'}ms`);
 
-  // Determine contact email: scraped from HTML > finder-supplied > domain guess
-  const contactEmail = website.scrapedEmail || lead.contactEmail || guessContactEmail(lead.websiteUrl) || null;
-  const emailSource  = website.scrapedEmail ? 'gevonden' : (contactEmail ? 'geschat' : null);
-  if (contactEmail) console.log(`  [Email] ${contactEmail} (${emailSource})`);
+  // Email: only trust addresses scraped directly from the website — never guess
+  const contactEmail  = website.scrapedEmail || null;
+  const emailVerified = !!website.scrapedEmail;
+  const emailSource   = website.scrapedEmail ? 'gevonden' : null;
+  if (contactEmail) console.log(`  [Email] ${contactEmail} (geverifieerd via website)`);
+  else              console.log(`  [Email] Geen email gevonden op website`);
 
   console.log(`  [Agent 3] Social media analyseren...`);
   let social;
@@ -3722,7 +3768,7 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - Schrijf alsof je dit snel intypt op je telefoon, niet vanachter een bureau
 - Varieer zinslengte: mix korte zinnen (4-6 woorden) met iets langere. Geen 3 zinnen van dezelfde lengte op rij
 - Begin NOOIT een zin met "Ik" als eerste woord van de email
-- Onderwerp: 4-6 woorden, concreet, noem bedrijfsnaam of stad - GEEN "AI", "marketing" of "samenwerking" in het onderwerp
+- Onderwerp: 4-6 woorden, concreet, noem bedrijfsnaam of stad - GEEN "AI", "marketing" of "samenwerking" in het onderwerp - gebruik ALLEEN gewone tekens (a-z, 0-9, koppelteken, komma, vraagteken) — GEEN em-dash (—), accentletters of speciale interpunctie
 - Max 3 korte alinea's, elke alinea max 2-3 zinnen
 - GEEN bullet points, GEEN opsommingen, GEEN --- scheidingslijnen
 - Dienst: 1 zin, niet aanprijzend - beschrijf het resultaat, niet het product
@@ -3737,7 +3783,7 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - Write as if typing quickly on your phone - short, punchy, real
 - Vary sentence length: mix short (4-6 words) and longer ones. Never 3 sentences of the same length in a row
 - NEVER start the first sentence with "I"
-- Subject: 4-6 words, specific, mention company or city - NO "AI", "marketing" or "collaboration" in the subject
+- Subject: 4-6 words, specific, mention company or city - NO "AI", "marketing" or "collaboration" in the subject - use ONLY plain ASCII (a-z, 0-9, hyphen, comma, question mark) — NO em-dash (—), accented letters or special punctuation
 - Max 3 short paragraphs, each max 2-3 sentences
 - NO bullet points, NO lists, NO --- dividers
 - Service: 1 sentence, describe the outcome, not the product
@@ -3959,7 +4005,7 @@ Rules:
     score: Math.round(opportunity.score * 10) / 10,
     estimatedValue: opportunity.estimatedValue, urgency: opportunity.urgency,
     problems: opportunity.problems || [], services: opportunity.recommendedServices || [],
-    contactEmail, emailSource,
+    contactEmail, emailSource, emailVerified,
     website, social, email, emailA, emailB, subjectOptions, linkedinDm, voicenoteScript, competitors,
     sendOptimalTime: getOptimalSendTime(lead.niche), createdAt: now
   };
@@ -3989,7 +4035,7 @@ Rules:
     score: item.score, urgency: item.urgency,
     status: item.status, estimatedValue: item.estimatedValue,
     problems: item.problems, services: item.services, emailOpener: opener,
-    contactEmail, emailSource,
+    contactEmail, emailSource, emailVerified,
     email: item.email, emailA: item.emailA, emailB: item.emailB, subjectOptions: item.subjectOptions, linkedinDm: item.linkedinDm,
     voicenoteScript: item.voicenoteScript,
     website: item.website, competitors, sendOptimalTime: item.sendOptimalTime,
@@ -4050,8 +4096,7 @@ Geef een JSON array terug (geen uitleg, alleen JSON):
   "estimatedFollowers": getal,
   "websiteUrl": "https://...",
   "linkedinCompanyUrl": "https://linkedin.com/company/bedrijfsnaam-slug",
-  "companySize": "small" of "medium" of "large",
-  "contactEmail": "meest waarschijnlijke zakelijke email — ALTIJD invullen — gebruik info@[domain] of contact@[domain] gebaseerd op websiteUrl. Geef alleen het emailadres."
+  "companySize": "small" of "medium" of "large"
 }]
 
 companySize: "small" voor ZZP/MKB (<10 medewerkers), "medium" voor middelgroot (10-50), "large" voor groot/corporate (50+).

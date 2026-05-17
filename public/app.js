@@ -751,10 +751,19 @@ function buildInboxCard(item) {
           ${item.websiteUrl ? `<a href="${item.websiteUrl}" target="_blank" class="link" style="font-size:12px"><i class="ti ti-world"></i> Website</a>` : ''}
         </div>
         <div class="inbox-email-row">
-          ${item.contactEmail
+          ${item.emailVerified
             ? `<span class="inbox-email-addr"><i class="ti ti-mail"></i> ${esc(item.contactEmail)}</span>
-               <span class="email-src-badge ${item.emailSource === 'gevonden' ? 'email-src-found' : 'email-src-guess'}">${item.emailSource === 'gevonden' ? 'Gevonden' : 'Geschat'}</span>`
-            : `<span class="inbox-email-none"><i class="ti ti-mail-off"></i> Geen email gevonden</span>`}
+               <span class="email-src-badge email-src-found"><i class="ti ti-check"></i> Geverifieerd</span>`
+            : item.contactEmail
+            ? `<span class="inbox-email-addr"><i class="ti ti-mail"></i> ${esc(item.contactEmail)}</span>
+               <span class="email-src-badge email-src-guess"><i class="ti ti-alert-triangle"></i> Niet geverifieerd</span>`
+            : `<div class="inbox-email-missing">
+                 <span class="inbox-email-none"><i class="ti ti-mail-off"></i> Geen email gevonden op website</span>
+                 <input type="email" class="manual-email-input" id="manualEmail-${item.id}"
+                   placeholder="Voer email handmatig in..."
+                   onclick="event.stopPropagation()"
+                   oninput="event.stopPropagation()">
+               </div>`}
         </div>
         <div class="score-display score-${colorClass}">
           <span class="score-number">${score.toFixed(1)}</span>
@@ -1138,13 +1147,13 @@ async function markLinkedinDmSent(id) {
   }
 }
 
-async function approve(id) {
+async function approve(id, opts = {}) {
   if (!state.settings?.resendConfigured) {
     openModal(`
       <div style="text-align:center;padding:8px 0">
         <div style="font-size:40px;margin-bottom:12px">✉️</div>
-        <h3 style="margin:0 0 8px;font-size:18px">Gmail niet ingesteld</h3>
-        <p style="color:var(--text-secondary);margin:0 0 20px;font-size:14px">Stel eerst Gmail in voordat je emails kunt versturen.</p>
+        <h3 style="margin:0 0 8px;font-size:18px">Email niet ingesteld</h3>
+        <p style="color:var(--text-secondary);margin:0 0 20px;font-size:14px">Stel eerst Resend in voordat je emails kunt versturen.</p>
         <div style="display:flex;gap:10px;justify-content:center">
           <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
           <button class="btn btn-primary" onclick="closeModal();setView('settings');setTimeout(()=>document.querySelector('[data-tab=email]')?.click(),100)">
@@ -1156,13 +1165,46 @@ async function approve(id) {
     return;
   }
 
+  const item = state.inbox?.find(i => i.id === id);
+
+  // FIX: validate email before sending
+  if (!opts.force) {
+    const manualEmailEl = document.getElementById('manualEmail-' + id);
+    const manualEmail   = manualEmailEl?.value?.trim() || '';
+    if (!item?.emailVerified && !item?.contactEmail && !manualEmail) {
+      // No email at all — require manual input
+      if (manualEmailEl) manualEmailEl.focus();
+      toast('Voer eerst een email adres in', 'error');
+      return;
+    }
+    if (!item?.emailVerified && item?.contactEmail && !opts.confirmed) {
+      // Email exists but not scraped from site — show warning
+      openModal(`
+        <div style="text-align:center;padding:8px 0">
+          <div style="font-size:36px;margin-bottom:12px">⚠️</div>
+          <h3 style="margin:0 0 8px;font-size:17px">Email niet geverifieerd</h3>
+          <p style="color:var(--text-secondary);margin:0 0 6px;font-size:13px">Dit email adres is <strong>niet gevonden op de website</strong> en is mogelijk onjuist:</p>
+          <code style="display:block;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;margin:0 0 16px;font-size:13px">${esc(item.contactEmail)}</code>
+          <p style="color:var(--text-secondary);margin:0 0 20px;font-size:13px">Weet je zeker dat je wilt versturen?</p>
+          <div style="display:flex;gap:10px;justify-content:center">
+            <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
+            <button class="btn btn-primary" onclick="closeModal(); approve('${id}', {force:true})">
+              <i class="ti ti-send"></i> Toch versturen
+            </button>
+          </div>
+        </div>
+      `);
+      return;
+    }
+  }
+
   const card = document.getElementById('card-' + id);
-  card.style.transition = 'all 0.3s';
-  card.style.background = '#f0fdf4';
-  card.style.borderColor = '#10b981';
+  if (card) { card.style.transition = 'all 0.3s'; card.style.background = '#f0fdf4'; card.style.borderColor = '#10b981'; }
   const version = card?.dataset.selectedVersion || 'A';
 
-  const res = await api(`/api/inbox/${id}/approve`, { method: 'PATCH', body: JSON.stringify({ version }) });
+  const manualEmail = document.getElementById('manualEmail-' + id)?.value?.trim() || undefined;
+  const body = { version, ...(manualEmail ? { manualEmail } : {}) };
+  const res = await api(`/api/inbox/${id}/approve`, { method: 'PATCH', body: JSON.stringify(body) });
   const data = await res.json();
 
   if (!res.ok) {
