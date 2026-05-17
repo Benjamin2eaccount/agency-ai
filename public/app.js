@@ -6720,11 +6720,15 @@ async function deleteUser(id, name) {
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 function switchSettingsTab(id) {
+  // Redirect legacy tab names
+  if (id === 'niches') id = 'automation';
   document.querySelectorAll('.settings-tab-pane').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.settings-nav-item[data-tab]').forEach(el => el.classList.remove('active'));
   document.getElementById('stab-' + id)?.classList.add('active');
   document.querySelector(`.settings-nav-item[data-tab="${id}"]`)?.classList.add('active');
   localStorage.setItem('settingsTab', id);
+  // Load AI rate status when automation tab opens
+  if (id === 'automation') loadAiRateStatus?.();
 }
 
 async function renderSettings() {
@@ -6744,659 +6748,747 @@ async function renderSettings() {
   document.getElementById('settingsContent').innerHTML = `
   <div class="settings-layout">
     <nav class="settings-nav">
-      <button class="settings-nav-item active" data-tab="account" onclick="switchSettingsTab('account')"><i class="ti ti-user"></i> Account</button>
-      <button class="settings-nav-item" data-tab="website" onclick="switchSettingsTab('website')"><i class="ti ti-world"></i> Publieke pagina</button>
-      <button class="settings-nav-item" data-tab="email" onclick="switchSettingsTab('email')"><i class="ti ti-mail"></i> Email &amp; versturen</button>
-      <button class="settings-nav-item" data-tab="niches" onclick="switchSettingsTab('niches')"><i class="ti ti-filter"></i> Niches &amp; filters</button>
-      <button class="settings-nav-item" data-tab="payments" onclick="switchSettingsTab('payments')"><i class="ti ti-credit-card"></i> Betalingen</button>
-      <button class="settings-nav-item" data-tab="api" onclick="switchSettingsTab('api')"><i class="ti ti-key"></i> API &amp; integraties</button>
+      <button class="settings-nav-item active" data-tab="account"    onclick="switchSettingsTab('account')">   <i class="ti ti-user"></i>         Account</button>
+      <button class="settings-nav-item"         data-tab="website"   onclick="switchSettingsTab('website')">   <i class="ti ti-world"></i>         Publieke website</button>
+      <button class="settings-nav-item"         data-tab="email"     onclick="switchSettingsTab('email')">     <i class="ti ti-mail"></i>          Email &amp; versturen</button>
+      <button class="settings-nav-item"         data-tab="services"  onclick="switchSettingsTab('services')">  <i class="ti ti-briefcase"></i>     Diensten</button>
+      <button class="settings-nav-item"         data-tab="automation" onclick="switchSettingsTab('automation')"><i class="ti ti-settings-automation"></i> Automatisering</button>
+      <button class="settings-nav-item"         data-tab="payments"  onclick="switchSettingsTab('payments')">  <i class="ti ti-credit-card"></i>   Betalingen</button>
+      <button class="settings-nav-item"         data-tab="blacklist" onclick="switchSettingsTab('blacklist')"> <i class="ti ti-ban"></i>           Blacklist</button>
+      <button class="settings-nav-item"         data-tab="api"       onclick="switchSettingsTab('api')">       <i class="ti ti-api"></i>           API &amp; integraties</button>
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="team" onclick="switchSettingsTab('team')"><i class="ti ti-users"></i> Team</button>` : ''}
+      <div class="settings-nav-spacer"></div>
       <button class="settings-nav-item nav-danger" data-tab="danger" onclick="switchSettingsTab('danger')"><i class="ti ti-alert-triangle"></i> Gevaarlijke zone</button>
     </nav>
     <div class="settings-content">
 
       <!-- ── Account ── -->
       <div class="settings-tab-pane active" id="stab-account">
-        <h2 class="settings-title"><i class="ti ti-user"></i> Mijn account</h2>
-        <div class="form-grid">
-          <div class="form-group"><label>Agency naam</label><input type="text" id="agencyName" value="${esc(s.agencyName)}"></div>
-          <div class="form-group"><label>Mijn naam</label><input type="text" id="myName" value="${esc(s.myName)}"></div>
-          <div class="form-group"><label>Mijn titel</label><input type="text" id="myTitle" value="${esc(s.myTitle)}"></div>
-          <div class="form-group"><label>Gebruikersnaam</label><input type="text" id="settingsUsername" value="${esc(s.username)}"></div>
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Profiel</div>
+            <div class="stg-sub">Je naam en agencynaam worden gebruikt in alle uitgaande emails</div>
+          </div>
+          <div class="stg-grid-2">
+            <div class="stg-field"><label class="stg-label">AGENCY NAAM</label><input type="text" class="stg-input" id="agencyName" value="${esc(s.agencyName)}"></div>
+            <div class="stg-field"><label class="stg-label">MIJN NAAM</label><input type="text" class="stg-input" id="myName" value="${esc(s.myName)}"></div>
+            <div class="stg-field"><label class="stg-label">MIJN TITEL</label><input type="text" class="stg-input" id="myTitle" value="${esc(s.myTitle)}"></div>
+            <div class="stg-field"><label class="stg-label">GEBRUIKERSNAAM</label><input type="text" class="stg-input" id="settingsUsername" value="${esc(s.username)}"></div>
+          </div>
         </div>
-        <hr class="divider">
-        <h3 class="settings-subtitle">Wachtwoord wijzigen</h3>
-        <div class="form-grid">
-          <div class="form-group"><label>Huidig wachtwoord</label><input type="password" id="currentPassword" placeholder="••••••••"></div>
-          <div class="form-group"><label>Nieuw wachtwoord</label><input type="password" id="newPassword" placeholder="••••••••"></div>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Wachtwoord wijzigen</div>
+            <div class="stg-sub">Laat leeg als je het wachtwoord niet wilt wijzigen</div>
+          </div>
+          <div class="stg-grid-2">
+            <div class="stg-field"><label class="stg-label">HUIDIG WACHTWOORD</label><input type="password" class="stg-input" id="currentPassword" placeholder="••••••••"></div>
+            <div class="stg-field"><label class="stg-label">NIEUW WACHTWOORD</label><input type="password" class="stg-input" id="newPassword" placeholder="••••••••"></div>
+          </div>
+          <button class="btn btn-primary stg-save-btn" id="saveAccountBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
         </div>
-        <button class="btn btn-primary" id="saveAccountBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
-        <hr class="divider" style="margin:24px 0">
-        <h3 class="settings-subtitle"><i class="ti ti-building" style="margin-right:6px"></i>Agency profielen <span class="text-muted" style="font-size:12px;font-weight:400">— wissel snel van identiteit zonder alles opnieuw in te stellen</span></h3>
-        ${s.activeProfileId ? `<div style="font-size:12px;color:var(--success);margin-bottom:10px"><i class="ti ti-check"></i> Actief profiel: <strong>${esc((s.agencyProfiles||[]).find(p=>p.id===s.activeProfileId)?.agencyName || '—')}</strong></div>` : ''}
-        <div id="agencyProfilesList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px"></div>
-        <button class="btn btn-ghost btn-sm" onclick="openProfileModal()"><i class="ti ti-plus"></i> Nieuw profiel</button>
-        <hr class="divider" style="margin:24px 0">
-        <h3 class="settings-subtitle"><i class="ti ti-brand-zapier" style="color:#ff4a00;margin-right:6px"></i>Zapier inkomend token</h3>
-        <p class="settings-note">Dit token beschermt je inkomende Zapier trigger. Voeg het toe als header <code>x-zapier-token</code> in je Zapier webhook-actie.</p>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
-          <code id="zapierTokenDisplay" class="ext-url-code" style="flex:1;filter:blur(4px);transition:filter .2s;cursor:pointer" onclick="this.style.filter='none'" title="Klik om zichtbaar te maken">${esc(s.zapierIncomingToken || '—')}</code>
-          <button class="btn btn-ghost btn-sm" onclick="copyZapierToken()"><i class="ti ti-copy"></i></button>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title"><i class="ti ti-building" style="margin-right:6px;color:var(--text-secondary)"></i>Agency profielen</div>
+            <div class="stg-sub">Wissel snel van identiteit voor multi-agency gebruik</div>
+          </div>
+          ${s.activeProfileId ? `<div class="stg-status-badge stg-badge-green"><i class="ti ti-check"></i> Actief: <strong>${esc((s.agencyProfiles||[]).find(p=>p.id===s.activeProfileId)?.agencyName || '—')}</strong></div>` : ''}
+          <div id="agencyProfilesList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px"></div>
+          <button class="btn btn-ghost btn-sm" onclick="openProfileModal()"><i class="ti ti-plus"></i> Nieuw profiel</button>
+        </div>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title"><i class="ti ti-brand-zapier" style="color:#ff4a00;margin-right:6px"></i>Zapier inkomend token</div>
+            <div class="stg-sub">Voeg toe als header <code>x-zapier-token</code> in je Zapier webhook-actie</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <code id="zapierTokenDisplay" class="stg-code-block" style="filter:blur(4px);transition:filter .2s;cursor:pointer" onclick="this.style.filter='none'" title="Klik om zichtbaar te maken">${esc(s.zapierIncomingToken || '—')}</code>
+            <button class="btn btn-ghost btn-sm" onclick="copyZapierToken()"><i class="ti ti-copy"></i></button>
+          </div>
         </div>
       </div>
 
-      <!-- ── Publieke pagina ── -->
+      <!-- ── Publieke website ── -->
       <div class="settings-tab-pane" id="stab-website">
-        <h2 class="settings-title">
-          <i class="ti ti-world"></i> Publieke website
-          <a href="/agency" target="_blank" rel="noopener" class="settings-header-link"><i class="ti ti-external-link"></i> Bekijk website</a>
-        </h2>
-        <p class="settings-note">Publieke landingspagina op <code>/agency</code> — deel deze link met potentiële klanten.</p>
-        <div class="form-grid">
-          <div class="form-group" style="grid-column:1/-1">
-            <label>Tagline</label>
-            <input type="text" id="websiteTagline" value="${esc(s.websiteTagline || 'Meer klanten. Minder werk. Volledig automatisch.')}">
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Publieke website</div>
+            <div class="stg-sub">Landingspagina op <code>/agency</code> — deel met potentiële klanten
+              <a href="/agency" target="_blank" rel="noopener" class="stg-ext-link"><i class="ti ti-external-link"></i> Bekijk website</a>
+            </div>
           </div>
-          <div class="form-group" style="grid-column:1/-1">
-            <label>Over ons tekst</label>
-            <textarea id="websiteAbout" rows="3" style="resize:vertical">${esc(s.websiteAbout || '')}</textarea>
+          <div class="stg-field" style="margin-bottom:14px">
+            <label class="stg-label">TAGLINE</label>
+            <input type="text" class="stg-input" id="websiteTagline" value="${esc(s.websiteTagline || 'Meer klanten. Minder werk. Volledig automatisch.')}">
           </div>
-          <div class="form-group">
-            <label>Contactmail op website</label>
-            <input type="email" id="websiteContact" value="${esc(s.websiteContact || s.gmailAddress || '')}" placeholder="contact@jouwbedrijf.nl">
+          <div class="stg-field" style="margin-bottom:14px">
+            <label class="stg-label">OVER ONS</label>
+            <textarea class="stg-input" id="websiteAbout" rows="4" style="resize:vertical">${esc(s.websiteAbout || '')}</textarea>
           </div>
+          <div class="stg-grid-2">
+            <div class="stg-field">
+              <label class="stg-label">CONTACTMAIL OP WEBSITE</label>
+              <input type="email" class="stg-input" id="websiteContact" value="${esc(s.websiteContact || s.gmailAddress || '')}" placeholder="contact@jouwbedrijf.nl">
+            </div>
+          </div>
+          <button class="btn btn-primary stg-save-btn" id="saveWebsiteBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
         </div>
-        <button class="btn btn-primary" id="saveWebsiteBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
       </div>
 
       <!-- ── Email & versturen ── -->
       <div class="settings-tab-pane" id="stab-email">
-        <h2 class="settings-title">
-          <i class="ti ti-mail-fast"></i> Email instellen
-          ${s.resendConfigured
-            ? `<span class="badge badge-green"><i class="ti ti-check"></i> Resend actief</span>`
-            : `<span class="badge badge-amber"><i class="ti ti-alert-triangle"></i> Niet ingesteld</span>`}
-        </h2>
-        <p class="settings-note" style="margin-bottom:16px">Emails worden verstuurd via <strong>Resend</strong> — werkt op Railway zonder SMTP-poortproblemen. Gratis tot 100 emails/dag. Maak een account aan op <a href="https://resend.com" target="_blank" class="link">resend.com</a> of voeg <code style="background:var(--border);padding:1px 6px;border-radius:4px">RESEND_API_KEY</code> toe als Railway environment variable.</p>
 
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Resend API sleutel ${s.resendConfigured ? '<span class="badge badge-green" style="font-size:11px">Ingesteld</span>' : ''}</label>
-            <input type="password" id="resendApiKey" placeholder="${s.resendConfigured ? '(laat leeg om ongewijzigd te laten)' : 're_...'}">
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Resend — verzenden
+              ${s.resendConfigured ? `<span class="stg-status-badge stg-badge-green"><i class="ti ti-check"></i> Actief</span>` : `<span class="stg-status-badge stg-badge-amber"><i class="ti ti-alert-triangle"></i> Niet ingesteld</span>`}
+            </div>
+            <div class="stg-sub">Emails worden verstuurd via Resend. Gratis tot 100/dag. Account aanmaken op <a href="https://resend.com" target="_blank" class="link">resend.com</a></div>
           </div>
-          <div class="form-group">
-            <label>Afzender naam</label>
-            <input type="text" id="resendSenderName" value="${esc(s.agencyName || '')}" placeholder="${esc(s.agencyName || 'Agency AI')}">
-          </div>
-          <div class="form-group" style="grid-column:1/-1">
-            <label>Afzender e-mailadres <span class="text-muted">— moet geverifieerd zijn in Resend dashboard</span></label>
-            <input type="text" id="resendFromAddress" value="${esc(s.resendFromAddress || '')}" placeholder="noreply@agencyai.info">
-          </div>
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" id="saveResendBtn"><i class="ti ti-device-floppy"></i> Opslaan &amp; testen</button>
-        </div>
-        <div id="resendSaveResult" style="margin-top:12px;display:none"></div>
-
-        <hr class="divider" style="margin:24px 0">
-        <h3 class="settings-subtitle"><i class="ti ti-mail" style="margin-right:5px"></i> Gmail — alleen voor reply detectie (IMAP)</h3>
-        <p class="settings-note" style="margin-bottom:12px">Gmail wordt <strong>niet</strong> gebruikt voor verzenden. Vul dit in als je wilt dat Agency AI automatisch antwoorden van prospects detecteert via je Gmail inbox.</p>
-
-        <details class="imap-instructions-wrap" style="margin-bottom:16px;border:1px solid var(--border);border-radius:10px;padding:0">
-          <summary style="padding:10px 14px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-secondary);list-style:none;display:flex;align-items:center;gap:7px">
-            <i class="ti ti-info-circle" style="color:var(--accent)"></i> Stap 1 — IMAP inschakelen in Gmail
-            <i class="ti ti-chevron-down" style="margin-left:auto;font-size:12px"></i>
-          </summary>
-          <div style="padding:12px 16px 14px;font-size:13px;line-height:1.8;border-top:1px solid var(--border)">
-            <ol style="margin:0;padding-left:18px;color:var(--text-secondary)">
-              <li>Ga naar <strong>Gmail</strong> op je computer (niet de app)</li>
-              <li>Klik rechtsboven op het tandwiel <i class="ti ti-settings" style="font-size:11px"></i> → <strong>Alle instellingen bekijken</strong></li>
-              <li>Ga naar het tabblad <strong>Doorsturen en POP/IMAP</strong></li>
-              <li>Zet <strong>IMAP-toegang</strong> op <em>IMAP inschakelen</em></li>
-              <li>Klik op <strong>Wijzigingen opslaan</strong></li>
-            </ol>
-            <p style="margin:10px 0 0;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text-muted)">
-              <i class="ti ti-lock"></i> Stap 2 — App-wachtwoord: ga naar <strong>myaccount.google.com → Beveiliging → 2-stapsverificatie → App-wachtwoorden</strong>. Kies <em>E-mail + Windows/Mac</em> en kopieer het 16-cijferige wachtwoord.
-            </p>
-          </div>
-        </details>
-
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Gmail adres</label>
-            <input type="email" id="gmailAddress" value="${s.gmailAddress || ''}" placeholder="jouw@gmail.com">
-          </div>
-          <div class="form-group">
-            <label>App-wachtwoord ${s.gmailPasswordSet ? '<span class="badge badge-green" style="font-size:11px">Ingesteld</span>' : ''}</label>
-            <input type="password" id="gmailPassword" placeholder="${s.gmailPasswordSet ? '(laat leeg om ongewijzigd te laten)' : 'xxxx xxxx xxxx xxxx'}">
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" id="saveGmailBtn"><i class="ti ti-device-floppy"></i> Gmail opslaan</button>
-          <button class="btn btn-ghost btn-sm" id="testImapBtn" onclick="testImapConnection()"><i class="ti ti-plug-connected"></i> Test IMAP verbinding</button>
-        </div>
-        <div id="gmailTestResult" style="margin-top:12px;display:none"></div>
-        <div id="imapTestResult" style="margin-top:8px;display:none"></div>
-
-        <div class="form-group" style="margin-top:14px">
-          <label class="toggle-wrap">
-            <input type="checkbox" id="replyDetection" ${s.replyDetection !== false ? 'checked' : ''}>
-            <span class="toggle"></span>
-            <span class="toggle-label">Reply detectie inschakelen</span>
-          </label>
-          <p class="toggle-hint">Controleert elke 2 uur je Gmail inbox op antwoorden van prospects</p>
-        </div>
-        <div class="form-group" style="margin-top:14px">
-          <label class="toggle-wrap">
-            <input type="checkbox" id="webhookEnabled" ${s.webhookConfigured ? 'checked' : ''} onchange="document.getElementById('webhookPanel').style.display=this.checked?'block':'none'">
-            <span class="toggle"></span>
-            <span class="toggle-label">Real-time webhook inschakelen</span>
-          </label>
-          <p class="toggle-hint">Detecteert replies direct via Google Pub/Sub — sneller dan polling elke 2 uur</p>
-        </div>
-        <div id="webhookPanel" class="settings-panel" style="display:${s.webhookConfigured ? 'block' : 'none'};margin-top:12px">
-          <div class="form-group">
-            <label>Webhook token <span class="text-muted">(geheime sleutel in de URL)</span></label>
-            <div style="display:flex;gap:8px">
-              <input type="text" id="webhookToken" value="${esc(s.webhookToken || '')}" placeholder="Genereer een token..." style="flex:1;font-family:monospace;font-size:13px" oninput="updateWebhookUrl()">
-              <button class="btn btn-ghost btn-sm" onclick="generateWebhookToken()"><i class="ti ti-refresh"></i> Genereer</button>
+          <div class="stg-grid-2">
+            <div class="stg-field">
+              <label class="stg-label">RESEND API SLEUTEL ${s.resendConfigured ? '<span class="stg-status-badge stg-badge-green" style="font-size:10px">Ingesteld</span>' : ''}</label>
+              <input type="password" class="stg-input" id="resendApiKey" placeholder="${s.resendConfigured ? '(laat leeg om ongewijzigd te laten)' : 're_...'}">
+            </div>
+            <div class="stg-field">
+              <label class="stg-label">AFZENDER NAAM</label>
+              <input type="text" class="stg-input" id="resendSenderName" value="${esc(s.agencyName || '')}" placeholder="${esc(s.agencyName || 'Agency AI')}">
+            </div>
+            <div class="stg-field stg-field-full">
+              <label class="stg-label">AFZENDER E-MAILADRES <span class="stg-label-note">— moet geverifieerd zijn in Resend dashboard</span></label>
+              <input type="text" class="stg-input" id="resendFromAddress" value="${esc(s.resendFromAddress || '')}" placeholder="noreply@agencyai.info">
             </div>
           </div>
-          <div class="form-group" style="margin-top:10px">
-            <label>Jouw webhook URL <span class="text-muted">(gebruik dit als Pub/Sub push endpoint)</span></label>
-            <div style="display:flex;gap:8px;align-items:center">
-              <code id="webhookUrlDisplay" class="webhook-url-code">${s.webhookToken ? window.location.origin + '/api/gmail/webhook?token=' + s.webhookToken : 'Sla eerst een token op'}</code>
-              <button class="btn btn-ghost btn-sm btn-icon" onclick="copyWebhookUrl()"><i class="ti ti-copy"></i></button>
+          <button class="btn btn-primary stg-save-btn" id="saveResendBtn"><i class="ti ti-device-floppy"></i> Opslaan &amp; testen</button>
+          <div id="resendSaveResult" style="margin-top:12px;display:none"></div>
+        </div>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Gmail IMAP — reply detectie
+              ${s.gmailConfigured ? `<span class="stg-status-badge stg-badge-green"><i class="ti ti-check"></i> Ingesteld</span>` : `<span class="stg-status-badge stg-badge-amber"><i class="ti ti-alert-triangle"></i> Niet ingesteld</span>`}
+            </div>
+            <div class="stg-sub">Gmail wordt <strong>niet</strong> gebruikt voor verzenden — alleen voor het detecteren van antwoorden van prospects</div>
+          </div>
+          <div class="stg-grid-2">
+            <div class="stg-field">
+              <label class="stg-label">GMAIL ADRES</label>
+              <input type="email" class="stg-input" id="gmailAddress" value="${s.gmailAddress || ''}" placeholder="jouw@gmail.com">
+            </div>
+            <div class="stg-field">
+              <label class="stg-label">APP-WACHTWOORD ${s.gmailPasswordSet ? '<span class="stg-status-badge stg-badge-green" style="font-size:10px">Ingesteld</span>' : ''}</label>
+              <input type="password" class="stg-input" id="gmailPassword" placeholder="${s.gmailPasswordSet ? '(laat leeg om ongewijzigd te laten)' : 'xxxx xxxx xxxx xxxx'}">
             </div>
           </div>
-          <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="saveWebhookSettings()"><i class="ti ti-device-floppy"></i> Token opslaan</button>
-          <div style="margin-top:16px">
-            <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:space-between;text-align:left" onclick="toggleWebhookInstructions()">
-              <span><i class="ti ti-info-circle"></i> Setup instructies — Google Cloud Pub/Sub</span>
-              <i class="ti ti-chevron-down" id="webhookInstrChevron" style="transition:transform 0.2s"></i>
-            </button>
-            <div id="webhookInstructions" class="webhook-instructions" style="display:none">
-              <ol style="margin:0;padding-left:18px">
-                <li>Ga naar <strong>console.cloud.google.com</strong> en maak een nieuw project aan</li>
-                <li>Activeer <strong>Gmail API</strong> + <strong>Cloud Pub/Sub API</strong> via "APIs &amp; Services"</li>
-                <li>Maak een Pub/Sub topic aan: bijv. <code style="background:var(--border);padding:1px 5px;border-radius:4px">gmail-replies</code></li>
-                <li>Maak een <strong>Push subscription</strong> aan — plak jouw webhook URL als endpoint</li>
-                <li>Geef het account <code style="background:var(--border);padding:1px 5px;border-radius:4px">gmail-api-push@system.gserviceaccount.com</code> de rol <strong>Pub/Sub Publisher</strong> op het topic</li>
-                <li>Stel Gmail push notifications in via de <strong>Gmail API Explorer</strong> → <code style="background:var(--border);padding:1px 5px;border-radius:4px">users.watch</code> met jouw topic naam</li>
-                <li>Genereer en sla een token op (zie boven) — de webhook is nu actief</li>
+          <details class="stg-details" style="margin-bottom:14px">
+            <summary><i class="ti ti-info-circle" style="color:var(--accent)"></i> Hoe maak ik een app-wachtwoord aan?</summary>
+            <div class="stg-details-body">
+              <ol>
+                <li>Ga naar Gmail → Tandwiel → <strong>Alle instellingen</strong> → tabblad <strong>Doorsturen en POP/IMAP</strong> → zet IMAP aan</li>
+                <li>Ga naar <strong>myaccount.google.com → Beveiliging → 2-stapsverificatie → App-wachtwoorden</strong></li>
+                <li>Kies <em>E-mail + Windows/Mac</em> en kopieer het 16-cijferige wachtwoord</li>
               </ol>
-              <p style="margin:12px 0 0;padding:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:12px;color:#92400e">
-                ⚡ Wanneer de webhook actief is wordt de 2-uurlijkse IMAP polling automatisch uitgeschakeld.
-              </p>
+            </div>
+          </details>
+          <div class="stg-toggle-row">
+            <label class="toggle-wrap">
+              <input type="checkbox" id="replyDetection" ${s.replyDetection !== false ? 'checked' : ''}>
+              <span class="toggle"></span>
+              <span class="toggle-label">Reply detectie inschakelen</span>
+            </label>
+            <p class="toggle-hint">Controleert elke 2 uur je Gmail inbox op antwoorden van prospects</p>
+          </div>
+          <div class="stg-toggle-row">
+            <label class="toggle-wrap">
+              <input type="checkbox" id="webhookEnabled" ${s.webhookConfigured ? 'checked' : ''} onchange="document.getElementById('webhookPanel').style.display=this.checked?'block':'none'">
+              <span class="toggle"></span>
+              <span class="toggle-label">Real-time webhook (Google Pub/Sub)</span>
+            </label>
+            <p class="toggle-hint">Detecteert replies direct — sneller dan polling elke 2 uur</p>
+          </div>
+          <div id="webhookPanel" class="settings-panel" style="display:${s.webhookConfigured ? 'block' : 'none'};margin:12px 0">
+            <div class="stg-field" style="margin-bottom:10px">
+              <label class="stg-label">WEBHOOK TOKEN</label>
+              <div style="display:flex;gap:8px">
+                <input type="text" class="stg-input" id="webhookToken" value="${esc(s.webhookToken || '')}" placeholder="Genereer een token..." style="flex:1;font-family:monospace" oninput="updateWebhookUrl()">
+                <button class="btn btn-ghost btn-sm" onclick="generateWebhookToken()"><i class="ti ti-refresh"></i> Genereer</button>
+              </div>
+            </div>
+            <div class="stg-field" style="margin-bottom:10px">
+              <label class="stg-label">WEBHOOK URL</label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <code id="webhookUrlDisplay" class="stg-code-block" style="flex:1">${s.webhookToken ? window.location.origin + '/api/gmail/webhook?token=' + s.webhookToken : 'Sla eerst een token op'}</code>
+                <button class="btn btn-ghost btn-sm" onclick="copyWebhookUrl()"><i class="ti ti-copy"></i></button>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="saveWebhookSettings()"><i class="ti ti-device-floppy"></i> Token opslaan</button>
+            <details class="stg-details" style="margin-top:12px">
+              <summary><i class="ti ti-info-circle"></i> Setup instructies — Google Cloud Pub/Sub</summary>
+              <div class="stg-details-body">
+                <ol>
+                  <li>Ga naar <strong>console.cloud.google.com</strong> → nieuw project</li>
+                  <li>Activeer <strong>Gmail API</strong> + <strong>Cloud Pub/Sub API</strong></li>
+                  <li>Maak Pub/Sub topic aan + push subscription met jouw webhook URL</li>
+                  <li>Geef <code>gmail-api-push@system.gserviceaccount.com</code> rol <strong>Pub/Sub Publisher</strong></li>
+                  <li>Stel Gmail push in via API Explorer → <code>users.watch</code></li>
+                </ol>
+              </div>
+            </details>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:14px">
+            <button class="btn btn-ghost btn-sm" id="saveGmailBtn"><i class="ti ti-device-floppy"></i> Gmail opslaan</button>
+            <button class="btn btn-ghost btn-sm" id="testImapBtn" onclick="testImapConnection()"><i class="ti ti-plug-connected"></i> Test IMAP verbinding</button>
+          </div>
+          <div id="gmailTestResult" style="margin-top:10px;display:none"></div>
+          <div id="imapTestResult" style="margin-top:8px;display:none"></div>
+        </div>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Dagelijkse briefing</div>
+            <div class="stg-sub">Ontvang dagelijks een overzicht met leads, reacties en pipelinewaarde</div>
+          </div>
+          <div class="stg-grid-2">
+            <div class="stg-field">
+              <label class="toggle-wrap">
+                <input type="checkbox" id="dailyBriefingEnabled" ${s.dailyBriefingEnabled !== false ? 'checked' : ''}>
+                <span class="toggle"></span>
+                <span class="toggle-label">Briefing email inschakelen</span>
+              </label>
+            </div>
+            <div class="stg-field">
+              <label class="stg-label">VERZENDTIJD</label>
+              <input type="time" class="stg-input" id="dailyBriefingTime" value="${s.dailyBriefingTime || '08:45'}" style="width:140px">
             </div>
           </div>
         </div>
-        <hr class="divider" style="margin:20px 0">
-        <h3 class="settings-subtitle"><i class="ti ti-mail-cog" style="margin-right:5px"></i> Dagelijkse briefing email</h3>
-        <div class="form-grid" style="margin-bottom:10px">
-          <div class="form-group">
-            <label class="toggle-wrap">
-              <input type="checkbox" id="dailyBriefingEnabled" ${s.dailyBriefingEnabled !== false ? 'checked' : ''}>
-              <span class="toggle"></span>
-              <span class="toggle-label">Briefing email inschakelen</span>
-            </label>
-            <p class="toggle-hint">Stuur dagelijks een overzicht met leads, reacties en pipelinewaarde</p>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Automatische klant e-mails</div>
+            <div class="stg-sub">Welke e-mails wil je automatisch versturen naar klanten?</div>
           </div>
-          <div class="form-group">
-            <label>Verzendtijd briefing</label>
-            <input type="time" id="dailyBriefingTime" value="${s.dailyBriefingTime || '08:45'}">
+          <div class="stg-toggle-list">
+            ${[
+              { key: 'welcome',        label: 'Welkomstmail bij projectstart' },
+              { key: 'intakeReceived', label: 'Bevestiging intake ontvangen' },
+              { key: 'deliveryReady',  label: 'Leveringen klaarstaan' },
+              { key: 'weekComplete',   label: 'Week afgerond update' },
+              { key: 'monthlyUpdate',  label: 'Maandelijkse update' },
+              { key: 'checkIn',        label: 'Halverwege check-in' },
+            ].map(opt => `
+              <label class="stg-toggle-item">
+                <input type="checkbox" id="ace_${opt.key}" ${(s.autoClientEmails?.[opt.key] !== false) ? 'checked' : ''}>
+                <span class="toggle"></span>
+                <span class="toggle-label">${opt.label}</span>
+              </label>`).join('')}
           </div>
+          <button class="btn btn-primary stg-save-btn" id="saveEmailAutoBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
         </div>
-        <hr class="divider" style="margin:20px 0">
-        <h3 class="settings-subtitle"><i class="ti ti-mail-cog" style="margin-right:5px"></i> Automatische klant e-mails</h3>
-        <div class="auto-emails-grid">
-          ${[
-            { key: 'welcome',        label: 'Welkomstmail bij projectstart' },
-            { key: 'intakeReceived', label: 'Bevestiging intake ontvangen' },
-            { key: 'deliveryReady',  label: 'Leveringen klaarstaan' },
-            { key: 'weekComplete',   label: 'Week afgerond update' },
-            { key: 'monthlyUpdate',  label: 'Maandelijkse update' },
-            { key: 'checkIn',        label: 'Halverwege check-in' },
-          ].map(opt => `
-            <label class="auto-email-label">
-              <input type="checkbox" id="ace_${opt.key}" ${(s.autoClientEmails?.[opt.key] !== false) ? 'checked' : ''} style="width:14px;height:14px">
-              ${opt.label}
-            </label>
-          `).join('')}
-        </div>
-        <p class="text-muted" style="margin-top:8px"><i class="ti ti-info-circle"></i> Automatische e-mails worden verstuurd als Gmail geconfigureerd is en de klant een e-mailadres heeft.</p>
-        <button class="btn btn-primary" style="margin-top:16px" id="saveEmailAutoBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
       </div>
 
-      <!-- ── Niches & filters ── -->
-      <div class="settings-tab-pane" id="stab-niches">
-        <h2 class="settings-title"><i class="ti ti-filter"></i> Niches &amp; filters</h2>
-
-        <!-- Niche targeting -->
-        <span class="settings-sublabel"><i class="ti ti-target" style="margin-right:6px"></i>Doelgroep niches</span>
-        <p class="toggle-hint" style="margin:4px 0 10px">Kies welke niches én sub-niches Agent 1 mag targeten. Alles uitgevinkt = alle niches.</p>
-        <div id="nicheTargetingGrid" style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px">
-          ${Object.entries(APP_SUB_NICHES).map(([niche, subs]) => `
-            <div class="niche-target-group">
-              <label class="niche-target-header">
-                <input type="checkbox" class="niche-top-cb" data-niche="${niche}"
-                  ${(s.targetNiches||[]).includes(niche) || !(s.targetNiches?.length) ? 'checked' : ''}>
-                <span class="niche-target-name">${niche}</span>
-              </label>
-              <div class="niche-target-subs">
-                ${subs.map(sub => `
-                  <label class="sub-niche-cb-wrap">
-                    <input type="checkbox" class="sub-niche-cb" data-subniche="${sub}" data-niche="${niche}"
-                      ${(s.targetSubNiches||[]).includes(sub) || !(s.targetSubNiches?.length) ? 'checked' : ''}>
-                    <span>${sub}</span>
-                  </label>`).join('')}
-              </div>
-            </div>`).join('')}
+      <!-- ── Diensten ── -->
+      <div class="settings-tab-pane" id="stab-services">
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Diensten die ik verkoop</div>
+            <div class="stg-sub">Deze worden gebruikt in offertes, contracten en de AI-emailgeneratie</div>
+          </div>
+          <div id="servicesTable" class="services-scroll">
+            ${(s.services || []).map((svc, i) => `
+              <div class="service-row" data-idx="${i}">
+                <input type="text" class="svc-name" value="${esc(svc.name)}" placeholder="Dienst naam">
+                <input type="number" class="svc-price" value="${svc.price}" placeholder="Prijs/mnd" style="width:120px">
+                <input type="text" class="svc-desc" value="${esc(svc.description)}" placeholder="Beschrijving">
+                <button class="btn btn-ghost btn-sm btn-icon" onclick="this.closest('.service-row').remove()"><i class="ti ti-trash"></i></button>
+              </div>`).join('')}
+          </div>
+          <div class="stg-btn-row">
+            <button class="btn btn-ghost btn-sm" id="addServiceBtn"><i class="ti ti-plus"></i> Dienst toevoegen</button>
+            <button class="btn btn-ghost btn-sm" id="loadDefaultServicesBtn"><i class="ti ti-refresh"></i> Standaard laden</button>
+            <button class="btn btn-primary" id="saveServicesBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
+          </div>
         </div>
-        <hr class="divider" style="margin:16px 0">
+      </div>
 
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Dagelijkse run tijd</label>
-            <input type="time" id="dailyRunTime" value="${s.dailyRunTime || '09:00'}">
+      <!-- ── Automatisering ── -->
+      <div class="settings-tab-pane" id="stab-automation">
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Run instellingen</div>
           </div>
-          <div class="form-group">
-            <label>Leads per dag</label>
-            <div class="radio-group">
-              ${[10,15,20].map(n => `<label class="radio-label"><input type="radio" name="leadsPerDay" value="${n}" ${s.leadsPerDay == n ? 'checked' : ''}> ${n}</label>`).join('')}
+          <div class="stg-grid-2">
+            <div class="stg-field">
+              <label class="stg-label">DAGELIJKSE RUN TIJD</label>
+              <input type="time" class="stg-input" id="dailyRunTime" value="${s.dailyRunTime || '09:00'}" style="width:140px">
             </div>
-          </div>
-          <div class="form-group form-group-full">
-            <span class="settings-sublabel">Slimme auto-approve <span class="text-muted" style="font-weight:400">(alle actieve voorwaarden moeten kloppen)</span></span>
-            <div class="settings-panel settings-panel-flex">
-              <label class="toggle-wrap">
-                <input type="checkbox" id="smartAutoEnabled" ${s.smartAutoApprove?.enabled ? 'checked' : ''}>
-                <span class="toggle"></span>
-                <span class="toggle-label" style="font-weight:600">Auto-approve inschakelen</span>
-              </label>
-              <div class="auto-approve-grid">
-                <div class="form-group" style="margin:0">
-                  <label>Score drempel ≥ <span id="scoreVal">${s.smartAutoApprove?.scoreThreshold || s.autoApproveScore || 8.0}</span></label>
-                  <input type="range" id="autoApproveScore" min="7" max="9.5" step="0.5" value="${s.smartAutoApprove?.scoreThreshold || s.autoApproveScore || 8.0}" oninput="document.getElementById('scoreVal').textContent=this.value">
-                </div>
-                <div class="form-group" style="margin:0">
-                  <label>Minimum volgers</label>
-                  <input type="number" id="smartMinFollowers" value="${s.smartAutoApprove?.minFollowers ?? 5000}" min="0" step="500">
-                </div>
-                <div class="form-group" style="margin:0">
-                  <label class="toggle-wrap">
-                    <input type="checkbox" id="smartRequireNoAds" ${s.smartAutoApprove?.requireNoAds !== false ? 'checked' : ''}>
-                    <span class="toggle"></span>
-                    <span class="toggle-label">Geen advertenties</span>
-                  </label>
-                </div>
-                <div class="form-group" style="margin:0">
-                  <label class="toggle-wrap">
-                    <input type="checkbox" id="smartRequireWebsite" ${s.smartAutoApprove?.requireWebsite !== false ? 'checked' : ''}>
-                    <span class="toggle"></span>
-                    <span class="toggle-label">Heeft website</span>
-                  </label>
-                </div>
+            <div class="stg-field">
+              <label class="stg-label">LEADS PER DAG</label>
+              <div class="radio-group">
+                ${[10,15,20].map(n => `<label class="radio-label"><input type="radio" name="leadsPerDay" value="${n}" ${s.leadsPerDay == n ? 'checked' : ''}> ${n}</label>`).join('')}
               </div>
             </div>
+            <div class="stg-field">
+              <label class="toggle-wrap">
+                <input type="checkbox" id="automationPaused" ${s.automationPaused ? 'checked' : ''}>
+                <span class="toggle"></span>
+                <span class="toggle-label">Automatisering pauzeren</span>
+              </label>
+            </div>
           </div>
-          <div class="form-group">
-            <label>Automatisering pauzeren</label>
+        </div>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Slimme auto-approve</div>
+            <div class="stg-sub">Alle actieve voorwaarden moeten kloppen voor automatische goedkeuring</div>
+          </div>
+          <div class="stg-toggle-row" style="margin-bottom:14px">
             <label class="toggle-wrap">
-              <input type="checkbox" id="automationPaused" ${s.automationPaused ? 'checked' : ''}>
+              <input type="checkbox" id="smartAutoEnabled" ${s.smartAutoApprove?.enabled ? 'checked' : ''}>
               <span class="toggle"></span>
-              <span class="toggle-label">Gepauzeerd</span>
+              <span class="toggle-label" style="font-weight:600">Auto-approve inschakelen</span>
             </label>
           </div>
-        </div>
-        <hr class="divider" style="margin:16px 0">
-        <span class="settings-sublabel"><i class="ti ti-message-reply" style="margin-right:6px"></i>AI Auto-reply</span>
-        <p class="settings-note" style="margin:8px 0 12px">Wanneer een bedrijf reageert op jouw email, schrijft de AI automatisch een passend antwoord en zet het klaar in de inbox.</p>
-        <div style="display:flex;flex-direction:column;gap:12px">
-          <label class="toggle-wrap">
-            <input type="checkbox" id="aiAutoReply" ${s.aiAutoReply !== false ? 'checked' : ''}>
-            <span class="toggle"></span>
-            <span class="toggle-label">AI auto-reply inschakelen</span>
-          </label>
-          <p class="toggle-hint">Leest de reply, genereert een menselijk antwoord en plaatst het ter goedkeuring in je inbox</p>
-          <label class="toggle-wrap">
-            <input type="checkbox" id="aiAutoReplySend" ${s.aiAutoReplySend ? 'checked' : ''}>
-            <span class="toggle"></span>
-            <span class="toggle-label">Stuur automatisch zonder goedkeuring (alleen score ≥ 8)</span>
-          </label>
-          <p class="toggle-hint" style="color:var(--danger)"><i class="ti ti-alert-triangle"></i> Gevaarlijk: slaat inbox-goedkeuring over voor leads met hoge score</p>
-        </div>
-        </div>
-        <hr class="divider" style="margin:16px 0">
-        <div class="form-group">
-          <label class="toggle-wrap">
-            <input type="checkbox" id="monthlyReports" ${s.monthlyReports !== false ? 'checked' : ''}>
-            <span class="toggle"></span>
-            <span class="toggle-label">Automatische maandrapporten</span>
-          </label>
-          <p class="toggle-hint">Genereert elke 1e van de maand automatisch een rapport voor elke actieve klant en publiceert het in hun portaal</p>
-        </div>
-        <hr class="divider" style="margin:16px 0">
-        <span class="settings-sublabel"><i class="ti ti-building" style="margin-right:6px"></i>Doelgroep bedrijfsgrootte</span>
-        <p class="toggle-hint" style="margin:4px 0 10px">Leads buiten de geselecteerde groottes krijgen een lagere score (-0.5)</p>
-        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
-          <label class="toggle-wrap">
-            <input type="checkbox" id="sizeSmall" ${(s.targetCompanySizes||['small','medium']).includes('small') ? 'checked' : ''}>
-            <span class="toggle"></span><span class="toggle-label">Klein (1–10 medewerkers)</span>
-          </label>
-          <label class="toggle-wrap">
-            <input type="checkbox" id="sizeMedium" ${(s.targetCompanySizes||['small','medium']).includes('medium') ? 'checked' : ''}>
-            <span class="toggle"></span><span class="toggle-label">Middel (10–50)</span>
-          </label>
-          <label class="toggle-wrap">
-            <input type="checkbox" id="sizeLarge" ${(s.targetCompanySizes||[]).includes('large') ? 'checked' : ''}>
-            <span class="toggle"></span><span class="toggle-label">Groot (50+)</span>
-          </label>
-        </div>
-        <hr class="divider" style="margin:16px 0">
-        <span class="settings-sublabel"><i class="ti ti-database-export" style="margin-right:6px"></i>Dagelijkse data backup</span>
-        <div class="form-group" style="margin-top:10px">
-          <label class="toggle-wrap">
-            <input type="checkbox" id="backupEnabled" ${s.backupEnabled !== false ? 'checked' : ''}>
-            <span class="toggle"></span>
-            <span class="toggle-label">Automatische backup inschakelen</span>
-          </label>
-          <p class="toggle-hint">Maakt dagelijks een volledige backup van al je data (leads, inbox, runs, stats)</p>
-        </div>
-        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:10px">
-          <div class="form-group" style="margin:0">
-            <label>Backup tijd</label>
-            <input type="time" id="backupTime" value="${s.backupTime || '02:00'}" style="width:120px">
+          <div class="stg-grid-2">
+            <div class="stg-field">
+              <label class="stg-label">SCORE DREMPEL ≥ <span id="scoreVal">${s.smartAutoApprove?.scoreThreshold || s.autoApproveScore || 8.0}</span></label>
+              <input type="range" id="autoApproveScore" min="7" max="9.5" step="0.5" value="${s.smartAutoApprove?.scoreThreshold || s.autoApproveScore || 8.0}" oninput="document.getElementById('scoreVal').textContent=this.value">
+            </div>
+            <div class="stg-field">
+              <label class="stg-label">MINIMUM VOLGERS</label>
+              <input type="number" class="stg-input" id="smartMinFollowers" value="${s.smartAutoApprove?.minFollowers ?? 5000}" min="0" step="500">
+            </div>
+            <div class="stg-field">
+              <label class="toggle-wrap">
+                <input type="checkbox" id="smartRequireNoAds" ${s.smartAutoApprove?.requireNoAds !== false ? 'checked' : ''}>
+                <span class="toggle"></span>
+                <span class="toggle-label">Geen advertenties</span>
+              </label>
+            </div>
+            <div class="stg-field">
+              <label class="toggle-wrap">
+                <input type="checkbox" id="smartRequireWebsite" ${s.smartAutoApprove?.requireWebsite !== false ? 'checked' : ''}>
+                <span class="toggle"></span>
+                <span class="toggle-label">Heeft website</span>
+              </label>
+            </div>
           </div>
-          <div class="form-group" style="margin:0">
-            <label class="toggle-wrap">
+        </div>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Niche targeting</div>
+            <div class="stg-sub">Kies welke niches Agent 1 mag targeten. Alles uitgevinkt = alle niches.</div>
+          </div>
+          <div id="nicheTargetingGrid" style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px">
+            ${Object.entries(APP_SUB_NICHES).map(([niche, subs]) => `
+              <div class="niche-target-group">
+                <label class="niche-target-header">
+                  <input type="checkbox" class="niche-top-cb" data-niche="${niche}"
+                    ${(s.targetNiches||[]).includes(niche) || !(s.targetNiches?.length) ? 'checked' : ''}>
+                  <span class="niche-target-name">${niche}</span>
+                </label>
+                <div class="niche-target-subs">
+                  ${subs.map(sub => `
+                    <label class="sub-niche-cb-wrap">
+                      <input type="checkbox" class="sub-niche-cb" data-subniche="${sub}" data-niche="${niche}"
+                        ${(s.targetSubNiches||[]).includes(sub) || !(s.targetSubNiches?.length) ? 'checked' : ''}>
+                      <span>${sub}</span>
+                    </label>`).join('')}
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Doelgroep bedrijfsgrootte</div>
+            <div class="stg-sub">Leads buiten de geselecteerde groottes krijgen een lagere score (−0.5)</div>
+          </div>
+          <div class="stg-toggle-list">
+            <label class="stg-toggle-item"><input type="checkbox" id="sizeSmall"  ${(s.targetCompanySizes||['small','medium']).includes('small')  ? 'checked' : ''}><span class="toggle"></span><span class="toggle-label">Klein (1–10 medewerkers)</span></label>
+            <label class="stg-toggle-item"><input type="checkbox" id="sizeMedium" ${(s.targetCompanySizes||['small','medium']).includes('medium') ? 'checked' : ''}><span class="toggle"></span><span class="toggle-label">Middel (10–50)</span></label>
+            <label class="stg-toggle-item"><input type="checkbox" id="sizeLarge"  ${(s.targetCompanySizes||[]).includes('large') ? 'checked' : ''}><span class="toggle"></span><span class="toggle-label">Groot (50+)</span></label>
+          </div>
+        </div>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">AI Auto-reply</div>
+            <div class="stg-sub">Wanneer een bedrijf reageert, schrijft de AI automatisch een passend antwoord</div>
+          </div>
+          <div class="stg-toggle-list">
+            <label class="stg-toggle-item">
+              <input type="checkbox" id="aiAutoReply" ${s.aiAutoReply !== false ? 'checked' : ''}>
+              <span class="toggle"></span>
+              <span class="toggle-label">AI auto-reply inschakelen</span>
+            </label>
+            <label class="stg-toggle-item">
+              <input type="checkbox" id="aiAutoReplySend" ${s.aiAutoReplySend ? 'checked' : ''}>
+              <span class="toggle"></span>
+              <span class="toggle-label">Automatisch versturen zonder goedkeuring (score ≥ 8)</span>
+            </label>
+          </div>
+          <p class="toggle-hint" style="color:var(--danger);margin-top:6px"><i class="ti ti-alert-triangle"></i> Gevaarlijk: slaat inbox-goedkeuring over voor leads met hoge score</p>
+        </div>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Rapporten &amp; backup</div>
+          </div>
+          <div class="stg-toggle-list" style="margin-bottom:16px">
+            <label class="stg-toggle-item">
+              <input type="checkbox" id="monthlyReports" ${s.monthlyReports !== false ? 'checked' : ''}>
+              <span class="toggle"></span>
+              <span class="toggle-label">Automatische maandrapporten (1e van de maand)</span>
+            </label>
+            <label class="stg-toggle-item">
+              <input type="checkbox" id="backupEnabled" ${s.backupEnabled !== false ? 'checked' : ''}>
+              <span class="toggle"></span>
+              <span class="toggle-label">Automatische dagelijkse backup</span>
+            </label>
+            <label class="stg-toggle-item">
               <input type="checkbox" id="backupEmail" ${s.backupEmail !== false ? 'checked' : ''}>
               <span class="toggle"></span>
               <span class="toggle-label">Stuur backup als email bijlage</span>
             </label>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="triggerBackup()" id="backupNowBtn">
-            <i class="ti ti-database-export"></i> Backup nu uitvoeren
-          </button>
+          <div class="stg-grid-2">
+            <div class="stg-field">
+              <label class="stg-label">BACKUP TIJD</label>
+              <input type="time" class="stg-input" id="backupTime" value="${s.backupTime || '02:00'}" style="width:140px">
+            </div>
+            <div class="stg-field" style="display:flex;align-items:flex-end">
+              <button class="btn btn-ghost btn-sm" onclick="triggerBackup()" id="backupNowBtn"><i class="ti ti-database-export"></i> Backup nu uitvoeren</button>
+            </div>
+          </div>
+          <div id="backupList" style="margin-top:12px"></div>
         </div>
-        <div id="backupList" style="margin-top:12px"></div>
-        <hr class="divider" style="margin:16px 0">
-        <span class="settings-sublabel"><i class="ti ti-ban" style="margin-right:6px"></i>Blacklist</span>
-        <p class="settings-note" style="margin:8px 0 12px">Geblokkeerde bedrijven, domeinen of niches worden voortaan overgeslagen bij elke run.</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end">
-          <select id="blType"><option value="company">Bedrijfsnaam</option><option value="domain">Domein</option><option value="niche">Niche</option></select>
-          <input type="text" id="blValue" placeholder="bijv. Studio Bloom of studiodesign.nl" style="flex:1;min-width:180px">
-          <input type="text" id="blReason" placeholder="Reden (optioneel)" style="flex:1;min-width:140px">
-          <button class="btn btn-primary btn-sm" onclick="addBlacklistEntry()"><i class="ti ti-plus"></i> Toevoegen</button>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">AI API limieten</div>
+            <div class="stg-sub">Voorkom onverwachte kosten — de server slaat een actie over wanneer een limiet bereikt is</div>
+          </div>
+          <div class="stg-grid-2">
+            <div class="stg-field"><label class="stg-label">MAX CALLS / MINUUT</label><input type="number" class="stg-input" id="aiMaxPerMin"  value="${(s.aiRateLimits?.maxCallsPerMinute) ?? 10}"  min="1" max="60"></div>
+            <div class="stg-field"><label class="stg-label">MAX CALLS / UUR</label>  <input type="number" class="stg-input" id="aiMaxPerHour" value="${(s.aiRateLimits?.maxCallsPerHour)   ?? 100}" min="1" max="1000"></div>
+            <div class="stg-field"><label class="stg-label">MAX CALLS / DAG</label>  <input type="number" class="stg-input" id="aiMaxPerDay"  value="${(s.aiRateLimits?.maxCallsPerDay)    ?? 500}" min="1" max="5000"></div>
+            <div class="stg-field"><label class="stg-label">MAX KOSTEN / DAG ($)</label><input type="number" class="stg-input" id="aiMaxCostDay" value="${(s.aiRateLimits?.maxDailyCostUsd)    ?? 10}"  min="0" step="0.5"></div>
+          </div>
+          <div id="aiRateStatusBar" style="margin-top:10px"></div>
+          <button class="btn btn-primary stg-save-btn" id="saveAutomationBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
         </div>
-        <div id="blacklistItems"></div>
-        <hr class="divider" style="margin:16px 0">
-        <span class="settings-sublabel"><i class="ti ti-brain" style="margin-right:6px"></i>AI API limieten</span>
-        <p class="settings-note" style="margin:8px 0 12px">Voorkom onverwachte kosten door limieten in te stellen. De server gooit een fout en slaat de actie over wanneer een limiet bereikt is.</p>
-        <div class="auto-billing-grid">
-          <div class="form-group">
-            <label>Max calls / minuut</label>
-            <input type="number" id="aiMaxPerMin" value="${(s.aiRateLimits?.maxCallsPerMinute) ?? 10}" min="1" max="60">
-          </div>
-          <div class="form-group">
-            <label>Max calls / uur</label>
-            <input type="number" id="aiMaxPerHour" value="${(s.aiRateLimits?.maxCallsPerHour) ?? 100}" min="1" max="1000">
-          </div>
-          <div class="form-group">
-            <label>Max calls / dag</label>
-            <input type="number" id="aiMaxPerDay" value="${(s.aiRateLimits?.maxCallsPerDay) ?? 500}" min="1" max="5000">
-          </div>
-          <div class="form-group">
-            <label>Max kosten / dag ($)</label>
-            <input type="number" id="aiMaxCostDay" value="${(s.aiRateLimits?.maxDailyCostUsd) ?? 10}" min="0" step="0.5">
-          </div>
-        </div>
-        <div id="aiRateStatusBar" style="margin-top:10px"></div>
-        <hr class="divider" style="margin:16px 0">
-        <button class="btn btn-primary" id="saveAutomationBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
+      </div>
+
+      <!-- ── Niches & filters placeholder (unused tab — redirect to automation) ── -->
+      <!-- stab-niches empty — content moved to stab-automation -->
       </div>
 
       <!-- ── Betalingen ── -->
       <div class="settings-tab-pane" id="stab-payments">
-        <h2 class="settings-title"><i class="ti ti-briefcase"></i> Diensten die ik verkoop</h2>
-        <div id="servicesTable" class="services-scroll">
-          ${(s.services || []).map((svc, i) => `
-            <div class="service-row" data-idx="${i}">
-              <input type="text" class="svc-name" value="${esc(svc.name)}" placeholder="Dienst naam">
-              <input type="number" class="svc-price" value="${svc.price}" placeholder="Prijs/mnd" style="width:120px">
-              <input type="text" class="svc-desc" value="${esc(svc.description)}" placeholder="Beschrijving">
-              <button class="btn btn-ghost btn-sm btn-icon" onclick="this.closest('.service-row').remove()"><i class="ti ti-trash"></i></button>
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Betaalmethoden</div>
+            <div class="stg-sub">Koppel betaalmethoden om automatisch factuurlinks te genereren voor klanten</div>
+          </div>
+          <div style="margin-bottom:18px">
+            <label class="stg-label">STANDAARD BETAALMETHODE</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+              <label class="radio-card ${s.preferredPaymentMethod === 'stripe' ? 'radio-card-active' : ''}">
+                <input type="radio" name="preferredPayment" value="stripe" ${s.preferredPaymentMethod === 'stripe' || !s.preferredPaymentMethod ? 'checked' : ''}><i class="ti ti-brand-stripe"></i> Stripe${s.stripeConfigured ? ' <span class="stg-status-badge stg-badge-green">✓</span>' : ''}
+              </label>
+              <label class="radio-card ${s.preferredPaymentMethod === 'mollie' ? 'radio-card-active' : ''}">
+                <input type="radio" name="preferredPayment" value="mollie" ${s.preferredPaymentMethod === 'mollie' ? 'checked' : ''}><i class="ti ti-credit-card"></i> Mollie${s.mollieConfigured ? ' <span class="stg-status-badge stg-badge-green">✓</span>' : ''}
+              </label>
+              <label class="radio-card ${s.preferredPaymentMethod === 'paypal' ? 'radio-card-active' : ''}">
+                <input type="radio" name="preferredPayment" value="paypal" ${s.preferredPaymentMethod === 'paypal' ? 'checked' : ''}><i class="ti ti-brand-paypal"></i> PayPal${s.paypalConfigured ? ' <span class="stg-status-badge stg-badge-green">✓</span>' : ''}
+              </label>
             </div>
-          `).join('')}
+          </div>
+          <div class="stg-grid-2">
+            <div class="stg-field">
+              <label class="stg-label">STRIPE SECRET KEY</label>
+              <input type="password" class="stg-input" id="stripeSecretKey" placeholder="sk_live_... of sk_test_...">
+              ${s.stripeConfigured ? '<p class="stg-configured-note"><i class="ti ti-check"></i> Stripe ingesteld</p>' : ''}
+            </div>
+            <div class="stg-field">
+              <label class="stg-label">MOLLIE API SLEUTEL</label>
+              <input type="password" class="stg-input" id="mollieApiKey" placeholder="live_... of test_...">
+              ${s.mollieConfigured ? '<p class="stg-configured-note"><i class="ti ti-check"></i> Mollie ingesteld</p>' : ''}
+            </div>
+            <div class="stg-field">
+              <label class="stg-label">PAYPAL.ME GEBRUIKERSNAAM</label>
+              <input type="text" class="stg-input" id="paypalMe" value="${esc(s.paypalMe || '')}" placeholder="jouwnaam (zonder paypal.me/)">
+              ${s.paypalConfigured ? '<p class="stg-configured-note"><i class="ti ti-check"></i> PayPal ingesteld</p>' : ''}
+            </div>
+          </div>
+          <button class="btn btn-primary stg-save-btn" id="saveStripeBtn"><i class="ti ti-device-floppy"></i> Betaalmethoden opslaan</button>
         </div>
-        <div class="btn-row" style="margin-top:10px">
-          <button class="btn btn-ghost btn-sm" id="addServiceBtn"><i class="ti ti-plus"></i> Toevoegen</button>
-          <button class="btn btn-ghost btn-sm" id="loadDefaultServicesBtn"><i class="ti ti-refresh"></i> Standaard laden</button>
-          <button class="btn btn-primary" id="saveServicesBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
-        </div>
-        <hr class="divider" style="margin:20px 0">
-        <h2 class="settings-title"><i class="ti ti-credit-card"></i> Betaalmethoden</h2>
-        <p class="settings-note">Koppel één of meerdere betaalmethoden om automatisch factuurlinks te genereren voor klanten.</p>
-        <div style="margin-bottom:18px">
-          <span class="settings-sublabel">Standaard betaalmethode</span>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <label class="radio-card ${s.preferredPaymentMethod === 'stripe' ? 'radio-card-active' : ''}">
-              <input type="radio" name="preferredPayment" value="stripe" ${s.preferredPaymentMethod === 'stripe' || !s.preferredPaymentMethod ? 'checked' : ''}>
-              <i class="ti ti-brand-stripe"></i> Stripe
-              ${s.stripeConfigured ? '<span class="badge badge-green" style="font-size:10px">✓</span>' : ''}
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">BTW instellingen</div>
+          </div>
+          <div style="margin-bottom:12px">
+            <label class="toggle-wrap">
+              <input type="checkbox" id="btwEnabled" ${s.btwEnabled ? 'checked' : ''} onchange="document.getElementById('btwSettingsGrid').style.display=this.checked?'':'none'">
+              <span class="toggle"></span>
+              <span class="toggle-label">BTW berekening inschakelen op facturen</span>
             </label>
-            <label class="radio-card ${s.preferredPaymentMethod === 'mollie' ? 'radio-card-active' : ''}">
-              <input type="radio" name="preferredPayment" value="mollie" ${s.preferredPaymentMethod === 'mollie' ? 'checked' : ''}>
-              <i class="ti ti-credit-card"></i> Mollie
-              ${s.mollieConfigured ? '<span class="badge badge-green" style="font-size:10px">✓</span>' : ''}
+          </div>
+          <div class="stg-grid-2" id="btwSettingsGrid" style="${s.btwEnabled ? '' : 'display:none'}">
+            <div class="stg-field">
+              <label class="stg-label">BTW TARIEF</label>
+              <select class="stg-input" id="btwRate">
+                <option value="21" ${(s.btwRate === undefined || s.btwRate === 21) ? 'selected' : ''}>21% (standaard)</option>
+                <option value="9"  ${s.btwRate === 9  ? 'selected' : ''}>9% (laag tarief)</option>
+                <option value="0"  ${s.btwRate === 0  ? 'selected' : ''}>0% (vrijgesteld)</option>
+              </select>
+            </div>
+            <div class="stg-field">
+              <label class="stg-label">BTW NUMMER</label>
+              <input type="text" class="stg-input" id="btwNumber" value="${esc(s.btwNumber || '')}" placeholder="NL000000000B01">
+            </div>
+          </div>
+        </div>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Automatische facturering</div>
+          </div>
+          <div style="margin-bottom:14px">
+            <label class="toggle-wrap">
+              <input type="checkbox" id="autoInvoiceEnabled" ${s.autoInvoiceEnabled ? 'checked' : ''}>
+              <span class="toggle"></span>
+              <span class="toggle-label">Automatisch maandelijkse facturen aanmaken voor actieve klanten</span>
             </label>
-            <label class="radio-card ${s.preferredPaymentMethod === 'paypal' ? 'radio-card-active' : ''}">
-              <input type="radio" name="preferredPayment" value="paypal" ${s.preferredPaymentMethod === 'paypal' ? 'checked' : ''}>
-              <i class="ti ti-brand-paypal"></i> PayPal
-              ${s.paypalConfigured ? '<span class="badge badge-green" style="font-size:10px">✓</span>' : ''}
-            </label>
           </div>
+          <div class="stg-grid-2">
+            <div class="stg-field">
+              <label class="stg-label">FACTUURDAG VAN DE MAAND</label>
+              <select class="stg-input" id="autoInvoiceDay">
+                ${Array.from({length:28},(_,i)=>i+1).map(d=>`<option value="${d}" ${(s.autoInvoiceDay||1)===d?'selected':''}>${d}e</option>`).join('')}
+              </select>
+            </div>
+            <div class="stg-field">
+              <label class="stg-label">HERINNERING NA (DAGEN)</label>
+              <input type="number" class="stg-input" id="paymentReminderDays" value="${s.paymentReminderDays || 7}" min="1" max="30">
+            </div>
+          </div>
+          <button class="btn btn-ghost stg-save-btn" id="savePaymentsAutoBtn"><i class="ti ti-device-floppy"></i> Facturering opslaan</button>
         </div>
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Stripe Secret Key <a href="https://dashboard.stripe.com/apikeys" target="_blank" class="link" style="font-size:11px">Waar vind ik dit?</a></label>
-            <input type="password" id="stripeSecretKey" placeholder="sk_live_... of sk_test_...">
-            ${s.stripeConfigured ? '<p style="font-size:11px;color:var(--success);margin-top:4px"><i class="ti ti-check"></i> Stripe ingesteld</p>' : ''}
+      </div>
+
+      <!-- ── Blacklist ── -->
+      <div class="settings-tab-pane" id="stab-blacklist">
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Blacklist</div>
+            <div class="stg-sub">Geblokkeerde bedrijven, domeinen of niches worden overgeslagen bij elke run</div>
           </div>
-          <div class="form-group">
-            <label>Mollie API sleutel <a href="https://my.mollie.com/dashboard/developers/api-keys" target="_blank" class="link" style="font-size:11px">Waar vind ik dit?</a></label>
-            <input type="password" id="mollieApiKey" placeholder="live_... of test_...">
-            ${s.mollieConfigured ? '<p style="font-size:11px;color:var(--success);margin-top:4px"><i class="ti ti-check"></i> Mollie ingesteld</p>' : ''}
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end">
+            <div class="stg-field" style="flex:0 0 140px">
+              <label class="stg-label">TYPE</label>
+              <select class="stg-input" id="blType"><option value="company">Bedrijfsnaam</option><option value="domain">Domein</option><option value="niche">Niche</option></select>
+            </div>
+            <div class="stg-field" style="flex:2;min-width:160px">
+              <label class="stg-label">WAARDE</label>
+              <input type="text" class="stg-input" id="blValue" placeholder="bijv. Studio Bloom of studiodesign.nl">
+            </div>
+            <div class="stg-field" style="flex:2;min-width:140px">
+              <label class="stg-label">REDEN (OPTIONEEL)</label>
+              <input type="text" class="stg-input" id="blReason" placeholder="Reden">
+            </div>
+            <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="addBlacklistEntry()"><i class="ti ti-plus"></i> Toevoegen</button>
           </div>
-          <div class="form-group">
-            <label>PayPal.me gebruikersnaam</label>
-            <input type="text" id="paypalMe" value="${esc(s.paypalMe || '')}" placeholder="jouwnaam (zonder paypal.me/)">
-            ${s.paypalConfigured ? '<p style="font-size:11px;color:var(--success);margin-top:4px"><i class="ti ti-check"></i> PayPal ingesteld</p>' : ''}
-          </div>
-        </div>
-        <hr class="divider" style="margin:16px 0">
-        <span class="settings-sublabel"><i class="ti ti-receipt-tax" style="margin-right:6px"></i>BTW instellingen</span>
-        <label class="auto-billing-label" style="margin-top:10px">
-          <input type="checkbox" id="btwEnabled" ${s.btwEnabled ? 'checked' : ''} style="width:14px;height:14px" onchange="document.getElementById('btwSettingsGrid').style.display=this.checked?'':'none'">
-          BTW berekening inschakelen op facturen
-        </label>
-        <div class="auto-billing-grid" id="btwSettingsGrid" style="${s.btwEnabled ? '' : 'display:none'}">
-          <div class="form-group">
-            <label>BTW tarief</label>
-            <select id="btwRate">
-              <option value="21" ${(s.btwRate === undefined || s.btwRate === 21) ? 'selected' : ''}>21% (standaard)</option>
-              <option value="9"  ${s.btwRate === 9  ? 'selected' : ''}>9% (laag tarief)</option>
-              <option value="0"  ${s.btwRate === 0  ? 'selected' : ''}>0% (vrijgesteld)</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>BTW nummer</label>
-            <input type="text" id="btwNumber" value="${esc(s.btwNumber || '')}" placeholder="NL000000000B01">
-          </div>
-        </div>
-        <hr class="divider" style="margin:16px 0">
-        <span class="settings-sublabel"><i class="ti ti-coin" style="margin-right:6px"></i>Automatische facturering</span>
-        <label class="auto-billing-label" style="margin-top:10px">
-          <input type="checkbox" id="autoInvoiceEnabled" ${s.autoInvoiceEnabled ? 'checked' : ''} style="width:14px;height:14px">
-          Automatisch maandelijkse facturen aanmaken voor actieve klanten
-        </label>
-        <div class="auto-billing-grid">
-          <div class="form-group">
-            <label>Factuurdag van de maand</label>
-            <select id="autoInvoiceDay">
-              ${Array.from({length:28},(_,i)=>i+1).map(d=>`<option value="${d}" ${(s.autoInvoiceDay||1)===d?'selected':''}>${d}e</option>`).join('')}
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Herinnering na (dagen)</label>
-            <input type="number" id="paymentReminderDays" value="${s.paymentReminderDays || 7}" min="1" max="30">
-          </div>
-        </div>
-        <p class="text-muted" style="margin-top:4px"><i class="ti ti-info-circle"></i> Herinneringen worden dagelijks om 09:00 gecheckt. Vereist een geconfigureerde betaalmethode.</p>
-        <div class="btn-row" style="margin-top:16px">
-          <button class="btn btn-primary" id="saveStripeBtn"><i class="ti ti-device-floppy"></i> Betaalmethoden opslaan</button>
-          <button class="btn btn-ghost" id="savePaymentsAutoBtn"><i class="ti ti-device-floppy"></i> Facturering opslaan</button>
+          <div id="blacklistItems"></div>
         </div>
       </div>
 
       <!-- ── API & integraties ── -->
       <div class="settings-tab-pane" id="stab-api">
-        <h2 class="settings-title">
-          <i class="ti ti-brand-openai"></i> Claude API Sleutel
-          ${s.claudeKeyConfigured
-            ? s.claudeKeyFromEnv
-              ? `<span class="badge badge-blue" title="Geladen uit Railway environment variable">Env var actief</span>`
-              : `<span class="badge badge-green"><i class="ti ti-check"></i> Opgeslagen in database</span>`
-            : `<span class="badge badge-amber"><i class="ti ti-alert-triangle"></i> Niet ingesteld</span>`}
-        </h2>
-        <p class="settings-note">Vereist voor alle AI-functies (leads zoeken, emails schrijven, analyses). Haal je sleutel op via <a href="https://console.anthropic.com/settings/keys" target="_blank" class="link">console.anthropic.com</a>.</p>
-        <div class="form-group" style="margin-bottom:12px">
-          <label>Anthropic API sleutel ${s.claudeKeyConfigured && !s.claudeKeyFromEnv ? '<span class="badge badge-green" style="font-size:11px">Ingesteld</span>' : ''}</label>
-          <input type="password" id="claudeApiKeyInput" placeholder="${s.claudeKeyConfigured ? '(laat leeg om ongewijzigd te laten)' : 'sk-ant-...'}">
-        </div>
-        <div id="claudeKeyResult" style="margin-bottom:8px;display:none"></div>
-        <button class="btn btn-primary btn-sm" id="saveClaudeKeyBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
 
-        <hr style="margin:28px 0;border:none;border-top:1px solid var(--border)">
-        <h2 class="settings-title"><i class="ti ti-key"></i> Agency AI API Sleutels</h2>
-        <p class="settings-note">Gebruik API sleutels om externe integraties te authenticeren. Een sleutel wordt slechts <strong>één keer</strong> getoond.</p>
-        <div id="apiKeysList" style="margin-bottom:16px"></div>
-        <div style="display:flex;gap:10px;align-items:center">
-          <input type="text" id="newKeyLabel" placeholder="Label (bijv. Zapier integratie)" style="flex:1">
-          <button class="btn btn-primary btn-sm" onclick="generateApiKey()"><i class="ti ti-plus"></i> Genereer sleutel</button>
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Claude API Sleutel
+              ${s.claudeKeyConfigured ? s.claudeKeyFromEnv ? `<span class="stg-status-badge stg-badge-blue">Env var actief</span>` : `<span class="stg-status-badge stg-badge-green"><i class="ti ti-check"></i> Opgeslagen</span>` : `<span class="stg-status-badge stg-badge-amber"><i class="ti ti-alert-triangle"></i> Niet ingesteld</span>`}
+            </div>
+            <div class="stg-sub">Vereist voor alle AI-functies. Via <a href="https://console.anthropic.com/settings/keys" target="_blank" class="link">console.anthropic.com</a></div>
+          </div>
+          <div class="stg-field" style="max-width:420px;margin-bottom:12px">
+            <label class="stg-label">ANTHROPIC API SLEUTEL ${s.claudeKeyConfigured && !s.claudeKeyFromEnv ? '<span class="stg-status-badge stg-badge-green" style="font-size:10px">Ingesteld</span>' : ''}</label>
+            <input type="password" class="stg-input" id="claudeApiKeyInput" placeholder="${s.claudeKeyConfigured ? '(laat leeg om ongewijzigd te laten)' : 'sk-ant-...'}">
+          </div>
+          <div id="claudeKeyResult" style="margin-bottom:8px;display:none"></div>
+          <button class="btn btn-primary btn-sm" id="saveClaudeKeyBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
         </div>
-        <div id="newKeyDisplay" class="new-key-display" style="display:none">
-          <div class="new-key-title">Sla deze sleutel op — wordt niet opnieuw getoond</div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <code id="newKeyValue" class="new-key-code"></code>
-            <button class="btn btn-ghost btn-sm" onclick="copyApiKey()"><i class="ti ti-copy"></i></button>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Agency AI API Sleutels</div>
+            <div class="stg-sub">Gebruik voor externe integraties. Sleutel wordt slechts <strong>één keer</strong> getoond.</div>
+          </div>
+          <div id="apiKeysList" style="margin-bottom:16px"></div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <input type="text" class="stg-input" id="newKeyLabel" placeholder="Label (bijv. Chrome Extensie)" style="flex:1">
+            <button class="btn btn-primary btn-sm" onclick="generateApiKey()"><i class="ti ti-plus"></i> Genereer sleutel</button>
+          </div>
+          <div id="newKeyDisplay" class="new-key-display" style="display:none">
+            <div class="new-key-title">Sla deze sleutel op — wordt niet opnieuw getoond</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <code id="newKeyValue" class="new-key-code"></code>
+              <button class="btn btn-ghost btn-sm" onclick="copyApiKey()"><i class="ti ti-copy"></i></button>
+            </div>
           </div>
         </div>
 
-        <hr style="margin:28px 0;border:none;border-top:1px solid var(--border)">
-        <h2 class="settings-title"><i class="ti ti-brand-google-analytics" style="color:#e37400"></i> Google Analytics</h2>
-        <p class="settings-note">Voeg je GA4 Measurement ID toe om bezoekersdata van de landingspagina bij te houden.</p>
-        <div class="form-group" style="margin-bottom:12px">
-          <label>GA4 Measurement ID</label>
-          <input type="text" id="gaId" placeholder="G-XXXXXXXXXX" value="${esc(s.gaId || '')}">
-        </div>
-        <button class="btn btn-primary btn-sm" id="saveGaBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
+        <div class="stg-divider"></div>
 
-        <hr style="margin:28px 0;border:none;border-top:1px solid var(--border)">
-        <h2 class="settings-title"><i class="ti ti-calendar-event" style="color:#006bff"></i> Calendly</h2>
-        <p class="settings-note">Koppel je Calendly link om automatisch een boekingsknop toe te voegen aan outreach emails en de klantenportaal.</p>
-        <div class="form-group" style="margin-bottom:12px">
-          <label>Calendly URL</label>
-          <input type="url" id="calendlyUrl" placeholder="https://calendly.com/jouw-naam/gesprek" value="${esc(s.calendlyUrl || '')}">
-        </div>
-        <div class="settings-note" style="margin-bottom:12px">
-          <strong>Calendly webhook:</strong> Stel in Calendly → Integraties → Webhooks de URL in als:<br>
-          <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">${window.location.origin}/api/webhooks/calendly</code>
-        </div>
-        <button class="btn btn-primary btn-sm" id="saveCalendlyBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
-
-        <hr style="margin:28px 0;border:none;border-top:1px solid var(--border)">
-        <h2 class="settings-title"><i class="ti ti-brand-zapier" style="color:#ff4a00"></i> Zapier &amp; Webhooks</h2>
-        <p class="settings-note">Stuur automatisch data naar externe tools (Zapier, Make, Slack, CRM) wanneer er iets gebeurt in Agency AI. Of laat Zapier leads toevoegen via de inkomende trigger.</p>
-
-        <div style="margin-bottom:20px">
-          <span class="settings-sublabel">Inkomende Zapier trigger URL</span>
-          <p class="settings-note" style="margin:6px 0">Gebruik deze URL in Zapier als webhook-actie om een bedrijf toe te voegen aan je pipeline.</p>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <code id="zapierTriggerUrl" class="ext-url-code" style="flex:1">${window.location.origin}/api/zapier/trigger</code>
-            <button class="btn btn-ghost btn-sm" onclick="copyZapierUrl()"><i class="ti ti-copy"></i> Kopieer</button>
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title"><i class="ti ti-brand-google-analytics" style="color:#e37400;margin-right:6px"></i>Google Analytics</div>
+            <div class="stg-sub">Voeg je GA4 ID toe voor bezoekersdata van de landingspagina</div>
           </div>
-          <p class="settings-note" style="margin-top:8px">Voeg de header <code>x-zapier-token</code> toe met de waarde van je token (zichtbaar via Instellingen → Account). Stuur als body: <code>action: "add_lead"</code>, <code>companyName</code>, optioneel <code>websiteUrl</code>, <code>niche</code>, <code>location</code>.</p>
+          <div class="stg-field" style="max-width:280px;margin-bottom:12px">
+            <label class="stg-label">GA4 MEASUREMENT ID</label>
+            <input type="text" class="stg-input" id="gaId" placeholder="G-XXXXXXXXXX" value="${esc(s.gaId || '')}">
+          </div>
+          <button class="btn btn-primary btn-sm" id="saveGaBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
         </div>
 
-        <div style="margin-bottom:16px">
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title"><i class="ti ti-calendar-event" style="color:#006bff;margin-right:6px"></i>Calendly</div>
+            <div class="stg-sub">Automatische boekingsknoppen in emails en klantportaal</div>
+          </div>
+          <div class="stg-field" style="max-width:480px;margin-bottom:8px">
+            <label class="stg-label">CALENDLY URL</label>
+            <input type="url" class="stg-input" id="calendlyUrl" placeholder="https://calendly.com/jouw-naam/gesprek" value="${esc(s.calendlyUrl || '')}">
+          </div>
+          <p class="stg-sub" style="margin-bottom:12px">Calendly webhook: <code class="stg-code-block" style="display:inline-block;margin-top:4px">${window.location.origin}/api/webhooks/calendly</code></p>
+          <button class="btn btn-primary btn-sm" id="saveCalendlyBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
+        </div>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title"><i class="ti ti-brand-zapier" style="color:#ff4a00;margin-right:6px"></i>Zapier &amp; Webhooks</div>
+            <div class="stg-sub">Stuur data naar externe tools of laat Zapier leads toevoegen</div>
+          </div>
+          <div class="stg-field" style="margin-bottom:16px">
+            <label class="stg-label">INKOMENDE ZAPIER TRIGGER URL</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <code id="zapierTriggerUrl" class="stg-code-block" style="flex:1">${window.location.origin}/api/zapier/trigger</code>
+              <button class="btn btn-ghost btn-sm" onclick="copyZapierUrl()"><i class="ti ti-copy"></i></button>
+            </div>
+            <p class="stg-sub" style="margin-top:6px">Header <code>x-zapier-token</code> + body: <code>action: "add_lead"</code>, <code>companyName</code>, optioneel <code>websiteUrl</code>, <code>niche</code></p>
+          </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-            <span class="settings-sublabel">Uitgaande webhooks</span>
+            <label class="stg-label" style="margin:0">UITGAANDE WEBHOOKS</label>
             <button class="btn btn-primary btn-sm" onclick="openWebhookModal()"><i class="ti ti-plus"></i> Toevoegen</button>
           </div>
           <div id="webhooksList"></div>
         </div>
 
-        <hr style="margin:28px 0;border:none;border-top:1px solid var(--border)">
-        <h2 class="settings-title"><i class="ti ti-puzzle" style="color:#4f46e5"></i> Chrome Extensie</h2>
-        <p class="settings-note">Gebruik de Chrome extensie om bedrijven direct vanuit de browser toe te voegen aan je pipeline. De extensie gebruikt je API sleutel voor authenticatie.</p>
-        <div class="extension-install-card">
-          <div class="ext-step"><span class="ext-step-num">1</span><div>
-            <strong>Download de extensie</strong>
-            <div class="ext-step-desc">Download de extensiebestanden en zet ze in een lokale map.</div>
-            <a class="btn btn-primary btn-sm" href="/extension-download" download style="margin-top:8px"><i class="ti ti-download"></i> Download extensie (.zip)</a>
-          </div></div>
-          <div class="ext-step"><span class="ext-step-num">2</span><div>
-            <strong>Installeer in Chrome</strong>
-            <div class="ext-step-desc">Ga naar <code>chrome://extensions</code> → zet "Ontwikkelaarsmodus" aan → klik "Uitgepakt laden" → selecteer de map.</div>
-          </div></div>
-          <div class="ext-step"><span class="ext-step-num">3</span><div>
-            <strong>Configureer server URL</strong>
-            <div class="ext-step-desc">Klik op het extensie-icoon en vul de server URL in:</div>
-            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-              <code id="extensionServerUrl" class="ext-url-code">${window.location.origin}</code>
-              <button class="btn btn-ghost btn-sm" onclick="copyExtensionUrl()"><i class="ti ti-copy"></i></button>
-            </div>
-          </div></div>
-          <div class="ext-step"><span class="ext-step-num">4</span><div>
-            <strong>Gebruik een API sleutel</strong>
-            <div class="ext-step-desc">Genereer een API sleutel hierboven (label bijv. "Chrome Extensie") en plak deze in de extensie-instellingen.</div>
-          </div></div>
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title"><i class="ti ti-puzzle" style="color:#4f46e5;margin-right:6px"></i>Chrome Extensie</div>
+            <div class="stg-sub">Voeg bedrijven direct vanuit de browser toe aan je pipeline</div>
+          </div>
+          <div class="extension-install-card">
+            <div class="ext-step"><span class="ext-step-num">1</span><div><strong>Download</strong><div class="ext-step-desc">Download de extensiebestanden.</div><a class="btn btn-primary btn-sm" href="/extension-download" download style="margin-top:8px"><i class="ti ti-download"></i> Download (.zip)</a></div></div>
+            <div class="ext-step"><span class="ext-step-num">2</span><div><strong>Installeer in Chrome</strong><div class="ext-step-desc"><code>chrome://extensions</code> → Ontwikkelaarsmodus → Uitgepakt laden</div></div></div>
+            <div class="ext-step"><span class="ext-step-num">3</span><div><strong>Server URL</strong><div style="display:flex;align-items:center;gap:8px;margin-top:6px"><code id="extensionServerUrl" class="stg-code-block">${window.location.origin}</code><button class="btn btn-ghost btn-sm" onclick="copyExtensionUrl()"><i class="ti ti-copy"></i></button></div></div></div>
+            <div class="ext-step"><span class="ext-step-num">4</span><div><strong>API sleutel</strong><div class="ext-step-desc">Genereer een API sleutel hierboven en plak in de extensie.</div></div></div>
+          </div>
         </div>
       </div>
 
       <!-- ── Team ── -->
       ${isAdmin() ? `
       <div class="settings-tab-pane" id="stab-team">
-        <h2 class="settings-title"><i class="ti ti-users"></i> Team &amp; gebruikers</h2>
-        <div id="usersList" style="margin-bottom:16px"></div>
-        <div class="settings-panel">
-          <span class="settings-sublabel">Nieuwe gebruiker toevoegen</span>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
-            <div class="form-group"><label>Naam</label><input type="text" id="newUserName" placeholder="Jan Jansen"></div>
-            <div class="form-group"><label>Gebruikersnaam</label><input type="text" id="newUserUsername" placeholder="jan"></div>
-            <div class="form-group"><label>Wachtwoord</label><input type="password" id="newUserPassword" placeholder="••••••••"></div>
-            <div class="form-group"><label>Rol</label>
-              <select id="newUserRole" class="form-select">
-                <option value="employee">Medewerker</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Team &amp; gebruikers</div>
+            <div class="stg-sub">Beheer toegang en rechten voor medewerkers</div>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="addUser()"><i class="ti ti-plus"></i> Gebruiker aanmaken</button>
+          <div id="usersList" style="margin-bottom:20px"></div>
+          <div class="stg-divider"></div>
+          <div style="margin-top:16px">
+            <div class="stg-title" style="font-size:14px;margin-bottom:12px">Nieuwe gebruiker toevoegen</div>
+            <div class="stg-grid-2">
+              <div class="stg-field"><label class="stg-label">NAAM</label><input type="text" class="stg-input" id="newUserName" placeholder="Jan Jansen"></div>
+              <div class="stg-field"><label class="stg-label">GEBRUIKERSNAAM</label><input type="text" class="stg-input" id="newUserUsername" placeholder="jan"></div>
+              <div class="stg-field"><label class="stg-label">WACHTWOORD</label><input type="password" class="stg-input" id="newUserPassword" placeholder="••••••••"></div>
+              <div class="stg-field"><label class="stg-label">ROL</label><select class="stg-input form-select" id="newUserRole"><option value="employee">Medewerker</option><option value="admin">Admin</option></select></div>
+            </div>
+            <button class="btn btn-primary btn-sm stg-save-btn" onclick="addUser()"><i class="ti ti-plus"></i> Gebruiker aanmaken</button>
+          </div>
         </div>
       </div>
       ` : ''}
 
       <!-- ── Gevaarlijke zone ── -->
       <div class="settings-tab-pane" id="stab-danger">
-        <h2 class="settings-title" style="color:#dc2626"><i class="ti ti-alert-triangle"></i> Gevaarlijke zone</h2>
-        <p class="text-secondary" style="font-size:13px;margin-bottom:20px">Deze acties zijn onomkeerbaar. Wees zeker voordat je verder gaat.</p>
-        <div id="dangerZoneContent">
-          <div class="btn-row">
-            <button class="btn btn-danger" id="deleteLeadsBtn">Verwijder alle leads</button>
-            <button class="btn btn-danger" id="resetStatsBtn">Reset statistieken</button>
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title" style="color:#dc2626"><i class="ti ti-alert-triangle" style="margin-right:6px"></i>Gevaarlijke zone</div>
+            <div class="stg-sub">Deze acties zijn onomkeerbaar. Klik om uit te klappen.</div>
           </div>
+          <details class="stg-danger-details">
+            <summary class="stg-danger-summary"><i class="ti ti-chevron-right stg-danger-chevron"></i> Toon gevaarlijke acties</summary>
+            <div class="stg-danger-body">
+              <div class="stg-danger-action">
+                <div><strong>Verwijder alle leads</strong><p>Verwijdert alle leads permanent uit de database.</p></div>
+                <button class="btn btn-danger" id="deleteLeadsBtn">Verwijder alle leads</button>
+              </div>
+              <div class="stg-danger-action">
+                <div><strong>Reset statistieken</strong><p>Wist alle statistieken en telwaarden.</p></div>
+                <button class="btn btn-danger" id="resetStatsBtn">Reset statistieken</button>
+              </div>
+            </div>
+          </details>
         </div>
       </div>
 
@@ -7630,27 +7722,7 @@ function attachSettingsHandlers(s) {
     if (res.ok) toast('Automatisering opgeslagen', 'success');
   });
 
-  // API Keys collapsible (all users)
-  loadApiKeysList();
-  document.getElementById('apiKeysToggle')?.addEventListener('click', () => {
-    const c = document.getElementById('apiKeysContent');
-    const ch = document.getElementById('apiKeysChevron');
-    const open = c.style.display !== 'none';
-    c.style.display = open ? 'none' : '';
-    if (ch) ch.style.transform = open ? '' : 'rotate(180deg)';
-    if (!open) loadApiKeysList();
-  });
-
-  if (isAdmin()) {
-    loadUsersList();
-    document.getElementById('usersToggle')?.addEventListener('click', () => {
-      const c = document.getElementById('usersContent');
-      const ch = document.getElementById('usersChevron');
-      const open = c.style.display !== 'none';
-      c.style.display = open ? 'none' : '';
-      if (ch) ch.style.transform = open ? '' : 'rotate(180deg)';
-    });
-  }
+  if (isAdmin()) loadUsersList();
 
   document.getElementById('saveWebsiteBtn')?.addEventListener('click', async () => {
     const body = {
