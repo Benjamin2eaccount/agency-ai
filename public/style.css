@@ -2918,14 +2918,6 @@ input, select, textarea { font-family: inherit; }
 
 /* ── Settings redesign (stg-*) ─────────────────────────────────────────────── */
 
-/* Layout */
-.settings-nav { display: flex; flex-direction: column; }
-.settings-nav-spacer { flex: 1; }
-.settings-nav-item { white-space: nowrap; }
-
-/* Content panel */
-.settings-content { overflow-y: auto; max-height: calc(100vh - 160px); }
-
 /* Section block */
 .stg-section { padding: 24px 0; }
 .stg-section:first-child { padding-top: 0; }
@@ -3055,12 +3047,13 @@ details[open] .stg-danger-chevron { transform: rotate(90deg); }
 }
 
 .settings-nav {
-  width: 210px; flex-shrink: 0;
+  width: 200px; flex-shrink: 0;
   border-right: 1px solid var(--border);
   padding: 16px 0;
   background: var(--bg);
   display: flex; flex-direction: column;
 }
+.settings-nav-spacer { flex: 1; }
 
 .settings-nav-item {
   display: flex; align-items: center; gap: 8px;
@@ -3074,7 +3067,7 @@ details[open] .stg-danger-chevron { transform: rotate(90deg); }
 .settings-nav-item.active { color: var(--text-primary); font-weight: 600; border-left-color: var(--text-primary); background: var(--surface); }
 .settings-nav-item i { font-size: 15px; }
 
-.settings-content { flex: 1; padding: 28px; min-width: 0; overflow-y: auto; }
+.settings-content { flex: 1; padding: 24px 28px; min-width: 0; overflow-y: auto; max-height: calc(100vh - 160px); }
 .settings-tab-pane { display: none; }
 .settings-tab-pane.active { display: block; }
 .settings-nav-item.nav-danger { color: #dc2626; }

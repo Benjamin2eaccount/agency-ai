@@ -6749,7 +6749,7 @@ async function renderSettings() {
   <div class="settings-layout">
     <nav class="settings-nav">
       <button class="settings-nav-item active" data-tab="account"    onclick="switchSettingsTab('account')">   <i class="ti ti-user"></i>         Account</button>
-<button class="settings-nav-item"         data-tab="email"     onclick="switchSettingsTab('email')">     <i class="ti ti-mail"></i>          Email &amp; versturen</button>
+      <button class="settings-nav-item"         data-tab="email"     onclick="switchSettingsTab('email')">     <i class="ti ti-mail"></i>          Email &amp; versturen</button>
       <button class="settings-nav-item"         data-tab="services"  onclick="switchSettingsTab('services')">  <i class="ti ti-briefcase"></i>     Diensten</button>
       <button class="settings-nav-item"         data-tab="automation" onclick="switchSettingsTab('automation')"><i class="ti ti-settings-automation"></i> Automatisering</button>
       <button class="settings-nav-item"         data-tab="payments"  onclick="switchSettingsTab('payments')">  <i class="ti ti-credit-card"></i>   Betalingen</button>
