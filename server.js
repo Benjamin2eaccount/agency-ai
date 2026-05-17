@@ -4165,20 +4165,45 @@ async function runFindLeadsJob(overrides = {}) {
     nichesList = Object.values(SUB_NICHES).flat().join(', ');
   }
 
-  console.log(`\n[Agency AI] â"€â"€â"€ Lead finder gestart: ${count} leads â"€â"€â"€`);
 
-  // â"€â"€ Agent 1: Finder â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-  console.log('[Agent 1] Leads genereren met Claude...');
-  const finderPrompt = `Je bent een lead research expert. Het huidige jaar is ${new Date().getFullYear()}. Genereer ${count} realistische bedrijven die baat hebben bij AI-marketingdiensten.
+  const BATCH_SIZE = 5;
+  const target      = count;
+  const maxAttempts = 60;
+  let found    = 0;
+  let attempts = 0;
+  let skipped  = 0;
+  const seenNames  = new Set();
+  const inboxItems = [];
+  const newLeads   = [];
 
-Geef een JSON array terug (geen uitleg, alleen JSON):
+  console.log(`\n[Agency AI] ─── Lead finder gestart: ${target} leads nodig ───`);
+
+  while (found < target && attempts < maxAttempts) {
+    const remaining = target - found;
+    const batchSize = Math.min(BATCH_SIZE, remaining + 2); // slight overrun to compensate skip rate
+
+    // ── Agent 1: Finder (batch) ─────────────────────────────────────────────
+    const alreadySeen = seenNames.size > 0
+      ? `\n\nBedrijven die je NIET mag herhalen (al gegenereerd):\n${[...seenNames].slice(-30).join(', ')}`
+      : '';
+
+    const finderPrompt = `Je bent een lead research expert. Genereer ${batchSize} lokale bedrijven voor AI-marketingdiensten.
+
+STRIKTE VEREISTEN — genereer ALLEEN bedrijven die aan ALLE punten voldoen:
+- Al minstens 2 jaar actief
+- Hebben een professionele website (geen sociale media als hoofdpagina)
+- Hebben hoogstwaarschijnlijk een contactemailadres zichtbaar op hun website (/contact, /over-ons, mailto: link)
+- Zijn zelfstandige lokale ondernemingen (GEEN grote ketens, GEEN franchises, GEEN startups)
+- Zijn geen bedrijven die alleen actief zijn op sociale media zonder eigen website
+
+Geef een JSON array terug (alleen JSON, geen uitleg):
 [{
   "companyName": "Bedrijfsnaam",
   "location": "Stad, Land",
   "country": "NL of ander land",
   "instagramHandle": "@handle",
   "niche": "beauty" of "food" of "fitness" of "retail" of "restaurant" of "horeca" of "health" of "automotive",
-  "subNiche": "specifiek type — bijv. kapsalon, yoga studio, bakkerij (één van de opgegeven niches hieronder)",
+  "subNiche": "specifiek type — bijv. kapsalon, yoga studio, bakkerij",
   "estimatedFollowers": getal,
   "websiteUrl": "https://...",
   "linkedinCompanyUrl": "https://linkedin.com/company/bedrijfsnaam-slug",
@@ -4186,38 +4211,54 @@ Geef een JSON array terug (geen uitleg, alleen JSON):
 }]
 
 companySize: "small" voor ZZP/MKB (<10 medewerkers), "medium" voor middelgroot (10-50), "large" voor groot/corporate (50+).
-linkedinCompanyUrl: geef een realistisch LinkedIn company URL op basis van de bedrijfsnaam (lowercase, koppeltekens).
 Doelgroep niches (gebruik ALLEEN deze types): ${nichesList}.
-Mix van locaties: Nederland, Belgie, Duitsland, UK, VS.
-Maak het realistisch â€" geen nep URLs. Gebruik domeinen die echt zouden kunnen bestaan.
-Geef exact ${count} bedrijven.`;
+Mix van locaties: Nederland, België, Duitsland, UK, VS.
+Gebruik realistische domeinen die echt kunnen bestaan.
+Geef exact ${batchSize} bedrijven.${alreadySeen}`;
 
-  let leads;
-  try {
-    leads = await aiJSON(finderPrompt);
-    if (!Array.isArray(leads)) leads = [leads];
-    leads = leads.slice(0, count);
-  } catch (err) {
-    logError('agent1', `Agent 1 (Lead Finder) mislukt`, err.message);
-    throw new Error(`Agent 1 (Lead Finder) mislukt: ${err.message}`);
+    let batch;
+    try {
+      console.log(`[Agent 1] Batch genereren (${batchSize} bedrijven, ${found}/${target} gevonden)...`);
+      batch = await aiJSON(finderPrompt);
+      if (!Array.isArray(batch)) batch = [batch];
+      batch = batch.slice(0, batchSize);
+    } catch (err) {
+      logError('agent1', `Agent 1 (Lead Finder) mislukt`, err.message);
+      if (found === 0) throw new Error(`Agent 1 (Lead Finder) mislukt: ${err.message}`);
+      console.warn(`[Agent 1] Batch mislukt — stoppen met ${found} gevonden leads`);
+      break;
+    }
+
+    // Deduplicate within and across batches
+    const freshBatch = batch.filter(b => {
+      if (!b || !b.companyName) return false;
+      const key = b.companyName.toLowerCase().trim();
+      if (seenNames.has(key)) return false;
+      seenNames.add(key);
+      return true;
+    });
+
+    attempts += freshBatch.length;
+    console.log(`[Agent 1] ${freshBatch.length} nieuwe bedrijven in batch (attempts: ${attempts}/${maxAttempts})`);
+
+    for (const lead of freshBatch) {
+      if (found >= target) break;
+      console.log(`\n[Lead ${found + 1}/${target}] ${lead.companyName} (${lead.niche})`);
+      const result = await processOneLead(lead, settings);
+      if (!result) {
+        skipped++;
+        continue;
+      }
+      const { item, leadRecord } = result;
+      inboxItems.push(item);
+      newLeads.push(leadRecord);
+      found++;
+      if (item.status === 'auto-approved') console.log(`  ✓ Auto-goedgekeurd (score ${item.score} >= ${autoScore})`);
+      console.log(`  ✓ Klaar — score: ${item.score}, waarde: €${item.estimatedValue}`);
+    }
   }
-  console.log(`[Agent 1] ${leads.length} leads gevonden`);
 
-  const inboxItems = [];
-  const newLeads   = [];
-
-  for (let i = 0; i < leads.length; i++) {
-    const lead = leads[i];
-    console.log(`\n[Lead ${i+1}/${leads.length}] ${lead.companyName} (${lead.niche})`);
-    const result = await processOneLead(lead, settings);
-    if (!result) continue;
-    const { item, leadRecord } = result;
-    inboxItems.push(item);
-    newLeads.push(leadRecord);
-    if (item.status === 'auto-approved') console.log(`  âœ" Auto-goedgekeurd (score ${item.score} >= ${autoScore})`);
-    console.log(`  âœ" Klaar â€" score: ${item.score}, waarde: â‚¬${item.estimatedValue}`);
-  }
-
+  console.log(`\n[Agency AI] Lus klaar: ${found} leads gevonden, ${skipped} overgeslagen zonder email, ${attempts} bedrijven gecontroleerd`);
   // â"€â"€ Save results â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const inbox = readJSON('inbox.json') || [];
   writeJSON('inbox.json', [...inboxItems, ...inbox]);
@@ -4258,7 +4299,7 @@ Geef exact ${count} bedrijven.`;
   const runTokOut = _sessionTokensOut;
   _sessionTokensIn = 0; _sessionTokensOut = 0;
   const runCostUsd = calcCostUsd(runTokIn, runTokOut);
-  addActivity('run', 'Run klaar: ' + inboxItems.length + ' leads gevonden', { tokensIn: runTokIn, tokensOut: runTokOut, costUsd: runCostUsd, meta: { leadsFound: inboxItems.length, totalValue } });
+  addActivity('run', `Run klaar: ${inboxItems.length} leads gevonden (${skipped} overgeslagen zonder email)`, { tokensIn: runTokIn, tokensOut: runTokOut, costUsd: runCostUsd, meta: { leadsFound: inboxItems.length, skipped, attempts, totalValue } });
   const statsAft = readJSON('stats.json') || {};
   statsAft.totalApiTokensIn  = (statsAft.totalApiTokensIn  || 0) + runTokIn;
   statsAft.totalApiTokensOut = (statsAft.totalApiTokensOut || 0) + runTokOut;
@@ -4272,7 +4313,7 @@ Geef exact ${count} bedrijven.`;
       `${pendingCount} wachten op goedkeuring${highScoreCount > 0 ? ` · ${highScoreCount} met score 8+` : ''}`);
     fireWebhooks('run.complete', { leadsFound: inboxItems.length, pendingCount, highScoreCount, totalValue, completedAt: new Date().toISOString() });
   }
-  console.log(`\n[Agency AI] â"€â"€â"€ Run klaar: ${inboxItems.length} leads, â‚¬${totalValue} pipeline â"€â"€â"€\n`);
+  console.log(`\n[Agency AI] ─── Run klaar: ${inboxItems.length} leads gevonden (${skipped} overgeslagen zonder email, ${attempts} bedrijven gecontroleerd), €${totalValue} pipeline ───\n`);
   return inboxItems.length;
 }
 
