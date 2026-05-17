@@ -7,7 +7,6 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cron = require('node-cron');
-const nodemailer = require('nodemailer');
 const Stripe = require('stripe');
 const webpush = require('web-push');
 const { readJSON, writeJSON, pgInitPromise } = require('./database');
@@ -391,52 +390,28 @@ function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken) {
 }
 
 async function sendEmail({ to, subject, body, html, settings: _settings = {}, trackingToken }) {
-  // Always read fresh settings from DB so Railway restarts don't lose credentials
   const s = readJSON('settings.json') || {};
-  const agencyName = s.agencyName || _settings.agencyName || 'Agency AI';
-  const myName     = s.myName     || _settings.myName     || 'Admin';
-  const myTitle    = s.myTitle    || _settings.myTitle     || '';
-  const htmlBody   = html || buildEmailHTML(body, agencyName, myName, myTitle, trackingToken);
+  const agencyName  = s.agencyName  || _settings.agencyName || 'Agency AI';
+  const myName      = s.myName      || _settings.myName     || 'Admin';
+  const myTitle     = s.myTitle     || _settings.myTitle    || '';
+  const htmlBody    = html || buildEmailHTML(body, agencyName, myName, myTitle, trackingToken);
+  const resendKey   = s.resendApiKey || process.env.RESEND_API_KEY;
+  const fromAddress = s.resendFromAddress || process.env.RESEND_FROM_ADDRESS || 'noreply@agencyai.info';
 
-  // Priority 1: Resend API (works on Railway — no SMTP port issues)
-  const resendKey = s.resendApiKey || process.env.RESEND_API_KEY;
-  if (resendKey) {
-    const { default: fetch } = await import('node-fetch');
-    const fromAddress = s.resendFromAddress || process.env.RESEND_FROM_ADDRESS || `noreply@${(s.gmailAddress||'').split('@')[1] || 'agencyai.app'}`;
-    const r = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: `"${agencyName}" <${fromAddress}>`, to, subject, html: htmlBody, text: body || '' }),
-      signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.message || d.error || `Resend fout ${r.status}`);
-    addActivity('email_sent', `Email verstuurd via Resend → ${to}`, { cost: 0 });
-    return;
+  if (!resendKey) {
+    throw new Error('Email niet ingesteld. Voeg RESEND_API_KEY toe als Railway environment variable of via Instellingen → Email.');
   }
 
-  // Priority 2: Gmail SMTP via port 465 (SSL) — port 587 is blocked on Railway
-  const gmailAddress  = s.gmailAddress  || process.env.GMAIL_ADDRESS  || _settings.gmailAddress;
-  const gmailPassword = getGmailPassword(s) || _settings.gmailPassword;
-  if (!gmailAddress || !gmailPassword) {
-    throw new Error('Geen email provider ingesteld. Voeg RESEND_API_KEY toe als Railway env var, of stel Gmail in via Instellingen.');
-  }
-  const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    auth: { user: gmailAddress, pass: gmailPassword },
-    connectionTimeout: 15000,
-    socketTimeout: 15000
+  const { default: fetch } = await import('node-fetch');
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: `"${agencyName}" <${fromAddress}>`, to, subject, html: htmlBody, text: body || '' }),
+    signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
   });
-  await transporter.sendMail({
-    from: `"${agencyName}" <${gmailAddress}>`,
-    to,
-    subject,
-    text: body || '',
-    html: htmlBody
-  });
-  addActivity('email_sent', `Email verstuurd via Gmail → ${to}`, { cost: 0 });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.message || d.error || `Resend fout ${r.status}`);
+  addActivity('email_sent', `Email verstuurd → ${to}`, { cost: 0 });
 }
 
 // â"€â"€â"€ Auth middleware â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -1180,13 +1155,13 @@ app.get('/health', (req, res) => {
   const runs      = readJSON('runs.json') || [];
   const lastRun   = runs.length ? runs[runs.length - 1] : null;
   const apiKeyOk  = isClaudeReady(settings);
-  const gmailOk   = isGmailReady(settings);
+  const emailOk   = !!(settings.resendApiKey || process.env.RESEND_API_KEY);
   const pgOk      = !!process.env.DATABASE_URL;
   const mem       = process.memoryUsage();
 
-  const checks = { claude_api: apiKeyOk, gmail: gmailOk, postgres: pgOk };
+  const checks = { claude_api: apiKeyOk, email: emailOk, postgres: pgOk };
   const criticalOk = apiKeyOk;
-  const allOk = apiKeyOk && gmailOk;
+  const allOk = apiKeyOk && emailOk;
 
   const now        = Date.now();
   const callsToday = _aiCallLog.filter(e => e.ts >= now - 86400000).length;
@@ -2862,10 +2837,11 @@ app.patch('/api/settings/claude-key', requireAdmin, (req, res) => {
 });
 
 app.patch('/api/settings/resend', requireAdmin, (req, res) => {
-  const { resendApiKey, resendFromAddress } = req.body;
+  const { resendApiKey, resendFromAddress, agencyName } = req.body;
   const settings = readJSON('settings.json');
-  if (resendApiKey !== undefined) settings.resendApiKey = resendApiKey;
+  if (resendApiKey    !== undefined) settings.resendApiKey    = resendApiKey;
   if (resendFromAddress !== undefined) settings.resendFromAddress = resendFromAddress;
+  if (agencyName      !== undefined) settings.agencyName      = agencyName;
   writeJSON('settings.json', settings);
   res.json({ ok: true });
 });
@@ -2906,76 +2882,43 @@ app.patch('/api/settings/automation', requireAdmin, (req, res) => {
 });
 
 app.post('/api/settings/test-email', requireAdmin, async (req, res) => {
-  console.log('[TestMail] Starting test...');
+  console.log('[TestMail] Starting...');
   const s = readJSON('settings.json') || {};
+  const resendKey   = s.resendApiKey || process.env.RESEND_API_KEY;
+  const fromAddress = s.resendFromAddress || process.env.RESEND_FROM_ADDRESS || 'noreply@agencyai.info';
+  const toAddress   = s.gmailAddress || process.env.GMAIL_ADDRESS || fromAddress;
 
-  // Provider: Resend takes priority (no Railway port issues)
-  const resendKey = s.resendApiKey || process.env.RESEND_API_KEY;
-  if (resendKey) {
-    const fromAddress = s.resendFromAddress || process.env.RESEND_FROM_ADDRESS || `noreply@agencyai.app`;
-    const toAddress   = s.gmailAddress || process.env.GMAIL_ADDRESS || fromAddress;
-    console.log('[TestMail] Provider: Resend, to:', toAddress);
-    try {
-      const { default: fetch } = await import('node-fetch');
-      const r = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: `"${s.agencyName || 'Agency AI'}" <${fromAddress}>`,
-          to: toAddress,
-          subject: 'Agency AI — Testmail ✓',
-          text: `Hoi ${s.myName || 'Admin'},\n\nResend is correct ingesteld!\n\nAgency AI kan nu emails versturen.\n\nVriendelijke groet,\n${s.myName || 'Admin'}\n${s.agencyName || 'Agency AI'}`
-        }),
-        signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
-      });
-      const d = await r.json();
-      if (!r.ok) {
-        console.error('[TestMail] Resend failed:', JSON.stringify(d));
-        return res.status(500).json({ success: false, error: d.message || d.error || `Resend fout ${r.status}` });
-      }
-      console.log('[TestMail] Resend success, id:', d.id);
-      return res.json({ success: true, ok: true, message: `Testmail verstuurd via Resend naar ${toAddress}` });
-    } catch (err) {
-      console.error('[TestMail] Resend exception:', err.message);
-      return res.status(500).json({ success: false, error: 'Resend fout: ' + err.message });
-    }
-  }
+  console.log('[TestMail] Key set:', !!resendKey, '| From:', fromAddress, '| To:', toAddress);
 
-  // Fallback: Gmail SMTP port 465
-  const gmailAddress  = s.gmailAddress  || process.env.GMAIL_ADDRESS;
-  const gmailPassword = getGmailPassword(s) || process.env.GMAIL_APP_PASSWORD;
-  console.log('[TestMail] Provider: Gmail SMTP port 465, address:', gmailAddress || '(none)');
-  console.log('[TestMail] Password set:', !!gmailPassword);
-
-  if (!gmailAddress || !gmailPassword) {
-    console.log('[TestMail] No credentials — aborting');
-    return res.status(400).json({ success: false, error: 'Geen email provider ingesteld. Voeg RESEND_API_KEY toe als Railway env var, of stel Gmail in.' });
+  if (!resendKey) {
+    console.log('[TestMail] No RESEND_API_KEY — aborting');
+    return res.status(400).json({ success: false, error: 'Resend API sleutel niet ingesteld. Voeg RESEND_API_KEY toe als Railway environment variable of via Instellingen → Email.' });
   }
 
   try {
-    console.log('[TestMail] Creating SMTP transporter (port 465)...');
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      auth: { user: gmailAddress, pass: gmailPassword },
-      connectionTimeout: 15000,
-      socketTimeout: 15000
+    const { default: fetch } = await import('node-fetch');
+    console.log('[TestMail] Sending via Resend...');
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: `"${s.agencyName || 'Agency AI'}" <${fromAddress}>`,
+        to: toAddress,
+        subject: 'Agency AI — Testmail ✓',
+        text: `Hoi ${s.myName || 'Admin'},\n\nResend is correct ingesteld!\n\nAgency AI kan nu emails versturen namens ${s.agencyName || 'Agency AI'}.\n\nVriendelijke groet,\n${s.myName || 'Admin'}\n${s.agencyName || 'Agency AI'}`
+      }),
+      signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
     });
-
-    console.log('[TestMail] Sending via SMTP...');
-    await transporter.sendMail({
-      from: `"${s.agencyName || 'Agency AI'}" <${gmailAddress}>`,
-      to: gmailAddress,
-      subject: 'Agency AI — Testmail ✓',
-      text: `Hoi ${s.myName || 'Admin'},\n\nGmail is correct ingesteld!\n\nAgency AI kan nu emails versturen namens ${s.agencyName || 'Agency AI'}.\n\nVriendelijke groet,\n${s.myName || 'Admin'}\n${s.agencyName || 'Agency AI'}`
-    });
-
-    console.log('[TestMail] SMTP success — mail sent to', gmailAddress);
-    return res.json({ success: true, ok: true, message: `Testmail verstuurd via Gmail naar ${gmailAddress}` });
+    const d = await r.json();
+    if (!r.ok) {
+      console.error('[TestMail] Resend rejected:', JSON.stringify(d));
+      return res.status(500).json({ success: false, error: d.message || d.error || `Resend fout ${r.status}` });
+    }
+    console.log('[TestMail] Success, id:', d.id, '→', toAddress);
+    return res.json({ success: true, ok: true, message: `Testmail verstuurd naar ${toAddress}` });
   } catch (err) {
-    console.error('[TestMail] SMTP failed:', err.message);
-    return res.status(500).json({ success: false, error: 'Gmail SMTP fout: ' + err.message });
+    console.error('[TestMail] Exception:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -5328,22 +5271,26 @@ async function runDailyBackup(manual = false) {
     console.log('[Backup] Rotatie: ' + toDelete.length + ' oude backup(s) verwijderd');
   }
 
-  // Email backup if configured
-  if (settings.backupEmail !== false && isGmailReady(settings)) {
+  // Email backup via Resend if configured
+  const resendKey = settings.resendApiKey || process.env.RESEND_API_KEY;
+  if (settings.backupEmail !== false && resendKey) {
     try {
-      const nodemailer = require('nodemailer');
-      const transporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com', port: 587, secure: false,
-        auth: { user: settings.gmailAddress || process.env.GMAIL_ADDRESS, pass: getGmailPassword(settings) }
+      const toAddr   = settings.gmailAddress || process.env.GMAIL_ADDRESS || (settings.resendFromAddress || process.env.RESEND_FROM_ADDRESS || 'noreply@agencyai.info');
+      const fromAddr = settings.resendFromAddress || process.env.RESEND_FROM_ADDRESS || 'noreply@agencyai.info';
+      const { default: fetch } = await import('node-fetch');
+      const r = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: `"${settings.agencyName || 'Agency AI'}" <${fromAddr}>`,
+          to: toAddr,
+          subject: 'Agency AI Backup — ' + dateStr,
+          html: '<div style="font-family:sans-serif;padding:24px"><h2 style="margin:0 0 12px;font-size:18px">Agency AI — Dagelijkse backup</h2><p style="color:#6b7280;font-size:14px">Automatische backup van ' + dateStr + '.</p><p style="font-size:12px;color:#9ca3af;margin-top:24px">Bevat: leads, inbox, runs, stats, memory en instellingen (zonder wachtwoorden).</p><p><em>Bijlage: ' + filename + '</em></p></div>',
+          attachments: [{ filename, content: Buffer.from(JSON.stringify(bundle, null, 2)).toString('base64') }]
+        })
       });
-      await transporter.sendMail({
-        from:    settings.gmailAddress,
-        to:      settings.gmailAddress,
-        subject: 'Agency AI Backup — ' + dateStr,
-        html:    '<div style="font-family:sans-serif;padding:24px"><h2 style="margin:0 0 12px;font-size:18px">Agency AI — Dagelijkse backup</h2><p style="color:#6b7280;font-size:14px">Automatische backup van ' + dateStr + ' is bijgevoegd als JSON bestand.</p><p style="font-size:12px;color:#9ca3af;margin-top:24px">Bevat: leads, inbox, runs, stats, memory en instellingen (zonder wachtwoorden).</p></div>',
-        attachments: [{ filename, content: JSON.stringify(bundle, null, 2), contentType: 'application/json' }]
-      });
-      console.log('[Backup] Backup email verstuurd naar', settings.gmailAddress);
+      if (r.ok) console.log('[Backup] Backup email verstuurd naar', toAddr);
+      else console.error('[Backup] Resend fout:', (await r.json()).message);
     } catch (err) {
       console.error('[Backup] Email fout:', err.message);
     }

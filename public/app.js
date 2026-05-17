@@ -264,11 +264,11 @@ async function renderDashboard() {
   const weekCounts = getWeekCounts(stats.weeklyData || [], weekLabels);
 
   document.getElementById('dashboardContent').innerHTML = `
-    ${!settings?.gmailConfigured ? `
+    ${!settings?.resendConfigured ? `
       <div class="alert-banner alert-banner-amber" onclick="setView('settings');setTimeout(()=>document.querySelector('[data-tab=email]')?.click(),100)" style="cursor:pointer;margin-bottom:16px">
         <i class="ti ti-mail-off" style="font-size:16px"></i>
-        <strong>Gmail niet ingesteld</strong>
-        <span style="color:var(--text-secondary);font-weight:400">— emails kunnen niet worden verstuurd. Klik om in te stellen &rarr;</span>
+        <strong>Email niet ingesteld</strong>
+        <span style="color:var(--text-secondary);font-weight:400">— voeg RESEND_API_KEY toe om emails te versturen. Klik om in te stellen &rarr;</span>
       </div>
     ` : ''}
     ${pending > 0 ? `
@@ -530,12 +530,12 @@ async function renderInbox() {
 
   const container = document.getElementById('inboxContent');
 
-  if (!settings.gmailConfigured) {
+  if (!settings.resendConfigured) {
     container.innerHTML += `
       <div class="alert-banner alert-banner-amber" onclick="setView('settings');setTimeout(()=>document.querySelector('[data-tab=email]')?.click(),100)" style="cursor:pointer;margin-bottom:20px">
         <i class="ti ti-mail-off" style="font-size:16px"></i>
-        <strong>Gmail niet ingesteld</strong>
-        <span style="color:var(--text-secondary);font-weight:400">— emails kunnen niet verstuurd worden. Klik om in te stellen &rarr;</span>
+        <strong>Email niet ingesteld</strong>
+        <span style="color:var(--text-secondary);font-weight:400">— voeg RESEND_API_KEY toe om emails te versturen. Klik om in te stellen &rarr;</span>
       </div>
     `;
   }
@@ -1074,7 +1074,7 @@ async function markLinkedinDmSent(id) {
 }
 
 async function approve(id) {
-  if (!state.settings?.gmailConfigured) {
+  if (!state.settings?.resendConfigured) {
     openModal(`
       <div style="text-align:center;padding:8px 0">
         <div style="font-size:40px;margin-bottom:12px">✉️</div>
@@ -6472,19 +6472,35 @@ async function renderSettings() {
       <!-- ── Email & versturen ── -->
       <div class="settings-tab-pane" id="stab-email">
         <h2 class="settings-title">
-          <i class="ti ti-mail"></i> Gmail instellen
-          ${s.gmailConfigured
-            ? `<span class="badge badge-green"><i class="ti ti-check"></i> Gmail actief</span>`
+          <i class="ti ti-mail-fast"></i> Email instellen
+          ${s.resendConfigured
+            ? `<span class="badge badge-green"><i class="ti ti-check"></i> Resend actief</span>`
             : `<span class="badge badge-amber"><i class="ti ti-alert-triangle"></i> Niet ingesteld</span>`}
         </h2>
+        <p class="settings-note" style="margin-bottom:16px">Emails worden verstuurd via <strong>Resend</strong> — werkt op Railway zonder SMTP-poortproblemen. Gratis tot 100 emails/dag. Maak een account aan op <a href="https://resend.com" target="_blank" class="link">resend.com</a> of voeg <code style="background:var(--border);padding:1px 6px;border-radius:4px">RESEND_API_KEY</code> toe als Railway environment variable.</p>
 
-        <div class="extension-install-card" style="margin-bottom:18px">
-          <div class="ext-step"><div class="ext-step-num">1</div><div class="ext-step-desc">Ga naar <a href="https://myaccount.google.com/security" target="_blank" class="link">myaccount.google.com</a> → Beveiliging → Verificatie in 2 stappen (moet aan staan)</div></div>
-          <div class="ext-step"><div class="ext-step-num">2</div><div class="ext-step-desc">Zoek op "App-wachtwoorden" onderaan de beveiligingspagina → klik erop</div></div>
-          <div class="ext-step"><div class="ext-step-num">3</div><div class="ext-step-desc">Kies app: "Overige" → geef naam "Agency AI" → klik Genereren</div></div>
-          <div class="ext-step"><div class="ext-step-num">4</div><div class="ext-step-desc">Kopieer het <strong>16-tekens wachtwoord</strong> (spaties negeren) en plak het hieronder</div></div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Resend API sleutel ${s.resendConfigured ? '<span class="badge badge-green" style="font-size:11px">Ingesteld</span>' : ''}</label>
+            <input type="password" id="resendApiKey" placeholder="${s.resendConfigured ? '(laat leeg om ongewijzigd te laten)' : 're_...'}">
+          </div>
+          <div class="form-group">
+            <label>Afzender naam</label>
+            <input type="text" id="resendSenderName" value="${esc(s.agencyName || '')}" placeholder="${esc(s.agencyName || 'Agency AI')}">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Afzender e-mailadres <span class="text-muted">— moet geverifieerd zijn in Resend dashboard</span></label>
+            <input type="text" id="resendFromAddress" value="${esc(s.resendFromAddress || '')}" placeholder="noreply@agencyai.info">
+          </div>
         </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="saveResendBtn"><i class="ti ti-device-floppy"></i> Opslaan &amp; testen</button>
+        </div>
+        <div id="resendSaveResult" style="margin-top:12px;display:none"></div>
 
+        <hr class="divider" style="margin:24px 0">
+        <h3 class="settings-subtitle"><i class="ti ti-mail" style="margin-right:5px"></i> Gmail — alleen voor reply detectie (IMAP)</h3>
+        <p class="settings-note" style="margin-bottom:12px">Gmail wordt <strong>niet</strong> gebruikt voor verzenden. Vul dit in als je wilt dat Agency AI automatisch antwoorden van prospects detecteert via je Gmail inbox.</p>
         <div class="form-grid">
           <div class="form-group">
             <label>Gmail adres</label>
@@ -6495,31 +6511,8 @@ async function renderSettings() {
             <input type="password" id="gmailPassword" placeholder="${s.gmailPasswordSet ? '(laat leeg om ongewijzigd te laten)' : 'xxxx xxxx xxxx xxxx'}">
           </div>
         </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" id="saveGmailBtn"><i class="ti ti-device-floppy"></i> Opslaan &amp; testen</button>
-        </div>
+        <button class="btn btn-ghost btn-sm" id="saveGmailBtn"><i class="ti ti-device-floppy"></i> Gmail opslaan</button>
         <div id="gmailTestResult" style="margin-top:12px;display:none"></div>
-
-        <hr class="divider" style="margin:20px 0">
-        <h3 class="settings-subtitle">
-          <i class="ti ti-mail-fast" style="margin-right:5px"></i> Resend
-          ${s.resendConfigured
-            ? `<span class="badge badge-green"><i class="ti ti-check"></i> Actief — wordt gebruikt als verzender</span>`
-            : `<span class="badge" style="background:var(--surface-2);color:var(--text-secondary)">Optioneel</span>`}
-        </h3>
-        <p class="settings-note" style="margin-bottom:12px">Resend werkt op Railway zonder SMTP-poortproblemen. Gratis tot 100 emails/dag. Maak een account aan op <a href="https://resend.com" target="_blank" class="link">resend.com</a> en voeg je API sleutel toe. <strong>Wanneer ingesteld heeft Resend prioriteit boven Gmail SMTP.</strong></p>
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Resend API sleutel ${s.resendConfigured ? '<span class="badge badge-green" style="font-size:11px">Ingesteld</span>' : ''}</label>
-            <input type="password" id="resendApiKey" placeholder="${s.resendConfigured ? '(laat leeg om ongewijzigd te laten)' : 're_...'}">
-          </div>
-          <div class="form-group">
-            <label>Verzendadres <span class="text-muted">(bijv. noreply@jouwdomein.nl)</span></label>
-            <input type="text" id="resendFromAddress" value="${esc(s.resendFromAddress || '')}" placeholder="noreply@jouwdomein.nl">
-          </div>
-        </div>
-        <button class="btn btn-primary btn-sm" id="saveResendBtn"><i class="ti ti-device-floppy"></i> Resend opslaan</button>
-        <div id="resendSaveResult" style="margin-top:10px;display:none"></div>
 
         <div class="form-group" style="margin-top:14px">
           <label class="toggle-wrap">
@@ -7042,20 +7035,39 @@ function attachSettingsHandlers(s) {
   loadWebhooksList();
 
   document.getElementById('saveResendBtn')?.addEventListener('click', async () => {
+    const btn      = document.getElementById('saveResendBtn');
     const resultEl = document.getElementById('resendSaveResult');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Opslaan...';
+    resultEl.style.display = 'none';
+
     const keyVal  = document.getElementById('resendApiKey')?.value?.trim() || '';
     const fromVal = document.getElementById('resendFromAddress')?.value?.trim() || '';
+    const nameVal = document.getElementById('resendSenderName')?.value?.trim() || '';
     const body = { resendFromAddress: fromVal };
     if (keyVal) body.resendApiKey = keyVal;
-    const res = await api('/api/settings/resend', { method: 'PATCH', body: JSON.stringify(body) });
+    if (nameVal) body.agencyName = nameVal;
+
+    const saveRes = await api('/api/settings/resend', { method: 'PATCH', body: JSON.stringify(body) });
+    if (!saveRes.ok) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-device-floppy"></i> Opslaan &amp; testen';
+      resultEl.style.display = 'block';
+      resultEl.innerHTML = `<div style="padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:13px"><i class="ti ti-x-circle"></i> Opslaan mislukt</div>`;
+      return;
+    }
+    if (keyVal) { document.getElementById('resendApiKey').value = ''; state.settings.resendConfigured = true; }
+
+    btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Verbinding testen...';
+    const testRes  = await api('/api/settings/test-email', { method: 'POST' });
+    const testData = await testRes.json();
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-device-floppy"></i> Opslaan &amp; testen';
     resultEl.style.display = 'block';
-    if (res.ok) {
-      resultEl.innerHTML = `<div style="padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;color:#16a34a;font-size:13px"><i class="ti ti-circle-check"></i> Resend opgeslagen — wordt nu gebruikt voor alle emails</div>`;
-      document.getElementById('resendApiKey').value = '';
-      state.settings.resendConfigured = true;
+    if (testRes.ok) {
+      resultEl.innerHTML = `<div style="padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;color:#16a34a;font-size:13px"><i class="ti ti-circle-check"></i> ${esc(testData.message || 'Testmail verstuurd!')}</div>`;
     } else {
-      const d = await res.json();
-      resultEl.innerHTML = `<div style="padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:13px"><i class="ti ti-x-circle"></i> ${esc(d.error || 'Opslaan mislukt')}</div>`;
+      resultEl.innerHTML = `<div style="padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:13px"><i class="ti ti-x-circle"></i> <strong>Test mislukt:</strong> ${esc(testData.error || 'Onbekende fout')}</div>`;
     }
   });
 
@@ -7122,46 +7134,23 @@ function attachSettingsHandlers(s) {
     }
   });
 
-  document.getElementById('saveGmailBtn').addEventListener('click', async () => {
+  document.getElementById('saveGmailBtn')?.addEventListener('click', async () => {
     const btn = document.getElementById('saveGmailBtn');
-    const resultEl = document.getElementById('gmailTestResult');
     btn.disabled = true;
     btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Opslaan...';
-    resultEl.style.display = 'none';
-
-    const pwVal = document.getElementById('gmailPassword').value.trim();
+    const pwVal = document.getElementById('gmailPassword')?.value?.trim() || '';
     const body = {
-      gmailAddress: document.getElementById('gmailAddress').value.trim(),
+      gmailAddress: document.getElementById('gmailAddress')?.value?.trim() || '',
       replyDetection: document.getElementById('replyDetection')?.checked ?? true,
       webhookToken: document.getElementById('webhookToken')?.value || '',
       webhookConfigured: document.getElementById('webhookEnabled')?.checked ?? false
     };
     if (pwVal) body.gmailPassword = pwVal;
-
-    const saveRes = await api('/api/settings/gmail', { method: 'PATCH', body: JSON.stringify(body) });
-    if (!saveRes.ok) {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="ti ti-device-floppy"></i> Opslaan &amp; testen';
-      resultEl.style.display = 'block';
-      resultEl.innerHTML = `<div style="padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:13px"><i class="ti ti-x-circle"></i> Opslaan mislukt</div>`;
-      return;
-    }
-
-    btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Verbinding testen...';
-    const testRes = await api('/api/settings/test-email', { method: 'POST' });
-    const testData = await testRes.json();
-
+    const res = await api('/api/settings/gmail', { method: 'PATCH', body: JSON.stringify(body) });
     btn.disabled = false;
-    btn.innerHTML = '<i class="ti ti-device-floppy"></i> Opslaan &amp; testen';
-    resultEl.style.display = 'block';
-
-    if (testRes.ok) {
-      resultEl.innerHTML = `<div style="padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;color:#16a34a;font-size:13px"><i class="ti ti-circle-check"></i> ${esc(testData.message || 'Testmail verstuurd! Check je inbox.')}</div>`;
-      state.settings.gmailConfigured = true;
-      state.settings.gmailPasswordSet = true;
-    } else {
-      resultEl.innerHTML = `<div style="padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:13px"><i class="ti ti-x-circle"></i> <strong>Verbinding mislukt:</strong> ${esc(testData.error || 'Onbekende fout')}</div>`;
-    }
+    btn.innerHTML = '<i class="ti ti-device-floppy"></i> Gmail opslaan';
+    if (res.ok) toast('Gmail opgeslagen', 'success');
+    else toast('Opslaan mislukt', 'error');
   });
 
   document.getElementById('addServiceBtn').addEventListener('click', () => {
