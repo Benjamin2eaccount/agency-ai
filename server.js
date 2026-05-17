@@ -4134,7 +4134,13 @@ Rules:
 }
 
 async function runFindLeadsJob(overrides = {}) {
+  console.log('[Run] Starting runFindLeadsJob...');
+  console.log('[Run] Overrides:', JSON.stringify(overrides));
+
   const settings0 = readJSON('settings.json') || {};
+  const apiKey = getClaudeApiKey(settings0);
+  console.log('[Run] API key exists:', !!apiKey);
+
   if (!isClaudeReady(settings0)) {
     throw new Error('Claude API sleutel niet ingesteld. Voeg toe via Instellingen → API & integraties of stel CLAUDE_API_KEY in als Railway environment variable.');
   }
@@ -4148,6 +4154,7 @@ async function runFindLeadsJob(overrides = {}) {
   const services   = settings.services   || [];
   const myName     = settings.myName     || 'Ekow';
   const agencyName = settings.agencyName || 'Agency AI';
+  console.log('[Run] Target leads:', count, '| Services:', services.length, '| myName:', myName);
   const autoScore  = settings.autoApproveScore || 8.0;
 
   // Build niche targeting list from settings or overrides
@@ -4178,6 +4185,7 @@ async function runFindLeadsJob(overrides = {}) {
 
   console.log(`\n[Agency AI] ─── Lead finder gestart: ${target} leads nodig ───`);
 
+  try {
   while (found < target && attempts < maxAttempts) {
     const remaining = target - found;
     const batchSize = Math.min(BATCH_SIZE, remaining + 2); // slight overrun to compensate skip rate
@@ -4223,10 +4231,14 @@ Geef exact ${batchSize} bedrijven.${alreadySeen}`;
       if (!Array.isArray(batch)) batch = [batch];
       batch = batch.slice(0, batchSize);
     } catch (err) {
+      console.error(`[Agent 1] Batch mislukt:`, err.message);
+      console.error(`[Agent 1] Stack:`, err.stack);
       logError('agent1', `Agent 1 (Lead Finder) mislukt`, err.message);
       if (found === 0) throw new Error(`Agent 1 (Lead Finder) mislukt: ${err.message}`);
-      console.warn(`[Agent 1] Batch mislukt — stoppen met ${found} gevonden leads`);
-      break;
+      console.warn(`[Agent 1] Batch mislukt na ${found} leads — doorgaan of stoppen`);
+      // Try one more batch before giving up on partial results
+      attempts += batchSize;
+      continue;
     }
 
     // Deduplicate within and across batches
@@ -4238,13 +4250,22 @@ Geef exact ${batchSize} bedrijven.${alreadySeen}`;
       return true;
     });
 
-    attempts += freshBatch.length;
+    // Always advance attempts by at least batchSize to prevent infinite loop
+    // (freshBatch.length can be 0 if all names were duplicates)
+    attempts += Math.max(batchSize, freshBatch.length);
     console.log(`[Agent 1] ${freshBatch.length} nieuwe bedrijven in batch (attempts: ${attempts}/${maxAttempts})`);
 
     for (const lead of freshBatch) {
       if (found >= target) break;
       console.log(`\n[Lead ${found + 1}/${target}] ${lead.companyName} (${lead.niche})`);
-      const result = await processOneLead(lead, settings);
+      let result;
+      try {
+        result = await processOneLead(lead, settings);
+      } catch (leadErr) {
+        console.error(`[Lead] processOneLead crashed voor ${lead.companyName}:`, leadErr.message);
+        skipped++;
+        continue;
+      }
       if (!result) {
         skipped++;
         continue;
@@ -4256,6 +4277,13 @@ Geef exact ${batchSize} bedrijven.${alreadySeen}`;
       if (item.status === 'auto-approved') console.log(`  ✓ Auto-goedgekeurd (score ${item.score} >= ${autoScore})`);
       console.log(`  ✓ Klaar — score: ${item.score}, waarde: €${item.estimatedValue}`);
     }
+  }
+
+  } catch (loopErr) {
+    console.error('[Run] Batch loop crashed:', loopErr.message);
+    console.error('[Run] Stack:', loopErr.stack);
+    logError('run', `Batch loop gecrasht na ${found} leads`, loopErr.message);
+    // Don't rethrow — save whatever was found
   }
 
   console.log(`\n[Agency AI] Lus klaar: ${found} leads gevonden, ${skipped} overgeslagen zonder email, ${attempts} bedrijven gecontroleerd`);

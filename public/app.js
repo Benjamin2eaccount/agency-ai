@@ -5779,12 +5779,12 @@ async function startCustomRun() {
     body: JSON.stringify({ count, niches: nicheArr })
   });
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> Start run'; }
+  const data = await res.json().catch(() => ({}));
   if (res?.ok) {
-    const data = await res.json();
     toast(`Run klaar — ${data.found || 0} leads gevonden`, 'success');
     renderRuns();
   } else {
-    toast('Run mislukt. Controleer de server logs.', 'error');
+    toast(data.error || 'Run mislukt — controleer server logs', 'error');
   }
 }
 
