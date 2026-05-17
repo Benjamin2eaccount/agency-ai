@@ -6727,8 +6727,8 @@ function switchSettingsTab(id) {
   document.getElementById('stab-' + id)?.classList.add('active');
   document.querySelector(`.settings-nav-item[data-tab="${id}"]`)?.classList.add('active');
   localStorage.setItem('settingsTab', id);
-  // Load AI rate status when automation tab opens
-  if (id === 'automation') loadAiRateStatus?.();
+  // Load AI rate status when automation or api tab opens
+  if (id === 'automation' || id === 'api') loadAiRateStatus?.();
 }
 
 async function renderSettings() {
@@ -6749,8 +6749,7 @@ async function renderSettings() {
   <div class="settings-layout">
     <nav class="settings-nav">
       <button class="settings-nav-item active" data-tab="account"    onclick="switchSettingsTab('account')">   <i class="ti ti-user"></i>         Account</button>
-      <button class="settings-nav-item"         data-tab="website"   onclick="switchSettingsTab('website')">   <i class="ti ti-world"></i>         Publieke website</button>
-      <button class="settings-nav-item"         data-tab="email"     onclick="switchSettingsTab('email')">     <i class="ti ti-mail"></i>          Email &amp; versturen</button>
+<button class="settings-nav-item"         data-tab="email"     onclick="switchSettingsTab('email')">     <i class="ti ti-mail"></i>          Email &amp; versturen</button>
       <button class="settings-nav-item"         data-tab="services"  onclick="switchSettingsTab('services')">  <i class="ti ti-briefcase"></i>     Diensten</button>
       <button class="settings-nav-item"         data-tab="automation" onclick="switchSettingsTab('automation')"><i class="ti ti-settings-automation"></i> Automatisering</button>
       <button class="settings-nav-item"         data-tab="payments"  onclick="switchSettingsTab('payments')">  <i class="ti ti-credit-card"></i>   Betalingen</button>
@@ -6817,34 +6816,7 @@ async function renderSettings() {
         </div>
       </div>
 
-      <!-- ── Publieke website ── -->
-      <div class="settings-tab-pane" id="stab-website">
-        <div class="stg-section">
-          <div class="stg-section-header">
-            <div class="stg-title">Publieke website</div>
-            <div class="stg-sub">Landingspagina op <code>/agency</code> — deel met potentiële klanten
-              <a href="/agency" target="_blank" rel="noopener" class="stg-ext-link"><i class="ti ti-external-link"></i> Bekijk website</a>
-            </div>
-          </div>
-          <div class="stg-field" style="margin-bottom:14px">
-            <label class="stg-label">TAGLINE</label>
-            <input type="text" class="stg-input" id="websiteTagline" value="${esc(s.websiteTagline || 'Meer klanten. Minder werk. Volledig automatisch.')}">
-          </div>
-          <div class="stg-field" style="margin-bottom:14px">
-            <label class="stg-label">OVER ONS</label>
-            <textarea class="stg-input" id="websiteAbout" rows="4" style="resize:vertical">${esc(s.websiteAbout || '')}</textarea>
-          </div>
-          <div class="stg-grid-2">
-            <div class="stg-field">
-              <label class="stg-label">CONTACTMAIL OP WEBSITE</label>
-              <input type="email" class="stg-input" id="websiteContact" value="${esc(s.websiteContact || s.gmailAddress || '')}" placeholder="contact@jouwbedrijf.nl">
-            </div>
-          </div>
-          <button class="btn btn-primary stg-save-btn" id="saveWebsiteBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
-        </div>
-      </div>
-
-      <!-- ── Email & versturen ── -->
+<!-- ── Email & versturen ── -->
       <div class="settings-tab-pane" id="stab-email">
 
         <div class="stg-section">
@@ -7190,28 +7162,8 @@ async function renderSettings() {
             </div>
           </div>
           <div id="backupList" style="margin-top:12px"></div>
+          <button class="btn btn-primary stg-save-btn" id="saveAutomationBtn" style="margin-top:12px"><i class="ti ti-device-floppy"></i> Opslaan</button>
         </div>
-
-        <div class="stg-divider"></div>
-
-        <div class="stg-section">
-          <div class="stg-section-header">
-            <div class="stg-title">AI API limieten</div>
-            <div class="stg-sub">Voorkom onverwachte kosten — de server slaat een actie over wanneer een limiet bereikt is</div>
-          </div>
-          <div class="stg-grid-2">
-            <div class="stg-field"><label class="stg-label">MAX CALLS / MINUUT</label><input type="number" class="stg-input" id="aiMaxPerMin"  value="${(s.aiRateLimits?.maxCallsPerMinute) ?? 10}"  min="1" max="60"></div>
-            <div class="stg-field"><label class="stg-label">MAX CALLS / UUR</label>  <input type="number" class="stg-input" id="aiMaxPerHour" value="${(s.aiRateLimits?.maxCallsPerHour)   ?? 100}" min="1" max="1000"></div>
-            <div class="stg-field"><label class="stg-label">MAX CALLS / DAG</label>  <input type="number" class="stg-input" id="aiMaxPerDay"  value="${(s.aiRateLimits?.maxCallsPerDay)    ?? 500}" min="1" max="5000"></div>
-            <div class="stg-field"><label class="stg-label">MAX KOSTEN / DAG ($)</label><input type="number" class="stg-input" id="aiMaxCostDay" value="${(s.aiRateLimits?.maxDailyCostUsd)    ?? 10}"  min="0" step="0.5"></div>
-          </div>
-          <div id="aiRateStatusBar" style="margin-top:10px"></div>
-          <button class="btn btn-primary stg-save-btn" id="saveAutomationBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
-        </div>
-      </div>
-
-      <!-- ── Niches & filters placeholder (unused tab — redirect to automation) ── -->
-      <!-- stab-niches empty — content moved to stab-automation -->
       </div>
 
       <!-- ── Betalingen ── -->
@@ -7442,6 +7394,23 @@ async function renderSettings() {
             <div class="ext-step"><span class="ext-step-num">3</span><div><strong>Server URL</strong><div style="display:flex;align-items:center;gap:8px;margin-top:6px"><code id="extensionServerUrl" class="stg-code-block">${window.location.origin}</code><button class="btn btn-ghost btn-sm" onclick="copyExtensionUrl()"><i class="ti ti-copy"></i></button></div></div></div>
             <div class="ext-step"><span class="ext-step-num">4</span><div><strong>API sleutel</strong><div class="ext-step-desc">Genereer een API sleutel hierboven en plak in de extensie.</div></div></div>
           </div>
+        </div>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">AI API limieten</div>
+            <div class="stg-sub">Voorkom onverwachte kosten — de server slaat een actie over wanneer een limiet bereikt is</div>
+          </div>
+          <div class="stg-grid-2">
+            <div class="stg-field"><label class="stg-label">MAX CALLS / MINUUT</label><input type="number" class="stg-input" id="aiMaxPerMin"  value="${(s.aiRateLimits?.maxCallsPerMinute) ?? 10}"  min="1" max="60"></div>
+            <div class="stg-field"><label class="stg-label">MAX CALLS / UUR</label>  <input type="number" class="stg-input" id="aiMaxPerHour" value="${(s.aiRateLimits?.maxCallsPerHour)   ?? 100}" min="1" max="1000"></div>
+            <div class="stg-field"><label class="stg-label">MAX CALLS / DAG</label>  <input type="number" class="stg-input" id="aiMaxPerDay"  value="${(s.aiRateLimits?.maxCallsPerDay)    ?? 500}" min="1" max="5000"></div>
+            <div class="stg-field"><label class="stg-label">MAX KOSTEN / DAG ($)</label><input type="number" class="stg-input" id="aiMaxCostDay" value="${(s.aiRateLimits?.maxDailyCostUsd)    ?? 10}"  min="0" step="0.5"></div>
+          </div>
+          <div id="aiRateStatusBar" style="margin-top:10px"></div>
+          <button class="btn btn-primary stg-save-btn" id="saveAiRateLimitsBtn" style="margin-top:12px"><i class="ti ti-device-floppy"></i> Opslaan</button>
         </div>
       </div>
 
@@ -7724,14 +7693,17 @@ function attachSettingsHandlers(s) {
 
   if (isAdmin()) loadUsersList();
 
-  document.getElementById('saveWebsiteBtn')?.addEventListener('click', async () => {
+  document.getElementById('saveAiRateLimitsBtn')?.addEventListener('click', async () => {
     const body = {
-      websiteTagline: document.getElementById('websiteTagline')?.value,
-      websiteAbout:   document.getElementById('websiteAbout')?.value,
-      websiteContact: document.getElementById('websiteContact')?.value
+      aiRateLimits: {
+        maxCallsPerMinute: parseInt(document.getElementById('aiMaxPerMin')?.value  || 10),
+        maxCallsPerHour:   parseInt(document.getElementById('aiMaxPerHour')?.value || 100),
+        maxCallsPerDay:    parseInt(document.getElementById('aiMaxPerDay')?.value  || 500),
+        maxDailyCostUsd:   parseFloat(document.getElementById('aiMaxCostDay')?.value || 10)
+      }
     };
-    const res = await api('/api/settings/account', { method: 'PATCH', body: JSON.stringify(body) });
-    if (res.ok) toast('Website opgeslagen', 'success');
+    const res = await api('/api/settings/automation', { method: 'PATCH', body: JSON.stringify(body) });
+    if (res.ok) { toast('AI limieten opgeslagen', 'success'); loadAiRateStatus?.(); }
     else toast('Opslaan mislukt', 'error');
   });
 
