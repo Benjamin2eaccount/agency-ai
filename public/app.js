@@ -1992,15 +1992,28 @@ const STATUS_LABELS = {
   'auto-approved': 'Auto-goedgekeurd', scheduled: 'Ingepland',
   followup1: 'Follow-up 1', followup2: 'Follow-up 2',
   replied: 'Gereageerd', meeting: 'Afspraak',
-  client: 'Klant ✓', disapproved: 'Afgewezen', dead: 'Dead'
+  client: 'Klant ✓', disapproved: 'Afgewezen', dead: 'Dead',
+  bounced: 'Niet aangekomen', delivery_delayed: 'Vertraagd'
 };
 
 const STATUS_COLORS = {
   inbox: 'gray', approved: 'blue', sent: 'indigo', 'auto-approved': 'indigo',
   scheduled: 'amber',
   followup1: 'amber', followup2: 'orange', replied: 'green',
-  meeting: 'purple', client: 'dark-green', disapproved: 'red', dead: 'gray'
+  meeting: 'purple', client: 'dark-green', disapproved: 'red', dead: 'gray',
+  bounced: 'red', delivery_delayed: 'orange'
 };
+
+// Groups used by pipeline table view
+const PIPELINE_GROUPS = [
+  { key: 'replied',     label: 'Gereageerd',      dot: '#d97706', statuses: ['replied'],                                              defaultOpen: true },
+  { key: 'client',      label: 'Klant',            dot: '#7c3aed', statuses: ['client'],                                              defaultOpen: true },
+  { key: 'sent',        label: 'Verstuurd',        dot: '#16a34a', statuses: ['sent','followup1','followup2','scheduled','auto-approved'] },
+  { key: 'inbox',       label: 'Inbox / wacht',    dot: '#2563eb', statuses: ['inbox','pending','new','approved'] },
+  { key: 'bounced',     label: 'Niet aangekomen',  dot: '#dc2626', statuses: ['bounced','delivery_delayed'] },
+  { key: 'disapproved', label: 'Afgekeurd',        dot: '#6b7280', statuses: ['disapproved'] },
+  { key: 'dead',        label: 'Dead',             dot: '#9b9b98', statuses: ['dead'] }
+];
 
 async function renderPipeline() {
   document.getElementById('appView').innerHTML = `
@@ -2051,6 +2064,10 @@ async function renderPipeline() {
 
   let _pipelineView = localStorage.getItem('pipelineView') || 'kanban';
 
+  // Reset per-session view state on fresh page load
+  window._pipelineGroupOpen = null;
+  window._kanbanExpanded    = {};
+
   window.switchPipelineView = function(view) {
     _pipelineView = view;
     localStorage.setItem('pipelineView', view);
@@ -2069,12 +2086,13 @@ async function renderPipeline() {
 }
 
 const KANBAN_COLS = [
-  { key: 'inbox',    label: 'Inbox',      color: '#2563eb', statuses: ['inbox', 'pending', 'new'] },
-  { key: 'approved', label: 'Gekwalif.',  color: '#7c3aed', statuses: ['approved', 'auto-approved'] },
-  { key: 'sent',     label: 'Verstuurd',  color: '#16a34a', statuses: ['sent', 'followup1', 'followup2', 'scheduled'] },
-  { key: 'replied',  label: 'Gereageerd', color: '#d97706', statuses: ['replied'] },
-  { key: 'client',   label: 'Klant',      color: '#9b9b98', statuses: ['client'] },
-  { key: 'dead',     label: 'Dead',       color: '#dc2626', statuses: ['dead', 'disapproved'] }
+  { key: 'inbox',    label: 'Inbox',           color: '#2563eb', statuses: ['inbox', 'pending', 'new'] },
+  { key: 'approved', label: 'Gekwalif.',        color: '#7c3aed', statuses: ['approved', 'auto-approved'] },
+  { key: 'sent',     label: 'Verstuurd',        color: '#16a34a', statuses: ['sent', 'followup1', 'followup2', 'scheduled'] },
+  { key: 'replied',  label: 'Gereageerd',       color: '#d97706', statuses: ['replied'] },
+  { key: 'bounced',  label: 'Niet aangekomen',  color: '#dc2626', statuses: ['bounced', 'delivery_delayed'] },
+  { key: 'client',   label: 'Klant',            color: '#059669', statuses: ['client'] },
+  { key: 'dead',     label: 'Dead',             color: '#9b9b98', statuses: ['dead', 'disapproved'] }
 ];
 
 function buildKanbanCard(l) {
@@ -2105,34 +2123,44 @@ function buildKanbanCard(l) {
 }
 
 function renderKanban(leads, container) {
-  const nameCounts = {};
-  leads.forEach(l => { const n = (l.companyName||'').toLowerCase().trim(); nameCounts[n] = (nameCounts[n]||0)+1; });
-
+  const KANBAN_PAGE_SIZE = 10;
   const colLeads = {};
   KANBAN_COLS.forEach(col => {
     colLeads[col.key] = leads.filter(l => col.statuses.includes(l.status || 'inbox'));
   });
 
+  // Track which cols have been fully expanded (persisted within session)
+  if (!window._kanbanExpanded) window._kanbanExpanded = {};
+
+  function buildColHTML(col) {
+    const all   = colLeads[col.key];
+    const expanded = window._kanbanExpanded[col.key];
+    const visible  = expanded ? all : all.slice(0, KANBAN_PAGE_SIZE);
+    const hidden   = all.length - visible.length;
+    const totalVal = all.reduce((s, l) => s + (l.estimatedValue || 0), 0);
+    return `
+      <div class="kanban-col" data-col-key="${col.key}" data-drop-status="${col.key}">
+        <div class="kanban-col-header">
+          <div class="kanban-col-title">
+            <span class="kanban-col-dot" style="background:${col.color}"></span>
+            ${col.label}
+            <span class="kanban-col-count">${all.length}</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            ${totalVal > 0 ? `<div class="kanban-col-meta">€${totalVal >= 1000 ? (totalVal/1000).toFixed(0)+'K' : totalVal}</div>` : ''}
+            ${all.length > KANBAN_PAGE_SIZE ? `<button class="kanban-see-all-btn" onclick="switchPipelineView('table');setTimeout(()=>filterPipelineGroup('${col.key}'),50)">Alles zien</button>` : ''}
+          </div>
+        </div>
+        <div class="kanban-col-body" data-drop-status="${col.key}">
+          ${visible.length ? visible.map(l => buildKanbanCard(l)).join('') : '<div class="kanban-col-empty">Nog niets hier</div>'}
+          ${hidden > 0 ? `<button class="kanban-more-btn" data-col="${col.key}">+ ${hidden} meer</button>` : ''}
+        </div>
+      </div>`;
+  }
+
   container.innerHTML = `
     <div class="kanban-board" id="kanbanBoard">
-      ${KANBAN_COLS.map(col => {
-        const cards = colLeads[col.key];
-        const totalVal = cards.reduce((s, l) => s + (l.estimatedValue || 0), 0);
-        return `
-          <div class="kanban-col" data-drop-status="${col.key}">
-            <div class="kanban-col-header">
-              <div class="kanban-col-title">
-                <span class="kanban-col-dot" style="background:${col.color}"></span>
-                ${col.label}
-                <span class="kanban-col-count">${cards.length}</span>
-              </div>
-              ${totalVal > 0 ? `<div class="kanban-col-meta">€${totalVal >= 1000 ? (totalVal/1000).toFixed(0)+'K' : totalVal} pipeline</div>` : ''}
-            </div>
-            <div class="kanban-col-body" data-drop-status="${col.key}">
-              ${cards.length ? cards.map(l => buildKanbanCard(l)).join('') : '<div class="kanban-col-empty">Nog niets hier</div>'}
-            </div>
-          </div>`;
-      }).join('')}
+      ${KANBAN_COLS.map(col => buildColHTML(col)).join('')}
     </div>`;
 
   document.querySelectorAll('.kanban-card').forEach(card => {
@@ -2144,6 +2172,15 @@ function renderKanban(leads, container) {
     card.addEventListener('click', () => openLeadDetail(card.dataset.id));
   });
 
+  // "X meer" expand buttons
+  document.querySelectorAll('.kanban-more-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      window._kanbanExpanded[btn.dataset.col] = true;
+      renderKanban(state.leads, container);
+    });
+  });
+
   document.querySelectorAll('.kanban-col-body').forEach(body => {
     body.addEventListener('dragover', e => { e.preventDefault(); body.classList.add('drag-over'); });
     body.addEventListener('dragleave', e => { if (!body.contains(e.relatedTarget)) body.classList.remove('drag-over'); });
@@ -2152,7 +2189,7 @@ function renderKanban(leads, container) {
       body.classList.remove('drag-over');
       const leadId = e.dataTransfer.getData('text/plain');
       const colKey = body.dataset.dropStatus;
-      const STATUS_MAP = { inbox: 'inbox', approved: 'approved', sent: 'sent', replied: 'replied', client: 'client', dead: 'dead' };
+      const STATUS_MAP = { inbox: 'inbox', approved: 'approved', sent: 'sent', replied: 'replied', bounced: 'bounced', client: 'client', dead: 'dead' };
       const newStatus = STATUS_MAP[colKey];
       if (!newStatus || !leadId) return;
       const lead = state.leads.find(l => l.id === leadId);
@@ -2167,125 +2204,246 @@ function renderKanban(leads, container) {
   });
 }
 
+// Called from "Alles zien" kanban link — activates table view filtered to a group
+window.filterPipelineGroup = function(groupKey) {
+  document.querySelectorAll('.pipeline-filter-tab').forEach(b => b.classList.remove('active'));
+  const btn = document.querySelector(`.pipeline-filter-tab[data-group="${groupKey}"]`);
+  if (btn) btn.classList.add('active');
+  applyPipelineGroupFilter(groupKey);
+};
+
+function buildLeadTableRow(l, dupIds) {
+  return `
+    <tr class="leads-row" data-id="${l.id}" data-status="${l.status || 'inbox'}" data-size="${l.companySize || ''}">
+      <td><strong>${esc(l.companyName || '—')}${l.language === 'nl' ? ' 🇳🇱' : l.language === 'en' ? ' 🇬🇧' : ''}${l.status === 'auto-approved' ? ' <span title="Auto-goedgekeurd" style="color:#10b981;font-size:11px">⚡</span>' : ''}${l.referralPending ? ' <span title="Referral email klaar voor goedkeuring" style="font-size:11px">🎁</span>' : ''}${(l.clientMessages || []).some(m => !m.read) ? ' <span class="msg-dot" title="Ongelezen klantbericht"></span>' : ''}${dupIds.has(l.id) ? ' <span title="Mogelijk duplicaat" style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid #fde68a">Dubbel</span>' : ''}</strong><br><span class="text-muted" style="font-size:12px">${esc(l.location || '')}</span></td>
+      <td>${nicheBadge(l.niche)}</td>
+      <td>${l.contactEmail
+        ? `<span class="table-email">${esc(l.contactEmail)}</span><span class="email-src-badge ${l.emailSource === 'gevonden' ? 'email-src-found' : 'email-src-guess'}" style="margin-left:4px">${l.emailSource === 'gevonden' ? 'Gevonden' : 'Geschat'}</span>`
+        : `<span class="text-warning" style="font-size:11px">Geen email</span>`}</td>
+      <td><span class="score-pill score-${scoreColor(l.score || 0)}">${(l.score || 0).toFixed(1)}</span></td>
+      <td>
+        ${['bounced','delivery_delayed'].includes(l.status)
+          ? `<span class="status-pill-bounced"><i class="ti ti-mail-off"></i> Niet aangekomen</span>`
+          : `<span class="status-pill status-${STATUS_COLORS[l.status] || 'gray'}">${STATUS_LABELS[l.status] || 'Inbox'}</span>`}
+        ${l.scheduledAt ? `<br><span class="text-warning" style="font-size:11px"><i class="ti ti-clock"></i> ${formatOptimalTime(l.scheduledAt)}</span>` : ''}
+        ${l.openedAt ? `<br><span class="text-success" style="font-size:11px"><i class="ti ti-eye"></i> Geopend ${formatDate(l.openedAt)}${l.openCount > 1 ? ' (' + l.openCount + 'x)' : ''}</span>` : ''}
+      </td>
+      <td class="text-secondary">${l.sentAt ? formatDate(l.sentAt) : '—'}</td>
+      <td class="text-secondary">${l.repliedAt ? formatDate(l.repliedAt) : '—'}</td>
+      <td class="text-secondary">${l.estimatedValue ? '€' + l.estimatedValue.toLocaleString('nl-NL') : '—'}</td>
+      <td style="display:flex;gap:4px;align-items:center">
+        <button class="btn btn-ghost btn-sm" onclick="openLeadDetail('${l.id}')"><i class="ti ti-chevron-right"></i></button>
+        <button class="btn btn-ghost btn-sm" title="Blacklisten" onclick="quickBlacklist('${l.id}','${esc(l.companyName)}')" style="color:var(--danger)"><i class="ti ti-ban"></i></button>
+      </td>
+    </tr>`;
+}
+
+function buildGroupSection(group, groupLeads, dupIds, isOpen) {
+  const val = groupLeads.reduce((s, l) => s + (l.estimatedValue || 0), 0);
+  const valStr = val > 0 ? `<span class="sg-val">€${val >= 1000 ? (val/1000).toFixed(0)+'K' : val}</span>` : '';
+  return `
+    <div class="status-group" data-group="${group.key}">
+      <div class="status-group-header ${isOpen ? 'open' : ''}" onclick="toggleStatusGroup('${group.key}')">
+        <span class="sg-dot" style="background:${group.dot}"></span>
+        <span class="sg-label">${group.label}</span>
+        <span class="sg-count">${groupLeads.length}</span>
+        ${valStr}
+        <i class="ti ti-chevron-right sg-chevron"></i>
+      </div>
+      <div class="status-group-body ${isOpen ? 'open' : ''}">
+        ${groupLeads.length ? `
+          <div class="table-wrap" style="margin:0">
+            <table class="leads-table">
+              <thead><tr>
+                <th>Bedrijf</th><th>Niche</th><th>Email</th><th>Score</th>
+                <th>Status</th><th>Verstuurd</th><th>Gereageerd</th><th>Waarde</th><th></th>
+              </tr></thead>
+              <tbody>${groupLeads.map(l => buildLeadTableRow(l, dupIds)).join('')}</tbody>
+            </table>
+          </div>` : `<div class="sg-empty">Geen leads in deze groep</div>`}
+      </div>
+    </div>`;
+}
+
 function renderPipelineTable(leads, container) {
-  const counts = {
-    all: leads.length,
-    active: leads.filter(l => ['inbox','approved','sent','auto-approved','followup1','followup2'].includes(l.status)).length,
-    sent: leads.filter(l => ['sent','auto-approved'].includes(l.status)).length,
-    replied: leads.filter(l => l.status === 'replied').length,
-    client: leads.filter(l => l.status === 'client').length
-  };
+  // Compute summary counts
+  const sentStatuses    = ['sent','followup1','followup2','scheduled','auto-approved'];
+  const activeStatuses  = ['inbox','approved','sent','auto-approved','followup1','followup2'];
+  const bouncedStatuses = ['bounced','delivery_delayed'];
+
+  const cTotal    = leads.length;
+  const cSent     = leads.filter(l => sentStatuses.includes(l.status)).length;
+  const cReplied  = leads.filter(l => l.status === 'replied').length;
+  const cClient   = leads.filter(l => l.status === 'client').length;
+  const cBounced  = leads.filter(l => bouncedStatuses.includes(l.status)).length;
+  const cActive   = leads.filter(l => activeStatuses.includes(l.status)).length;
+  const replyRate = cSent > 0 ? Math.round((cReplied / cSent) * 100) : 0;
+
+  // Build dup map once
+  const nameCounts = {};
+  leads.forEach(l => { const n = (l.companyName||'').toLowerCase().trim(); if (n) nameCounts[n] = (nameCounts[n]||0)+1; });
+  const dupIds = new Set(leads.filter(l => nameCounts[(l.companyName||'').toLowerCase().trim()] > 1).map(l => l.id));
+
+  // Which groups are open by default
+  const defaultOpen = new Set(['replied', 'client']);
+  if (!window._pipelineGroupOpen) {
+    window._pipelineGroupOpen = Object.fromEntries(
+      PIPELINE_GROUPS.map(g => [g.key, defaultOpen.has(g.key)])
+    );
+  }
+
+  // Build group sections (only for groups that have leads)
+  const groupSections = PIPELINE_GROUPS
+    .map(g => {
+      const gl = leads.filter(l => g.statuses.includes(l.status || 'inbox'));
+      return { group: g, groupLeads: gl };
+    })
+    .filter(({ groupLeads }) => groupLeads.length > 0);
 
   container.innerHTML = `
-    <div class="table-toolbar">
-      <input type="search" class="search-input" id="leadSearch" placeholder="Zoek bedrijf...">
-      <select id="sizeFilter" class="form-select" style="width:140px;font-size:13px" onchange="applyPipelineFilter()">
-        <option value="">Alle groottes</option>
-        <option value="small">Klein (1-10)</option>
-        <option value="medium">Middel (10-50)</option>
-        <option value="large">Groot (50+)</option>
-      </select>
-      <div class="filter-tabs">
-        <button class="filter-tab active" data-filter="all">Alles (${counts.all})</button>
-        <button class="filter-tab" data-filter="active">Actief (${counts.active})</button>
-        <button class="filter-tab" data-filter="sent">Verstuurd (${counts.sent})</button>
-        <button class="filter-tab" data-filter="replied">Gereageerd (${counts.replied})</button>
-        <button class="filter-tab" data-filter="client">Klant (${counts.client})</button>
-      </div>
-      <select id="exportSelect" class="form-select" style="width:150px;font-size:12px" onchange="if(this.value){exportLeadsCSV(this.value==='all'?'':this.value);this.value=''}">
-        <option value="">⬇ Export...</option>
-        <option value="all">Alle leads</option>
-        <option value="client">Alleen klanten</option>
-        <option value="sent">Alleen verstuurd</option>
-        <option value="replied">Alleen gereageerd</option>
-      </select>
+    <!-- Summary bar -->
+    <div class="pipeline-summary-bar">
+      <button class="psb-item" onclick="filterPipelineTab('all')">
+        <span class="psb-num">${cTotal}</span> <span class="psb-lbl">leads totaal</span>
+      </button>
+      <span class="psb-sep">|</span>
+      <button class="psb-item" onclick="filterPipelineTab('sent')">
+        <span class="psb-num">${cSent}</span> <span class="psb-lbl">verstuurd</span>
+      </button>
+      <span class="psb-sep">|</span>
+      <button class="psb-item" onclick="filterPipelineTab('replied')">
+        <span class="psb-num psb-green">${cReplied}</span>
+        <span class="psb-lbl">gereageerd${cSent > 0 ? ` <span class="psb-rate">(${replyRate}%)</span>` : ''}</span>
+      </button>
+      <span class="psb-sep">|</span>
+      <button class="psb-item" onclick="filterPipelineTab('client')">
+        <span class="psb-num psb-purple">${cClient}</span> <span class="psb-lbl">klanten</span>
+      </button>
+      ${cBounced > 0 ? `<span class="psb-sep">|</span>
+      <button class="psb-item" onclick="filterPipelineTab('bounced')">
+        <span class="psb-num psb-red">${cBounced}</span> <span class="psb-lbl">niet aangekomen</span>
+      </button>` : ''}
     </div>
-    <div class="table-wrap">
-      <table class="leads-table">
-        <thead>
-          <tr>
-            <th>Bedrijf</th>
-            <th>Niche</th>
-            <th>Email</th>
-            <th>Score</th>
-            <th>Status</th>
-            <th>Verstuurd</th>
-            <th>Gereageerd</th>
-            <th>Waarde</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${(() => {
-            const nameCounts = {};
-            leads.forEach(l => { const n = (l.companyName||'').toLowerCase().trim(); if (n) nameCounts[n] = (nameCounts[n]||0)+1; });
-            const dupIds = new Set(leads.filter(l => nameCounts[(l.companyName||'').toLowerCase().trim()] > 1).map(l => l.id));
-            return leads.map(l => `
-            <tr class="leads-row" data-id="${l.id}" data-status="${l.status || 'inbox'}" data-size="${l.companySize || ''}">
-              <td><strong>${l.companyName || '—'}${l.language === 'nl' ? ' 🇳🇱' : l.language === 'en' ? ' 🇬🇧' : ''}${l.status === 'auto-approved' ? ' <span title="Auto-goedgekeurd" style="color:#10b981;font-size:11px">⚡</span>' : ''}${l.referralPending ? ' <span title="Referral email klaar voor goedkeuring" style="font-size:11px">🎁</span>' : ''}${(l.clientMessages || []).some(m => !m.read) ? ' <span class="msg-dot" title="Ongelezen klantbericht"></span>' : ''}${dupIds.has(l.id) ? ' <span title="Mogelijk duplicaat" style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid #fde68a">Dubbel</span>' : ''}</strong><br><span class="text-muted" style="font-size:12px">${l.location || ''}</span></td>
-              <td>${nicheBadge(l.niche)}</td>
-              <td>${l.contactEmail
-                ? `<span class="table-email">${esc(l.contactEmail)}</span><span class="email-src-badge ${l.emailSource === 'gevonden' ? 'email-src-found' : 'email-src-guess'}" style="margin-left:4px">${l.emailSource === 'gevonden' ? 'Gevonden' : 'Geschat'}</span>`
-                : `<span class="text-warning" style="font-size:11px">Geen email</span>`}</td>
-              <td><span class="score-pill score-${scoreColor(l.score || 0)}">${(l.score || 0).toFixed(1)}</span></td>
-              <td>
-                <span class="status-pill status-${STATUS_COLORS[l.status] || 'gray'}">${STATUS_LABELS[l.status] || 'Inbox'}</span>
-                ${l.scheduledAt ? `<br><span class="text-warning" style="font-size:11px"><i class="ti ti-clock"></i> ${formatOptimalTime(l.scheduledAt)}</span>` : ''}
-                ${l.openedAt ? `<br><span class="text-success" style="font-size:11px"><i class="ti ti-eye"></i> Geopend ${formatDate(l.openedAt)}${l.openCount > 1 ? ' (' + l.openCount + 'x)' : ''}</span>` : ''}
-              </td>
-              <td class="text-secondary">${l.sentAt ? formatDate(l.sentAt) : '—'}</td>
-              <td class="text-secondary">${l.repliedAt ? formatDate(l.repliedAt) : '—'}</td>
-              <td class="text-secondary">${l.estimatedValue ? '€' + l.estimatedValue.toLocaleString('nl-NL') : '—'}</td>
-              <td style="display:flex;gap:4px;align-items:center">
-                <button class="btn btn-ghost btn-sm" onclick="openLeadDetail('${l.id}')"><i class="ti ti-chevron-right"></i></button>
-                <button class="btn btn-ghost btn-sm" title="Blacklisten" onclick="quickBlacklist('${l.id}','${esc(l.companyName)}')" style="color:var(--danger)"><i class="ti ti-ban"></i></button>
-              </td>
-            </tr>
-          `).join('');
-          })()}
-        </tbody>
-      </table>
+
+    <!-- Filter tabs -->
+    <div class="pipeline-filter-bar">
+      <div class="filter-tabs pipeline-tabs">
+        <button class="filter-tab pipeline-filter-tab active" data-group="all">Alles (${cTotal})</button>
+        <button class="filter-tab pipeline-filter-tab" data-group="active">Actief (${cActive})</button>
+        <button class="filter-tab pipeline-filter-tab" data-group="sent">Verstuurd (${cSent})</button>
+        <button class="filter-tab pipeline-filter-tab" data-group="replied">Gereageerd (${cReplied})</button>
+        <button class="filter-tab pipeline-filter-tab" data-group="bounced">Niet aangekomen (${cBounced})</button>
+        <button class="filter-tab pipeline-filter-tab" data-group="client">Klanten (${cClient})</button>
+        <button class="filter-tab pipeline-filter-tab" data-group="disapproved">Afgekeurd</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-left:auto">
+        <input type="search" class="search-input" id="leadSearch" placeholder="Zoek bedrijf..." style="width:180px">
+        <select id="exportSelect" class="form-select" style="width:140px;font-size:12px" onchange="if(this.value){exportLeadsCSV(this.value==='all'?'':this.value);this.value=''}">
+          <option value="">⬇ Export...</option>
+          <option value="all">Alle leads</option>
+          <option value="client">Alleen klanten</option>
+          <option value="sent">Alleen verstuurd</option>
+          <option value="replied">Alleen gereageerd</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Grouped status sections -->
+    <div id="pipelineGroups">
+      ${groupSections.map(({ group, groupLeads }) =>
+        buildGroupSection(group, groupLeads, dupIds, window._pipelineGroupOpen[group.key] || false)
+      ).join('')}
     </div>
   `;
 
-  // Filter tabs
-  document.querySelectorAll('.filter-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const filter = btn.dataset.filter;
-      const activeStatuses = ['inbox','approved','sent','auto-approved','followup1','followup2'];
-      document.querySelectorAll('.leads-row').forEach(row => {
-        const st = row.dataset.status;
-        const sizeF = document.getElementById('sizeFilter')?.value || '';
-        const sizeOk = !sizeF || row.dataset.size === sizeF;
-        const show = filter === 'all' ? true
-          : filter === 'active' ? activeStatuses.includes(st)
-          : filter === 'sent' ? ['sent','auto-approved'].includes(st)
-          : st === filter;
-        row.style.display = (show && sizeOk) ? '' : 'none';
-      });
-    });
-  });
-
-  // Search
-  document.getElementById('leadSearch').addEventListener('input', e => {
-    const q = e.target.value.toLowerCase();
-    const sizeF2 = document.getElementById('sizeFilter')?.value || '';
-    document.querySelectorAll('.leads-row').forEach(row => {
-      const nameOk = row.querySelector('strong').textContent.toLowerCase().includes(q);
-      const szOk   = !sizeF2 || row.dataset.size === sizeF2;
-      row.style.display = (nameOk && szOk) ? '' : 'none';
-    });
-  });
-
-  // Row click opens detail
+  // Attach row-click handlers
   document.querySelectorAll('.leads-row').forEach(row => {
     row.addEventListener('click', e => {
       if (e.target.closest('button')) return;
       openLeadDetail(row.dataset.id);
     });
     row.style.cursor = 'pointer';
+  });
+
+  // Search
+  document.getElementById('leadSearch').addEventListener('input', e => {
+    const q = e.target.value.toLowerCase().trim();
+    document.querySelectorAll('.leads-row').forEach(row => {
+      const name = row.querySelector('strong')?.textContent?.toLowerCase() || '';
+      row.style.display = (!q || name.includes(q)) ? '' : 'none';
+    });
+    // Show groups that still have visible rows
+    document.querySelectorAll('.status-group').forEach(sg => {
+      const visRows = sg.querySelectorAll('.leads-row:not([style*="none"])');
+      sg.style.display = visRows.length ? '' : 'none';
+    });
+  });
+
+  // Filter tab handlers
+  document.querySelectorAll('.pipeline-filter-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.pipeline-filter-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      applyPipelineGroupFilter(btn.dataset.group);
+    });
+  });
+}
+
+window.toggleStatusGroup = function(key) {
+  const sg = document.querySelector(`.status-group[data-group="${key}"]`);
+  if (!sg) return;
+  const header = sg.querySelector('.status-group-header');
+  const body   = sg.querySelector('.status-group-body');
+  const nowOpen = header.classList.toggle('open');
+  body.classList.toggle('open', nowOpen);
+  if (!window._pipelineGroupOpen) window._pipelineGroupOpen = {};
+  window._pipelineGroupOpen[key] = nowOpen;
+};
+
+window.filterPipelineTab = function(groupKey) {
+  document.querySelectorAll('.pipeline-filter-tab').forEach(b => b.classList.remove('active'));
+  const btn = document.querySelector(`.pipeline-filter-tab[data-group="${groupKey}"]`);
+  if (btn) btn.classList.add('active');
+  applyPipelineGroupFilter(groupKey);
+};
+
+function applyPipelineGroupFilter(filter) {
+  const activeStatuses  = ['inbox','approved','sent','auto-approved','followup1','followup2'];
+  const bouncedStatuses = ['bounced','delivery_delayed'];
+
+  document.querySelectorAll('.status-group').forEach(sg => {
+    const key = sg.dataset.group;
+    const group = PIPELINE_GROUPS.find(g => g.key === key);
+    if (!group) return;
+
+    let show = false;
+    if (filter === 'all') {
+      show = true;
+    } else if (filter === 'active') {
+      show = group.statuses.some(s => activeStatuses.includes(s));
+    } else if (filter === 'bounced') {
+      show = group.statuses.some(s => bouncedStatuses.includes(s));
+    } else if (filter === 'sent') {
+      show = group.statuses.some(s => ['sent','followup1','followup2','scheduled','auto-approved'].includes(s));
+    } else if (filter === 'replied') {
+      show = group.statuses.includes('replied');
+    } else if (filter === 'client') {
+      show = group.statuses.includes('client');
+    } else if (filter === 'disapproved') {
+      show = group.statuses.includes('disapproved') || group.statuses.includes('dead');
+    }
+
+    sg.style.display = show ? '' : 'none';
+
+    // Auto-expand the matching group when filtering to it
+    if (show && filter !== 'all') {
+      const header = sg.querySelector('.status-group-header');
+      const body   = sg.querySelector('.status-group-body');
+      header.classList.add('open');
+      body.classList.add('open');
+      if (!window._pipelineGroupOpen) window._pipelineGroupOpen = {};
+      window._pipelineGroupOpen[key] = true;
+    }
   });
 }
 
@@ -2354,7 +2512,7 @@ function openLeadDetail(id) {
         <span class="score-number score-${scoreColor(lead.score || 0)}" style="font-size:28px;font-weight:800">${(lead.score || 0).toFixed(1)}</span>
         <span class="text-secondary">/10 &nbsp;·&nbsp; €${(lead.estimatedValue || 0).toLocaleString('nl-NL')}/mnd</span>
         ${lead.urgency ? `<span class="badge badge-${lead.urgency === 'critical' ? 'danger' : lead.urgency === 'high' ? 'warning' : 'blue'}" style="font-size:10px">${lead.urgency}</span>` : ''}
-        ${lead.emailBounced ? `<span class="badge badge-red" style="font-size:10px"><i class="ti ti-mail-off"></i> Email gebounced</span>` : ''}
+        ${(lead.emailBounced || ['bounced','delivery_delayed'].includes(lead.status)) ? `<span class="badge badge-red" style="font-size:10px"><i class="ti ti-mail-off"></i> ${lead.status === 'delivery_delayed' ? 'Vertraagd' : 'Niet aangekomen'}</span>` : ''}
         ${lead.contactEmail && (state.leads || []).some(l => l.id !== lead.id && (l.contactEmail||'').toLowerCase() === lead.contactEmail.toLowerCase() && ['sent','replied','client','scheduled'].includes(l.status)) ? `<span class="badge badge-amber" style="font-size:10px" title="Dit e-mailadres is ook gekoppeld aan een andere lead"><i class="ti ti-alert-triangle"></i> Email duplicaat</span>` : ''}
       </div>
 
@@ -2406,6 +2564,25 @@ function openLeadDetail(id) {
           ).join('')}
         </select>
       </div>
+
+      ${['bounced','delivery_delayed'].includes(lead.status) || lead.emailBounced ? `
+      <div class="detail-section bounce-alert-section">
+        <div class="bounce-alert-header">
+          <i class="ti ti-mail-off"></i>
+          <span>${lead.status === 'delivery_delayed' ? 'Email vertraagd' : 'Email niet aangekomen'}</span>
+        </div>
+        <p class="bounce-alert-desc">
+          ${lead.status === 'delivery_delayed'
+            ? 'De email server van de ontvanger reageert niet. De email is nog niet afgeleverd.'
+            : `De email kon niet worden afgeleverd op <strong>${esc(lead.contactEmail || 'onbekend adres')}</strong>. Mogelijk is het adres onjuist of niet meer actief.`}
+        </p>
+        <div id="retryEmailSection-${lead.id}">
+          <button class="btn btn-sm" style="background:#dc2626;color:#fff;gap:6px" onclick="openRetryEmailSection('${lead.id}')">
+            <i class="ti ti-refresh"></i> Probeer ander email adres
+          </button>
+        </div>
+      </div>
+      ` : ''}
 
       <div class="detail-section">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -5513,6 +5690,35 @@ async function deleteTemplate(id) {
 }
 
 // ── Blacklist ──────────────────────────────────────────────────────────────────
+window.openRetryEmailSection = function(leadId) {
+  const el = document.getElementById(`retryEmailSection-${leadId}`);
+  if (!el) return;
+  el.innerHTML = `
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="email" id="retryEmail-${leadId}" class="form-input" placeholder="Nieuw email adres..." style="flex:1;min-width:180px">
+      <button class="btn btn-sm btn-primary" onclick="submitRetryEmail('${leadId}')">
+        <i class="ti ti-send"></i> Opslaan & verstuur opnieuw
+      </button>
+      <button class="btn btn-ghost btn-sm" onclick="openRetryEmailSection('${leadId}')">Annuleren</button>
+    </div>`;
+};
+
+window.submitRetryEmail = async function(leadId) {
+  const input = document.getElementById(`retryEmail-${leadId}`);
+  const email = input?.value?.trim();
+  if (!email || !email.includes('@')) { toast('Voer een geldig email adres in', 'error'); return; }
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead) return;
+  // Save new email on lead
+  const r = await api(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify({ contactEmail: email, emailSource: 'handmatig', emailVerified: false, status: 'approved' }) });
+  if (!r?.ok) { toast('Opslaan mislukt', 'error'); return; }
+  lead.contactEmail = email;
+  lead.emailSource  = 'handmatig';
+  lead.status       = 'approved';
+  toast(`Email opgeslagen voor ${lead.companyName}. Keur opnieuw goed om te versturen.`, 'success');
+  openLeadDetail(leadId);
+};
+
 async function quickBlacklist(leadId, companyName) {
   if (!confirm(`${companyName} blacklisten? Dit bedrijf wordt voortaan overgeslagen.`)) return;
   const res = await api('/api/leads/' + leadId + '/blacklist', { method: 'POST', body: JSON.stringify({ reason: 'Geblacklist via pipeline' }) });
