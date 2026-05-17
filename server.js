@@ -2519,6 +2519,30 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
     console.warn(`[DupEmail] ${item.contactEmail} ook gebruikt door ${emailDup.companyName} (${emailDup.status})`);
   }
 
+  // AI reply items: send our response email back to the business
+  if (item.type === 'ai_reply') {
+    const draft   = req.body?.aiDraft || item.aiDraft || '';
+    const subject = item.subject || `Re: ${item.companyName}`;
+    try {
+      await sendEmail({ to: item.contactEmail, subject, body: draft, settings });
+      inbox[idx].status       = 'sent';
+      inbox[idx].sentAt       = new Date().toISOString();
+      inbox[idx].aiDraftFinal = draft;
+      writeJSON('inbox.json', inbox);
+
+      const leads2 = readJSON('leads.json') || [];
+      addLeadHistory(leads2, item.leadId, { event: 'aiReplySent', label: `AI antwoord verstuurd naar ${item.contactEmail}` });
+      writeJSON('leads.json', leads2);
+      addActivity('email', `AI antwoord verstuurd → ${item.companyName}`, { meta: { leadId: item.leadId } });
+      return res.json(inbox[idx]);
+    } catch (err) {
+      console.error('[AiReply] Verzenden mislukt:', err.message);
+      inbox[idx].status = 'approved';
+      writeJSON('inbox.json', inbox);
+      return res.status(500).json({ error: 'Email verzenden mislukt: ' + err.message });
+    }
+  }
+
   // LinkedIn DM items: no email to send — just mark as sent and update lead
   if (item.type === 'linkedinDm') {
     inbox[idx].status = 'sent';
@@ -2875,7 +2899,9 @@ app.patch('/api/settings/automation', requireAdmin, (req, res) => {
   if (req.body.btwEnabled !== undefined) settings.btwEnabled = req.body.btwEnabled;
   if (req.body.btwRate !== undefined) settings.btwRate = req.body.btwRate;
   if (req.body.btwNumber !== undefined) settings.btwNumber = req.body.btwNumber;
-  if (req.body.aiRateLimits !== undefined) settings.aiRateLimits = req.body.aiRateLimits;
+  if (req.body.aiRateLimits     !== undefined) settings.aiRateLimits     = req.body.aiRateLimits;
+  if (req.body.aiAutoReply     !== undefined) settings.aiAutoReply     = req.body.aiAutoReply;
+  if (req.body.aiAutoReplySend !== undefined) settings.aiAutoReplySend = req.body.aiAutoReplySend;
   writeJSON('settings.json', settings);
   scheduleCron(); // re-schedule if run time changed
   scheduleBriefingCron(); // re-schedule briefing if time changed
@@ -4354,6 +4380,114 @@ function toImapDate(d) {
   return `${d.getDate()}-${IMAP_MONTHS[d.getMonth()]}-${d.getFullYear()}`;
 }
 
+function extractReplyText(raw) {
+  if (!raw) return '';
+  let text = raw.replace(/\r\n/g, '\n');
+  // Strip base64 encoded blocks
+  text = text.replace(/[A-Za-z0-9+/]{60,}={0,2}/g, '');
+  // Remove quoted reply block (lines starting with >)
+  const parts = text.split(/^>.*$/m);
+  text = parts[0];
+  // Remove "On ... wrote:" type quote markers
+  text = text.replace(/^On .{10,200}\bwrote:[\s\S]*/m, '');
+  // Strip HTML tags if any
+  text = text.replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, ' ');
+  // Collapse whitespace
+  text = text.replace(/\n{3,}/g, '\n\n').trim();
+  return text.substring(0, 600);
+}
+
+async function generateAndQueueAiReply(lead, replyText, settings) {
+  const myName     = settings.myName     || 'Admin';
+  const agencyName = settings.agencyName || 'Agency AI';
+  const origSubject = lead.email?.subject || 'onze email';
+  const services    = (settings.services || DEFAULT_SERVICES).slice(0, 4).map(s => s.name).join(', ');
+  const calendlyCta = settings.calendlyUrl ? `\nCalendly: ${settings.calendlyUrl}` : '';
+
+  const isNL = !/\b(the|and|for|with|your|this|we|our|have|that)\b/i.test(replyText) ||
+               /\b(het|een|van|je|jij|wij|ons|naar|voor)\b/i.test(replyText);
+
+  const prompt = isNL
+    ? `Schrijf een zakelijke e-mailreactie op onderstaande reply van een potentiële klant. Geef ALLEEN de emailtekst terug — geen onderwerpregel, geen JSON, geen uitleg.
+
+Bedrijf: ${lead.companyName} (${lead.niche || 'onbekend'}, ${lead.location || ''})
+Oorspronkelijk onderwerp: ${origSubject}
+Hun antwoord:
+"${replyText}"
+
+Afzender: ${myName} van ${agencyName}
+Diensten: ${services}${calendlyCta}
+
+Regels:
+- Lees hun antwoord zorgvuldig en reageer precies op wat ze schreven
+- Als ze interesse tonen → stel een kort gesprek voor${settings.calendlyUrl ? ', voeg de Calendly-link toe' : ''}
+- Als ze een vraag stellen → beantwoord bondig, stuur aan op een call
+- Als ze niet geïnteresseerd zijn → reageer vriendelijk, laat de deur open
+- Als onduidelijk → stel één verduidelijkende vraag
+- Maximaal 100 woorden
+- Klinkt menselijk, geen AI-jargon, geen buzzwords
+- Sluit af met: ${myName}, ${agencyName}`
+    : `Write a business email reply to the following prospect response. Return ONLY the email body — no subject line, no JSON, no explanation.
+
+Company: ${lead.companyName} (${lead.niche || 'unknown'}, ${lead.location || ''})
+Original subject: ${origSubject}
+Their reply:
+"${replyText}"
+
+Sender: ${myName} from ${agencyName}
+Services: ${services}${calendlyCta}
+
+Rules:
+- Read their reply carefully and respond to exactly what they said
+- If they show interest → suggest a quick call${settings.calendlyUrl ? ', include the Calendly link' : ''}
+- If they ask a question → answer briefly and steer toward a call
+- If not interested → respond graciously, leave door open
+- If unclear → ask one clarifying question
+- Max 100 words
+- Sounds human, no AI jargon, no buzzwords
+- Sign off with: ${myName}, ${agencyName}`;
+
+  const draft = (await aiCall(prompt)).trim();
+  const subject = `Re: ${origSubject}`;
+
+  // Auto-send if toggle is on AND score is high enough
+  if (settings.aiAutoReplySend && (lead.score || 0) >= 8) {
+    await sendEmail({ to: lead.contactEmail || lead.email?.to || '', subject, body: draft });
+    const leads = readJSON('leads.json') || [];
+    addLeadHistory(leads, lead.id, { event: 'aiReplySent', label: `AI antwoord automatisch verstuurd naar ${lead.contactEmail || ''}` });
+    writeJSON('leads.json', leads);
+    addActivity('email', `AI antwoord auto-verstuurd → ${lead.companyName}`, { meta: { leadId: lead.id } });
+    console.log(`[AiReply] Auto-verstuurd naar ${lead.companyName}`);
+    return;
+  }
+
+  const item = {
+    id:            `air-${lead.id}-${Date.now()}`,
+    leadId:        lead.id,
+    type:          'ai_reply',
+    status:        'pending',
+    companyName:   lead.companyName,
+    location:      lead.location,
+    country:       lead.country,
+    niche:         lead.niche,
+    score:         lead.score,
+    contactEmail:  lead.contactEmail || lead.email?.to || '',
+    subject,
+    originalReply: replyText,
+    aiDraft:       draft,
+    createdAt:     new Date().toISOString()
+  };
+
+  const inbox = readJSON('inbox.json') || [];
+  // Skip if we already have a pending ai_reply for this lead
+  const alreadyQueued = inbox.some(i => i.type === 'ai_reply' && i.leadId === lead.id && i.status === 'pending');
+  if (!alreadyQueued) {
+    inbox.unshift(item);
+    writeJSON('inbox.json', inbox);
+    console.log(`[AiReply] Draft aangemaakt voor ${lead.companyName}`);
+  }
+}
+
 async function checkReplies() {
   const settings = readJSON('settings.json');
   if (!isGmailReady(settings)) return 0;
@@ -4385,7 +4519,7 @@ async function checkReplies() {
     const since = new Date();
     since.setDate(since.getDate() - 3);
     const searchCriteria = [['SINCE', toImapDate(since)]];
-    const fetchOptions = { bodies: ['HEADER.FIELDS (FROM SUBJECT)'], markSeen: false };
+    const fetchOptions = { bodies: ['HEADER.FIELDS (FROM SUBJECT)', 'TEXT'], markSeen: false };
 
     const messages = await connection.search(searchCriteria, fetchOptions);
     const leads  = readJSON('leads.json') || [];
@@ -4393,6 +4527,7 @@ async function checkReplies() {
     let repliesFound = 0;
     let bouncesFound = 0;
     const newNames = [];
+    const aiReplyQueue = [];
 
     for (const msg of messages) {
       const part = msg.parts.find(p => p.which === 'HEADER.FIELDS (FROM SUBJECT)');
@@ -4415,8 +4550,18 @@ async function checkReplies() {
       });
 
       if (matched) {
-        matched.status   = 'replied';
-        matched.repliedAt = new Date().toISOString();
+        // Extract reply body text for AI response
+        const bodyPart  = msg.parts.find(p => p.which === 'TEXT');
+        const rawBody   = typeof bodyPart?.body === 'string' ? bodyPart.body : '';
+        const replyText = extractReplyText(rawBody);
+
+        matched.status        = 'replied';
+        matched.repliedAt     = new Date().toISOString();
+        matched.lastReplyText = replyText || '';
+        matched.lastReplyAt   = matched.repliedAt;
+        const fromLine = raw.match(/^From:\s*(.+)/im);
+        matched.lastReplyFrom = fromLine ? fromLine[1].trim() : (matched.contactEmail || '');
+
         addLeadHistory(leads, matched.id, {
           event: 'replied',
           label: `Reply ontvangen op ${new Date().toLocaleDateString('nl-NL')}`
@@ -4431,6 +4576,10 @@ async function checkReplies() {
         addNotification('reply_received', `Reply: ${matched.companyName}`, `${matched.companyName} heeft gereageerd op jouw email`, matched.id);
         fireWebhooks('lead.replied', { leadId: matched.id, companyName: matched.companyName, niche: matched.niche, score: matched.score, location: matched.location, contactEmail: matched.contactEmail, repliedAt: matched.repliedAt });
         console.log(`[Reply] Reply gedetecteerd voor ${matched.companyName}`);
+
+        if (settings.aiAutoReply !== false && replyText) {
+          aiReplyQueue.push({ lead: { ...matched }, replyText });
+        }
       }
     }
 
@@ -4491,6 +4640,17 @@ async function checkReplies() {
         replies: (stats.replies || 0) + repliesFound,
         newReplies: [...(stats.newReplies || []), ...newNames]
       });
+    }
+
+    // Generate AI reply drafts after saving (fire-and-forget per lead, errors don't break reply count)
+    for (const { lead, replyText } of aiReplyQueue) {
+      try {
+        const freshLeads = readJSON('leads.json') || [];
+        const freshLead  = freshLeads.find(l => l.id === lead.id) || lead;
+        await generateAndQueueAiReply(freshLead, replyText, settings);
+      } catch (err) {
+        console.warn(`[AiReply] Mislukt voor ${lead.companyName}:`, err.message);
+      }
     }
 
     console.log(`[Reply] Check klaar: ${repliesFound} replies, ${bouncesFound} bounces`);

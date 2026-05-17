@@ -1673,6 +1673,47 @@ input, select, textarea { font-family: inherit; }
   display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
 }
 
+/* AI Reply inbox card */
+.ai-reply-card {
+  border-color: #2563eb !important;
+  background: linear-gradient(135deg, #eff6ff 0%, var(--surface) 100%);
+}
+[data-theme="dark"] .ai-reply-card { background: linear-gradient(135deg, #0f1a35 0%, var(--surface) 100%); }
+.ai-reply-header {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.ai-reply-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: #2563eb; color: #fff;
+  font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; letter-spacing: .3px;
+}
+.ai-reply-company {
+  font-weight: 600; font-size: 14px; color: var(--text-primary);
+}
+.ai-reply-section { margin-bottom: 12px; }
+.ai-reply-label {
+  font-size: 11px; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px;
+  display: flex; align-items: center; gap: 5px;
+}
+.ai-reply-original {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px;
+  font-size: 13px; line-height: 1.6; color: var(--text-secondary);
+  max-height: 100px; overflow-y: auto; white-space: pre-wrap;
+}
+.ai-reply-draft {
+  width: 100%; box-sizing: border-box;
+  background: var(--surface); border: 1.5px solid var(--accent);
+  border-radius: 8px; padding: 10px 12px;
+  font-size: 13px; line-height: 1.6; color: var(--text-primary);
+  resize: vertical; font-family: inherit;
+}
+.ai-reply-draft:focus { outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+.ai-reply-actions {
+  display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;
+}
+
 /* Inbox keyboard shortcuts legend */
 .inbox-kb-legend {
   display: flex; align-items: center; gap: 6px;

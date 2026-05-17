@@ -642,9 +642,74 @@ function buildLinkedinDmCard(item) {
     </div>`;
 }
 
+function buildAiReplyCard(item) {
+  const draftRaw = (item.aiDraft || '').replace(/`/g, '\\`');
+  return `
+    <div class="inbox-card ai-reply-card" data-id="${item.id}" id="card-${item.id}">
+      <div class="ai-reply-header">
+        <span class="ai-reply-badge"><i class="ti ti-message-reply"></i> Reply ontvangen — AI antwoord klaar</span>
+        <span class="ai-reply-company">${esc(item.companyName)}</span>
+      </div>
+
+      <div class="ai-reply-section">
+        <div class="ai-reply-label"><i class="ti ti-quote"></i> Hun antwoord</div>
+        <div class="ai-reply-original">${esc(item.originalReply || '(geen tekst gelezen)').replace(/\n/g, '<br>')}</div>
+      </div>
+
+      <div class="ai-reply-section">
+        <div class="ai-reply-label"><i class="ti ti-robot"></i> AI antwoord concept</div>
+        <textarea class="ai-reply-draft" id="aiDraft-${item.id}" rows="5">${esc(item.aiDraft || '')}</textarea>
+      </div>
+
+      <div class="ai-reply-actions">
+        <button class="btn btn-ghost btn-sm" onclick="disapprove('${item.id}')">
+          <i class="ti ti-x"></i> Overslaan
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="sendAiReply('${item.id}')">
+          <i class="ti ti-send"></i> Verstuur antwoord
+        </button>
+      </div>
+    </div>`;
+}
+
+async function sendAiReply(id) {
+  const item = state.inbox?.find(i => i.id === id);
+  if (!item) return;
+  const draftEl = document.getElementById('aiDraft-' + id);
+  const draft   = draftEl ? draftEl.value.trim() : item.aiDraft;
+  if (!draft) return toast('Geen antwoord ingevuld', 'error');
+
+  const card = document.getElementById('card-' + id);
+  if (card) card.style.opacity = '0.5';
+
+  try {
+    const res = await api('/api/inbox/' + id + '/approve', {
+      method: 'PATCH',
+      body: JSON.stringify({ aiDraft: draft })
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      toast(d.error || 'Verzenden mislukt', 'error');
+      if (card) card.style.opacity = '';
+      return;
+    }
+    state.inbox = (state.inbox || []).filter(i => i.id !== id);
+    if (card) {
+      card.style.transition = 'opacity 0.3s';
+      card.style.opacity = '0';
+      setTimeout(() => card.remove(), 300);
+    }
+    toast(`AI antwoord verstuurd naar ${item.companyName}`, 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+    if (card) card.style.opacity = '';
+  }
+}
+
 function buildInboxCard(item) {
   // LinkedIn DM cards get a dedicated compact layout
   if (item.type === 'linkedinDm') return buildLinkedinDmCard(item);
+  if (item.type === 'ai_reply')   return buildAiReplyCard(item);
 
   const score = item.score || 0;
   const colorClass = scoreColor(score);
@@ -6686,6 +6751,24 @@ async function renderSettings() {
           </div>
         </div>
         <hr class="divider" style="margin:16px 0">
+        <span class="settings-sublabel"><i class="ti ti-message-reply" style="margin-right:6px"></i>AI Auto-reply</span>
+        <p class="settings-note" style="margin:8px 0 12px">Wanneer een bedrijf reageert op jouw email, schrijft de AI automatisch een passend antwoord en zet het klaar in de inbox.</p>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <label class="toggle-wrap">
+            <input type="checkbox" id="aiAutoReply" ${s.aiAutoReply !== false ? 'checked' : ''}>
+            <span class="toggle"></span>
+            <span class="toggle-label">AI auto-reply inschakelen</span>
+          </label>
+          <p class="toggle-hint">Leest de reply, genereert een menselijk antwoord en plaatst het ter goedkeuring in je inbox</p>
+          <label class="toggle-wrap">
+            <input type="checkbox" id="aiAutoReplySend" ${s.aiAutoReplySend ? 'checked' : ''}>
+            <span class="toggle"></span>
+            <span class="toggle-label">Stuur automatisch zonder goedkeuring (alleen score ≥ 8)</span>
+          </label>
+          <p class="toggle-hint" style="color:var(--danger)"><i class="ti ti-alert-triangle"></i> Gevaarlijk: slaat inbox-goedkeuring over voor leads met hoge score</p>
+        </div>
+        </div>
+        <hr class="divider" style="margin:16px 0">
         <div class="form-group">
           <label class="toggle-wrap">
             <input type="checkbox" id="monthlyReports" ${s.monthlyReports !== false ? 'checked' : ''}>
@@ -7240,7 +7323,9 @@ function attachSettingsHandlers(s) {
         maxCallsPerHour:   parseInt(document.getElementById('aiMaxPerHour')?.value || 100),
         maxCallsPerDay:    parseInt(document.getElementById('aiMaxPerDay')?.value  || 500),
         maxDailyCostUsd:   parseFloat(document.getElementById('aiMaxCostDay')?.value || 10)
-      }
+      },
+      aiAutoReply:     document.getElementById('aiAutoReply')?.checked ?? true,
+      aiAutoReplySend: document.getElementById('aiAutoReplySend')?.checked ?? false,
     };
     const res = await api('/api/settings/automation', { method: 'PATCH', body: JSON.stringify(body) });
     if (res.ok) toast('Automatisering opgeslagen', 'success');
