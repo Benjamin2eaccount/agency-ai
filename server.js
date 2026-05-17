@@ -360,33 +360,88 @@ function updateMemory(niche, country, type) {
 
 // â"€â"€â"€ Email helper â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken) {
-  const escaped = (body || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const lines = escaped.split('\n').map(l => `<p style="margin:0 0 14px;font-size:15px;line-height:1.75;color:#111111">${l || '&nbsp;'}</p>`).join('');
-  return `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"></head>
-<body style="margin:0;padding:0;background:#ffffff;font-family:'Helvetica Neue',Arial,sans-serif">
-  <table width="100%" cellpadding="0" cellspacing="0">
-    <tr>
-      <td style="padding:48px 40px 24px;max-width:600px">
-        ${lines}
-      </td>
-    </tr>
-    <tr>
-      <td style="padding:0 40px 48px">
-        <table cellpadding="0" cellspacing="0">
-          <tr><td style="padding-top:16px;border-top:1px solid #e5e7eb">
-            <p style="margin:0 0 2px;font-size:14px;font-weight:600;color:#111111">${myName || ''}</p>
-            <p style="margin:0;font-size:13px;color:#6b7280">${myTitle || 'AI Growth Specialist'} &nbsp;Â·&nbsp; ${agencyName || 'Agency AI'}</p>
+function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken, opts) {
+  opts = opts || {};
+  const myEmail = opts.myEmail || '';
+  const calendlyLink = opts.calendlyLink || '';
+  const baseUrl = process.env.BASE_URL || '';
+
+  const e = function(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+
+  // Initials from name
+  const nameParts = (myName || 'AA').trim().split(/\s+/).filter(Boolean);
+  const initials = ((nameParts[0] ? nameParts[0][0] : 'A') + (nameParts.length > 1 ? nameParts[nameParts.length-1][0] : (nameParts[0] && nameParts[0][1] ? nameParts[0][1] : 'A'))).toUpperCase();
+
+  // Body to paragraphs
+  const escapedBody = e(body || '');
+  const paragraphs = escapedBody
+    .split(/\n{2,}/)
+    .map(function(b){ return b.replace(/\n/g,'<br>').trim(); })
+    .filter(Boolean)
+    .map(function(b){ return '<p style="margin:0 0 18px;font-size:15px;line-height:1.75;color:#1a1a1a;font-family:Georgia,serif">' + b + '</p>'; })
+    .join('');
+
+  const ctaText = calendlyLink ? 'Plan een gratis kennismakingsgesprek &rarr;' : 'Beantwoord deze email voor meer informatie';
+  const ctaHref = calendlyLink || (myEmail ? 'mailto:' + e(myEmail) : '#');
+  const pixel = trackingToken ? '<img src="' + baseUrl + '/track/open/' + trackingToken + '" width="1" height="1" style="display:block;width:1px;height:1px;opacity:0;border:0" alt="">' : '';
+
+  const html = `<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="x-apple-disable-message-reformatting">
+  <title>${e(agencyName || 'Agency AI')}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f4f2;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%">
+<!--[if mso]><center><table width="600" cellpadding="0" cellspacing="0"><tr><td><![endif]-->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f2">
+  <tr><td align="center" valign="top" style="padding:32px 16px">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:8px;overflow:hidden">
+      <tr><td style="padding:22px 32px;background:#ffffff;border-bottom:2px solid #e8e8e5">
+        <span style="font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:700;color:#111111">${e(agencyName || 'Agency AI')}</span>
+      </td></tr>
+      <tr><td style="padding:32px 32px 10px;background:#ffffff">${paragraphs}</td></tr>
+      <tr><td align="center" style="padding:6px 32px 32px;background:#ffffff">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+          <tr><td align="center" style="background:#111111;border-radius:6px">
+            <a href="${ctaHref}" target="_blank" style="display:inline-block;padding:14px 28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none">${ctaText}</a>
           </td></tr>
         </table>
-      </td>
-    </tr>
-  </table>
-  ${trackingToken ? `<img src="${process.env.BASE_URL||''}/track/open/${trackingToken}" width="1" height="1" style="display:block;width:1px;height:1px;opacity:0" alt="">` : ''}
+      </td></tr>
+      <tr><td style="padding:0 32px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:1px;background:#e8e8e5;font-size:0;line-height:0">&nbsp;</td></tr></table></td></tr>
+      <tr><td style="padding:22px 32px;background:#f9f9f8">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="top" style="vertical-align:top">
+              <p style="margin:0 0 2px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#1a1a1a">${e(myName||'')}</p>
+              <p style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280">${e(myTitle||'AI Growth Specialist')} &middot; ${e(agencyName||'Agency AI')}</p>
+              ${myEmail ? '<p style="margin:0 0 3px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280">&#x1F4E7;&nbsp;' + e(myEmail) + '</p>' : ''}
+              <p style="margin:0 0 3px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280">&#x1F310;&nbsp;www.agencyai.info</p>
+              <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280">&#x1F4CD;&nbsp;Nederland</p>
+            </td>
+            <td valign="top" align="right" style="vertical-align:top;width:44px;padding-left:16px">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right"><tr>
+                <td align="center" valign="middle" style="width:36px;height:36px;background:#111111;border-radius:4px">
+                  <span style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;color:#ffffff;display:block;line-height:36px;text-align:center">${initials}</span>
+                </td>
+              </tr></table>
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding:16px 32px;background:#f4f4f2;border-top:1px solid #e8e8e5">
+        <p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9b9b98;text-align:center;line-height:1.5">U ontvangt deze email omdat uw bedrijf voldoet aan onze selectiecriteria voor groeipotentieel. Wilt u geen emails meer ontvangen? Stuur een reply met &#39;Uitschrijven&#39;.</p>
+        <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9b9b98;text-align:center">&copy; 2026 ${e(agencyName||'Agency AI')} &mdash; www.agencyai.info</p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+<!--[if mso]></td></tr></table></center><![endif]-->
+${pixel}
 </body>
 </html>`;
+  return html;
 }
 
 // Sanitize email subject: replace fancy Unicode chars with ASCII equivalents
@@ -406,7 +461,10 @@ async function sendEmail({ to, subject, body, html, settings: _settings = {}, tr
   const agencyName  = s.agencyName  || _settings.agencyName || 'Agency AI';
   const myName      = s.myName      || _settings.myName     || 'Admin';
   const myTitle     = s.myTitle     || _settings.myTitle    || '';
-  const htmlBody    = html || buildEmailHTML(body, agencyName, myName, myTitle, trackingToken);
+  const htmlBody    = html || buildEmailHTML(body, agencyName, myName, myTitle, trackingToken, {
+    myEmail:      s.gmailAddress || s.resendFromAddress || process.env.RESEND_FROM_ADDRESS || '',
+    calendlyLink: s.calendlyUrl  || '',
+  });
   const resendKey   = s.resendApiKey || process.env.RESEND_API_KEY;
   const fromAddress = s.resendFromAddress || process.env.RESEND_FROM_ADDRESS || 'noreply@agencyai.info';
   const cleanSubject = sanitizeSubject(subject);
@@ -2961,7 +3019,14 @@ app.post('/api/settings/test-email', requireAdmin, async (req, res) => {
         from: `"${s.agencyName || 'Agency AI'}" <${fromAddress}>`,
         to: toAddress,
         subject: 'Agency AI — Testmail ✓',
-        text: `Hoi ${s.myName || 'Admin'},\n\nResend is correct ingesteld!\n\nAgency AI kan nu emails versturen namens ${s.agencyName || 'Agency AI'}.\n\nVriendelijke groet,\n${s.myName || 'Admin'}\n${s.agencyName || 'Agency AI'}`
+        html: buildEmailHTML(
+          `Beste ${s.myName || 'Admin'},\n\nDit is een testmail om te bevestigen dat Resend correct is ingesteld en dat Agency AI emails kan versturen namens ${s.agencyName || 'Agency AI'}.\n\nDit is het nieuwe professionele email-template dat gebruikt wordt voor alle outreach.`,
+          s.agencyName || 'Agency AI',
+          s.myName || 'Admin',
+          s.myTitle || 'AI Growth Specialist',
+          null,
+          { myEmail: fromAddress, calendlyLink: s.calendlyUrl || '' }
+        )
       }),
       signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
     });
@@ -3774,37 +3839,46 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
   // Append Calendly CTA instruction to shared context
   const sharedContextFinal = sharedContext + calendlyCta;
 
+  const isNlBe = ['nl','be','nederland','netherlands','belgie','belgium'].includes((lead.country||'').toLowerCase().replace(/[^a-z]/g,''));
+  const greetingNL = (companySize === 'large' || !isNlBe)
+    ? `Geachte ${lead.companyName} team,`
+    : `Beste ${lead.companyName},`;
+  const greetingEN = (companySize === 'large')
+    ? `Dear ${lead.companyName} team,`
+    : `Dear ${lead.companyName},`;
+
   const sharedRules = language === 'nl'
-    ? `- Aanhef: small -> "Hoi [naam]," of "Hey,"; medium -> "Hoi," of "Hi,"; large -> "Hallo ${lead.companyName},"
-- Toon: casual, direct, menselijk - gebruik "je/jij/jullie", NOOIT "u" (tenzij large)
-- Schrijf alsof je dit snel intypt op je telefoon, niet vanachter een bureau
-- Varieer zinslengte: mix korte zinnen (4-6 woorden) met iets langere. Geen 3 zinnen van dezelfde lengte op rij
+    ? `- Aanhef: gebruik altijd exact deze aanhef: "${greetingNL}"
+- VERBODEN aanhef: Hoi, Hey, Hi, Hallo, Goedemorgen, Beste mensen — ALLEEN "Beste" of "Geachte" is toegestaan
+- Toon: professioneel maar toegankelijk — schrijf als een senior consultant, niet als een chatbot of marketingbureau
+- Gebruik "u" bij grote bedrijven of niet-NL/BE, anders "je/jullie"
 - Begin NOOIT een zin met "Ik" als eerste woord van de email
-- Onderwerp: 4-6 woorden, concreet, noem bedrijfsnaam of stad - GEEN "AI", "marketing" of "samenwerking" in het onderwerp - gebruik ALLEEN gewone tekens (a-z, 0-9, koppelteken, komma, vraagteken) — GEEN em-dash (—), accentletters of speciale interpunctie
-- Max 3 korte alinea's, elke alinea max 2-3 zinnen
-- GEEN bullet points, GEEN opsommingen, GEEN --- scheidingslijnen
-- Dienst: 1 zin, niet aanprijzend - beschrijf het resultaat, niet het product
-- CTA: 1 simpele vraag, bijv. "Klinkt dat interessant?" of "Even kort bellen?"
-- Afsluiting: "Groeten, ${myName}" of "Tot snel, ${myName}"
-- Max 110 woorden in de body
-- Als er concurrentie context is: verweef 1 korte zin organisch, nooit explicieter dan nodig
-- VERBODEN WOORDEN: innovatief, synergie, resultaatgericht, vrijblijvend, in de huidige markt, passie, data-gedreven, oplossing op maat, spannend, uniek aanbod, perfect, ideale, absoluut, zeker weten, fantastisch, geweldig, helpen te groeien, naar een hoger niveau, concurrentievoordeel, bewezen, transformeren
-- SEIZOEN: Het is nu ${seasonal.season}. Verweef optioneel 1 subtiele seizoensreferentie als het natuurlijk aansluit bij hun niche (bijv. ${seasonal.event}). Forceer dit NIET als het niet past.`
-    : `- Greeting: small -> "Hey [name]," or "Hi [name],"; medium -> "Hi," or "Hey,"; large -> "Hi ${lead.companyName} team,"
-- Tone: casual, direct, human - write like a real person texting, not a marketer emailing
-- Write as if typing quickly on your phone - short, punchy, real
-- Vary sentence length: mix short (4-6 words) and longer ones. Never 3 sentences of the same length in a row
+- Onderwerp: 4-6 woorden, concreet, noem bedrijfsnaam of stad — GEEN "AI", "marketing" of "samenwerking" — gebruik ALLEEN gewone tekens (a-z, 0-9, koppelteken, komma, vraagteken)
+- Schrijf vloeiende professionele alinea's — GEEN bullet points, GEEN opsommingen, GEEN --- scheidingslijnen
+- 3 alinea's: (1) specifieke observatie met concreet gegeven, (2) wat dit betekent + hoe wij helpen, (3) zachte uitnodiging voor een gesprek
+- Alinea 1-2: elk max 2-3 zinnen. Alinea 3: max 2 zinnen
+- Dienst: beschrijf het resultaat in 1 zin — nooit aanprijzend of met superlatieven
+- CTA alinea 3: zachte uitnodiging — bijv. "Zou u openstaan voor een kort kennismakingsgesprek?" ${calendlyLink ? `Sluit af met: ${calendlyLink}` : ''}
+- Afsluiting: "Met vriendelijke groet," op een nieuwe regel, dan "${myName}"
+- Max 150 woorden in de body (exclusief aanhef en afsluiting)
+- Als er concurrentie context is: verweef maximaal 1 zin organisch
+- VERBODEN WOORDEN: oplossing, traject, optimaliseren, implementeren, synergie, innovatief, vrijblijvend, passie, data-gedreven, op maat, uniek aanbod, fantastisch, geweldig, absoluut, transformeren, naar een hoger niveau, concurrentievoordeel, bewezen, resultaatgericht
+- SEIZOEN: Het is nu ${seasonal.season}. Verweef optioneel 1 subtiele seizoensreferentie alleen als het écht past bij hun niche (bijv. ${seasonal.event}). Forceer dit NIET.`
+    : `- Greeting: always use exactly this greeting: "${greetingEN}"
+- FORBIDDEN greetings: Hey, Hi, Hello, What's up, Howdy — ONLY "Dear" is allowed
+- Tone: professional but approachable — write like a senior consultant who genuinely noticed something specific about their business
 - NEVER start the first sentence with "I"
-- Subject: 4-6 words, specific, mention company or city - NO "AI", "marketing" or "collaboration" in the subject - use ONLY plain ASCII (a-z, 0-9, hyphen, comma, question mark) — NO em-dash (—), accented letters or special punctuation
-- Max 3 short paragraphs, each max 2-3 sentences
-- NO bullet points, NO lists, NO --- dividers
-- Service: 1 sentence, describe the outcome, not the product
-- CTA: 1 simple question, e.g. "Worth a quick chat?" or "Open to a quick call?"
-- Sign-off: "Cheers, ${myName}" or "Best, ${myName}"
-- Max 110 words in the body
-- If competitor context is provided: weave in 1 brief line naturally
-- BANNED: innovative, synergy, leverage, game-changer, cutting-edge, seamlessly, data-driven, tailored solution, exciting, unique offering, perfect, ideal, absolutely, fantastic, take to the next level, proven, transform, competitive advantage
-- SEASONAL: It is currently ${seasonal.season}. Optionally weave in 1 subtle seasonal reference if it naturally fits their niche (e.g. ${seasonal.event}). Do NOT force this if it feels unnatural.`;
+- Subject: 4-6 words, specific, mention company or city — NO "AI", "marketing" or "collaboration" — use ONLY plain ASCII (a-z, 0-9, hyphen, comma, question mark)
+- Write in flowing professional paragraphs — NO bullet points, NO lists, NO --- dividers
+- 3 paragraphs: (1) specific observation with concrete data point, (2) what this means for them + how we help, (3) soft invitation to connect
+- Paragraphs 1-2: max 2-3 sentences each. Paragraph 3: max 2 sentences
+- Service: describe the outcome in 1 sentence — never promotional or superlative
+- CTA paragraph 3: soft invitation — e.g. "Would you be open to a brief introductory call?" ${calendlyLink ? `Close with: ${calendlyLink}` : ''}
+- Sign-off: "Kind regards," on a new line, then "${myName}"
+- Max 150 words in the body (excluding greeting and sign-off)
+- If competitor context is provided: weave in max 1 sentence naturally
+- BANNED WORDS: solution, trajectory, optimize, implement, synergy, leverage, innovative, data-driven, tailored, unique offering, fantastic, absolutely, transform, take to the next level, proven, competitive advantage, seamlessly, cutting-edge, game-changer
+- SEASONAL: It is currently ${seasonal.season}. Optionally weave in 1 subtle seasonal reference only if it genuinely fits their niche (e.g. ${seasonal.event}). Do NOT force this.`;
 
   const promptA = language === 'nl'
     ? `Schrijf een koude email â€" VERSIE A: PROBLEEM-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.
@@ -3875,11 +3949,11 @@ ${sharedRules}
     [emailA, emailB] = await Promise.all([aiJSON(promptA), aiJSON(promptB)]);
   } catch {
     emailA = language === 'nl'
-      ? { subject: `${lead.companyName} â€" ik zag iets opvallends`, body: `Hoi,\n\nIk zag ${lead.companyName} online en merkte dat er kansen liggen op het gebied van ${topService.toLowerCase()}.\n\nZou je open staan voor een gratis audit?\n\nVriendelijke groet,\n${myName}` }
-      : { subject: `${lead.companyName} â€" noticed something`, body: `Hi,\n\nI came across ${lead.companyName} and noticed opportunities around ${topService.toLowerCase()}.\n\nWould you be open to a free audit?\n\nBest,\n${myName}` };
+      ? { subject: `${lead.companyName} – iets opgevallen`, body: `${greetingNL}\n\nBij het bekijken van ${lead.companyName} viel mij op dat er concrete ruimte is om meer uit ${topService.toLowerCase()} te halen.\n\nZou u openstaan voor een kort kennismakingsgesprek?\n\nMet vriendelijke groet,\n${myName}` }
+      : { subject: `${lead.companyName} – noticed something`, body: `${greetingEN}\n\nLooking at ${lead.companyName}, I noticed there is a clear opportunity to strengthen your ${topService.toLowerCase()}.\n\nWould you be open to a brief introductory call?\n\nKind regards,\n${myName}` };
     emailB = language === 'nl'
-      ? { subject: `${lead.companyName} â€" groeikans`, body: `Hoi,\n\n${lead.companyName} heeft echt potentieel om te groeien met ${topService.toLowerCase()}.\n\nZou je open staan voor een kort gesprek?\n\nVriendelijke groet,\n${myName}` }
-      : { subject: `${lead.companyName} â€" growth opportunity`, body: `Hi,\n\n${lead.companyName} has real potential to grow with ${topService.toLowerCase()}.\n\nWould you be open to a quick chat?\n\nBest,\n${myName}` };
+      ? { subject: `${lead.companyName} – concrete kans`, body: `${greetingNL}\n\n${lead.companyName} heeft een solide basis. Naar mijn inschatting is er echter nog onbenut potentieel op het gebied van ${topService.toLowerCase()}.\n\nKan ik u laten zien wat dat in de praktijk betekent?\n\nMet vriendelijke groet,\n${myName}` }
+      : { subject: `${lead.companyName} – concrete opportunity`, body: `${greetingEN}\n\n${lead.companyName} has a strong foundation. Based on what I have seen, there is untapped potential in ${topService.toLowerCase()} worth exploring.\n\nWould you be open to a short conversation?\n\nKind regards,\n${myName}` };
   }
   // Agent 5b: 3 subject line options
   const subjectPrompt = language === 'nl'
@@ -5491,8 +5565,8 @@ async function runReferralCheck() {
       email = await aiJSON(prompt);
     } catch {
       email = lang === 'nl'
-        ? { subject: 'Kort vraagje — ' + client.companyName, body: 'Hoi,\n\nWe werken nu al ' + Math.floor(daysSince / 30) + ' maanden samen en ik hoop dat je tevreden bent met de resultaten tot nu toe.\n\nKen jij misschien iemand in jouw netwerk die ook baat zou hebben bij wat wij doen? Een warme introductie zou ik erg waarderen.\n\nGroeten,\n' + myName }
-        : { subject: 'Quick question — ' + client.companyName, body: 'Hi,\n\nWe have been working together for ' + Math.floor(daysSince / 30) + ' months now and I hope you\'re happy with the results so far.\n\nDo you know anyone in your network who could benefit from what we do? A warm introduction would mean a lot.\n\nBest,\n' + myName };
+        ? { subject: 'Kort vraagje – ' + client.companyName, body: 'Beste ' + client.companyName + ',\n\nWe werken nu al ' + Math.floor(daysSince / 30) + ' maanden samen en ik hoop dat u tevreden bent met de behaalde resultaten.\n\nKent u iemand in uw netwerk die ook baat zou kunnen hebben bij onze aanpak? Een warme introductie wordt zeer gewaardeerd.\n\nMet vriendelijke groet,\n' + myName }
+        : { subject: 'Quick question – ' + client.companyName, body: 'Dear ' + client.companyName + ',\n\nWe have been working together for ' + Math.floor(daysSince / 30) + ' months now and I hope you are satisfied with the results so far.\n\nDo you know anyone in your network who could benefit from what we do? A warm introduction would be greatly appreciated.\n\nKind regards,\n' + myName };
     }
 
     const id = 'ref-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
