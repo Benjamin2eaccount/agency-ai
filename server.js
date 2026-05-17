@@ -1099,11 +1099,13 @@ app.post('/api/claude', async (req, res) => {
 
     const text = data.content[0].text;
     if (expectJson) {
-      const match = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
+      const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
       try {
-        return res.json({ result: JSON.parse(match ? match[1] : text) });
+        return res.json({ result: JSON.parse(clean) });
       } catch {
-        return res.json({ result: text });
+        const m = clean.match(/\[[\s\S]*\]/) || clean.match(/\{[\s\S]*\}/);
+        try { return res.json({ result: m ? JSON.parse(m[0]) : text }); }
+        catch { return res.json({ result: text }); }
       }
     }
     res.json({ result: text });
@@ -3345,7 +3347,7 @@ async function aiCall(prompt) {
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
+      max_tokens: 4000,
       messages: [{ role: 'user', content: prompt }]
     })
   });
@@ -3361,24 +3363,31 @@ async function aiCall(prompt) {
 async function aiJSON(prompt) {
   const text = await aiCall(prompt);
 
-  // Strip markdown code fences (Claude often wraps JSON in ```json ... ```)
-  let clean = text
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/i, '')
+  // Strip ALL markdown code fences globally (Claude wraps JSON in ```json...```)
+  const clean = text
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/gi, '')
     .trim();
 
-  // Try direct parse on cleaned text first
+  // Try direct parse on stripped text
   try { return JSON.parse(clean); } catch {}
 
-  // Fallback: extract first JSON object or array
-  const match = clean.match(/(\[[\s\S]*\]|\{[\s\S]*\})/s);
-  if (match) {
-    try { return JSON.parse(match[1]); } catch {}
+  // Fallback: extract first JSON array or object
+  const arrMatch = clean.match(/\[[\s\S]*\]/);
+  if (arrMatch) {
+    try { return JSON.parse(arrMatch[0]); } catch(e) {
+      console.error('[aiJSON] Array fallback parse failed:', e.message);
+    }
+  }
+  const objMatch = clean.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try { return JSON.parse(objMatch[0]); } catch(e) {
+      console.error('[aiJSON] Object fallback parse failed:', e.message);
+    }
   }
 
   console.error('[aiJSON] Parse failed. Raw response (500 chars):', text.substring(0, 500));
-  throw new Error('Claude JSON parse mislukt: ' + text.substring(0, 200));
+  throw new Error('Claude JSON parse mislukt: ' + clean.substring(0, 200));
 }
 
 // â"€â"€â"€ Website checker (Agent 2) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
