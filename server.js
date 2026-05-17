@@ -1144,7 +1144,7 @@ app.post('/api/analyze-company', requireAdmin, async (req, res) => {
     const dupCheck = isDuplicate(lead);
     if (dupCheck) return res.status(409).json({ error: `Duplicaat: ${lead.companyName} bestaat al (status: ${dupCheck.status})`, existing: { id: dupCheck.id, status: dupCheck.status } });
     const result = await processOneLead(lead, settings);
-    if (!result) return res.status(400).json({ error: 'Bedrijf staat op de blacklist' });
+    if (!result) return res.status(400).json({ error: 'Overgeslagen: bedrijf staat op de blacklist of geen emailadres gevonden op de website' });
     const { item, leadRecord } = result;
 
     const inbox = readJSON('inbox.json') || [];
@@ -2602,7 +2602,12 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
         const li2 = allLeads2.findIndex(l => l.id === item.leadId);
         if (li2 !== -1) { allLeads2[li2].contactEmail = manualEmail; allLeads2[li2].emailSource = 'handmatig'; writeJSON('leads.json', allLeads2); }
       }
-      const recipientEmail = inbox[idx].contactEmail || settings.gmailAddress;
+      const recipientEmail = inbox[idx].contactEmail;
+      if (!recipientEmail) {
+        inbox[idx].status = 'approved';
+        writeJSON('inbox.json', inbox);
+        return res.status(400).json({ error: 'Geen emailadres beschikbaar — voeg handmatig een emailadres toe' });
+      }
       await sendEmail({
         to: recipientEmail,
         subject: chosenEmail?.subject || item.email?.subject || 'Outreach email',
@@ -3509,20 +3514,21 @@ async function checkWebsite(url) {
                     || rawHtmlEmails.find(isValidScrapedEmail)
                     || null;
 
-    // If nothing found on homepage, try /contact page
+    // If nothing found on homepage, try contact/about pages
     if (!scrapedEmail) {
-      try {
-        const contactUrl = new URL('/contact', url).href;
-        if (contactUrl !== url) {
-          const cRes = await fetch(contactUrl, { timeout: 5000, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AgencyAI/1.0)' } });
-          if (cRes.ok) {
-            const cHtml = await cRes.text();
-            const cMailto = [...cHtml.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1].trim());
-            const cRaw    = cHtml.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
-            scrapedEmail  = cMailto.find(isValidScrapedEmail) || cRaw.find(isValidScrapedEmail) || null;
+      for (const page of ['/contact', '/contact-us', '/over-ons', '/about', '/about-us']) {
+        if (scrapedEmail) break;
+        try {
+          const pageUrl = new URL(page, url).href;
+          const pRes = await fetch(pageUrl, { timeout: 5000, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AgencyAI/1.0)' } });
+          if (pRes.ok) {
+            const pHtml   = await pRes.text();
+            const pMailto = [...pHtml.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1].trim());
+            const pRaw    = pHtml.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
+            scrapedEmail  = pMailto.find(isValidScrapedEmail) || pRaw.find(isValidScrapedEmail) || null;
           }
-        }
-      } catch {} // contact page is optional
+        } catch {} // page is optional
+      }
     }
     const speedScore    = ms < 1500 ? 9 : ms < 3000 ? 7 : ms < 5000 ? 5 : 3;
 
@@ -3603,12 +3609,18 @@ async function processOneLead(lead, settings) {
   const website = await checkWebsite(lead.websiteUrl);
   console.log(`  [Agent 2] Bereikbaar: ${website.reachable}, laadtijd: ${website.loadTimeMs || '—'}ms`);
 
-  // Email: only trust addresses scraped directly from the website — never guess
+  // Email: only scraped emails are trusted — no guessing
   const contactEmail  = website.scrapedEmail || null;
-  const emailVerified = !!website.scrapedEmail;
-  const emailSource   = website.scrapedEmail ? 'gevonden' : null;
-  if (contactEmail) console.log(`  [Email] ${contactEmail} (geverifieerd via website)`);
-  else              console.log(`  [Email] Geen email gevonden op website`);
+  const emailVerified = !!contactEmail;
+  const emailSource   = contactEmail ? 'scraped' : null;
+
+  if (contactEmail) {
+    console.log(`  [Email] ${contactEmail} (scraped van website)`);
+  } else {
+    console.log(`  [Email] Geen email gevonden — ${lead.companyName} overgeslagen`);
+    addActivity('skip', `${lead.companyName} overgeslagen — geen email gevonden`, { meta: { companyName: lead.companyName, niche: lead.niche, websiteUrl: lead.websiteUrl || '' } });
+    return null;
+  }
 
   console.log(`  [Agent 3] Social media analyseren...`);
   let social;
@@ -5911,7 +5923,7 @@ app.post('/api/zapier/trigger', async (req, res) => {
     if (dup) return res.status(409).json({ error: `Duplicaat: ${dup.companyName}`, existing: { id: dup.id, status: dup.status } });
     try {
       const result = await processOneLead(lead, settings);
-      if (!result) return res.status(400).json({ error: 'Bedrijf staat op de blacklist' });
+      if (!result) return res.status(400).json({ error: 'Overgeslagen: bedrijf staat op de blacklist of geen emailadres gevonden op de website' });
       const { item, leadRecord } = result;
       const inbox    = readJSON('inbox.json')  || [];
       const allLeads = readJSON('leads.json')  || [];
