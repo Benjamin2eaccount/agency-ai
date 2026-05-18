@@ -3575,7 +3575,6 @@ async function checkWebsite(url) {
     const hasCTA        = /\b(contact|contact us|meer info|neem contact|bel ons|call us)/i.test(html);
 
     // ── Email scraping ─────────────────────────────────────────────────────────
-    // Only emails found on the company's own website pages are accepted.
     // No provider blocking — Gmail/Hotmail/Yahoo are valid for small businesses.
     // MX check: reject only if resolveMx returns empty array. DNS errors → allow.
 
@@ -3589,10 +3588,50 @@ async function checkWebsite(url) {
     };
     const isNoReply = e => /noreply|no-reply|donotreply|do-not-reply/i.test(e);
 
+    // Deobfuscate and extract all email candidates from HTML
+    const extractAllEmails = htmlStr => {
+      const found = new Set();
+      const add = e => { if (e && isBasicValidEmail(e)) found.add(e.toLowerCase().trim()); };
+
+      // 1. Standard mailto: links
+      for (const m of htmlStr.matchAll(/href=["']mailto:([^"'?\s]+)/gi)) add(m[1].trim());
+
+      // 2. URL-encoded mailto: (info%40domain.nl)
+      for (const m of htmlStr.matchAll(/href=["']mailto:([^"'?\s]*%40[^"'?\s]+)/gi))
+        add(decodeURIComponent(m[1]).trim());
+
+      // 3. Raw email pattern in text/attributes
+      for (const e of (htmlStr.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [])) add(e);
+
+      // 4. data-email and data-mailto attributes
+      for (const m of htmlStr.matchAll(/data-(?:email|mailto)=["']([^"']+)/gi)) add(m[1].trim());
+
+      // 5. Obfuscated: info [at] domain.nl / info(at)domain.nl
+      for (const m of htmlStr.matchAll(/([a-zA-Z0-9._%+\-]+)\s*[\[(]at[\])]]\s*([a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/gi))
+        add(`${m[1]}@${m[2]}`);
+      // also "info [at] domain [dot] nl" style
+      for (const m of htmlStr.matchAll(/([a-zA-Z0-9._%+\-]+)\s*\[at\]\s*([a-zA-Z0-9.\-]+)\s*\[dot\]\s*([a-zA-Z]{2,})/gi))
+        add(`${m[1]}@${m[2]}.${m[3]}`);
+
+      // 6. Spaced-out AT: "info AT domain DOT nl"
+      for (const m of htmlStr.matchAll(/([a-zA-Z0-9._%+\-]+)\s+AT\s+([a-zA-Z0-9.\-]+)\s+DOT\s+([a-zA-Z]{2,})/g))
+        add(`${m[1]}@${m[2]}.${m[3]}`);
+
+      // 7. Inside <script> tags: 'info@', "contact@", `email@`
+      for (const scriptMatch of htmlStr.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)) {
+        for (const e of (scriptMatch[1].match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [])) add(e);
+      }
+
+      // 8. After Dutch/English contact keywords: "e-mail: info@..." "mail: ..."
+      for (const m of htmlStr.matchAll(/(?:e-?mail|mail|contact)\s*[:\-]\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/gi))
+        add(m[1].trim());
+
+      return [...found];
+    };
+
     const extractBestEmail = htmlStr => {
-      const mailto = [...htmlStr.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1].trim());
-      const raw = htmlStr.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
-      const all = [...new Set([...mailto, ...raw])].filter(isBasicValidEmail);
+      const all = extractAllEmails(htmlStr);
+      console.log(`[Agent2] All extracted candidates:`, all);
       return all.find(e => !isNoReply(e)) || null;
     };
 
@@ -3752,6 +3791,13 @@ async function processOneLead(lead, settings) {
   console.log(`  [Agent 2] Website checken: ${lead.websiteUrl}`);
   const website = await checkWebsite(lead.websiteUrl);
   console.log(`  [Agent 2] Bereikbaar: ${website.reachable}, laadtijd: ${website.loadTimeMs || '—'}ms`);
+
+  // Skip immediately if website unreachable — don't waste agent credits on fake companies
+  if (!website.reachable) {
+    console.log(`  ✗ Website onbereikbaar — ${lead.companyName} overgeslagen (${website.notes || 'geen verbinding'})`);
+    addActivity('skip', `${lead.companyName} overgeslagen — website onbereikbaar`, { meta: { companyName: lead.companyName, websiteUrl: lead.websiteUrl || '' } });
+    return null;
+  }
 
   // Email: scraped or ai_extracted, both MX-verified inside checkWebsite
   const contactEmail  = website.scrapedEmail || null;
@@ -4257,34 +4303,39 @@ async function runFindLeadsJob(overrides = {}) {
       ? `\n\nBedrijven die je NIET mag herhalen (al gegenereerd):\n${[...seenNames].slice(-30).join(', ')}`
       : '';
 
-    const finderPrompt = `Je bent een lead research expert. Genereer ${batchSize} lokale bedrijven voor AI-marketingdiensten.
+    const finderPrompt = `You are a business research expert. Generate ${batchSize} REAL, VERIFIED local businesses for AI marketing services.
 
-STRIKTE VEREISTEN — genereer ALLEEN bedrijven die aan ALLE punten voldoen:
-- Al minstens 2 jaar actief
-- Hebben een professionele website (geen sociale media als hoofdpagina)
-- Hebben hoogstwaarschijnlijk een contactemailadres zichtbaar op hun website (/contact, /over-ons, mailto: link)
-- Zijn zelfstandige lokale ondernemingen (GEEN grote ketens, GEEN franchises, GEEN startups)
-- Zijn geen bedrijven die alleen actief zijn op sociale media zonder eigen website
+CRITICAL RULE: You must ONLY generate real businesses that you are 100% certain exist right now in 2026 based on your training data. NEVER invent, guess, or fabricate a business. If you are not completely sure a business exists with that exact name and website URL, do not include it.
 
-Geef een JSON array terug (alleen JSON, geen uitleg):
+For each business you MUST verify from your training data:
+- The business name is REAL and exists
+- The website URL is REAL and was active (not made up)
+- It is a local independent company (NOT chains, NOT franchises, NOT startups you invented)
+
+REQUIREMENTS — only include businesses meeting ALL of these:
+- Has been operating for at least 2 years
+- Has a real professional website with a contact page
+- Is a small/medium independent local business
+- NOT a large chain or national brand
+
+Return a JSON array only (no explanation):
 [{
-  "companyName": "Bedrijfsnaam",
-  "location": "Stad, Land",
-  "country": "NL of ander land",
-  "instagramHandle": "@handle",
-  "niche": "beauty" of "food" of "fitness" of "retail" of "restaurant" of "horeca" of "health" of "automotive",
-  "subNiche": "specifiek type — bijv. kapsalon, yoga studio, bakkerij",
-  "estimatedFollowers": getal,
-  "websiteUrl": "https://...",
-  "linkedinCompanyUrl": "https://linkedin.com/company/bedrijfsnaam-slug",
-  "companySize": "small" of "medium" of "large"
+  "companyName": "Real business name",
+  "location": "City, Country",
+  "country": "country code e.g. NL, DE, GB, US",
+  "instagramHandle": "@handle or null",
+  "niche": "beauty" or "food" or "fitness" or "retail" or "restaurant" or "horeca" or "health" or "automotive",
+  "subNiche": "specific type e.g. hair salon, yoga studio, bakery",
+  "estimatedFollowers": number,
+  "websiteUrl": "https://real-verified-domain.com",
+  "linkedinCompanyUrl": "https://linkedin.com/company/slug or null",
+  "companySize": "small" or "medium" or "large"
 }]
 
-companySize: "small" voor ZZP/MKB (<10 medewerkers), "medium" voor middelgroot (10-50), "large" voor groot/corporate (50+).
-Doelgroep niches (gebruik ALLEEN deze types): ${nichesList}.
-Doelregio's (verspreid per batch): ~30% Nederland/België (gebruik dan Dutch email taal), ~70% rest — België, Duitsland, Frankrijk, Luxemburg, Italië, Spanje, UK, VS, Canada, Australië.
-Gebruik realistische domeinen die echt kunnen bestaan (ccTLD waar van toepassing: .nl .be .de .fr .co.uk .com.au .ca etc.).
-Geef exact ${batchSize} bedrijven.${alreadySeen}`;
+companySize: "small" for sole trader/SME (<10 employees), "medium" for 10-50, "large" for 50+.
+Target niches (use ONLY these types): ${nichesList}.
+Country mix per batch: ~30% Netherlands/Belgium (Dutch outreach language), ~70% rest — Germany, France, Luxembourg, Italy, Spain, UK, USA, Canada, Australia.
+Generate exactly ${batchSize} businesses. Only include businesses you are CERTAIN are real.${alreadySeen}`;
 
     let batch;
     try {
@@ -4317,8 +4368,8 @@ Geef exact ${batchSize} bedrijven.${alreadySeen}`;
     attempts += Math.max(batchSize, freshBatch.length);
     console.log(`[Agent 1] ${freshBatch.length} nieuwe bedrijven in batch (attempts: ${attempts}/${maxAttempts})`);
 
-    // Early-exit: if 10+ companies checked with 0 leads found, email scraper is likely broken
-    if (attempts >= 10 && found === 0) {
+    // Early-exit: if 20+ companies checked with 0 leads found, email scraper is likely broken
+    if (attempts >= 20 && found === 0) {
       const errMsg = 'Email scraper lijkt niet te werken. Controleer de Railway logs op [Agent2] berichten.';
       console.error(`[Run] GESTOPT: ${errMsg}`);
       logError('scraper', errMsg, `${attempts} bedrijven gecontroleerd, 0 emails gevonden`);
