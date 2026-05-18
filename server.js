@@ -10,6 +10,7 @@ const cron = require('node-cron');
 const Stripe = require('stripe');
 const webpush = require('web-push');
 const { readJSON, writeJSON, pgInitPromise } = require('./database');
+const dnsPromises = require('dns').promises;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -3565,34 +3566,33 @@ async function checkWebsite(url) {
     const hasShop       = /\b(shop|winkel|bestel|kopen|cart|basket|checkout)/i.test(html);
     const hasCTA        = /\b(contact|contact us|meer info|neem contact|bel ons|call us)/i.test(html);
 
-    // Scrape email: only reject obvious system/bot addresses — allow Gmail, Hotmail, Yahoo etc.
-    // Many small businesses use personal/free email providers.
-    const isValidScrapedEmail = e => {
+    // ── Email scraping ─────────────────────────────────────────────────────────
+    // Only emails found directly on the company's website are accepted.
+    // No provider blocking — Gmail/Hotmail/Yahoo are valid for small businesses.
+    // DNS MX check confirms the domain can actually receive email.
+
+    // Basic format: has @, reasonable length, not an asset path, not a placeholder domain
+    const isBasicValidEmail = e => {
       if (!e || !e.includes('@') || !e.includes('.')) return false;
       const low = e.toLowerCase().trim();
-      // Hard rejections: clearly automated / placeholder
-      if (/noreply|no-reply|donotreply|do-not-reply/.test(low)) return false;
-      if (low.includes('@example') || low.includes('@test.') || low.includes('@sentry') || low.includes('@w3.org')) return false;
-      // Reject image/asset false positives
-      if (/\.(png|jpg|jpeg|gif|svg|webp|css|js|woff|ttf|eot|ico|pdf)$/i.test(low)) return false;
-      // Reject very long or clearly bogus strings
       if (low.length > 80) return false;
+      if (/\.(png|jpg|jpeg|gif|svg|webp|css|js|woff|ttf|eot|ico|pdf)$/i.test(low)) return false;
+      if (low.includes('@example') || low.includes('@test.') || low.includes('@sentry') || low.includes('@w3.org')) return false;
       return true;
     };
+    const isNoReply = e => /noreply|no-reply|donotreply|do-not-reply/i.test(e);
 
-    const mailtoLinks = [...html.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1].trim());
-    const rawHtmlEmails = html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
+    // Extract best non-noreply email from an HTML string (mailto preferred)
+    const extractBestEmail = htmlStr => {
+      const mailto = [...htmlStr.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1].trim());
+      const raw = htmlStr.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
+      const all = [...new Set([...mailto, ...raw])].filter(isBasicValidEmail);
+      return all.find(e => !isNoReply(e)) || null;
+    };
 
-    const allFoundEmails = [...new Set([...mailtoLinks, ...rawHtmlEmails])];
-    const filteredEmails = allFoundEmails.filter(isValidScrapedEmail);
-    console.log(`  [Agent2] Emails gevonden op homepage: ${allFoundEmails.length} totaal, ${filteredEmails.length} geldig`, filteredEmails.slice(0,5));
+    let scrapedEmail = extractBestEmail(html);
 
-    // Prefer mailto: links first (explicit intent), then raw text
-    let scrapedEmail = mailtoLinks.find(isValidScrapedEmail)
-                    || rawHtmlEmails.find(isValidScrapedEmail)
-                    || null;
-
-    // If nothing found on homepage, try contact/about/imprint pages
+    // Try contact/about/imprint subpages if nothing on homepage
     if (!scrapedEmail) {
       for (const page of ['/contact', '/contact-us', '/over-ons', '/about', '/about-us', '/kontakt', '/contacto', '/impressum', '/imprint', '/privacy']) {
         if (scrapedEmail) break;
@@ -3600,36 +3600,45 @@ async function checkWebsite(url) {
           const pageUrl = new URL(page, url).href;
           const pRes = await fetch(pageUrl, { timeout: 5000, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AgencyAI/1.0)' } });
           if (pRes.ok) {
-            const pHtml   = await pRes.text();
-            const pMailto = [...pHtml.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1].trim());
-            const pRaw    = pHtml.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
-            const pAll = [...new Set([...pMailto, ...pRaw])].filter(isValidScrapedEmail);
-            if (pAll.length) console.log(`  [Agent2] Emails op ${page}: ${pAll.slice(0,3)}`);
-            scrapedEmail = pMailto.find(isValidScrapedEmail) || pRaw.find(isValidScrapedEmail) || null;
+            const found = extractBestEmail(await pRes.text());
+            if (found) { scrapedEmail = found; console.log(`[Agent2] Email op ${page}: ${found}`); }
           }
-        } catch {} // page is optional
+        } catch {} // subpage is optional
       }
     }
 
-    let emailSource = 'scraped';
+    // Log result + DNS MX verification
+    const siteDomain = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
+
     if (scrapedEmail) {
-      console.log(`  [Agent2] Email gevonden via scraping: ${scrapedEmail}`);
-    } else {
-      console.log(`  [Agent2] Geen email gevonden via scraping voor ${url}`);
-      // Claude AI fallback: extract email from homepage text
+      console.log(`[Agent2] ${siteDomain} → found: ${scrapedEmail}`);
+      const emailDomain = scrapedEmail.split('@')[1];
       try {
-        const snippet = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000);
-        const aiEmailPrompt = `Based on the following website text content from ${url}, find the contact email address of this business. Look for any email patterns, contact info sections, or references to a contact email. Reply with ONLY the email address (e.g. info@business.com), nothing else. If no email can be found, reply with the single word "none".\n\nContent:\n${snippet}`;
-        const aiEmailRaw = (await aiCall(aiEmailPrompt)).trim().toLowerCase().replace(/^mailto:/i, '');
-        if (aiEmailRaw && aiEmailRaw !== 'none' && isValidScrapedEmail(aiEmailRaw)) {
-          scrapedEmail = aiEmailRaw;
-          emailSource = 'ai_extracted';
-          console.log(`  [Agent2] Email gevonden via Claude AI fallback: ${scrapedEmail}`);
+        const mx = await dnsPromises.resolveMx(emailDomain);
+        if (mx && mx.length > 0) {
+          console.log(`[Agent2] MX check: ${emailDomain} → valid ✓`);
+          console.log(`[Agent2] Email verified: ${scrapedEmail} ✓`);
         } else {
-          console.log(`  [Agent2] Claude AI fallback: geen email (antwoord: "${aiEmailRaw}")`);
+          console.log(`[Agent2] MX check: ${emailDomain} → no records ✗`);
+          console.log(`[Agent2] Lead overgeslagen`);
+          scrapedEmail = null;
         }
-      } catch (aiErr) {
-        console.log(`  [Agent2] Claude AI fallback fout: ${aiErr.message}`);
+      } catch {
+        console.log(`[Agent2] MX check: ${emailDomain} → no records ✗`);
+        console.log(`[Agent2] Lead overgeslagen`);
+        scrapedEmail = null;
+      }
+    } else {
+      // Check if a noreply was found but rejected, so we can log that specifically
+      const allRaw = [...html.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1].trim())
+                     .concat(html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [])
+                     .filter(isBasicValidEmail);
+      const noReplyEmail = allRaw.find(isNoReply);
+      if (noReplyEmail) {
+        console.log(`[Agent2] ${siteDomain} → found: ${noReplyEmail}`);
+        console.log(`[Agent2] Rejected: noreply address`);
+      } else {
+        console.log(`[Agent2] ${siteDomain} → geen email gevonden op website`);
       }
     }
     const speedScore    = ms < 1500 ? 9 : ms < 3000 ? 7 : ms < 5000 ? 5 : 3;
@@ -3651,7 +3660,7 @@ async function checkWebsite(url) {
       hasShop,
       hasCTA,
       scrapedEmail,
-      emailSource: scrapedEmail ? emailSource : null,
+      emailSource: scrapedEmail ? 'scraped' : null,
       problems
     };
   } catch (err) {
@@ -3712,16 +3721,13 @@ async function processOneLead(lead, settings) {
   const website = await checkWebsite(lead.websiteUrl);
   console.log(`  [Agent 2] Bereikbaar: ${website.reachable}, laadtijd: ${website.loadTimeMs || '—'}ms`);
 
-  // Email: scraped or AI-extracted are both trusted
+  // Email: only scraped + MX-verified emails are accepted (set/cleared inside checkWebsite)
   const contactEmail  = website.scrapedEmail || null;
   const emailVerified = !!contactEmail;
-  const emailSource   = contactEmail ? (website.emailSource || 'scraped') : null;
+  const emailSource   = 'scraped';
 
-  if (contactEmail) {
-    console.log(`  [Email] ${contactEmail} (scraped van website)`);
-  } else {
-    console.log(`  [Email] Geen email gevonden — ${lead.companyName} overgeslagen`);
-    addActivity('skip', `${lead.companyName} overgeslagen — geen email gevonden`, { meta: { companyName: lead.companyName, niche: lead.niche, websiteUrl: lead.websiteUrl || '' } });
+  if (!contactEmail) {
+    addActivity('skip', `${lead.companyName} overgeslagen — geen geldig email gevonden`, { meta: { companyName: lead.companyName, niche: lead.niche, websiteUrl: lead.websiteUrl || '' } });
     return null;
   }
 
