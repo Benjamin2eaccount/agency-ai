@@ -3550,6 +3550,7 @@ async function aiJSON(prompt) {
 
 async function checkWebsite(url) {
   if (!url) return { reachable: false, notes: 'Geen URL opgegeven' };
+  console.log('[Agent2-DEBUG] Starting:', url);
   try {
     const { default: fetch } = await import('node-fetch');
     const start = Date.now();
@@ -3562,7 +3563,10 @@ async function checkWebsite(url) {
       }
     });
     const ms = Date.now() - start;
+    console.log('[Agent2-DEBUG] Status:', res.status);
     const html = await res.text();
+    console.log('[Agent2-DEBUG] HTML length:', html.length);
+    console.log('[Agent2-DEBUG] All email matches:', html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g));
 
     const hasViewport   = /<meta[^>]+viewport/i.test(html);
     const hasHttps      = url.startsWith('https://');
@@ -5110,6 +5114,47 @@ app.get('/api/replies/new', (req, res) => {
     writeJSON('stats.json', { ...stats, newReplies: [] });
   }
   res.json({ newReplies });
+});
+
+// ── Test scraper endpoint ──────────────────────────────────────────────────────
+app.get('/api/test-scrape', requireAdmin, async (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.status(400).json({ error: 'url query param required' });
+  try {
+    const { default: fetch } = await import('node-fetch');
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'nl-NL,nl;q=0.9,en;q=0.8'
+    };
+    const r = await fetch(url, { timeout: 10000, headers });
+    const html = await r.text();
+    const allEmails = html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
+    const mailtoEmails = [...html.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1]);
+
+    // MX check for each unique email domain
+    const domains = [...new Set(allEmails.map(e => e.split('@')[1]))];
+    const mxResults = {};
+    for (const d of domains.slice(0, 5)) {
+      try {
+        const mx = await dnsPromises.resolveMx(d);
+        mxResults[d] = { records: mx.length, valid: mx.length > 0 };
+      } catch (e) {
+        mxResults[d] = { error: e.code || e.message };
+      }
+    }
+
+    res.json({
+      url,
+      status: r.status,
+      htmlLength: html.length,
+      mailtoEmails,
+      allEmailsFound: [...new Set(allEmails)],
+      mxCheck: mxResults
+    });
+  } catch (err) {
+    res.json({ url, error: err.message });
+  }
 });
 
 app.get('/api/activity', requireAdmin, (req, res) => {
