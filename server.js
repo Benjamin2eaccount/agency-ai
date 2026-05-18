@@ -3897,12 +3897,33 @@ async function aiWebSearch(prompt) {
   throw new Error('Web search: geen resultaat na 10 rondes');
 }
 
+function extractJSON(text) {
+  // 1. Strip code fences then try direct parse
+  try {
+    const clean = text
+      .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    return JSON.parse(clean);
+  } catch {}
+
+  // 2. Find JSON array anywhere in the text
+  const arrMatch = text.match(/\[[\s\S]*\]/);
+  if (arrMatch) {
+    try { return JSON.parse(arrMatch[0]); } catch {}
+  }
+
+  // 3. Find single JSON object and wrap in array
+  const objMatch = text.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try { return [JSON.parse(objMatch[0])]; } catch {}
+  }
+
+  console.error('[JSON] Could not parse response:', text.substring(0, 300));
+  throw new Error('JSON parse mislukt');
+}
+
 async function aiWebSearchJSON(prompt) {
   const text = await aiWebSearch(prompt);
-  try { return parseJsonFromText(text); } catch (e) {
-    console.error('[aiWebSearchJSON] Parse failed. Raw (500):', text.substring(0, 500));
-    throw e;
-  }
+  return extractJSON(text);
 }
 
 // â"€â"€â"€ Website checker (Agent 2) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -4600,7 +4621,14 @@ Return ONLY a JSON array, no explanation:
   "subNiche": "${randomNiche}",
   "estimatedFollowers": 0,
   "companySize": "small"
-}]${alreadySeen}`;
+}]
+
+CRITICAL: Your response must be ONLY a JSON array.
+No explanation, no thinking, no commentary.
+Start your response with [ and end with ]
+If you cannot find ${batchSize} businesses with emails, return whatever you found as JSON.
+Example format:
+[{"companyName":"Example","websiteUrl":"https://example.com","email":"info@example.com","location":"${randomCity}","country":"NL","niche":"beauty","instagramHandle":"@example","estimatedFollowers":5000}]${alreadySeen}`;
 
     // 7s between web-search calls to stay under the 10/min rate limit
     if (attempts > 0) await new Promise(r => setTimeout(r, 7000));
@@ -4612,11 +4640,10 @@ Return ONLY a JSON array, no explanation:
       if (!Array.isArray(batch)) batch = [batch];
       batch = batch.slice(0, batchSize);
     } catch (err) {
-      console.error(`[Agent 1] Web search batch mislukt:`, err.message);
-      logError('agent1', `Agent 1 web search mislukt`, err.message);
-      if (found === 0) throw new Error(`Agent 1 (Lead Finder) mislukt: ${err.message}`);
+      console.error(`[Agent 1] Batch mislukt:`, err.message);
+      logError('agent1', 'Agent 1 batch mislukt', err.message);
       attempts += batchSize;
-      continue;
+      continue; // try next batch, don't crash the run
     }
 
     // Deduplicate within and across batches
