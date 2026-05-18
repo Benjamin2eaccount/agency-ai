@@ -7030,38 +7030,13 @@ async function renderSettings() {
 
         <div class="stg-section">
           <div class="stg-section-header">
-            <div class="stg-title">Slimme auto-approve</div>
-            <div class="stg-sub">Alle actieve voorwaarden moeten kloppen voor automatische goedkeuring</div>
+            <div class="stg-title">Goedkeuring</div>
           </div>
-          <div class="stg-toggle-row" style="margin-bottom:14px">
-            <label class="toggle-wrap">
-              <input type="checkbox" id="smartAutoEnabled" ${s.smartAutoApprove?.enabled ? 'checked' : ''}>
-              <span class="toggle"></span>
-              <span class="toggle-label" style="font-weight:600">Auto-approve inschakelen</span>
-            </label>
-          </div>
-          <div class="stg-grid-2">
-            <div class="stg-field">
-              <label class="stg-label">SCORE DREMPEL ≥ <span id="scoreVal">${s.smartAutoApprove?.scoreThreshold || s.autoApproveScore || 8.0}</span></label>
-              <input type="range" id="autoApproveScore" min="7" max="9.5" step="0.5" value="${s.smartAutoApprove?.scoreThreshold || s.autoApproveScore || 8.0}" oninput="document.getElementById('scoreVal').textContent=this.value">
-            </div>
-            <div class="stg-field">
-              <label class="stg-label">MINIMUM VOLGERS</label>
-              <input type="number" class="stg-input" id="smartMinFollowers" value="${s.smartAutoApprove?.minFollowers ?? 5000}" min="0" step="500">
-            </div>
-            <div class="stg-field">
-              <label class="toggle-wrap">
-                <input type="checkbox" id="smartRequireNoAds" ${s.smartAutoApprove?.requireNoAds !== false ? 'checked' : ''}>
-                <span class="toggle"></span>
-                <span class="toggle-label">Geen advertenties</span>
-              </label>
-            </div>
-            <div class="stg-field">
-              <label class="toggle-wrap">
-                <input type="checkbox" id="smartRequireWebsite" ${s.smartAutoApprove?.requireWebsite !== false ? 'checked' : ''}>
-                <span class="toggle"></span>
-                <span class="toggle-label">Heeft website</span>
-              </label>
+          <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 16px;background:var(--accent-light);border:1px solid var(--accent);border-radius:var(--radius);color:var(--accent)">
+            <i class="ti ti-shield-check" style="font-size:18px;flex-shrink:0;margin-top:1px"></i>
+            <div>
+              <div style="font-weight:600;font-size:14px;margin-bottom:4px">Handmatige goedkeuring ingeschakeld</div>
+              <div style="font-size:13px;opacity:0.85">Alle leads gaan naar de inbox en wachten op jouw goedkeuring. Geen enkele lead of email wordt automatisch verstuurd.</div>
             </div>
           </div>
         </div>
@@ -7642,17 +7617,9 @@ function attachSettingsHandlers(s) {
     const body = {
       dailyRunTime: document.getElementById('dailyRunTime').value,
       leadsPerDay: parseInt(document.querySelector('input[name="leadsPerDay"]:checked')?.value || 15),
-      autoApproveScore: parseFloat(document.getElementById('autoApproveScore').value),
       automationPaused: document.getElementById('automationPaused').checked,
       dailyBriefingEnabled: document.getElementById('dailyBriefingEnabled').checked,
       dailyBriefingTime: document.getElementById('dailyBriefingTime').value,
-      smartAutoApprove: {
-        enabled:         document.getElementById('smartAutoEnabled').checked,
-        scoreThreshold:  parseFloat(document.getElementById('autoApproveScore').value),
-        requireNoAds:    document.getElementById('smartRequireNoAds').checked,
-        minFollowers:    parseInt(document.getElementById('smartMinFollowers').value) || 0,
-        requireWebsite:  document.getElementById('smartRequireWebsite').checked
-      },
       monthlyReports: document.getElementById('monthlyReports').checked,
       backupEnabled: document.getElementById('backupEnabled').checked,
       backupTime:    document.getElementById('backupTime').value,

@@ -3659,7 +3659,7 @@ async function processOneLead(lead, settings) {
     console.log(`  ✗ Duplicaat overgeslagen: ${lead.companyName} (bestaat al als ${dup.status})`);
     return null;
   }
-  const { services = [], myName = '', agencyName = 'Agency AI', autoApproveScore = 8.0 } = settings;
+  const { services = [], myName = '', agencyName = 'Agency AI' } = settings;
 
   const c = (lead.country || '').toLowerCase().replace(/[^a-z]/g, '');
   const language = (
@@ -4095,20 +4095,7 @@ Rules:
     website, social, email, emailA, emailB, subjectOptions, linkedinDm, voicenoteScript, competitors,
     sendOptimalTime: getOptimalSendTime(lead.niche), createdAt: now
   };
-  // Smart auto-approve: check all configured conditions
-  const sap = settings.smartAutoApprove || {};
-  let shouldAutoApprove = false;
-  if (sap.enabled) {
-    const scoreOk     = item.score >= (sap.scoreThreshold || 8.0);
-    const noAdsOk     = !sap.requireNoAds  || !(social.runningAds === true);
-    const followersOk = !sap.minFollowers  || (lead.estimatedFollowers || 0) >= sap.minFollowers;
-    const websiteOk   = !sap.requireWebsite || !!lead.websiteUrl;
-    shouldAutoApprove = scoreOk && noAdsOk && followersOk && websiteOk;
-  } else {
-    // Legacy: score-only
-    shouldAutoApprove = item.score >= autoApproveScore;
-  }
-  if (shouldAutoApprove) item.status = 'auto-approved';
+  // Every lead goes to inbox for manual approval — no auto-approve
 
   const leadRecord = {
     id, companyName: lead.companyName, niche: lead.niche, subNiche: lead.subNiche || null, location: lead.location,
@@ -4155,7 +4142,6 @@ async function runFindLeadsJob(overrides = {}) {
   const myName     = settings.myName     || 'Ekow';
   const agencyName = settings.agencyName || 'Agency AI';
   console.log('[Run] Target leads:', count, '| Services:', services.length, '| myName:', myName);
-  const autoScore  = settings.autoApproveScore || 8.0;
 
   // Build niche targeting list from settings or overrides
   const targetSubNiches = settings.targetSubNiches || [];
@@ -4274,8 +4260,7 @@ Geef exact ${batchSize} bedrijven.${alreadySeen}`;
       inboxItems.push(item);
       newLeads.push(leadRecord);
       found++;
-      if (item.status === 'auto-approved') console.log(`  ✓ Auto-goedgekeurd (score ${item.score} >= ${autoScore})`);
-      console.log(`  ✓ Klaar — score: ${item.score}, waarde: €${item.estimatedValue}`);
+      console.log(`  ✓ Klaar — score: ${item.score}, waarde: €${item.estimatedValue} → inbox (wacht op goedkeuring)`);
     }
   }
 
@@ -4317,7 +4302,7 @@ Geef exact ${batchSize} bedrijven.${alreadySeen}`;
     id: Date.now().toString(),
     createdAt: new Date().toISOString(),
     leadsFound: inboxItems.length,
-    autoApproved: inboxItems.filter(i => i.status === 'auto-approved').length,
+    autoApproved: 0,
     totalValue
   });
   if (runs.length > 100) runs.splice(100);
@@ -4335,7 +4320,7 @@ Geef exact ${batchSize} bedrijven.${alreadySeen}`;
   writeJSON('stats.json', statsAft);
 
   if (inboxItems.length > 0) {
-    const pendingCount = inboxItems.filter(i => i.status !== 'auto-approved').length;
+    const pendingCount = inboxItems.length;
     const highScoreCount = inboxItems.filter(i => i.score >= 8).length;
     addNotification('run_complete', `Run klaar: ${inboxItems.length} leads gevonden`,
       `${pendingCount} wachten op goedkeuring${highScoreCount > 0 ? ` · ${highScoreCount} met score 8+` : ''}`);
@@ -5427,7 +5412,7 @@ async function sendDailyBriefing() {
   const leads  = readJSON('leads.json') || [];
   const stats  = readJSON('stats.json') || {};
 
-  const pending = inbox.filter(i => i.status === 'pending' || i.status === 'auto-approved');
+  const pending = inbox.filter(i => i.status === 'pending');
   const top3    = [...leads]
     .filter(l => l.score)
     .sort((a, b) => (b.score || 0) - (a.score || 0))
