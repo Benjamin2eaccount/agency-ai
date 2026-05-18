@@ -3018,6 +3018,20 @@ function openLeadDetail(id) {
           </div>
         </div>
         ` : ''}
+
+        ${Object.keys(lead.delivery.serviceDeliveries || {}).length ? `
+        <div style="margin-top:12px">
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:8px">Service Leveringen (${Object.keys(lead.delivery.serviceDeliveries).length})</div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            ${Object.entries(lead.delivery.serviceDeliveries).map(([name, del]) => `
+              <div style="padding:8px 10px;background:${del.error ? '#fef2f2' : '#f9fafb'};border:1px solid ${del.error ? '#fecaca' : 'var(--border)'};border-radius:7px;font-size:12px;display:flex;justify-content:space-between;align-items:center">
+                <span style="font-weight:600;color:${del.error ? '#dc2626' : '#111'}">${del.error ? '⚠ ' : '✓ '}${esc(name)}</span>
+                ${!del.error ? `<button class="btn btn-ghost btn-sm" onclick="previewServiceDelivery('${lead.id}','${name.replace(/'/g,"\\'")}')">Bekijk</button>` : ''}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        ` : ''}
       </div>
       ` : ''}
     </div>
@@ -4045,6 +4059,7 @@ function generateDelivery(leadId) {
     { label: 'Content kalender genereren (maand 1, 20 posts)' },
     { label: 'Chatbot FAQ flow genereren (12 Q&A)' },
     { label: 'Projectmijlpalen uitwerken (12 weken)' },
+    { label: 'Service-specifieke leveringen genereren' },
     { label: 'Opslaan & klant notificeren' },
   ];
 
@@ -4123,6 +4138,19 @@ function generateDelivery(leadId) {
 }
 
 // ─── Website Generator ────────────────────────────────────────────────────────
+
+function previewServiceDelivery(leadId, svcName) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead) return;
+  const del = lead.delivery?.serviceDeliveries?.[svcName];
+  if (!del || !del.html) return;
+  openModal(svcName, `
+    <div style="max-height:70vh;overflow:auto;padding:4px 0">
+      <div style="font-size:11px;color:#9ca3af;margin-bottom:12px">Gegenereerd: ${del.generatedAt ? new Date(del.generatedAt).toLocaleString('nl-NL') : '—'}</div>
+      ${del.html}
+    </div>
+  `, { wide: true });
+}
 
 function generateSite(leadId) {
   const steps = [

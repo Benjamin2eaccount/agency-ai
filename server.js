@@ -39,7 +39,28 @@ const DEFAULT_SERVICES = [
   { name: 'WhatsApp Business automatisering',     price: 295,  billing: 'maandelijks', description: 'Geautomatiseerde WhatsApp berichten voor leads en klantenservice' },
   { name: 'AI video content creatie',             price: 595,  billing: 'maandelijks', description: 'Reels, TikToks en Shorts scripts en productie met AI' },
   { name: 'Reputatie management (reviews)',       price: 275,  billing: 'maandelijks', description: 'Automatisch reageren op Google en Facebook reviews met AI' },
-  { name: 'Analytics & rapportage dashboard',     price: 375,  billing: 'eenmalig',    description: 'Volledig KPI-rapportage dashboard op maat opgezet en geconfigureerd' }
+  { name: 'Analytics & rapportage dashboard',     price: 375,  billing: 'eenmalig',    description: 'Volledig KPI-rapportage dashboard op maat opgezet en geconfigureerd' },
+  // ── AI-deliverable content services ──────────────────────────────────────────
+  { name: 'Maandelijkse content kalender',        price: 199,  billing: 'maandelijks', description: '20 posts + captions + hashtags per maand, AI gegenereerd op maat' },
+  { name: 'Instagram Reels scripts',              price: 149,  billing: 'maandelijks', description: '8 Reels scripts per maand met hooks, tekst en CTA' },
+  { name: 'Blog artikelen schrijven',             price: 249,  billing: 'maandelijks', description: '4 SEO geoptimaliseerde blog artikelen per maand' },
+  { name: 'Email nieuwsbrief reeks',              price: 179,  billing: 'maandelijks', description: '4 nieuwsbrieven per maand, geschreven en klaar om te versturen' },
+  { name: 'Website teksten schrijven',            price: 349,  billing: 'eenmalig',    description: 'Volledige website teksten: home, over ons, diensten, contact' },
+  { name: 'SEO teksten optimaliseren',            price: 299,  billing: 'eenmalig',    description: 'Alle pagina teksten SEO geoptimaliseerd met meta titles en descriptions' },
+  { name: 'Chatbot script voor website',          price: 199,  billing: 'eenmalig',    description: 'Volledig chatbot script met 15+ Q&A paren en lead capture flow' },
+  { name: 'Concurrentieanalyse rapport',          price: 149,  billing: 'eenmalig',    description: 'Uitgebreide analyse van 3 concurrenten met verbeterpunten' },
+  { name: 'Social media audit',                   price: 99,   billing: 'eenmalig',    description: 'Volledig audit rapport van Instagram/Facebook met actieplan' },
+  { name: 'Google Ads teksten',                   price: 199,  billing: 'eenmalig',    description: '10 advertentievarianten met headlines, descriptions en CTA' },
+  { name: 'Facebook Ad copy',                     price: 199,  billing: 'eenmalig',    description: '5 complete Facebook/Instagram advertentie teksten' },
+  { name: 'Email autoresponder reeks',            price: 299,  billing: 'eenmalig',    description: '7-delige welkomst email reeks voor nieuwe klanten of leads' },
+  { name: 'Product beschrijvingen',               price: 249,  billing: 'eenmalig',    description: '20 SEO geoptimaliseerde product beschrijvingen voor webshop' },
+  { name: 'Pitch deck teksten',                   price: 199,  billing: 'eenmalig',    description: 'Volledige presentatie teksten voor investor of klant pitch' },
+  { name: 'Privacy policy + algemene voorwaarden', price: 149, billing: 'eenmalig',    description: 'GDPR-compliant privacy policy en algemene voorwaarden op maat' },
+  { name: 'Google Bedrijfsprofiel content',       price: 99,   billing: 'eenmalig',    description: 'Volledige optimalisatie teksten voor Google Maps profiel' },
+  { name: 'Verlaten winkelwagen emails',          price: 179,  billing: 'eenmalig',    description: '3-delige email reeks voor verlaten winkelwagens' },
+  { name: 'Over ons pagina schrijven',            price: 149,  billing: 'eenmalig',    description: 'Professionele over ons pagina die vertrouwen wekt' },
+  { name: 'FAQ pagina schrijven',                 price: 99,   billing: 'eenmalig',    description: '20 veelgestelde vragen met uitgebreide antwoorden' },
+  { name: 'Nieuwsbrief template ontwerpen',       price: 149,  billing: 'eenmalig',    description: 'HTML email template op maat voor nieuwsbrieven' }
 ];
 
 // Auto-create data directory (database.js handles SQLite init)
@@ -2065,13 +2086,276 @@ Antwoord ALLEEN als JSON: { "milestones": [{ "week": 1, "title": "string", "desc
     } catch { milestones = { milestones: [] }; }
     send(3, 'Projectmijlpalen uitwerken', 'done');
 
-    // Step 4 — Save and notify
-    send(4, 'Opslaan & klant notificeren', 'running');
+    // Step 4 — Service-specific deliveries
+    send(4, 'Service leveringen genereren', 'running');
+    const serviceDeliveries = {};
+    const SD_SERVICES = new Set([
+      'Maandelijkse content kalender','Instagram Reels scripts','Blog artikelen schrijven',
+      'Email nieuwsbrief reeks','Website teksten schrijven','SEO teksten optimaliseren',
+      'Chatbot script voor website','Concurrentieanalyse rapport','Social media audit',
+      'Google Ads teksten','Facebook Ad copy','Email autoresponder reeks',
+      'Product beschrijvingen','Pitch deck teksten','Privacy policy + algemene voorwaarden',
+      'Google Bedrijfsprofiel content','Verlaten winkelwagen emails',
+      'Over ons pagina schrijven','FAQ pagina schrijven','Nieuwsbrief template ontwerpen'
+    ]);
+    const leadServicesToGenerate = (lead.services || []).map(s => s.name.trim()).filter(n => SD_SERVICES.has(n));
+    console.log(`[Delivery] Service leveringen: ${leadServicesToGenerate.join(', ') || 'geen'}`);
+
+    for (const svcName of leadServicesToGenerate) {
+      try {
+        console.log(`[Delivery] Genereren: ${svcName}...`);
+        const co = lead.companyName, ni = lead.niche, lo = lead.location;
+        let html = '';
+
+        switch (svcName) {
+
+          case 'Maandelijkse content kalender': {
+            const d = await aiJSON(`Maak een content kalender voor ${co} (${ni}, ${lo}) voor een volledige maand.${intakeContext}
+Maak precies 20 Instagram posts, verspreid over 30 dagen.
+Geef ALLEEN JSON: { "month":"Maand 1","posts":[{"day":1,"date":"ma 2 juni","type":"foto/carousel/reel","topic":"string","caption":"volledig klaar om te posten (100-150 woorden, emoji, professioneel)","hashtags":["#tag1","#tag2","#tag3","#tag4","#tag5"],"visual":"korte visuele beschrijving"}] }`);
+            const posts = (d.posts||d.items||[]).slice(0,20);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 12px">Content Kalender — ${d.month||'Maand 1'}</h2>
+<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f3f4f6"><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Dag</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Type</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Onderwerp</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Caption</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Hashtags</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Visual</th></tr></thead><tbody>
+${posts.map(p=>`<tr><td style="padding:7px;border:1px solid #e5e7eb;font-weight:700;color:#6366f1;white-space:nowrap">${p.date||`Dag ${p.day}`}</td><td style="padding:7px;border:1px solid #e5e7eb"><span style="background:#eef2ff;color:#6366f1;border-radius:3px;padding:1px 5px">${p.type||''}</span></td><td style="padding:7px;border:1px solid #e5e7eb;font-weight:600">${p.topic||''}</td><td style="padding:7px;border:1px solid #e5e7eb;line-height:1.5;color:#374151">${p.caption||''}</td><td style="padding:7px;border:1px solid #e5e7eb;color:#6366f1">${(p.hashtags||[]).join(' ')}</td><td style="padding:7px;border:1px solid #e5e7eb;color:#6b7280;font-style:italic">${p.visual||''}</td></tr>`).join('')}
+</tbody></table>`;
+            break;
+          }
+
+          case 'Instagram Reels scripts': {
+            const d = await aiJSON(`Maak 8 Instagram Reels scripts voor ${co} (${ni}, ${lo}).${intakeContext}
+Geef ALLEEN JSON: {"scripts":[{"nummer":1,"titel":"string","hook":"eerste 3 sec (max 15 woorden)","inhoud":["Stap 1","Stap 2","Stap 3"],"cta":"string","muziek":"aanbevolen stijl","duur":"15/30/60 sec"}]}`);
+            const scripts = (d.scripts||[]).slice(0,8);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Instagram Reels Scripts</h2><div style="display:flex;flex-direction:column;gap:14px">
+${scripts.map(s=>`<div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><strong style="font-size:13px">Reel ${s.nummer}: ${s.titel}</strong><span style="background:#fefce8;color:#d97706;border-radius:4px;padding:2px 7px;font-size:11px">${s.duur}</span></div><div style="background:#fef2f2;border-left:3px solid #ef4444;padding:8px 11px;margin-bottom:8px;border-radius:0 6px 6px 0"><strong style="font-size:10px;color:#dc2626;text-transform:uppercase">Hook (eerste 3 sec)</strong><p style="margin:3px 0 0;font-size:13px;font-weight:700">"${s.hook}"</p></div><ul style="margin:0 0 8px;padding-left:18px">${(s.inhoud||[]).map(i=>`<li style="font-size:13px;color:#374151;margin-bottom:3px">${i}</li>`).join('')}</ul><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:#f0fdf4;border-radius:5px;padding:5px 9px;font-size:12px"><b>CTA:</b> ${s.cta}</span><span style="background:#f0f9ff;border-radius:5px;padding:5px 9px;font-size:12px"><b>Muziek:</b> ${s.muziek}</span></div></div>`).join('')}
+</div>`;
+            break;
+          }
+
+          case 'Blog artikelen schrijven': {
+            const d = await aiJSON(`Schrijf 4 volledige blog artikelen voor ${co} (${ni}, ${lo}).${intakeContext}
+Geef ALLEEN JSON: {"articles":[{"nummer":1,"seoTitle":"max 60 tekens","metaDescription":"max 155 tekens","keyword":"string","body":"volledig artikel in HTML met h2/h3/p (600-800 woorden)","internalLinks":["suggestie1","suggestie2"]}]}`);
+            const articles = (d.articles||[]).slice(0,4);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Blog Artikelen (4 stuks)</h2><div style="display:flex;flex-direction:column;gap:20px">
+${articles.map(a=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:12px 16px;border-bottom:1px solid #e5e7eb"><div style="font-size:14px;font-weight:700;margin-bottom:3px">${a.seoTitle}</div><div style="font-size:12px;color:#6b7280;margin-bottom:5px">${a.metaDescription}</div><span style="background:#eef2ff;color:#6366f1;border-radius:4px;padding:1px 6px;font-size:11px">Keyword: ${a.keyword}</span></div><div style="padding:16px;font-size:13px;line-height:1.7;color:#374151">${a.body||''}</div>${a.internalLinks?.length?`<div style="padding:8px 16px;background:#fffbeb;border-top:1px solid #fef3c7;font-size:12px"><b>Interne links:</b> ${(a.internalLinks||[]).join(', ')}</div>`:''}</div>`).join('')}
+</div>`;
+            break;
+          }
+
+          case 'Email nieuwsbrief reeks': {
+            const d = await aiJSON(`Schrijf 4 nieuwsbrieven voor ${co} (${ni}, ${lo}).${intakeContext}
+Geef ALLEEN JSON: {"newsletters":[{"nummer":1,"subjectA":"string","subjectB":"A/B variant","preview":"max 90 tekens","body":"HTML nieuwsbrief (inline styles, email-safe)","cta":"knoptekst"}]}`);
+            const nl = (d.newsletters||[]).slice(0,4);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Email Nieuwsbrief Reeks (4 stuks)</h2><div style="display:flex;flex-direction:column;gap:16px">
+${nl.map(n=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:12px 16px;border-bottom:1px solid #e5e7eb"><b>Nieuwsbrief ${n.nummer}</b><br><span style="font-size:13px"><b>Subject A:</b> ${n.subjectA}</span><br><span style="font-size:13px"><b>Subject B:</b> ${n.subjectB}</span><br><span style="font-size:12px;color:#6b7280"><b>Preview:</b> ${n.preview}</span></div><div style="padding:16px;font-size:13px;line-height:1.7">${n.body||''}</div><div style="padding:8px 16px;background:#f0fdf4;border-top:1px solid #bbf7d0;font-size:13px"><b>CTA knop:</b> ${n.cta}</div></div>`).join('')}
+</div>`;
+            break;
+          }
+
+          case 'Website teksten schrijven': {
+            const d = await aiJSON(`Schrijf volledige website teksten voor ${co} (${ni}, ${lo}).${intakeContext}
+Geef ALLEEN JSON: {"homepage":{"hero":{"headline":"max 10 woorden","subheadline":"max 20 woorden","ctaButton":"string"},"about":"3-4 zinnen","services":[{"title":"string","description":"2-3 zinnen"}],"cta":{"headline":"string","subtext":"string","button":"string"}},"aboutPage":{"title":"string","intro":"2 alineas","values":[{"title":"string","text":"string"}]},"servicesPage":{"title":"string","intro":"string","services":[{"name":"string","description":"string"}]},"contactPage":{"title":"string","intro":"string","formLabels":{"name":"string","email":"string","message":"string","submit":"string"}}}`);
+            const h=d.homepage||{},a=d.aboutPage||{},s=d.servicesPage||{},c=d.contactPage||{};
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 16px">Website Teksten — ${co}</h2><div style="display:flex;flex-direction:column;gap:16px">
+<section style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#6366f1;padding:9px 16px"><b style="color:#fff;font-size:12px">HOMEPAGE</b></div><div style="padding:16px"><div style="margin-bottom:10px"><b>Hero:</b> <span style="font-size:16px;font-weight:700">${h.hero?.headline||''}</span> <span style="color:#6b7280;font-size:13px">— ${h.hero?.subheadline||''}</span></div><div style="margin-bottom:10px"><b>Over ons:</b><p style="color:#374151;font-size:13px;margin:4px 0">${h.about||''}</p></div>${(h.services||[]).map(sv=>`<div style="margin-bottom:7px;padding:7px;background:#f9fafb;border-radius:5px"><b style="font-size:13px">${sv.title}</b><br><span style="font-size:12px;color:#374151">${sv.description}</span></div>`).join('')}</div></section>
+<section style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#0891b2;padding:9px 16px"><b style="color:#fff;font-size:12px">OVER ONS</b></div><div style="padding:16px;font-size:13px;line-height:1.7;color:#374151"><b style="font-size:14px;color:#111">${a.title||''}</b><p>${a.intro||''}</p>${(a.values||[]).map(v=>`<div style="margin-bottom:6px"><b>${v.title}</b> — ${v.text}</div>`).join('')}</div></section>
+<section style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#059669;padding:9px 16px"><b style="color:#fff;font-size:12px">DIENSTEN</b></div><div style="padding:16px;font-size:13px;color:#374151"><b style="font-size:14px;color:#111">${s.title||''}</b><p>${s.intro||''}</p>${(s.services||[]).map(sv=>`<div style="margin-bottom:10px;padding:8px;background:#f9fafb;border-radius:5px"><b>${sv.name}</b><p style="margin:3px 0 0;font-size:12px">${sv.description}</p></div>`).join('')}</div></section>
+<section style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#d97706;padding:9px 16px"><b style="color:#fff;font-size:12px">CONTACT</b></div><div style="padding:16px;font-size:13px"><b style="font-size:14px;color:#111">${c.title||''}</b><p>${c.intro||''}</p>${c.formLabels?`<div style="background:#f9fafb;padding:8px;border-radius:5px;font-size:12px">Naam: ${c.formLabels.name||''} | Email: ${c.formLabels.email||''} | Knop: ${c.formLabels.submit||''}</div>`:''}</div></section>
+</div>`;
+            break;
+          }
+
+          case 'SEO teksten optimaliseren': {
+            const d = await aiJSON(`Optimaliseer SEO teksten voor ${co} (${ni}, ${lo}).${intakeContext}
+Geef ALLEEN JSON: {"pages":[{"pagina":"Homepage","geoptimaliseerdeTitle":"50-60 tekens","metaDescription":"150-160 tekens","h1":"string","keywords":["kw1","kw2","kw3"],"verbeterpunten":["punt1","punt2"]}]}`);
+            const pages = (d.pages||[]);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">SEO Optimalisatie — ${co}</h2><div style="display:flex;flex-direction:column;gap:12px">
+${pages.map(p=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:10px 14px;border-bottom:1px solid #e5e7eb;font-weight:700;font-size:13px">${p.pagina}</div><div style="padding:12px 14px"><div style="margin-bottom:8px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">Title Tag (${(p.geoptimaliseerdeTitle||'').length}/60)</span><div style="font-size:13px;color:#1d4ed8;text-decoration:underline;margin-top:2px">${p.geoptimaliseerdeTitle}</div></div><div style="margin-bottom:8px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">Meta Description (${(p.metaDescription||'').length}/160)</span><div style="font-size:12px;color:#374151;margin-top:2px">${p.metaDescription}</div></div><div style="margin-bottom:8px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">H1</span><div style="font-size:13px;font-weight:700;margin-top:2px">${p.h1}</div></div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${(p.keywords||[]).map(k=>`<span style="background:#eef2ff;color:#6366f1;border-radius:3px;padding:2px 6px;font-size:11px">${k}</span>`).join('')}</div><ul style="margin:0;padding-left:16px">${(p.verbeterpunten||[]).map(v=>`<li style="font-size:12px;color:#374151;margin-bottom:2px">${v}</li>`).join('')}</ul></div></div>`).join('')}
+</div>`;
+            break;
+          }
+
+          case 'Chatbot script voor website': {
+            const d = await aiJSON(`Maak chatbot script voor ${co} (${ni}, ${lo}).${intakeContext}
+Geef ALLEEN JSON: {"welkom":"string","buiten_openingstijden":"string","faqs":[{"vraag":"string","antwoord":"string","categorie":"string","followUp":"string optioneel"}],"leadCapture":{"triggerZin":"string","vragen":["Naam?","Email?","Vraag?"],"bevestiging":"string"}}`);
+            const faqs = (d.faqs||[]).slice(0,15);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Chatbot Script — ${co}</h2><div style="display:flex;flex-direction:column;gap:12px">
+<div style="border:2px solid #6366f1;border-radius:8px;padding:12px"><div style="font-size:10px;color:#6366f1;text-transform:uppercase;font-weight:700;margin-bottom:5px">Welkomstbericht</div><div style="font-size:13px">"${d.welkom||''}"</div></div>
+<div style="border:1px solid #fde68a;border-radius:8px;padding:12px;background:#fefce8"><div style="font-size:10px;color:#d97706;text-transform:uppercase;font-weight:700;margin-bottom:5px">Buiten openingstijden</div><div style="font-size:13px">"${d.buiten_openingstijden||''}"</div></div>
+<div><div style="font-size:12px;font-weight:700;margin-bottom:7px">Q&A Paren (${faqs.length})</div>${faqs.map((f,i)=>`<div style="border:1px solid #e5e7eb;border-radius:7px;margin-bottom:6px;overflow:hidden"><div style="background:#f9fafb;padding:7px 11px;font-weight:700;font-size:12px"><span style="background:#6366f1;color:#fff;border-radius:3px;padding:1px 5px;font-size:10px;margin-right:5px">${i+1}</span>${f.vraag}</div><div style="padding:7px 11px;font-size:12px;color:#374151;line-height:1.5">${f.antwoord}</div>${f.followUp?`<div style="padding:5px 11px;background:#f0f9ff;font-size:11px;color:#0369a1;border-top:1px solid #e0f2fe">→ ${f.followUp}</div>`:''}</div>`).join('')}</div>
+${d.leadCapture?`<div style="border:1px solid #bbf7d0;border-radius:8px;padding:12px;background:#f0fdf4"><div style="font-size:10px;color:#16a34a;text-transform:uppercase;font-weight:700;margin-bottom:6px">Lead Capture</div><div style="font-size:12px;margin-bottom:4px"><b>Trigger:</b> "${d.leadCapture.triggerZin}"</div><div style="font-size:12px;margin-bottom:4px"><b>Vragen:</b> ${(d.leadCapture.vragen||[]).join(' → ')}</div><div style="font-size:12px"><b>Bevestiging:</b> "${d.leadCapture.bevestiging}"</div></div>`:''}
+</div>`;
+            break;
+          }
+
+          case 'Concurrentieanalyse rapport': {
+            let rawText;
+            try { rawText = await aiWebSearch(`Zoek info over de 3 grootste concurrenten van ${co} in ${lo} (${ni}). Analyseer website, social media, sterke en zwakke punten. Geef ALLEEN JSON: {"concurrenten":[{"naam":"string","website":"string","sterkePunten":["string"],"zwakkePunten":["string"],"socialMedia":"string"}],"kansen":["string"],"actieplan":["string"]}`); }
+            catch { rawText = await aiCall(`Analyseer 3 concurrenten van ${co} (${ni}, ${lo}).${intakeContext} Geef ALLEEN JSON: {"concurrenten":[{"naam":"string","website":"string","sterkePunten":["string"],"zwakkePunten":["string"],"socialMedia":"string"}],"kansen":["string"],"actieplan":["string"]}`); }
+            let d = {}; try { d = parseJsonFromText(rawText); } catch {}
+            const comps = (d.concurrenten||[]).slice(0,3);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Concurrentieanalyse — ${co}</h2><div style="display:flex;flex-direction:column;gap:14px">
+${comps.map((c,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#${['374151','1e40af','7c2d12'][i]};padding:9px 16px"><b style="color:#fff">Concurrent ${i+1}: ${c.naam}</b></div><div style="padding:12px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><b style="font-size:10px;color:#16a34a;text-transform:uppercase">✓ Sterk</b><ul style="margin:4px 0 0;padding-left:15px">${(c.sterkePunten||[]).map(s=>`<li style="font-size:12px;margin-bottom:2px">${s}</li>`).join('')}</ul></div><div><b style="font-size:10px;color:#dc2626;text-transform:uppercase">✗ Zwak</b><ul style="margin:4px 0 0;padding-left:15px">${(c.zwakkePunten||[]).map(s=>`<li style="font-size:12px;margin-bottom:2px">${s}</li>`).join('')}</ul></div></div></div>`).join('')}
+${d.kansen?.length?`<div style="border:1px solid #bbf7d0;border-radius:8px;padding:14px;background:#f0fdf4"><b style="font-size:12px;color:#15803d">Kansen voor ${co}</b><ul style="margin:6px 0 0;padding-left:16px">${(d.kansen||[]).map(k=>`<li style="font-size:13px;margin-bottom:4px">${k}</li>`).join('')}</ul></div>`:''}
+${d.actieplan?.length?`<div style="border:1px solid #bfdbfe;border-radius:8px;padding:14px;background:#eff6ff"><b style="font-size:12px;color:#1d4ed8">Actieplan</b><ol style="margin:6px 0 0;padding-left:16px">${(d.actieplan||[]).map(a=>`<li style="font-size:13px;margin-bottom:4px">${a}</li>`).join('')}</ol></div>`:''}
+</div>`;
+            break;
+          }
+
+          case 'Social media audit': {
+            const handle = lead.instagramHandle || '@' + co.toLowerCase().replace(/\s+/g,'');
+            const d = await aiJSON(`Social media audit voor ${co} (${ni}, ${lo}). Instagram: ${handle}, volgers: ${lead.estimatedFollowers||'onbekend'}.${intakeContext}
+Geef ALLEEN JSON: {"score":7,"huidigeStatus":{"volgers":"string","engagement":"string","postFrequentie":"string"},"sterkePunten":["string"],"verbeterpunten":["string"],"contentGaps":["string"],"actiepunten":[{"prioriteit":"hoog/middel/laag","actie":"string","impact":"string"}]}`);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Social Media Audit — ${co}</h2>
+<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:8px"><div style="text-align:center"><div style="font-size:32px;font-weight:800;color:${(d.score||0)>=7?'#16a34a':(d.score||0)>=5?'#d97706':'#dc2626'}">${d.score||'?'}</div><div style="font-size:11px;color:#6b7280">Score /10</div></div><div style="flex:1;font-size:13px"><div><b>Volgers:</b> ${d.huidigeStatus?.volgers||handle}</div><div><b>Engagement:</b> ${d.huidigeStatus?.engagement||'?'}</div><div><b>Frequentie:</b> ${d.huidigeStatus?.postFrequentie||'?'}</div></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div style="border:1px solid #bbf7d0;border-radius:7px;padding:10px;background:#f0fdf4"><b style="font-size:10px;color:#16a34a;text-transform:uppercase">✓ Sterk</b><ul style="margin:5px 0 0;padding-left:15px">${(d.sterkePunten||[]).map(s=>`<li style="font-size:12px;margin-bottom:2px">${s}</li>`).join('')}</ul></div><div style="border:1px solid #fecaca;border-radius:7px;padding:10px;background:#fef2f2"><b style="font-size:10px;color:#dc2626;text-transform:uppercase">✗ Verbeter</b><ul style="margin:5px 0 0;padding-left:15px">${(d.verbeterpunten||[]).map(s=>`<li style="font-size:12px;margin-bottom:2px">${s}</li>`).join('')}</ul></div></div>
+${(d.actiepunten||[]).length?`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#111;padding:9px 14px"><b style="color:#fff;font-size:12px">Actiepunten</b></div>${(d.actiepunten||[]).slice(0,10).map(a=>`<div style="padding:9px 14px;border-bottom:1px solid #f3f4f6;display:flex;gap:8px;align-items:flex-start"><span style="background:${a.prioriteit==='hoog'?'#dc2626':a.prioriteit==='middel'?'#d97706':'#6b7280'};color:#fff;border-radius:3px;padding:1px 5px;font-size:10px;font-weight:700;flex-shrink:0">${a.prioriteit}</span><div><div style="font-size:12px;font-weight:600">${a.actie}</div><div style="font-size:11px;color:#6b7280">${a.impact}</div></div></div>`).join('')}</div>`:''}`;
+            break;
+          }
+
+          case 'Google Ads teksten': {
+            const d = await aiJSON(`Genereer 10 Google Ads varianten voor ${co} (${ni}, ${lo}).${intakeContext}
+Geef ALLEEN JSON: {"campagneNaam":"string","targetKeywords":["kw1","kw2"],"ads":[{"nummer":1,"headlines":["H1 max 30 tekens","H2","H3"],"descriptions":["D1 max 90 tekens","D2"],"displayUrl":"example.nl/dienst","doelgroep":"string"}]}`);
+            const ads = (d.ads||[]).slice(0,10);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 6px">Google Ads Teksten (10 varianten)</h2><div style="font-size:12px;color:#6b7280;margin-bottom:14px">${d.campagneNaam||co} | Keywords: ${(d.targetKeywords||[]).join(', ')}</div><div style="display:flex;flex-direction:column;gap:10px">
+${ads.map((ad,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:7px 12px;border-bottom:1px solid #e5e7eb;font-size:11px;font-weight:700;color:#6b7280">AD ${ad.nummer||i+1} — ${ad.doelgroep||''}</div><div style="padding:10px 12px"><div style="font-size:11px;color:#0369a1;margin-bottom:4px">● ${ad.displayUrl||''}</div>${(ad.headlines||[]).map(h=>`<div style="font-size:13px;color:#1d4ed8;font-weight:700">${h} <span style="font-size:10px;color:#9ca3af;font-weight:400">(${(h||'').length}/30)</span></div>`).join('')}<div style="height:4px"></div>${(ad.descriptions||[]).map(dd=>`<div style="font-size:12px;color:#374151;margin-bottom:3px">${dd} <span style="font-size:10px;color:#9ca3af">(${(dd||'').length}/90)</span></div>`).join('')}</div></div>`).join('')}
+</div>`;
+            break;
+          }
+
+          case 'Facebook Ad copy': {
+            const d = await aiJSON(`Schrijf 5 Facebook/Instagram advertentie teksten voor ${co} (${ni}, ${lo}).${intakeContext}
+Geef ALLEEN JSON: {"ads":[{"nummer":1,"doelgroep":"Koud/Warm","primaryText":"max 125 tekens","headline":"max 40 tekens","description":"max 30 tekens","cta":"SHOP_NOW/LEARN_MORE/CONTACT_US/BOOK_NOW","format":"Beeld/Video/Carrousel","tip":"creatieve tip"}]}`);
+            const ads = (d.ads||[]).slice(0,5);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Facebook Ad Copy (5 advertenties)</h2><div style="display:flex;flex-direction:column;gap:12px">
+${ads.map(ad=>`<div style="border:2px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#1877f2;padding:8px 14px;display:flex;justify-content:space-between;align-items:center"><b style="color:#fff;font-size:12px">Ad ${ad.nummer} — ${ad.doelgroep}</b><span style="background:rgba(255,255,255,.2);color:#fff;border-radius:3px;padding:2px 6px;font-size:11px">${ad.format}</span></div><div style="padding:12px 14px"><div style="margin-bottom:8px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">Primaire tekst (${(ad.primaryText||'').length}/125)</span><div style="font-size:12px;color:#374151;margin-top:2px">${ad.primaryText}</div></div><div style="background:#f9fafb;border-radius:6px;padding:9px;margin-bottom:8px"><div style="font-size:13px;font-weight:700">${ad.headline} <span style="font-size:10px;color:#9ca3af;font-weight:400">(${(ad.headline||'').length}/40)</span></div><div style="font-size:12px;color:#6b7280">${ad.description} (${(ad.description||'').length}/30)</div><span style="display:inline-block;background:#1877f2;color:#fff;border-radius:3px;padding:3px 9px;font-size:11px;font-weight:700;margin-top:5px">${ad.cta}</span></div><div style="font-size:11px;color:#6b7280;font-style:italic">💡 ${ad.tip}</div></div></div>`).join('')}
+</div>`;
+            break;
+          }
+
+          case 'Email autoresponder reeks': {
+            const d = await aiJSON(`Schrijf 7-delige email autoresponder voor ${co} (${ni}, ${lo}).${intakeContext}
+Emails: Dag 1 (Welkom), Dag 2 (Beste tip), Dag 3 (Succesverhaal), Dag 5 (Spotlight), Dag 7 (FAQ), Dag 10 (Aanbieding), Dag 14 (Check-in).
+Geef ALLEEN JSON: {"reeks":[{"dag":1,"onderwerp":"string","preview":"string","doel":"string","body":"300-400 woorden, persoonlijk en nuttig"}]}`);
+            const emails = (d.reeks||[]).slice(0,7);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Email Autoresponder (7 emails)</h2><div style="display:flex;flex-direction:column;gap:12px">
+${emails.map((e,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#0f172a;padding:9px 14px;display:flex;justify-content:space-between;align-items:center"><b style="color:#fff;font-size:12px">Email ${i+1} — Dag ${e.dag}</b><span style="background:#334155;color:#94a3b8;border-radius:3px;padding:2px 6px;font-size:11px">${e.doel||''}</span></div><div style="padding:12px 14px"><div style="margin-bottom:5px"><b style="font-size:12px">Subject:</b> ${e.onderwerp}</div><div style="margin-bottom:9px;font-size:11px;color:#6b7280"><b>Preview:</b> ${e.preview}</div><div style="font-size:12px;line-height:1.7;color:#374151;border-left:3px solid #e5e7eb;padding-left:10px">${(e.body||'').replace(/\n/g,'<br>')}</div></div></div>`).join('')}
+</div>`;
+            break;
+          }
+
+          case 'Product beschrijvingen': {
+            const d = await aiJSON(`Schrijf 20 SEO product beschrijvingen voor ${co} (${ni}, ${lo}).${intakeContext}
+Geef ALLEEN JSON: {"categorie":"string","producten":[{"naam":"string","seoTitle":"max 60 tekens","korteBeschrijving":"50 woorden","langeBeschrijving":"150 woorden SEO","kenmerken":["kw1","kw2","kw3","kw4","kw5"],"metaDescription":"max 155 tekens","keyword":"string"}]}`);
+            const products = (d.producten||[]).slice(0,20);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 6px">Product Beschrijvingen (${products.length})</h2><div style="font-size:12px;color:#6b7280;margin-bottom:14px">Categorie: ${d.categorie||ni}</div><div style="display:flex;flex-direction:column;gap:10px">
+${products.map((p,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:9px 12px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between"><b style="font-size:12px">${p.naam}</b><span style="background:#eef2ff;color:#6366f1;border-radius:3px;padding:1px 5px;font-size:11px">${p.keyword}</span></div><div style="padding:10px 12px"><div style="font-size:12px;font-weight:600;margin-bottom:5px">${p.seoTitle}</div><div style="font-size:12px;color:#374151;margin-bottom:5px;line-height:1.5">${p.korteBeschrijving}</div><div style="font-size:12px;color:#374151;margin-bottom:6px;line-height:1.6">${p.langeBeschrijving}</div><div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:5px">${(p.kenmerken||[]).map(k=>`<span style="background:#f3f4f6;border-radius:3px;padding:1px 6px;font-size:11px">✓ ${k}</span>`).join('')}</div><div style="font-size:11px;color:#6b7280;background:#f9fafb;padding:5px 7px;border-radius:4px">${p.metaDescription}</div></div></div>`).join('')}
+</div>`;
+            break;
+          }
+
+          case 'Pitch deck teksten': {
+            const d = await aiJSON(`Schrijf pitch deck voor ${co} (${ni}, ${lo}).${intakeContext}
+10-12 slides: Dekblad, Probleem, Oplossing, Product, Markt, Businessmodel, Tractie, Team, Financiën, CTA.
+Geef ALLEEN JSON: {"slides":[{"nummer":1,"titel":"string","type":"string","hoofdtekst":"string","bullets":["string"],"noot":"sprekersnoot"}]}`);
+            const slides = (d.slides||[]).slice(0,12);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Pitch Deck — ${co}</h2><div style="display:flex;flex-direction:column;gap:10px">
+${slides.map(s=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#0f172a;padding:9px 14px;display:flex;justify-content:space-between"><b style="color:#fff;font-size:12px">Slide ${s.nummer}: ${s.titel}</b><span style="background:#334155;color:#94a3b8;border-radius:3px;padding:2px 6px;font-size:11px">${s.type}</span></div><div style="padding:12px 14px"><div style="font-size:13px;margin-bottom:7px">${s.hoofdtekst||''}</div>${(s.bullets||[]).length?`<ul style="margin:0 0 7px;padding-left:16px">${(s.bullets||[]).map(b=>`<li style="font-size:12px;color:#374151;margin-bottom:3px">${b}</li>`).join('')}</ul>`:''} ${s.noot?`<div style="padding:7px;background:#f9fafb;border-radius:5px;font-size:11px;color:#6b7280;border-left:3px solid #6366f1;font-style:italic">🎤 ${s.noot}</div>`:''}</div></div>`).join('')}
+</div>`;
+            break;
+          }
+
+          case 'Privacy policy + algemene voorwaarden': {
+            const lang = lead.language || 'nl';
+            const d = await aiJSON(`Genereer GDPR-compliant juridische documenten voor ${co} (${lo}).${intakeContext}
+Taal: ${lang==='nl'?'Nederlands':'English'}. 6-8 artikelen per document.
+Geef ALLEEN JSON: {"privacyPolicy":{"titel":"string","artikelen":[{"nummer":1,"titel":"string","tekst":"string"}]},"algVoorwaarden":{"titel":"string","artikelen":[{"nummer":1,"titel":"string","tekst":"string"}]},"cookiePolicy":"volledige tekst"}`);
+            const pp=d.privacyPolicy||{}, av=d.algVoorwaarden||{};
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Juridische Documenten — ${co}</h2><div style="display:flex;flex-direction:column;gap:16px">
+<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#1d4ed8;padding:10px 16px"><b style="color:#fff">Privacy Policy</b></div><div style="padding:16px;font-size:13px;line-height:1.7">${(pp.artikelen||[]).map(a=>`<div style="margin-bottom:14px"><h3 style="font-size:13px;font-weight:700;margin:0 0 4px">Art. ${a.nummer}: ${a.titel}</h3><p style="margin:0;color:#374151">${a.tekst}</p></div>`).join('')}</div></div>
+<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#7c3aed;padding:10px 16px"><b style="color:#fff">Algemene Voorwaarden</b></div><div style="padding:16px;font-size:13px;line-height:1.7">${(av.artikelen||[]).map(a=>`<div style="margin-bottom:14px"><h3 style="font-size:13px;font-weight:700;margin:0 0 4px">Art. ${a.nummer}: ${a.titel}</h3><p style="margin:0;color:#374151">${a.tekst}</p></div>`).join('')}</div></div>
+${d.cookiePolicy?`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#047857;padding:10px 16px"><b style="color:#fff">Cookie Policy</b></div><div style="padding:16px;font-size:13px;line-height:1.7;color:#374151">${d.cookiePolicy}</div></div>`:''}
+</div>`;
+            break;
+          }
+
+          case 'Google Bedrijfsprofiel content': {
+            const d = await aiJSON(`Google Business Profile teksten voor ${co} (${ni}, ${lo}).${intakeContext}
+Geef ALLEEN JSON: {"bedrijfsBeschrijving":"max 750 tekens","diensten":[{"naam":"string","beschrijving":"max 300 tekens"}],"faq":[{"vraag":"string","antwoord":"string"}],"googlePosts":[{"type":"Nieuw/Aanbieding/Evenement","tekst":"max 1500 tekens"}]}
+5 diensten, 10 FAQs, 5 posts.`);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Google Bedrijfsprofiel — ${co}</h2><div style="display:flex;flex-direction:column;gap:14px">
+<div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">Bedrijfsbeschrijving (${(d.bedrijfsBeschrijving||'').length}/750)</span><div style="font-size:13px;line-height:1.7;color:#374151;margin-top:6px">${d.bedrijfsBeschrijving||''}</div></div>
+<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:9px 14px;border-bottom:1px solid #e5e7eb;font-weight:700;font-size:12px">Diensten</div>${(d.diensten||[]).map(dd=>`<div style="padding:9px 14px;border-bottom:1px solid #f3f4f6"><div style="font-weight:600;font-size:12px">${dd.naam}</div><div style="font-size:12px;color:#6b7280;margin-top:2px">${dd.beschrijving}</div></div>`).join('')}</div>
+<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:9px 14px;border-bottom:1px solid #e5e7eb;font-weight:700;font-size:12px">FAQ</div>${(d.faq||[]).map(f=>`<div style="padding:9px 14px;border-bottom:1px solid #f3f4f6"><div style="font-size:12px;font-weight:600;margin-bottom:2px">V: ${f.vraag}</div><div style="font-size:12px;color:#374151">A: ${f.antwoord}</div></div>`).join('')}</div>
+<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:9px 14px;border-bottom:1px solid #e5e7eb;font-weight:700;font-size:12px">Google Posts</div>${(d.googlePosts||[]).map(p=>`<div style="padding:9px 14px;border-bottom:1px solid #f3f4f6"><span style="font-size:10px;color:#6b7280;text-transform:uppercase">${p.type}</span><div style="font-size:12px;color:#374151;margin-top:4px;line-height:1.6">${p.tekst}</div></div>`).join('')}</div>
+</div>`;
+            break;
+          }
+
+          case 'Verlaten winkelwagen emails': {
+            const d = await aiJSON(`3-delige verlaten winkelwagen email reeks voor ${co} (${ni}, ${lo}).${intakeContext}
+Email 1: Vriendelijke herinnering (1 uur). Email 2: Voordeel aanbieden (24 uur). Email 3: Urgentie/schaarste (72 uur).
+Geef ALLEEN JSON: {"emails":[{"nummer":1,"timing":"1 uur na verlaten","onderwerp":"string","preview":"string","body":"150-200 woorden, HTML inline styles"}]}`);
+            const emails = (d.emails||[]).slice(0,3);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Verlaten Winkelwagen Emails</h2><div style="display:flex;flex-direction:column;gap:12px">
+${emails.map(e=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f59e0b;padding:9px 14px;display:flex;justify-content:space-between"><b style="color:#fff;font-size:12px">Email ${e.nummer}</b><span style="background:rgba(255,255,255,.2);color:#fff;font-size:11px;padding:2px 6px;border-radius:3px">${e.timing}</span></div><div style="padding:12px 14px"><div style="margin-bottom:5px;font-size:12px"><b>Subject:</b> ${e.onderwerp}</div><div style="margin-bottom:9px;font-size:11px;color:#6b7280"><b>Preview:</b> ${e.preview}</div><div style="font-size:12px;line-height:1.7;color:#374151;border-left:3px solid #f59e0b;padding-left:10px">${(e.body||'').replace(/\n/g,'<br>')}</div></div></div>`).join('')}
+</div>`;
+            break;
+          }
+
+          case 'Over ons pagina schrijven': {
+            const d = await aiJSON(`Schrijf "Over ons" pagina voor ${co} (${ni}, ${lo}).${intakeContext}
+Geef ALLEEN JSON: {"hero":{"headline":"max 10 woorden","subheadline":"max 20 woorden"},"verhaal":"300-400 woorden (persoonlijk, vertrouwen)","missie":"2-3 zinnen","waarden":[{"icon":"emoji","titel":"string","beschrijving":"1-2 zinnen"}],"team":[{"naam":"string","rol":"string","bio":"2-3 zinnen"}]}`);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Over Ons Pagina — ${co}</h2><div style="display:flex;flex-direction:column;gap:14px">
+<div style="text-align:center;padding:16px;background:#f9fafb;border-radius:8px"><div style="font-size:20px;font-weight:800">${d.hero?.headline||''}</div><div style="color:#6b7280;font-size:14px;margin-top:4px">${d.hero?.subheadline||''}</div></div>
+<div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px"><div style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700;margin-bottom:7px">Ons Verhaal</div><div style="font-size:13px;line-height:1.7;color:#374151">${(d.verhaal||'').replace(/\n/g,'<br>')}</div></div>
+<div style="border:1px solid #bfdbfe;border-radius:8px;padding:12px;background:#eff6ff"><div style="font-size:10px;color:#1d4ed8;text-transform:uppercase;font-weight:700;margin-bottom:5px">Missie</div><div style="font-size:13px;font-style:italic;color:#1d4ed8">"${d.missie||''}"</div></div>
+${(d.waarden||[]).length?`<div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px"><div style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700;margin-bottom:8px">Kernwaarden</div><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">${(d.waarden||[]).map(w=>`<div style="background:#f9fafb;border-radius:6px;padding:9px"><div style="font-size:16px;margin-bottom:3px">${w.icon||'⭐'}</div><div style="font-weight:700;font-size:12px;margin-bottom:2px">${w.titel}</div><div style="font-size:11px;color:#6b7280">${w.beschrijving}</div></div>`).join('')}</div></div>`:''}
+${(d.team||[]).length?`<div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px"><div style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700;margin-bottom:8px">Team</div>${(d.team||[]).map(t=>`<div style="padding:9px;background:#f9fafb;border-radius:6px;margin-bottom:7px"><div style="font-weight:700;font-size:13px">${t.naam}</div><div style="font-size:11px;color:#6366f1;margin-bottom:2px">${t.rol}</div><div style="font-size:12px;color:#6b7280">${t.bio}</div></div>`).join('')}</div>`:''}
+</div>`;
+            break;
+          }
+
+          case 'FAQ pagina schrijven': {
+            const d = await aiJSON(`Schrijf FAQ pagina voor ${co} (${ni}, ${lo}) — 20 vragen.${intakeContext}
+Geef ALLEEN JSON: {"intro":"2-3 zinnen","faqs":[{"nummer":1,"vraag":"string","antwoord":"80-120 woorden","categorie":"Prijzen/Diensten/Openingstijden/Contact/Algemeen"}]}`);
+            const faqs = (d.faqs||[]).slice(0,20);
+            const cats = [...new Set(faqs.map(f=>f.categorie||'Algemeen'))];
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 6px">FAQ Pagina — ${co}</h2><p style="font-size:12px;color:#6b7280;margin:0 0 14px">${d.intro||''}</p>
+${cats.map(cat=>`<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6366f1;margin-bottom:7px;padding-bottom:3px;border-bottom:2px solid #eef2ff">${cat}</div><div style="display:flex;flex-direction:column;gap:5px">${faqs.filter(f=>(f.categorie||'Algemeen')===cat).map(f=>`<div style="border:1px solid #e5e7eb;border-radius:7px;overflow:hidden"><div style="padding:9px 12px;font-weight:600;font-size:12px;background:#f9fafb">${f.vraag}</div><div style="padding:9px 12px;font-size:12px;color:#374151;line-height:1.6">${f.antwoord}</div></div>`).join('')}</div></div>`).join('')}`;
+            break;
+          }
+
+          case 'Nieuwsbrief template ontwerpen': {
+            const d = await aiJSON(`Ontwerp HTML email nieuwsbrief template voor ${co} (${ni}, ${lo}).${intakeContext}
+Geef ALLEEN JSON: {"primaryColor":"#hexcode","sections":[{"type":"header/hero/featured/twoColumn/cta/footer","content":"beschrijving"}],"htmlTemplate":"volledig HTML email (max 3000 chars, inline styles, email-safe, responsive)"}`);
+            html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Nieuwsbrief Template — ${co}</h2>
+<div style="margin-bottom:12px;padding:10px;background:#f9fafb;border-radius:7px;font-size:12px"><b>Primaire kleur:</b> <span style="display:inline-block;width:12px;height:12px;background:${d.primaryColor||'#6366f1'};border-radius:2px;vertical-align:middle;margin-right:4px"></span>${d.primaryColor||'#6366f1'}</div>
+${d.htmlTemplate?`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:9px 14px;border-bottom:1px solid #e5e7eb;font-weight:700;font-size:12px">Template Preview</div><div style="padding:14px">${d.htmlTemplate}</div></div>`:''}
+${(d.sections||[]).length?`<div style="margin-top:12px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:9px 14px;border-bottom:1px solid #e5e7eb;font-weight:700;font-size:12px">Secties</div>${(d.sections||[]).map(s=>`<div style="padding:9px 14px;border-bottom:1px solid #f3f4f6"><span style="background:#eef2ff;color:#6366f1;border-radius:3px;padding:1px 5px;font-size:11px;font-weight:700;margin-right:5px">${s.type}</span><span style="font-size:12px;color:#374151">${s.content}</span></div>`).join('')}</div>`:''}`;
+            break;
+          }
+        }
+
+        if (html) {
+          serviceDeliveries[svcName] = { html, generatedAt: new Date().toISOString() };
+          console.log(`[Delivery] ✓ ${svcName}`);
+        }
+      } catch (err) {
+        console.error(`[Delivery] ${svcName} mislukt:`, err.message);
+        serviceDeliveries[svcName] = { html: `<p style="color:#dc2626;font-size:13px;padding:10px;background:#fef2f2;border-radius:6px">⚠ Generatie mislukt: ${err.message}</p>`, generatedAt: new Date().toISOString(), error: true };
+      }
+    }
+    const sdCount = Object.keys(serviceDeliveries).filter(k => !serviceDeliveries[k].error).length;
+    send(4, `${sdCount} service ${sdCount === 1 ? 'levering' : 'leveringen'} gegenereerd`, 'done');
+
+    // Step 5 — Save and notify
+    send(5, 'Opslaan & klant notificeren', 'running');
     const delivery = {
       generatedAt: new Date().toISOString(),
       contentCalendar: fullCalendar,
       chatbotFlow: chatbotFlow,
-      milestones: milestones
+      milestones: milestones,
+      serviceDeliveries: serviceDeliveries
     };
     leads[idx].delivery = delivery;
     // Update portal phase to 2 (Strategie → Uitvoering)
@@ -2089,7 +2373,7 @@ Antwoord ALLEEN als JSON: { "milestones": [{ "week": 1, "title": "string", "desc
         writeJSON('leads.json', leads);
       } catch { /* optional */ }
     }
-    send(4, 'Opslaan & klant notificeren', 'done');
+    send(5, 'Opslaan & klant notificeren', 'done');
 
     send(0, 'Leveringen gegenereerd', 'complete');
   } catch (err) {
@@ -3932,7 +4216,7 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - 3 alinea's: (1) specifieke observatie met concreet gegeven, (2) wat dit betekent + hoe wij helpen, (3) zachte uitnodiging voor een gesprek
 - Alinea 1-2: elk max 2-3 zinnen. Alinea 3: max 2 zinnen
 - Dienst: beschrijf het resultaat in 1 zin — nooit aanprijzend of met superlatieven
-- CTA alinea 3: zachte uitnodiging — bijv. "Zou u openstaan voor een kort kennismakingsgesprek?" ${calendlyLink ? `Sluit af met: ${calendlyLink}` : ''}
+- CTA alinea 3: zachte uitnodiging — bijv. "Zou u openstaan voor een kort gesprek?" ${calendlyLink ? `Sluit vervolgens af met een nieuwe zin: "Plan direct een gratis gesprek van 20 minuten via: ${calendlyLink}"` : 'Sluit af met: "Beantwoord deze email voor meer informatie."'}
 - Afsluiting: "Met vriendelijke groet," op een nieuwe regel, dan "${myName}"
 - Max 150 woorden in de body (exclusief aanhef en afsluiting)
 - Als er concurrentie context is: verweef maximaal 1 zin organisch
@@ -3947,7 +4231,7 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - 3 paragraphs: (1) specific observation with concrete data point, (2) what this means for them + how we help, (3) soft invitation to connect
 - Paragraphs 1-2: max 2-3 sentences each. Paragraph 3: max 2 sentences
 - Service: describe the outcome in 1 sentence — never promotional or superlative
-- CTA paragraph 3: soft invitation — e.g. "Would you be open to a brief introductory call?" ${calendlyLink ? `Close with: ${calendlyLink}` : ''}
+- CTA paragraph 3: soft invitation — e.g. "Would you be open to a brief call?" ${calendlyLink ? `Then close with a new sentence: "Book a free 20-minute call directly at: ${calendlyLink}"` : 'Close with: "Reply to this email for more information."'}
 - Sign-off: "Kind regards," on a new line, then "${myName}"
 - Max 150 words in the body (excluding greeting and sign-off)
 - If competitor context is provided: weave in max 1 sentence naturally
@@ -4029,40 +4313,60 @@ ${sharedRules}
       ? { subject: `${lead.companyName} – concrete kans`, body: `${greetingNL}\n\n${lead.companyName} heeft een solide basis. Naar mijn inschatting is er echter nog onbenut potentieel op het gebied van ${topService.toLowerCase()}.\n\nKan ik u laten zien wat dat in de praktijk betekent?\n\nMet vriendelijke groet,\n${myName}` }
       : { subject: `${lead.companyName} – concrete opportunity`, body: `${greetingEN}\n\n${lead.companyName} has a strong foundation. Based on what I have seen, there is untapped potential in ${topService.toLowerCase()} worth exploring.\n\nWould you be open to a short conversation?\n\nKind regards,\n${myName}` };
   }
-  // Agent 5b: 3 subject line options
+  // Agent 5b: 3 subject line options — data-driven, specific to each lead
+  const followerLabel = lead.estimatedFollowers ? lead.estimatedFollowers.toLocaleString() + (language === 'nl' ? ' volgers' : ' followers') : null;
+  const speedLabel = loadSec ? loadSec + (language === 'nl' ? 's laadtijd' : 's load time') : null;
   const subjectPrompt = language === 'nl'
     ? `Bedenk 3 scherpe email-onderwerpregels voor een koude email.
 
 Bedrijf: ${lead.companyName} (${lead.niche}, ${lead.location})
+${followerLabel ? `Instagram: ${followerLabel}` : ''}
+${speedLabel ? `Website laadtijd: ${speedLabel}` : ''}
 Probleem: ${topProblem}
 Dienst: ${topService}
 
-Regels voor elke onderwerpregel:
-- Max 7 woorden
-- Verwijs altijd naar iets SPECIFIEKS (bedrijfsnaam, stad, of het concrete probleem)
-- Formaat: nieuwsgierigheid wekken of probleem-bewustzijn — GEEN resultaatbelofte
+Regels:
+- Max 8 woorden, GEEN leesteken aan het einde
+- Verwijs naar een CONCREET DATA PUNT als je het hebt (volgers, laadtijd, locatie)
+- Formaat: nieuwsgierigheid of probleem-bewustzijn — GEEN resultaatbelofte
 - VERBODEN: "AI", "marketing", "samenwerking", "vrijblijvend", "groeien", "helpen"
-- Klinkt menselijk, geen spam
-- Optie 1: probleemgericht (noem het specifieke probleem concreet)
-- Optie 2: nieuwsgierigheid of vraag-formaat
-- Optie 3: stad of niche-specifiek, persoonlijk
+- Klinkt menselijk, niet als spam, geen uitroeptekens
+- Optie 1: probleemgericht met concreet data punt (bijv. "23K volgers, nog geen advertenties" of "Jullie website laadt in ${speedLabel||'4s'}")
+- Optie 2: nieuwsgierigheid wekken met tegenstelling (bijv. "Jullie Instagram groeit — jullie website niet")
+- Optie 3: specifieke vondst of vraag (bijv. "Gevonden: 3 dingen die boekingen kosten" of "Waarom jullie website klanten wegjaagt")
 
-Geef ALLEEN JSON terug: { "subjectOptions": ["optie1", "optie2", "optie3"] }`
+Goede voorbeeldpatronen (NIET letterlijk overnemen, alleen als inspiratie):
+"${followerLabel||'Jullie'} Instagram groeit — jullie website niet"
+"${followerLabel ? followerLabel + ', nog geen advertenties' : 'Gevonden: 3 dingen die boekingen kosten'}"
+"Waarom jullie website klanten wegjaagt"
+"Gevonden: iets op jullie website"
+"${lead.location} ${lead.niche} — concrete kans"
+
+Geef ALLEEN JSON: { "subjectOptions": ["optie1", "optie2", "optie3"] }`
     : `Generate 3 sharp email subject lines for a cold email.
 
 Company: ${lead.companyName} (${lead.niche}, ${lead.location})
+${followerLabel ? `Instagram: ${followerLabel}` : ''}
+${speedLabel ? `Website load time: ${speedLabel}` : ''}
 Problem: ${topProblem}
 Service: ${topService}
 
-Rules for each subject line:
-- Max 7 words
-- Always reference something SPECIFIC (company name, city, or the concrete problem)
+Rules:
+- Max 8 words, NO punctuation at the end
+- Reference a CONCRETE DATA POINT when available (followers, load time, location)
 - Format: curiosity or problem-awareness — NO results promise
 - BANNED: "AI", "marketing", "collaboration", "no obligation", "grow", "help"
-- Sounds like a real person, not spam
-- Option 1: problem-focused (name the specific problem concretely)
-- Option 2: curiosity or question format
-- Option 3: location or niche specific, personal
+- Sounds like a real person, not spam, no exclamation marks
+- Option 1: problem-focused with a concrete data point (e.g. "18K followers, zero ad spend" or "Your site loads in ${speedLabel||'4s'}")
+- Option 2: curiosity using contrast (e.g. "Your Instagram grows — your website doesn't")
+- Option 3: specific finding or question (e.g. "3 things costing you bookings right now" or "Found something on your website")
+
+Good example patterns (do NOT copy literally, use as inspiration):
+"${followerLabel||'Your'} Instagram grows — your website doesn't"
+"${followerLabel ? followerLabel + ', zero ad spend' : '3 things costing you bookings right now'}"
+"Found something on your website"
+"Why your website is losing customers"
+"${lead.location} ${lead.niche} — concrete opportunity"
 
 Return ONLY JSON: { "subjectOptions": ["option1", "option2", "option3"] }`;
 
