@@ -225,14 +225,9 @@ async function renderDashboard() {
         <div class="page-label">Overzicht</div>
         <h1 class="page-title">Dashboard</h1>
       </div>
-      <button class="btn btn-primary" id="runNowBtn">
-        <i class="ti ti-player-play"></i> Run nu
-      </button>
     </div>
     <div id="dashboardContent"><div class="loading-state"><div class="spinner-lg"></div></div></div>
   `;
-
-  document.getElementById('runNowBtn').addEventListener('click', triggerFindLeads);
 
   const [stats, inbox, runs, allLeads] = await Promise.all([
     apiJSON('/api/stats'),
@@ -4868,9 +4863,6 @@ async function renderAgents() {
         <div class="page-label">Automatisering</div>
         <h1 class="page-title">Agents</h1>
       </div>
-      <button class="btn btn-primary" id="agentRunBtn">
-        <i class="ti ti-player-play"></i> Run nu starten
-      </button>
     </div>
 
     <div class="stats-grid" style="margin-bottom:20px">
@@ -5010,7 +5002,6 @@ async function renderAgents() {
     </div>
   `;
 
-  document.getElementById('agentRunBtn').addEventListener('click', triggerFindLeads);
 }
 
 function toggleAgentRow(num) {
@@ -5193,6 +5184,11 @@ async function renderRuns() {
         <button class="btn btn-primary" id="startRunBtn" onclick="startCustomRun()">
           <i class="ti ti-player-play"></i> Start run
         </button>
+      </div>
+      <div id="runProgressArea" style="display:none;margin-top:14px">
+        <div id="runStatusText" class="run-status-text">Run gestart...</div>
+        <div class="run-progress-track"><div class="run-progress-bar"></div></div>
+        <div id="runElapsedText" class="run-elapsed-text">Bezig: 0:00</div>
       </div>
     </div>
 
@@ -5796,23 +5792,56 @@ async function addBlacklistEntry() {
   }
 }
 
+function _runFmt(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
 async function startCustomRun() {
-  const count  = parseInt(document.getElementById('runCount')?.value) || 15;
-  const niches = document.getElementById('runNiches')?.value?.trim();
+  const count    = parseInt(document.getElementById('runCount')?.value) || 15;
+  const niches   = document.getElementById('runNiches')?.value?.trim();
   const nicheArr = niches ? niches.split(',').map(n => n.trim()).filter(Boolean) : [];
-  const btn = document.getElementById('startRunBtn');
+  const btn          = document.getElementById('startRunBtn');
+  const progressArea = document.getElementById('runProgressArea');
+  const statusEl     = document.getElementById('runStatusText');
+  const elapsedEl    = document.getElementById('runElapsedText');
+  const barWrap      = progressArea?.querySelector('.run-progress-track');
+
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...'; }
-  const res = await api('/api/find-leads', {
-    method: 'POST',
-    body: JSON.stringify({ count, niches: nicheArr })
-  });
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> Start run'; }
-  const data = await res.json().catch(() => ({}));
-  if (res?.ok) {
-    toast(`Run klaar — ${data.found || 0} leads gevonden`, 'success');
-    renderRuns();
-  } else {
-    toast(data.error || 'Run mislukt — controleer server logs', 'error');
+  if (progressArea) progressArea.style.display = 'block';
+  if (statusEl)  statusEl.textContent  = 'Run gestart...';
+  if (elapsedEl) { elapsedEl.style.display = ''; elapsedEl.textContent = 'Bezig: 0:00'; }
+
+  const t0 = Date.now();
+  const timer = setInterval(() => {
+    if (elapsedEl) elapsedEl.textContent = `Bezig: ${_runFmt(Date.now() - t0)}`;
+  }, 1000);
+
+  try {
+    const res  = await api('/api/find-leads', { method: 'POST', body: JSON.stringify({ count, niches: nicheArr }) });
+    const data = await res.json().catch(() => ({}));
+    clearInterval(timer);
+    const duration = _runFmt(Date.now() - t0);
+
+    if (barWrap) barWrap.style.display = 'none';
+    if (elapsedEl) elapsedEl.style.display = 'none';
+
+    if (res?.ok) {
+      if (statusEl) statusEl.textContent = `Klaar in ${duration} — ${data.found || 0} leads gevonden`;
+      toast(`Run klaar — ${data.found || 0} leads gevonden`, 'success');
+      renderRuns();
+    } else {
+      if (statusEl) statusEl.textContent = data.error || 'Run mislukt — controleer logs';
+      toast(data.error || 'Run mislukt — controleer server logs', 'error');
+    }
+  } catch (err) {
+    clearInterval(timer);
+    if (barWrap) barWrap.style.display = 'none';
+    if (elapsedEl) elapsedEl.style.display = 'none';
+    if (statusEl) statusEl.textContent = 'Fout: ' + err.message;
+    toast('Fout: ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> Start run'; }
   }
 }
 
@@ -7747,10 +7776,10 @@ async function triggerFindLeads() {
   if (state.runningPipeline) return;
   state.runningPipeline = true;
 
-  const btns = ['runNowBtn', 'runNowBtn2', 'agentRunBtn'].map(id => document.getElementById(id)).filter(Boolean);
+  const btns = ['runNowBtn2'].map(id => document.getElementById(id)).filter(Boolean);
   btns.forEach(btn => { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...'; });
 
-  toast('Lead finder gestart — dit duurt 1-2 minuten', 'info');
+  toast('Run gestart', 'info');
 
   try {
     const res = await api('/api/find-leads', { method: 'POST' });
@@ -7765,7 +7794,7 @@ async function triggerFindLeads() {
     toast('Fout: ' + err.message, 'error');
   } finally {
     state.runningPipeline = false;
-    btns.forEach(btn => { btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> Run nu'; });
+    btns.forEach(btn => { btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> Run nu'; }); // runNowBtn2 restore
   }
 }
 
