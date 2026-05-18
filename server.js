@@ -3546,6 +3546,80 @@ async function aiJSON(prompt) {
   throw new Error('Claude JSON parse mislukt: ' + clean.substring(0, 200));
 }
 
+// Shared JSON-from-text parser
+function parseJsonFromText(text) {
+  const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+  try { return JSON.parse(clean); } catch {}
+  const arrMatch = clean.match(/\[[\s\S]*\]/);
+  if (arrMatch) { try { return JSON.parse(arrMatch[0]); } catch {} }
+  const objMatch = clean.match(/\{[\s\S]*\}/);
+  if (objMatch) { try { return JSON.parse(objMatch[0]); } catch {} }
+  throw new Error('JSON parse mislukt: ' + clean.substring(0, 200));
+}
+
+// Claude API call with web_search tool — handles multi-turn tool loop
+async function aiWebSearch(prompt) {
+  aiRateCheck();
+  const s = readJSON('settings.json') || {};
+  const apiKey = getClaudeApiKey(s);
+  if (!apiKey) throw new Error('Claude API sleutel niet ingesteld');
+  const { default: fetch } = await import('node-fetch');
+
+  const messages = [{ role: 'user', content: prompt }];
+  let lastText = '';
+
+  for (let turn = 0; turn < 10; turn++) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'web-search-2025-03-05'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4000,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        messages
+      })
+    });
+    const data = await res.json();
+    if (!data.content) throw new Error(data.error?.message || 'Claude web search API fout');
+
+    const usage = data.usage || {};
+    _sessionTokensIn  += usage.input_tokens  || 0;
+    _sessionTokensOut += usage.output_tokens || 0;
+    _aiCallLog.push({ ts: Date.now() });
+
+    const texts = data.content.filter(b => b.type === 'text').map(b => b.text);
+    if (texts.length) lastText = texts.join('');
+
+    if (data.stop_reason === 'end_turn') return lastText;
+
+    if (data.stop_reason === 'tool_use') {
+      messages.push({ role: 'assistant', content: data.content });
+      const toolResults = data.content
+        .filter(b => b.type === 'tool_use')
+        .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: '' }));
+      messages.push({ role: 'user', content: toolResults });
+      continue;
+    }
+    break;
+  }
+
+  if (lastText) return lastText;
+  throw new Error('Web search: geen resultaat na 10 rondes');
+}
+
+async function aiWebSearchJSON(prompt) {
+  const text = await aiWebSearch(prompt);
+  try { return parseJsonFromText(text); } catch (e) {
+    console.error('[aiWebSearchJSON] Parse failed. Raw (500):', text.substring(0, 500));
+    throw e;
+  }
+}
+
 // â"€â"€â"€ Website checker (Agent 2) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 async function checkWebsite(url) {
@@ -4281,6 +4355,19 @@ async function runFindLeadsJob(overrides = {}) {
   }
 
 
+  // Cities and niches to rotate through — each batch picks one of each at random
+  const SEARCH_CITIES = [
+    'Amsterdam', 'Rotterdam', 'Utrecht', 'Antwerp', 'Brussels',
+    'Paris', 'Lyon', 'Berlin', 'Munich', 'Hamburg',
+    'Rome', 'Milan', 'London', 'Manchester',
+    'New York', 'Los Angeles', 'Chicago', 'Toronto',
+    'Sydney', 'Barcelona', 'Madrid', 'Vienna', 'Zurich'
+  ];
+  const SEARCH_NICHES_WEB = [
+    'beauty salon', 'restaurant', 'fitness studio', 'retail shop',
+    'wellness spa', 'bakery', 'photography studio', 'interior design'
+  ];
+
   const BATCH_SIZE = 5;
   const target      = count;
   const maxAttempts = 60;
@@ -4296,60 +4383,49 @@ async function runFindLeadsJob(overrides = {}) {
   try {
   while (found < target && attempts < maxAttempts) {
     const remaining = target - found;
-    const batchSize = Math.min(BATCH_SIZE, remaining + 2); // slight overrun to compensate skip rate
+    const batchSize = Math.min(BATCH_SIZE, remaining + 2);
 
-    // ── Agent 1: Finder (batch) ─────────────────────────────────────────────
+    // ── Agent 1: Web-search finder (batch) ────────────────────────────────
+    const randomCity  = SEARCH_CITIES[Math.floor(Math.random() * SEARCH_CITIES.length)];
+    const randomNiche = SEARCH_NICHES_WEB[Math.floor(Math.random() * SEARCH_NICHES_WEB.length)];
     const alreadySeen = seenNames.size > 0
-      ? `\n\nBedrijven die je NIET mag herhalen (al gegenereerd):\n${[...seenNames].slice(-30).join(', ')}`
+      ? `\n\nDo NOT return these businesses (already found): ${[...seenNames].slice(-30).join(', ')}`
       : '';
 
-    const finderPrompt = `You are a business research expert. Generate ${batchSize} REAL, VERIFIED local businesses for AI marketing services.
+    const searchPrompt = `Search the web and find ${batchSize} real small independent local businesses in ${randomCity} that sell or offer: ${randomNiche}.
 
-CRITICAL RULE: You must ONLY generate real businesses that you are 100% certain exist right now in 2026 based on your training data. NEVER invent, guess, or fabricate a business. If you are not completely sure a business exists with that exact name and website URL, do not include it.
+Requirements for each business:
+- Must be a real, independently owned local business (NOT a national chain or franchise)
+- Must have a real active website (not just social media)
+- Must have been operating for at least 1 year
+- Small or medium sized (under 50 employees)
 
-For each business you MUST verify from your training data:
-- The business name is REAL and exists
-- The website URL is REAL and was active (not made up)
-- It is a local independent company (NOT chains, NOT franchises, NOT startups you invented)
+Search for them online now. For each real business you find, return its actual details.
 
-REQUIREMENTS — only include businesses meeting ALL of these:
-- Has been operating for at least 2 years
-- Has a real professional website with a contact page
-- Is a small/medium independent local business
-- NOT a large chain or national brand
-
-Return a JSON array only (no explanation):
+Return ONLY a JSON array, no explanation:
 [{
-  "companyName": "Real business name",
-  "location": "City, Country",
-  "country": "country code e.g. NL, DE, GB, US",
+  "companyName": "Exact business name from their website",
+  "location": "${randomCity}, Country",
+  "country": "2-letter country code e.g. NL, DE, GB, US, FR",
   "instagramHandle": "@handle or null",
   "niche": "beauty" or "food" or "fitness" or "retail" or "restaurant" or "horeca" or "health" or "automotive",
-  "subNiche": "specific type e.g. hair salon, yoga studio, bakery",
-  "estimatedFollowers": number,
-  "websiteUrl": "https://real-verified-domain.com",
-  "linkedinCompanyUrl": "https://linkedin.com/company/slug or null",
-  "companySize": "small" or "medium" or "large"
-}]
-
-companySize: "small" for sole trader/SME (<10 employees), "medium" for 10-50, "large" for 50+.
-Target niches (use ONLY these types): ${nichesList}.
-Country mix per batch: ~30% Netherlands/Belgium (Dutch outreach language), ~70% rest — Germany, France, Luxembourg, Italy, Spain, UK, USA, Canada, Australia.
-Generate exactly ${batchSize} businesses. Only include businesses you are CERTAIN are real.${alreadySeen}`;
+  "subNiche": "${randomNiche}",
+  "estimatedFollowers": 0,
+  "websiteUrl": "https://their-real-website.com",
+  "linkedinCompanyUrl": null,
+  "companySize": "small"
+}]${alreadySeen}`;
 
     let batch;
     try {
-      console.log(`[Agent 1] Batch genereren (${batchSize} bedrijven, ${found}/${target} gevonden)...`);
-      batch = await aiJSON(finderPrompt);
+      console.log(`[Agent 1] Searching for ${randomNiche} businesses in ${randomCity}...`);
+      batch = await aiWebSearchJSON(searchPrompt);
       if (!Array.isArray(batch)) batch = [batch];
       batch = batch.slice(0, batchSize);
     } catch (err) {
-      console.error(`[Agent 1] Batch mislukt:`, err.message);
-      console.error(`[Agent 1] Stack:`, err.stack);
-      logError('agent1', `Agent 1 (Lead Finder) mislukt`, err.message);
+      console.error(`[Agent 1] Web search batch mislukt:`, err.message);
+      logError('agent1', `Agent 1 web search mislukt`, err.message);
       if (found === 0) throw new Error(`Agent 1 (Lead Finder) mislukt: ${err.message}`);
-      console.warn(`[Agent 1] Batch mislukt na ${found} leads — doorgaan of stoppen`);
-      // Try one more batch before giving up on partial results
       attempts += batchSize;
       continue;
     }
