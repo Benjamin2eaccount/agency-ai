@@ -3451,6 +3451,10 @@ function calcCostUsd(tokIn, tokOut) {
 // ── AI Rate Limiter ──────────────────────────────────────────────────────────
 const _aiCallLog = []; // { ts: number } — in-memory sliding window, resets on restart
 
+// ── Web Search Rate Limiter (max 10 calls/min per Anthropic limit) ────────────
+let _wsCallsThisMinute = 0;
+let _wsWindowStart     = Date.now();
+
 function aiRateCheck() {
   const settings  = readJSON('settings.json') || {};
   const lim       = settings.aiRateLimits || {};
@@ -3559,6 +3563,21 @@ function parseJsonFromText(text) {
 
 // Claude API call with web_search tool — handles multi-turn tool loop
 async function aiWebSearch(prompt) {
+  // Web search rate limiter: stay under 8/min (limit is 10, leaving headroom)
+  if (Date.now() - _wsWindowStart > 60000) {
+    _wsCallsThisMinute = 0;
+    _wsWindowStart = Date.now();
+  }
+  if (_wsCallsThisMinute >= 8) {
+    const waitMs = 60000 - (Date.now() - _wsWindowStart) + 1000;
+    console.log(`[WebSearch] Rate limit bereikt — wacht ${Math.ceil(waitMs / 1000)}s`);
+    await new Promise(r => setTimeout(r, waitMs));
+    _wsCallsThisMinute = 0;
+    _wsWindowStart = Date.now();
+  }
+  _wsCallsThisMinute++;
+  console.log(`[WebSearch] Call ${_wsCallsThisMinute}/8 deze minuut`);
+
   aiRateCheck();
   const s = readJSON('settings.json') || {};
   const apiKey = getClaudeApiKey(s);
