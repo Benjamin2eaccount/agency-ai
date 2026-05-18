@@ -4298,6 +4298,9 @@ Return ONLY a JSON array, no explanation:
   "companySize": "small"
 }]${alreadySeen}`;
 
+    // 7s between web-search calls to stay under the 10/min rate limit
+    if (attempts > 0) await new Promise(r => setTimeout(r, 7000));
+
     let batch;
     try {
       console.log(`[Agent 1] Searching for ${randomNiche} businesses in ${randomCity}...`);
@@ -4355,8 +4358,6 @@ Return ONLY a JSON array, no explanation:
       found++;
       console.log(`  ✓ Klaar — score: ${item.score}, waarde: €${item.estimatedValue} → inbox (wacht op goedkeuring)`);
     }
-    // 3s delay between Agent 1 batches (web search rate limit safety)
-    if (found < target) await new Promise(r => setTimeout(r, 3000));
   }
 
   } catch (loopErr) {
