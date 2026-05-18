@@ -3554,8 +3554,12 @@ async function checkWebsite(url) {
     const { default: fetch } = await import('node-fetch');
     const start = Date.now();
     const res = await fetch(url, {
-      timeout: 8000,
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AgencyAI/1.0)' }
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'nl-NL,nl;q=0.9,en;q=0.8'
+      }
     });
     const ms = Date.now() - start;
     const html = await res.text();
@@ -3567,11 +3571,10 @@ async function checkWebsite(url) {
     const hasCTA        = /\b(contact|contact us|meer info|neem contact|bel ons|call us)/i.test(html);
 
     // ── Email scraping ─────────────────────────────────────────────────────────
-    // Only emails found directly on the company's website are accepted.
+    // Only emails found on the company's own website pages are accepted.
     // No provider blocking — Gmail/Hotmail/Yahoo are valid for small businesses.
-    // DNS MX check confirms the domain can actually receive email.
+    // MX check: reject only if resolveMx returns empty array. DNS errors → allow.
 
-    // Basic format: has @, reasonable length, not an asset path, not a placeholder domain
     const isBasicValidEmail = e => {
       if (!e || !e.includes('@') || !e.includes('.')) return false;
       const low = e.toLowerCase().trim();
@@ -3582,7 +3585,6 @@ async function checkWebsite(url) {
     };
     const isNoReply = e => /noreply|no-reply|donotreply|do-not-reply/i.test(e);
 
-    // Extract best non-noreply email from an HTML string (mailto preferred)
     const extractBestEmail = htmlStr => {
       const mailto = [...htmlStr.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1].trim());
       const raw = htmlStr.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
@@ -3590,24 +3592,51 @@ async function checkWebsite(url) {
       return all.find(e => !isNoReply(e)) || null;
     };
 
+    // Debug: log raw state before any filtering
+    console.log(`[Agent2] Scraping: ${url}`);
+    console.log(`[Agent2] Page length: ${html.length}`);
+    console.log(`[Agent2] Raw email matches:`, html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g));
+
     let scrapedEmail = extractBestEmail(html);
+    let emailSource = 'scraped';
 
     // Try contact/about/imprint subpages if nothing on homepage
     if (!scrapedEmail) {
+      const subpageUA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'text/html,application/xhtml+xml', 'Accept-Language': 'nl-NL,nl;q=0.9,en;q=0.8' };
       for (const page of ['/contact', '/contact-us', '/over-ons', '/about', '/about-us', '/kontakt', '/contacto', '/impressum', '/imprint', '/privacy']) {
         if (scrapedEmail) break;
         try {
           const pageUrl = new URL(page, url).href;
-          const pRes = await fetch(pageUrl, { timeout: 5000, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AgencyAI/1.0)' } });
+          const pRes = await fetch(pageUrl, { timeout: 6000, headers: subpageUA });
+          console.log(`[Agent2] Trying: ${pageUrl} → status: ${pRes.status}`);
           if (pRes.ok) {
             const found = extractBestEmail(await pRes.text());
             if (found) { scrapedEmail = found; console.log(`[Agent2] Email op ${page}: ${found}`); }
           }
-        } catch {} // subpage is optional
+        } catch (e) {
+          console.log(`[Agent2] Subpage ${page} fout: ${e.message}`);
+        }
       }
     }
 
-    // Log result + DNS MX verification
+    // Claude AI fallback: if scraping found nothing, ask Claude to extract from page text
+    if (!scrapedEmail) {
+      try {
+        const snippet = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000);
+        const aiEmailRaw = (await aiCall(`Extract the contact email address from this website text. URL: ${url}\n\nContent:\n${snippet}\n\nReturn ONLY the email address (e.g. info@company.com), nothing else. If none found, return "none".`)).trim().toLowerCase().replace(/^mailto:/i, '');
+        if (aiEmailRaw && aiEmailRaw !== 'none' && isBasicValidEmail(aiEmailRaw) && !isNoReply(aiEmailRaw)) {
+          scrapedEmail = aiEmailRaw;
+          emailSource = 'ai_extracted';
+          console.log(`[Agent2] Email gevonden via Claude AI fallback: ${scrapedEmail}`);
+        } else {
+          console.log(`[Agent2] Claude AI fallback: geen email (antwoord: "${aiEmailRaw}")`);
+        }
+      } catch (aiErr) {
+        console.log(`[Agent2] Claude AI fallback fout: ${aiErr.message}`);
+      }
+    }
+
+    // DNS MX verification + logging
     const siteDomain = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
 
     if (scrapedEmail) {
@@ -3615,6 +3644,7 @@ async function checkWebsite(url) {
       const emailDomain = scrapedEmail.split('@')[1];
       try {
         const mx = await dnsPromises.resolveMx(emailDomain);
+        console.log(`[Agent2] MX result for ${emailDomain}:`, mx);
         if (mx && mx.length > 0) {
           console.log(`[Agent2] MX check: ${emailDomain} → valid ✓`);
           console.log(`[Agent2] Email verified: ${scrapedEmail} ✓`);
@@ -3623,13 +3653,11 @@ async function checkWebsite(url) {
           console.log(`[Agent2] Lead overgeslagen`);
           scrapedEmail = null;
         }
-      } catch {
-        console.log(`[Agent2] MX check: ${emailDomain} → no records ✗`);
-        console.log(`[Agent2] Lead overgeslagen`);
-        scrapedEmail = null;
+      } catch (mxErr) {
+        // DNS lookup failed (Railway DNS issue, timeout, etc.) — allow the email, don't penalise
+        console.log(`[Agent2] MX check: ${emailDomain} → DNS lookup failed (${mxErr.code || mxErr.message}), email toegestaan`);
       }
     } else {
-      // Check if a noreply was found but rejected, so we can log that specifically
       const allRaw = [...html.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1].trim())
                      .concat(html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [])
                      .filter(isBasicValidEmail);
@@ -3660,7 +3688,7 @@ async function checkWebsite(url) {
       hasShop,
       hasCTA,
       scrapedEmail,
-      emailSource: scrapedEmail ? 'scraped' : null,
+      emailSource: scrapedEmail ? emailSource : null,
       problems
     };
   } catch (err) {
@@ -3721,10 +3749,10 @@ async function processOneLead(lead, settings) {
   const website = await checkWebsite(lead.websiteUrl);
   console.log(`  [Agent 2] Bereikbaar: ${website.reachable}, laadtijd: ${website.loadTimeMs || '—'}ms`);
 
-  // Email: only scraped + MX-verified emails are accepted (set/cleared inside checkWebsite)
+  // Email: scraped or ai_extracted, both MX-verified inside checkWebsite
   const contactEmail  = website.scrapedEmail || null;
   const emailVerified = !!contactEmail;
-  const emailSource   = 'scraped';
+  const emailSource   = contactEmail ? (website.emailSource || 'scraped') : null;
 
   if (!contactEmail) {
     addActivity('skip', `${lead.companyName} overgeslagen — geen geldig email gevonden`, { meta: { companyName: lead.companyName, niche: lead.niche, websiteUrl: lead.websiteUrl || '' } });
@@ -4284,6 +4312,14 @@ Geef exact ${batchSize} bedrijven.${alreadySeen}`;
     // (freshBatch.length can be 0 if all names were duplicates)
     attempts += Math.max(batchSize, freshBatch.length);
     console.log(`[Agent 1] ${freshBatch.length} nieuwe bedrijven in batch (attempts: ${attempts}/${maxAttempts})`);
+
+    // Early-exit: if 10+ companies checked with 0 leads found, email scraper is likely broken
+    if (attempts >= 10 && found === 0) {
+      const errMsg = 'Email scraper lijkt niet te werken. Controleer de Railway logs op [Agent2] berichten.';
+      console.error(`[Run] GESTOPT: ${errMsg}`);
+      logError('scraper', errMsg, `${attempts} bedrijven gecontroleerd, 0 emails gevonden`);
+      throw new Error(errMsg);
+    }
 
     for (const lead of freshBatch) {
       if (found >= target) break;
