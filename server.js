@@ -3874,7 +3874,8 @@ Analyseer wat die concurrenten waarschijnlijk beter doen aan online marketing.
   const seasonal  = getSeasonalContext(language);
   const todayEN   = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  const nicheLabel = lead.subNiche || lead.niche;
+  const nicheLabel   = lead.subNiche || lead.niche;
+  const calendlyLink = settings.calendlyUrl || settings.calendlyLink || null;
 
   const sharedContext = language === 'nl'
     ? `Bedrijf: ${lead.companyName} (${nicheLabel}, ${lead.location})
