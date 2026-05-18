@@ -3451,9 +3451,6 @@ function calcCostUsd(tokIn, tokOut) {
 // ── AI Rate Limiter ──────────────────────────────────────────────────────────
 const _aiCallLog = []; // { ts: number } — in-memory sliding window, resets on restart
 
-// ── Web Search Rate Limiter (max 10 calls/min per Anthropic limit) ────────────
-let _wsCallsThisMinute = 0;
-let _wsWindowStart     = Date.now();
 
 function aiRateCheck() {
   const settings  = readJSON('settings.json') || {};
@@ -3563,21 +3560,6 @@ function parseJsonFromText(text) {
 
 // Claude API call with web_search tool — handles multi-turn tool loop
 async function aiWebSearch(prompt) {
-  // Web search rate limiter: stay under 8/min (limit is 10, leaving headroom)
-  if (Date.now() - _wsWindowStart > 60000) {
-    _wsCallsThisMinute = 0;
-    _wsWindowStart = Date.now();
-  }
-  if (_wsCallsThisMinute >= 8) {
-    const waitMs = 60000 - (Date.now() - _wsWindowStart) + 1000;
-    console.log(`[WebSearch] Rate limit bereikt — wacht ${Math.ceil(waitMs / 1000)}s`);
-    await new Promise(r => setTimeout(r, waitMs));
-    _wsCallsThisMinute = 0;
-    _wsWindowStart = Date.now();
-  }
-  _wsCallsThisMinute++;
-  console.log(`[WebSearch] Call ${_wsCallsThisMinute}/8 deze minuut`);
-
   aiRateCheck();
   const s = readJSON('settings.json') || {};
   const apiKey = getClaudeApiKey(s);
@@ -3641,9 +3623,9 @@ async function aiWebSearchJSON(prompt) {
 
 // â"€â"€â"€ Website checker (Agent 2) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
+// Agent 2: website quality check only — email is provided by Agent 1 web search
 async function checkWebsite(url) {
   if (!url) return { reachable: false, notes: 'Geen URL opgegeven' };
-  console.log('[Agent2-DEBUG] Starting:', url);
   try {
     const { default: fetch } = await import('node-fetch');
     const start = Date.now();
@@ -3655,178 +3637,26 @@ async function checkWebsite(url) {
         'Accept-Language': 'nl-NL,nl;q=0.9,en;q=0.8'
       }
     });
-    const ms = Date.now() - start;
-    console.log('[Agent2-DEBUG] Status:', res.status);
+    const ms   = Date.now() - start;
     const html = await res.text();
-    console.log('[Agent2-DEBUG] HTML length:', html.length);
-    console.log('[Agent2-DEBUG] All email matches:', html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g));
 
-    const hasViewport   = /<meta[^>]+viewport/i.test(html);
-    const hasHttps      = url.startsWith('https://');
-    const hasBooking    = /\b(boek|reserveer|afspraak|appointment|book|reservat)/i.test(html);
-    const hasShop       = /\b(shop|winkel|bestel|kopen|cart|basket|checkout)/i.test(html);
-    const hasCTA        = /\b(contact|contact us|meer info|neem contact|bel ons|call us)/i.test(html);
-
-    // ── Email scraping ─────────────────────────────────────────────────────────
-    // No provider blocking — Gmail/Hotmail/Yahoo are valid for small businesses.
-    // MX check: reject only if resolveMx returns empty array. DNS errors → allow.
-
-    const isBasicValidEmail = e => {
-      if (!e || !e.includes('@') || !e.includes('.')) return false;
-      const low = e.toLowerCase().trim();
-      if (low.length > 80) return false;
-      if (/\.(png|jpg|jpeg|gif|svg|webp|css|js|woff|ttf|eot|ico|pdf)$/i.test(low)) return false;
-      if (low.includes('@example') || low.includes('@test.') || low.includes('@sentry') || low.includes('@w3.org')) return false;
-      return true;
-    };
-    const isNoReply = e => /noreply|no-reply|donotreply|do-not-reply/i.test(e);
-
-    // Deobfuscate and extract all email candidates from HTML
-    const extractAllEmails = htmlStr => {
-      const found = new Set();
-      const add = e => { if (e && isBasicValidEmail(e)) found.add(e.toLowerCase().trim()); };
-
-      // 1. Standard mailto: links
-      for (const m of htmlStr.matchAll(/href=["']mailto:([^"'?\s]+)/gi)) add(m[1].trim());
-
-      // 2. URL-encoded mailto: (info%40domain.nl)
-      for (const m of htmlStr.matchAll(/href=["']mailto:([^"'?\s]*%40[^"'?\s]+)/gi))
-        add(decodeURIComponent(m[1]).trim());
-
-      // 3. Raw email pattern in text/attributes
-      for (const e of (htmlStr.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [])) add(e);
-
-      // 4. data-email and data-mailto attributes
-      for (const m of htmlStr.matchAll(/data-(?:email|mailto)=["']([^"']+)/gi)) add(m[1].trim());
-
-      // 5. Obfuscated: info [at] domain.nl / info(at)domain.nl
-      for (const m of htmlStr.matchAll(/([a-zA-Z0-9._%+\-]+)\s*[\[(]at[\])]]\s*([a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/gi))
-        add(`${m[1]}@${m[2]}`);
-      // also "info [at] domain [dot] nl" style
-      for (const m of htmlStr.matchAll(/([a-zA-Z0-9._%+\-]+)\s*\[at\]\s*([a-zA-Z0-9.\-]+)\s*\[dot\]\s*([a-zA-Z]{2,})/gi))
-        add(`${m[1]}@${m[2]}.${m[3]}`);
-
-      // 6. Spaced-out AT: "info AT domain DOT nl"
-      for (const m of htmlStr.matchAll(/([a-zA-Z0-9._%+\-]+)\s+AT\s+([a-zA-Z0-9.\-]+)\s+DOT\s+([a-zA-Z]{2,})/g))
-        add(`${m[1]}@${m[2]}.${m[3]}`);
-
-      // 7. Inside <script> tags: 'info@', "contact@", `email@`
-      for (const scriptMatch of htmlStr.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)) {
-        for (const e of (scriptMatch[1].match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [])) add(e);
-      }
-
-      // 8. After Dutch/English contact keywords: "e-mail: info@..." "mail: ..."
-      for (const m of htmlStr.matchAll(/(?:e-?mail|mail|contact)\s*[:\-]\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/gi))
-        add(m[1].trim());
-
-      return [...found];
-    };
-
-    const extractBestEmail = htmlStr => {
-      const all = extractAllEmails(htmlStr);
-      console.log(`[Agent2] All extracted candidates:`, all);
-      return all.find(e => !isNoReply(e)) || null;
-    };
-
-    // Debug: log raw state before any filtering
-    console.log(`[Agent2] Scraping: ${url}`);
-    console.log(`[Agent2] Page length: ${html.length}`);
-    console.log(`[Agent2] Raw email matches:`, html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g));
-
-    let scrapedEmail = extractBestEmail(html);
-    let emailSource = 'scraped';
-
-    // Try contact/about/imprint subpages if nothing on homepage
-    if (!scrapedEmail) {
-      const subpageUA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'text/html,application/xhtml+xml', 'Accept-Language': 'nl-NL,nl;q=0.9,en;q=0.8' };
-      for (const page of ['/contact', '/contact-us', '/over-ons', '/about', '/about-us', '/kontakt', '/contacto', '/impressum', '/imprint', '/privacy']) {
-        if (scrapedEmail) break;
-        try {
-          const pageUrl = new URL(page, url).href;
-          const pRes = await fetch(pageUrl, { timeout: 6000, headers: subpageUA });
-          console.log(`[Agent2] Trying: ${pageUrl} → status: ${pRes.status}`);
-          if (pRes.ok) {
-            const found = extractBestEmail(await pRes.text());
-            if (found) { scrapedEmail = found; console.log(`[Agent2] Email op ${page}: ${found}`); }
-          }
-        } catch (e) {
-          console.log(`[Agent2] Subpage ${page} fout: ${e.message}`);
-        }
-      }
-    }
-
-    // Claude AI fallback: if scraping found nothing, ask Claude to extract from page text
-    if (!scrapedEmail) {
-      try {
-        const snippet = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000);
-        const aiEmailRaw = (await aiCall(`Extract the contact email address from this website text. URL: ${url}\n\nContent:\n${snippet}\n\nReturn ONLY the email address (e.g. info@company.com), nothing else. If none found, return "none".`)).trim().toLowerCase().replace(/^mailto:/i, '');
-        if (aiEmailRaw && aiEmailRaw !== 'none' && isBasicValidEmail(aiEmailRaw) && !isNoReply(aiEmailRaw)) {
-          scrapedEmail = aiEmailRaw;
-          emailSource = 'ai_extracted';
-          console.log(`[Agent2] Email gevonden via Claude AI fallback: ${scrapedEmail}`);
-        } else {
-          console.log(`[Agent2] Claude AI fallback: geen email (antwoord: "${aiEmailRaw}")`);
-        }
-      } catch (aiErr) {
-        console.log(`[Agent2] Claude AI fallback fout: ${aiErr.message}`);
-      }
-    }
-
-    // DNS MX verification + logging
-    const siteDomain = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
-
-    if (scrapedEmail) {
-      console.log(`[Agent2] ${siteDomain} → found: ${scrapedEmail}`);
-      const emailDomain = scrapedEmail.split('@')[1];
-      try {
-        const mx = await dnsPromises.resolveMx(emailDomain);
-        console.log(`[Agent2] MX result for ${emailDomain}:`, mx);
-        if (mx && mx.length > 0) {
-          console.log(`[Agent2] MX check: ${emailDomain} → valid ✓`);
-          console.log(`[Agent2] Email verified: ${scrapedEmail} ✓`);
-        } else {
-          console.log(`[Agent2] MX check: ${emailDomain} → no records ✗`);
-          console.log(`[Agent2] Lead overgeslagen`);
-          scrapedEmail = null;
-        }
-      } catch (mxErr) {
-        // DNS lookup failed (Railway DNS issue, timeout, etc.) — allow the email, don't penalise
-        console.log(`[Agent2] MX check: ${emailDomain} → DNS lookup failed (${mxErr.code || mxErr.message}), email toegestaan`);
-      }
-    } else {
-      const allRaw = [...html.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1].trim())
-                     .concat(html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [])
-                     .filter(isBasicValidEmail);
-      const noReplyEmail = allRaw.find(isNoReply);
-      if (noReplyEmail) {
-        console.log(`[Agent2] ${siteDomain} → found: ${noReplyEmail}`);
-        console.log(`[Agent2] Rejected: noreply address`);
-      } else {
-        console.log(`[Agent2] ${siteDomain} → geen email gevonden op website`);
-      }
-    }
-    const speedScore    = ms < 1500 ? 9 : ms < 3000 ? 7 : ms < 5000 ? 5 : 3;
+    const hasViewport = /<meta[^>]+viewport/i.test(html);
+    const hasHttps    = url.startsWith('https://');
+    const hasBooking  = /\b(boek|reserveer|afspraak|appointment|book|reservat)/i.test(html);
+    const hasShop     = /\b(shop|winkel|bestel|kopen|cart|basket|checkout)/i.test(html);
+    const hasCTA      = /\b(contact|contact us|meer info|neem contact|bel ons|call us)/i.test(html);
+    const speedScore  = ms < 1500 ? 9 : ms < 3000 ? 7 : ms < 5000 ? 5 : 3;
 
     const problems = [];
     if (ms > 3000) problems.push(`Trage laadtijd: ${(ms/1000).toFixed(1)}s (ideaal <2s)`);
     if (!hasViewport) problems.push('Geen mobile-optimalisatie gevonden');
-    if (!hasHttps) problems.push('Geen HTTPS â€" onveilige verbinding');
+    if (!hasHttps) problems.push('Geen HTTPS — onveilige verbinding');
     if (!hasBooking && !hasShop) problems.push('Geen duidelijk boekings- of bestelsysteem');
     if (!hasCTA) problems.push('Geen duidelijke call-to-action op de pagina');
 
-    return {
-      reachable: true,
-      loadTimeMs: ms,
-      speedScore,
-      hasHttps,
-      hasMobileOptimization: hasViewport,
-      hasBookingSystem: hasBooking,
-      hasShop,
-      hasCTA,
-      scrapedEmail,
-      emailSource: scrapedEmail ? emailSource : null,
-      problems
-    };
+    console.log(`[Agent2] ${url} — status: ${res.status}, ${ms}ms, speedScore: ${speedScore}`);
+
+    return { reachable: true, loadTimeMs: ms, speedScore, hasHttps, hasMobileOptimization: hasViewport, hasBookingSystem: hasBooking, hasShop, hasCTA, problems };
   } catch (err) {
     return { reachable: false, notes: `Website niet bereikbaar: ${err.message}` };
   }
@@ -3892,15 +3722,43 @@ async function processOneLead(lead, settings) {
     return null;
   }
 
-  // Email: scraped or ai_extracted, both MX-verified inside checkWebsite
-  const contactEmail  = website.scrapedEmail || null;
-  const emailVerified = !!contactEmail;
-  const emailSource   = contactEmail ? (website.emailSource || 'scraped') : null;
+  // Email: provided by Agent 1 web search — validate format + MX here
+  const rawEmail = (lead.email || '').toLowerCase().trim().replace(/^mailto:/i, '');
+  const isValidEmailFormat = e => e && e.includes('@') && e.includes('.') && e.length <= 80 &&
+    !/\.(png|jpg|gif|svg|css|js|woff|ico|pdf)$/i.test(e) &&
+    !e.includes('@example') && !e.includes('@test.') && !e.includes('@sentry');
+  const isNoReplyAddr = e => /noreply|no-reply|donotreply|do-not-reply/i.test(e);
 
-  if (!contactEmail) {
-    addActivity('skip', `${lead.companyName} overgeslagen — geen geldig email gevonden`, { meta: { companyName: lead.companyName, niche: lead.niche, websiteUrl: lead.websiteUrl || '' } });
+  if (!rawEmail || !isValidEmailFormat(rawEmail) || isNoReplyAddr(rawEmail)) {
+    console.log(`  ✗ Email ongeldig van Agent 1: "${rawEmail || 'leeg'}" — ${lead.companyName} overgeslagen`);
+    addActivity('skip', `${lead.companyName} overgeslagen — geen geldig email van Agent 1`, { meta: { companyName: lead.companyName, niche: lead.niche } });
     return null;
   }
+
+  // DNS MX check — only reject on empty array, allow on DNS errors
+  let contactEmail = null;
+  let emailVerified = false;
+  const emailDomain = rawEmail.split('@')[1];
+  console.log(`  [Agent 2] Email verifiëren: ${rawEmail}`);
+  try {
+    const mx = await dnsPromises.resolveMx(emailDomain);
+    if (mx && mx.length > 0) {
+      contactEmail  = rawEmail;
+      emailVerified = true;
+      console.log(`  [Agent 2] MX check: ${emailDomain} → valid ✓ — email: ${contactEmail}`);
+    } else {
+      console.log(`  ✗ MX check: ${emailDomain} → no records — ${lead.companyName} overgeslagen`);
+      addActivity('skip', `${lead.companyName} overgeslagen — email domein ontvangt geen mail`, { meta: { companyName: lead.companyName } });
+      return null;
+    }
+  } catch (mxErr) {
+    // DNS error (Railway network issue) → allow the email
+    contactEmail  = rawEmail;
+    emailVerified = false;
+    console.log(`  [Agent 2] MX check: ${emailDomain} → DNS fout (${mxErr.code || mxErr.message}), email toegestaan`);
+  }
+
+  const emailSource = 'agent1_websearch';
 
   console.log(`  [Agent 3] Social media analyseren...`);
   let social;
@@ -4413,25 +4271,29 @@ async function runFindLeadsJob(overrides = {}) {
 
     const searchPrompt = `Search the web and find ${batchSize} real small independent local businesses in ${randomCity} that sell or offer: ${randomNiche}.
 
-Requirements for each business:
-- Must be a real, independently owned local business (NOT a national chain or franchise)
-- Must have a real active website (not just social media)
-- Must have been operating for at least 1 year
-- Small or medium sized (under 50 employees)
+For EACH business you MUST find:
+1. Real company name (as shown on their website)
+2. Real website URL (the actual URL you found while searching)
+3. Real contact email address — find it from their website, Google Maps listing, social media profile, or any public source. Do NOT guess or invent an email.
 
-Search for them online now. For each real business you find, return its actual details.
+Only include businesses where you actually found a real email address.
+
+Requirements:
+- Independently owned local business (NOT a national chain or franchise)
+- Real active website (not just a social media page)
+- Operating for at least 1 year
 
 Return ONLY a JSON array, no explanation:
 [{
-  "companyName": "Exact business name from their website",
+  "companyName": "Exact business name",
+  "websiteUrl": "https://their-real-website.com",
+  "email": "real@emailaddress.com",
   "location": "${randomCity}, Country",
   "country": "2-letter country code e.g. NL, DE, GB, US, FR",
   "instagramHandle": "@handle or null",
   "niche": "beauty" or "food" or "fitness" or "retail" or "restaurant" or "horeca" or "health" or "automotive",
   "subNiche": "${randomNiche}",
   "estimatedFollowers": 0,
-  "websiteUrl": "https://their-real-website.com",
-  "linkedinCompanyUrl": null,
   "companySize": "small"
 }]${alreadySeen}`;
 
@@ -4491,9 +4353,9 @@ Return ONLY a JSON array, no explanation:
       newLeads.push(leadRecord);
       found++;
       console.log(`  ✓ Klaar — score: ${item.score}, waarde: €${item.estimatedValue} → inbox (wacht op goedkeuring)`);
-      // 1s delay between companies to stay within rate limits
-      await new Promise(r => setTimeout(r, 1000));
     }
+    // 3s delay between Agent 1 batches (web search rate limit safety)
+    if (found < target) await new Promise(r => setTimeout(r, 3000));
   }
 
   } catch (loopErr) {
