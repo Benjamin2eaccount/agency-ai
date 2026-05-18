@@ -3565,23 +3565,36 @@ async function checkWebsite(url) {
     const hasShop       = /\b(shop|winkel|bestel|kopen|cart|basket|checkout)/i.test(html);
     const hasCTA        = /\b(contact|contact us|meer info|neem contact|bel ons|call us)/i.test(html);
 
-    // Scrape email: prioritise mailto: href links (explicit, reliable)
+    // Scrape email: only reject obvious system/bot addresses — allow Gmail, Hotmail, Yahoo etc.
+    // Many small businesses use personal/free email providers.
     const isValidScrapedEmail = e => {
-      const low = e.toLowerCase();
-      return !low.includes('noreply') && !low.includes('no-reply') && !low.includes('@example') &&
-             !low.match(/@(gmail|hotmail|yahoo|outlook|live|msn)\.(com|nl|be)/) &&
-             !low.match(/\.(png|jpg|gif|svg|css|js|woff|ttf|ico)$/) &&
-             low.includes('@') && low.includes('.');
+      if (!e || !e.includes('@') || !e.includes('.')) return false;
+      const low = e.toLowerCase().trim();
+      // Hard rejections: clearly automated / placeholder
+      if (/noreply|no-reply|donotreply|do-not-reply/.test(low)) return false;
+      if (low.includes('@example') || low.includes('@test.') || low.includes('@sentry') || low.includes('@w3.org')) return false;
+      // Reject image/asset false positives
+      if (/\.(png|jpg|jpeg|gif|svg|webp|css|js|woff|ttf|eot|ico|pdf)$/i.test(low)) return false;
+      // Reject very long or clearly bogus strings
+      if (low.length > 80) return false;
+      return true;
     };
+
     const mailtoLinks = [...html.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1].trim());
     const rawHtmlEmails = html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
+
+    const allFoundEmails = [...new Set([...mailtoLinks, ...rawHtmlEmails])];
+    const filteredEmails = allFoundEmails.filter(isValidScrapedEmail);
+    console.log(`  [Agent2] Emails gevonden op homepage: ${allFoundEmails.length} totaal, ${filteredEmails.length} geldig`, filteredEmails.slice(0,5));
+
+    // Prefer mailto: links first (explicit intent), then raw text
     let scrapedEmail = mailtoLinks.find(isValidScrapedEmail)
                     || rawHtmlEmails.find(isValidScrapedEmail)
                     || null;
 
-    // If nothing found on homepage, try contact/about pages
+    // If nothing found on homepage, try contact/about/imprint pages
     if (!scrapedEmail) {
-      for (const page of ['/contact', '/contact-us', '/over-ons', '/about', '/about-us']) {
+      for (const page of ['/contact', '/contact-us', '/over-ons', '/about', '/about-us', '/kontakt', '/contacto', '/impressum', '/imprint', '/privacy']) {
         if (scrapedEmail) break;
         try {
           const pageUrl = new URL(page, url).href;
@@ -3590,9 +3603,33 @@ async function checkWebsite(url) {
             const pHtml   = await pRes.text();
             const pMailto = [...pHtml.matchAll(/href=["']mailto:([^"'?\s]+)/gi)].map(m => m[1].trim());
             const pRaw    = pHtml.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
-            scrapedEmail  = pMailto.find(isValidScrapedEmail) || pRaw.find(isValidScrapedEmail) || null;
+            const pAll = [...new Set([...pMailto, ...pRaw])].filter(isValidScrapedEmail);
+            if (pAll.length) console.log(`  [Agent2] Emails op ${page}: ${pAll.slice(0,3)}`);
+            scrapedEmail = pMailto.find(isValidScrapedEmail) || pRaw.find(isValidScrapedEmail) || null;
           }
         } catch {} // page is optional
+      }
+    }
+
+    let emailSource = 'scraped';
+    if (scrapedEmail) {
+      console.log(`  [Agent2] Email gevonden via scraping: ${scrapedEmail}`);
+    } else {
+      console.log(`  [Agent2] Geen email gevonden via scraping voor ${url}`);
+      // Claude AI fallback: extract email from homepage text
+      try {
+        const snippet = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000);
+        const aiEmailPrompt = `Based on the following website text content from ${url}, find the contact email address of this business. Look for any email patterns, contact info sections, or references to a contact email. Reply with ONLY the email address (e.g. info@business.com), nothing else. If no email can be found, reply with the single word "none".\n\nContent:\n${snippet}`;
+        const aiEmailRaw = (await aiCall(aiEmailPrompt)).trim().toLowerCase().replace(/^mailto:/i, '');
+        if (aiEmailRaw && aiEmailRaw !== 'none' && isValidScrapedEmail(aiEmailRaw)) {
+          scrapedEmail = aiEmailRaw;
+          emailSource = 'ai_extracted';
+          console.log(`  [Agent2] Email gevonden via Claude AI fallback: ${scrapedEmail}`);
+        } else {
+          console.log(`  [Agent2] Claude AI fallback: geen email (antwoord: "${aiEmailRaw}")`);
+        }
+      } catch (aiErr) {
+        console.log(`  [Agent2] Claude AI fallback fout: ${aiErr.message}`);
       }
     }
     const speedScore    = ms < 1500 ? 9 : ms < 3000 ? 7 : ms < 5000 ? 5 : 3;
@@ -3614,6 +3651,7 @@ async function checkWebsite(url) {
       hasShop,
       hasCTA,
       scrapedEmail,
+      emailSource: scrapedEmail ? emailSource : null,
       problems
     };
   } catch (err) {
@@ -3674,10 +3712,10 @@ async function processOneLead(lead, settings) {
   const website = await checkWebsite(lead.websiteUrl);
   console.log(`  [Agent 2] Bereikbaar: ${website.reachable}, laadtijd: ${website.loadTimeMs || '—'}ms`);
 
-  // Email: only scraped emails are trusted — no guessing
+  // Email: scraped or AI-extracted are both trusted
   const contactEmail  = website.scrapedEmail || null;
   const emailVerified = !!contactEmail;
-  const emailSource   = contactEmail ? 'scraped' : null;
+  const emailSource   = contactEmail ? (website.emailSource || 'scraped') : null;
 
   if (contactEmail) {
     console.log(`  [Email] ${contactEmail} (scraped van website)`);
@@ -4206,8 +4244,8 @@ Geef een JSON array terug (alleen JSON, geen uitleg):
 
 companySize: "small" voor ZZP/MKB (<10 medewerkers), "medium" voor middelgroot (10-50), "large" voor groot/corporate (50+).
 Doelgroep niches (gebruik ALLEEN deze types): ${nichesList}.
-Mix van locaties: Nederland, België, Duitsland, UK, VS.
-Gebruik realistische domeinen die echt kunnen bestaan.
+Doelregio's (verspreid per batch): ~30% Nederland/België (gebruik dan Dutch email taal), ~70% rest — België, Duitsland, Frankrijk, Luxemburg, Italië, Spanje, UK, VS, Canada, Australië.
+Gebruik realistische domeinen die echt kunnen bestaan (ccTLD waar van toepassing: .nl .be .de .fr .co.uk .com.au .ca etc.).
 Geef exact ${batchSize} bedrijven.${alreadySeen}`;
 
     let batch;
