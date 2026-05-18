@@ -5185,10 +5185,10 @@ async function renderRuns() {
           <i class="ti ti-player-play"></i> Start run
         </button>
       </div>
-      <div id="runProgressArea" style="display:none;margin-top:14px">
-        <div id="runStatusText" class="run-status-text">Run gestart...</div>
-        <div class="run-progress-track"><div class="run-progress-bar"></div></div>
-        <div id="runElapsedText" class="run-elapsed-text">Bezig: 0:00</div>
+      <div style="margin-top:14px">
+        <p id="run-status" style="display:none;font-size:13px;color:var(--text-muted);margin:0 0 6px"></p>
+        <div id="run-progress-bar" style="display:none"></div>
+        <p id="run-timer" style="display:none;font-size:12px;color:var(--text-muted);margin:6px 0 0"></p>
       </div>
     </div>
 
@@ -5801,20 +5801,19 @@ async function startCustomRun() {
   const count    = parseInt(document.getElementById('runCount')?.value) || 15;
   const niches   = document.getElementById('runNiches')?.value?.trim();
   const nicheArr = niches ? niches.split(',').map(n => n.trim()).filter(Boolean) : [];
-  const btn          = document.getElementById('startRunBtn');
-  const progressArea = document.getElementById('runProgressArea');
-  const statusEl     = document.getElementById('runStatusText');
-  const elapsedEl    = document.getElementById('runElapsedText');
-  const barWrap      = progressArea?.querySelector('.run-progress-track');
+  const btn      = document.getElementById('startRunBtn');
+  const statusEl = document.getElementById('run-status');
+  const barEl    = document.getElementById('run-progress-bar');
+  const timerEl  = document.getElementById('run-timer');
 
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...'; }
-  if (progressArea) progressArea.style.display = 'block';
-  if (statusEl)  statusEl.textContent  = 'Run gestart...';
-  if (elapsedEl) { elapsedEl.style.display = ''; elapsedEl.textContent = 'Bezig: 0:00'; }
+  if (statusEl) { statusEl.textContent = 'Run gestart...'; statusEl.style.display = ''; statusEl.style.color = ''; }
+  if (barEl)    barEl.style.display = '';
+  if (timerEl)  { timerEl.textContent = 'Bezig: 0:00'; timerEl.style.display = ''; }
 
   const t0 = Date.now();
   const timer = setInterval(() => {
-    if (elapsedEl) elapsedEl.textContent = `Bezig: ${_runFmt(Date.now() - t0)}`;
+    if (timerEl) timerEl.textContent = `Bezig: ${_runFmt(Date.now() - t0)}`;
   }, 1000);
 
   try {
@@ -5823,22 +5822,22 @@ async function startCustomRun() {
     clearInterval(timer);
     const duration = _runFmt(Date.now() - t0);
 
-    if (barWrap) barWrap.style.display = 'none';
-    if (elapsedEl) elapsedEl.style.display = 'none';
+    if (barEl)   barEl.style.display = 'none';
+    if (timerEl) timerEl.style.display = 'none';
 
     if (res?.ok) {
       if (statusEl) statusEl.textContent = `Klaar in ${duration} — ${data.found || 0} leads gevonden`;
       toast(`Run klaar — ${data.found || 0} leads gevonden`, 'success');
       renderRuns();
     } else {
-      if (statusEl) statusEl.textContent = data.error || 'Run mislukt — controleer logs';
+      if (statusEl) { statusEl.textContent = data.error || 'Run mislukt — controleer logs'; statusEl.style.color = '#dc2626'; }
       toast(data.error || 'Run mislukt — controleer server logs', 'error');
     }
   } catch (err) {
     clearInterval(timer);
-    if (barWrap) barWrap.style.display = 'none';
-    if (elapsedEl) elapsedEl.style.display = 'none';
-    if (statusEl) statusEl.textContent = 'Fout: ' + err.message;
+    if (barEl)   barEl.style.display = 'none';
+    if (timerEl) timerEl.style.display = 'none';
+    if (statusEl) { statusEl.textContent = 'Fout: ' + err.message; statusEl.style.color = '#dc2626'; }
     toast('Fout: ' + err.message, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> Start run'; }
