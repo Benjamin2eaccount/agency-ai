@@ -4472,6 +4472,8 @@ Return ONLY a JSON array, no explanation:
       newLeads.push(leadRecord);
       found++;
       console.log(`  ✓ Klaar — score: ${item.score}, waarde: €${item.estimatedValue} → inbox (wacht op goedkeuring)`);
+      // 1s delay between companies to stay within rate limits
+      await new Promise(r => setTimeout(r, 1000));
     }
   }
 
