@@ -4469,6 +4469,83 @@ function startProject(leadId) {
   const lead = state.leads.find(l => l.id === leadId);
   if (!lead) return;
 
+  const defaultServices = (state.settings?.services || []).map(s => s.name).join(', ');
+  const currentServices = (lead.services || []).map(s => typeof s === 'string' ? s : s.name).join(', ');
+  const servicesList = (state.settings?.services || []);
+
+  const serviceCheckboxes = servicesList.length
+    ? servicesList.map(s => {
+        const sName = typeof s === 'string' ? s : s.name;
+        const sPrice = typeof s === 'object' && s.price ? s.price : '';
+        const checked = !lead.services?.length || (lead.services || []).some(ls => (typeof ls === 'string' ? ls : ls.name) === sName);
+        return `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;font-size:13px">
+          <input type="checkbox" name="svc" value="${esc(sName)}" ${checked ? 'checked' : ''} style="width:15px;height:15px;accent-color:var(--accent)">
+          <span style="flex:1">${esc(sName)}</span>
+          ${sPrice ? `<span style="font-size:12px;color:var(--text-muted)">€${sPrice.toLocaleString?.('nl-NL') ?? sPrice}</span>` : ''}
+        </label>`;
+      }).join('')
+    : `<input type="text" id="projServices" class="form-control" value="${esc(currentServices || defaultServices)}" placeholder="bijv. Social Media, Website, SEO" style="width:100%">`;
+
+  openModal(`
+    <div class="modal-header">
+      <strong><i class="ti ti-settings" style="color:var(--accent)"></i> Project configureren — ${esc(lead.companyName)}</strong>
+      <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div style="padding:0 0 8px">
+      <div class="form-group" style="margin-bottom:14px">
+        <label>Services</label>
+        <div style="border:1px solid var(--border);border-radius:8px;padding:4px 12px;background:var(--surface);max-height:180px;overflow-y:auto" id="projServicesList">
+          ${serviceCheckboxes}
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <div class="form-group">
+          <label>Deal waarde (€)</label>
+          <input type="number" id="projPrice" class="form-control" value="${lead.estimatedValue || lead.servicePrice || ''}" placeholder="0" min="0" style="width:100%">
+        </div>
+        <div class="form-group">
+          <label>Looptijd (maanden)</label>
+          <input type="number" id="projDuration" class="form-control" value="${lead.projectDuration || 12}" placeholder="12" min="1" max="60" style="width:100%">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notities voor AI projectplan</label>
+        <textarea id="projNotes" class="form-control" rows="3" placeholder="Speciale wensen, doelen, beperkingen..." style="width:100%;resize:vertical">${esc(lead.projectNotes || '')}</textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
+      <button class="btn btn-primary" onclick="confirmStartProject('${leadId}')"><i class="ti ti-rocket"></i> Project starten</button>
+    </div>
+  `);
+}
+
+async function confirmStartProject(leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead) return;
+
+  const checkedBoxes = [...document.querySelectorAll('#projServicesList input[name="svc"]:checked')].map(el => el.value);
+  const manualInput  = document.getElementById('projServices');
+  const services     = checkedBoxes.length ? checkedBoxes : (manualInput?.value?.split(',').map(s => s.trim()).filter(Boolean) || []);
+  const price        = parseFloat(document.getElementById('projPrice')?.value) || lead.estimatedValue || 0;
+  const duration     = parseInt(document.getElementById('projDuration')?.value) || 12;
+  const notes        = document.getElementById('projNotes')?.value?.trim() || '';
+
+  const patch = { estimatedValue: price, servicePrice: price, projectDuration: duration, projectNotes: notes };
+  if (services.length) patch.services = services;
+
+  await api(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(patch) });
+  const idx = state.leads.findIndex(l => l.id === leadId);
+  if (idx !== -1) Object.assign(state.leads[idx], patch);
+
+  closeModal();
+  _doStartProject(leadId);
+}
+
+function _doStartProject(leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead) return;
+
   const steps = [
     { label: 'Portaaltoegang instellen' },
     { label: 'Intake link genereren' },
