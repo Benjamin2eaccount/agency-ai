@@ -5,6 +5,7 @@ A fully autonomous AI outreach SaaS. It finds 15 local businesses daily using 7 
 
 ## Status
 **COMPLETE + STEPS A–P IN PROGRESS + VISUAL REDESIGN COMPLETE.** 15 core steps + 29 improvements + 8 quality checks = 65 features shipped.
+- ITEM 9 ✓ — Auto-run hervatten knop: Dashboard Auto-run card now shows a "Auto-run pauzeren" / "Auto-run hervatten" button (admin-only). `toggleAutoRun(currentlyPaused)` calls `PATCH /api/settings/automation` with `{ automationPaused: !currentlyPaused }`, updates state, toasts, re-renders. When paused, the next-run time shows "—" and the countdown is hidden.
 - ITEM 8 ✓ — Pipeline waarde berekening fixen: `GET /api/stats` now filters `(l.estimatedValue || 0) > 0` before summing pipelineValue and last24hValue — leads with no price (€0) no longer inflate the total. Same fix applied to kanban column totalVal in app.js.
 - ITEM 7 ✓ — Email tracking pixel fixen: `GET /track/open/:token` already returned a proper 1×1 GIF and set `openedAt`/`openCount`, but never set `lead.emailOpened` (boolean). Added `leads[idx].emailOpened = true` alongside `openedAt` on first open. Fixed app.js emails tab badge to check `lead.emailOpened || lead.openedAt` (covers both old and new leads) and now also shows open count.
 - ITEM 6 ✓ — Verwijder zoekbalk uit sidebar: Removed `.sidebar-search-wrap` div (with icon + input) from index.html. Removed the `sidebarSearch` event listener block (~25 lines) from app.js init. Removed `.sidebar-search-input`, `.sidebar-search-wrap`, `.sidebar-search-icon` CSS rules from style.css.

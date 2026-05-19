@@ -435,12 +435,19 @@ async function renderDashboard() {
         </div>
         <div style="margin-top:4px">
           <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px">Volgende run</div>
-          <div style="font-size:20px;font-weight:700;color:var(--text-primary);letter-spacing:-0.5px">${nextRun.label}</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:6px">Afteltimer: <span id="countdown" class="mono" style="color:var(--accent);font-weight:600">${nextRun.countdown}</span></div>
+          <div style="font-size:20px;font-weight:700;color:var(--text-primary);letter-spacing:-0.5px">${settings?.automationPaused ? '—' : nextRun.label}</div>
+          ${!settings?.automationPaused ? `<div style="font-size:12px;color:var(--text-muted);margin-top:6px">Afteltimer: <span id="countdown" class="mono" style="color:var(--accent);font-weight:600">${nextRun.countdown}</span></div>` : ''}
         </div>
         <div style="margin-top:12px;font-size:12px;color:var(--text-muted)">
           Laatste run: ${recentRuns[0] ? relativeTime(recentRuns[0].createdAt) : 'nog niet gerund'}
         </div>
+        ${isAdmin() ? `
+        <div style="margin-top:14px">
+          <button class="btn btn-sm ${settings?.automationPaused ? 'btn-primary' : 'btn-outline'}" onclick="toggleAutoRun(${!!settings?.automationPaused})">
+            <i class="ti ti-${settings?.automationPaused ? 'player-play' : 'pause'}"></i>
+            ${settings?.automationPaused ? 'Auto-run hervatten' : 'Auto-run pauzeren'}
+          </button>
+        </div>` : ''}
       </div>
 
       <div class="card">
@@ -9105,6 +9112,17 @@ function getNextRunTime(timeStr) {
     countdown: `${pad(hh)}:${pad(mm)}:${pad(ss)}`,
     target: next
   };
+}
+
+async function toggleAutoRun(currentlyPaused) {
+  const res = await api('/api/settings/automation', {
+    method: 'PATCH',
+    body: JSON.stringify({ automationPaused: !currentlyPaused })
+  });
+  if (!res || !res.ok) { toast('Opslaan mislukt', 'error'); return; }
+  state.settings.automationPaused = !currentlyPaused;
+  toast(currentlyPaused ? 'Auto-run hervat' : 'Auto-run gepauzeerd');
+  renderDashboard();
 }
 
 let countdownInterval = null;
