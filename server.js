@@ -5190,16 +5190,22 @@ Rules:
 
 async function checkReplies() {
   const settings = readJSON('settings.json');
-  if (!isGmailReady(settings)) return 0;
-  if (settings.replyDetection === false) return 0;
+  if (!isGmailReady(settings)) {
+    console.log('[IMAP] Overgeslagen — Gmail niet geconfigureerd');
+    return { count: 0, names: [] };
+  }
+  if (settings.replyDetection === false) {
+    console.log('[IMAP] Overgeslagen — replyDetection uitgeschakeld');
+    return { count: 0, names: [] };
+  }
 
   let imapSimple, simpleParser;
   try {
     imapSimple = require('imap-simple');
     ({ simpleParser } = require('mailparser'));
   } catch (e) {
-    console.error('[Reply] imap-simple of mailparser niet beschikbaar:', e.message);
-    return 0;
+    console.error('[IMAP] imap-simple of mailparser niet beschikbaar:', e.message);
+    return { count: 0, names: [] };
   }
 
   const imapConfig = {
@@ -5216,18 +5222,22 @@ async function checkReplies() {
 
   let connection;
   try {
+    console.log(`[IMAP] Verbinden met Gmail als ${settings.gmailAddress}...`);
     connection = await imapSimple.connect(imapConfig);
+    console.log('[IMAP] Verbonden ✓');
     await connection.openBox('INBOX');
 
     const since = new Date();
-    since.setDate(since.getDate() - 7);
+    since.setDate(since.getDate() - 14);
     const searchCriteria = [['SINCE', toImapDate(since)]];
-    // Fetch full RFC822 message so mailparser can do proper MIME decoding
     const fetchOptions = { bodies: ['RFC822'], markSeen: false };
 
     const messages = await connection.search(searchCriteria, fetchOptions);
     const leads  = readJSON('leads.json') || [];
     const stats  = readJSON('stats.json') || {};
+    const sentLeads = leads.filter(l => l.sentAt && !['client', 'dead'].includes(l.status));
+    console.log(`[IMAP] ${messages.length} emails gevonden in inbox (laatste 14 dagen), ${sentLeads.length} verstuurde leads om tegen te checken`);
+
     let repliesFound = 0;
     let bouncesFound = 0;
     const newNames = [];
@@ -5239,24 +5249,64 @@ async function checkReplies() {
 
       let parsed;
       try { parsed = await simpleParser(rfc822.body); }
-      catch (parseErr) { console.warn('[Reply] Mailparser fout:', parseErr.message); continue; }
+      catch (parseErr) { console.warn('[IMAP] Mailparser fout:', parseErr.message); continue; }
 
-      const subject = (parsed.subject || '').toLowerCase().trim();
-      if (!/^re:/i.test(subject)) continue;
-      const cleanSubject = subject.replace(/^(re:\s*)+/i, '').trim();
+      const rawSubject = (parsed.subject || '').trim();
+      const subject    = rawSubject.toLowerCase();
+      const senderEmail = (parsed.from?.value?.[0]?.address || '').toLowerCase().trim();
       const msgId = parsed.messageId || `uid-${msg.attributes.uid}`;
 
-      const matched = leads.find(l => {
-        if (!l.sentAt) return false;
-        if (['client', 'dead'].includes(l.status)) return false;
-        // Skip if we already processed this exact message ID
+      // Only look at replies (subject starts with Re:)
+      if (!/^re:/i.test(subject)) continue;
+      const cleanSubject = subject.replace(/^(re:\s*)+/i, '').trim();
+
+      console.log(`[IMAP] Reply email: from="${senderEmail}", subject="${rawSubject}"`);
+
+      const matched = sentLeads.find(l => {
+        // Skip already-processed message IDs
         if (l.processedMessageIds?.includes(msgId)) return false;
-        const orig = (l.email?.subject || '').toLowerCase().trim();
-        if (!orig) return false;
-        return cleanSubject === orig ||
-               cleanSubject.includes(orig.substring(0, 25)) ||
-               orig.includes(cleanSubject.substring(0, 25));
+
+        // ── Strategy 1: sender email matches lead contact email (most reliable) ──
+        if (senderEmail && l.contactEmail &&
+            senderEmail === l.contactEmail.toLowerCase().trim()) {
+          console.log(`[IMAP]   → Match via sender email: ${l.companyName} (${l.contactEmail})`);
+          return true;
+        }
+
+        // ── Strategy 2: company name appears in reply subject ──
+        const companyLower = (l.companyName || '').toLowerCase().trim();
+        if (companyLower.length >= 3 && cleanSubject.includes(companyLower)) {
+          console.log(`[IMAP]   → Match via bedrijfsnaam in onderwerp: ${l.companyName}`);
+          return true;
+        }
+
+        // ── Strategy 3: reply subject matches any sent subject (all variants) ──
+        const possibleSubjects = [
+          l.email?.subject,
+          l.emailA?.subject,
+          l.emailB?.subject,
+          ...(Array.isArray(l.subjectOptions) ? l.subjectOptions : [])
+        ].filter(Boolean).map(s => s.toLowerCase().trim());
+
+        for (const orig of possibleSubjects) {
+          if (cleanSubject === orig ||
+              (orig.length >= 10 && cleanSubject.includes(orig.substring(0, 30))) ||
+              (cleanSubject.length >= 10 && orig.includes(cleanSubject.substring(0, 30)))) {
+            console.log(`[IMAP]   → Match via onderwerp: ${l.companyName} (orig: "${orig}")`);
+            return true;
+          }
+        }
+
+        return false;
       });
+
+      if (!matched) {
+        console.log(`[IMAP]   → Geen match gevonden voor email van "${senderEmail}"`);
+        // Log the leads we checked against for debugging
+        if (sentLeads.length <= 20) {
+          sentLeads.forEach(l => console.log(`[IMAP]     Geen match: ${l.companyName} | contactEmail: ${l.contactEmail || '—'} | subject: ${l.email?.subject || l.emailA?.subject || '—'}`));
+        }
+      }
 
       if (matched) {
         // Mark as read in Gmail (never delete)
@@ -5372,12 +5422,12 @@ async function checkReplies() {
       }
     }
 
-    console.log(`[Reply] Check klaar: ${repliesFound} replies, ${bouncesFound} bounces`);
+    console.log(`[IMAP] Check klaar: ${repliesFound} replies, ${bouncesFound} bounces`);
     return { count: repliesFound, names: newNames };
   } catch (err) {
-    console.error('[Reply check] Fout:', err.message);
+    console.error('[IMAP] Fout tijdens reply check:', err.message);
     if (connection) try { connection.end(); } catch {}
-    return 0;
+    return { count: 0, names: [] };
   }
 }
 
