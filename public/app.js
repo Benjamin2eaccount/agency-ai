@@ -1148,17 +1148,29 @@ async function markLinkedinDmSent(id) {
 }
 
 async function triggerReplyCheck() {
-  const btn = document.getElementById('checkRepliesBtn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...'; }
+  const btns = ['checkRepliesBtn', 'dashCheckRepliesBtn'].map(id => document.getElementById(id)).filter(Boolean);
+  btns.forEach(b => { b.disabled = true; b.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...'; });
   try {
     const data = await apiJSON('/api/check-replies', { method: 'POST' });
     const found = data?.found ?? 0;
-    toast(found > 0 ? `${found} nieuwe repl${found === 1 ? 'y' : 'ies'} gevonden` : 'Geen nieuwe replies', found > 0 ? 'success' : 'info');
-    if (found > 0) renderInbox();
+    const names = data?.names || [];
+    if (found === 0) {
+      toast('Geen nieuwe replies', 'info');
+    } else if (names.length === 1) {
+      toast(`Nieuwe reply gevonden van ${names[0]}!`, 'success');
+    } else {
+      names.forEach(name => toast(`Nieuwe reply gevonden van ${name}!`, 'success'));
+    }
+    if (found > 0 && state.view === 'inbox') renderInbox();
   } catch (err) {
     toast('Reply check mislukt: ' + err.message, 'error');
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-mail-forward"></i> Controleer replies'; }
+    btns.forEach(b => {
+      b.disabled = false;
+      b.innerHTML = b.id === 'dashCheckRepliesBtn'
+        ? '<i class="ti ti-mail-forward"></i> Controleer replies nu'
+        : '<i class="ti ti-mail-forward"></i> Controleer replies';
+    });
   }
 }
 
@@ -5338,6 +5350,7 @@ async function renderRuns() {
         <h3 class="card-title"><i class="ti ti-heartbeat" style="color:var(--danger)"></i> Systeemstatus</h3>
         <div style="display:flex;gap:8px">
           <a class="btn btn-ghost btn-sm" href="/status" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> Statuspagina</a>
+          <button class="btn btn-ghost btn-sm" id="dashCheckRepliesBtn" onclick="triggerReplyCheck()" title="Controleer Gmail inbox nu op nieuwe replies"><i class="ti ti-mail-forward"></i> Controleer replies nu</button>
           <button class="btn btn-ghost btn-sm" onclick="loadSystemHealth()"><i class="ti ti-refresh"></i> Vernieuwen</button>
         </div>
       </div>

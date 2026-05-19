@@ -5373,7 +5373,7 @@ async function checkReplies() {
     }
 
     console.log(`[Reply] Check klaar: ${repliesFound} replies, ${bouncesFound} bounces`);
-    return repliesFound;
+    return { count: repliesFound, names: newNames };
   } catch (err) {
     console.error('[Reply check] Fout:', err.message);
     if (connection) try { connection.end(); } catch {}
@@ -5383,8 +5383,8 @@ async function checkReplies() {
 
 app.post('/api/check-replies', async (req, res) => {
   try {
-    const found = await checkReplies();
-    res.json({ ok: true, found });
+    const result = await checkReplies();
+    res.json({ ok: true, found: result.count, names: result.names });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
