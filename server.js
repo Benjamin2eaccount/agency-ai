@@ -7049,6 +7049,61 @@ app.post('/api/contact', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── Contacts management ──────────────────────────────────────────────────────
+app.get('/api/contacts', authMiddleware, (req, res) => {
+  res.json(readJSON('contacts.json') || []);
+});
+
+app.patch('/api/contacts/:id', authMiddleware, (req, res) => {
+  const contacts = readJSON('contacts.json') || [];
+  const idx = contacts.findIndex(c => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Niet gevonden' });
+  const allowed = ['status', 'notes'];
+  allowed.forEach(f => { if (req.body[f] !== undefined) contacts[idx][f] = req.body[f]; });
+  contacts[idx].updatedAt = new Date().toISOString();
+  writeJSON('contacts.json', contacts);
+  res.json(contacts[idx]);
+});
+
+app.delete('/api/contacts/:id', requireAdmin, (req, res) => {
+  const contacts = readJSON('contacts.json') || [];
+  const next = contacts.filter(c => c.id !== req.params.id);
+  if (next.length === contacts.length) return res.status(404).json({ error: 'Niet gevonden' });
+  writeJSON('contacts.json', next);
+  res.json({ ok: true });
+});
+
+app.post('/api/contacts/:id/to-lead', requireAdmin, async (req, res) => {
+  const contacts = readJSON('contacts.json') || [];
+  const idx = contacts.findIndex(c => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Niet gevonden' });
+  const c = contacts[idx];
+  const leads = readJSON('leads.json') || [];
+  const lead = {
+    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+    companyName: c.company || c.name,
+    contactName: c.name,
+    contactEmail: c.email,
+    phone: c.phone || '',
+    niche: c.service || 'overig',
+    city: '',
+    score: 5,
+    status: 'new',
+    source: 'contact_form',
+    notes: c.message || '',
+    services: [],
+    history: [{ event: 'created', date: new Date().toISOString(), note: 'Aangemaakt via contactformulier' }],
+    createdAt: new Date().toISOString()
+  };
+  leads.unshift(lead);
+  writeJSON('leads.json', leads);
+  contacts[idx].status = 'converted';
+  contacts[idx].convertedLeadId = lead.id;
+  contacts[idx].updatedAt = new Date().toISOString();
+  writeJSON('contacts.json', contacts);
+  res.json({ ok: true, leadId: lead.id });
+});
+
 // ─── Chrome extension download (zip) ──────────────────────────────────────────
 app.get('/extension-download', (req, res) => {
   const extDir = path.join(__dirname, 'public', 'extension');

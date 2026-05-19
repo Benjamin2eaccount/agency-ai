@@ -3993,3 +3993,32 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
   100% { transform: translateX(350%); }
 }
 [data-theme="dark"] #run-progress-bar { background: var(--border); }
+
+
+/* ── Contacts view ─────────────────────────────────────────────────────────── */
+.contact-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  transition: box-shadow 0.15s;
+}
+.contact-card:hover { box-shadow: var(--shadow-sm); }
+.contact-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+.contact-card-info { flex: 1; min-width: 0; }
+.contact-card-name { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.contact-card-company { font-weight: 400; color: var(--text-muted); }
+.contact-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 5px; }
+.contact-meta-link { font-size: 13px; color: var(--text-secondary); text-decoration: none; display: flex; align-items: center; gap: 4px; }
+.contact-meta-link:hover { color: var(--accent); }
+.contact-card-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+.contact-status-badge { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 20px; white-space: nowrap; }
+.contact-card-date { font-size: 12px; color: var(--text-muted); }
+.contact-card-message { font-size: 13px; color: var(--text-secondary); background: var(--surface-2); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; white-space: pre-wrap; }
+.contact-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.contact-converted-note { font-size: 12px; color: #10b981; display: flex; align-items: center; gap: 4px; font-weight: 500; }
+.btn-danger-ghost { background: transparent; border: 1px solid var(--border); color: var(--danger); padding: 0 10px; }
+.btn-danger-ghost:hover { background: rgba(239,68,68,0.08); border-color: var(--danger); }
+[data-theme="dark"] .contact-card { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .contact-card-message { background: var(--surface-2); }
