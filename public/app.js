@@ -8968,7 +8968,8 @@ async function openNotificationPanel() {
     payment_overdue:  'ti-alert-triangle',
     run_complete:     'ti-check',
     email_bounced:    'ti-mail-off',
-    calendly_booking: 'ti-calendar-event'
+    calendly_booking: 'ti-calendar-event',
+    contact_form:     'ti-user-plus'
   };
 
   const notifHTML = data.notifications.length === 0

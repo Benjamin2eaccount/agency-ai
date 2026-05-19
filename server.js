@@ -1165,6 +1165,34 @@ app.post('/api/gmail/webhook', async (req, res) => {
   }
 });
 
+// Public contact form — must be BEFORE app.use('/api', authMiddleware)
+app.post('/api/contact', async (req, res) => {
+  const { name, company, email, phone, service, message } = req.body;
+  if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
+  const contacts = readJSON('contacts.json') || [];
+  contacts.unshift({
+    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+    name, company: company || '', email, phone: phone || '',
+    service: service || '', message: message || '',
+    createdAt: new Date().toISOString(),
+    status: 'new'
+  });
+  writeJSON('contacts.json', contacts);
+  addNotification('contact_form', `Nieuwe aanvraag: ${name}`, `${company ? company + ' — ' : ''}${service || 'Algemene aanvraag'}`);
+  const settings = readJSON('settings.json') || {};
+  if (isGmailReady(settings)) {
+    try {
+      await sendEmail({
+        to: settings.gmailAddress,
+        subject: `Nieuwe aanvraag: ${name}${company ? ' — ' + company : ''}`,
+        body: `Nieuwe websiteaanvraag:\n\nNaam: ${name}\nBedrijf: ${company || '—'}\nEmail: ${email}\nTelefoon: ${phone || '—'}\nDienst: ${service || '—'}\n\nBericht:\n${message || '—'}`,
+        settings
+      });
+    } catch (_) { /* email is optional */ }
+  }
+  res.json({ ok: true });
+});
+
 app.use('/api', authMiddleware);
 
 // ─── API Keys management ──────────────────────────────────────────────────────
@@ -7330,32 +7358,6 @@ app.delete('/api/push/unsubscribe', authMiddleware, (req, res) => {
 });
 
 // ─── Contact form (public) ───────────────────────────────────────────────────
-app.post('/api/contact', async (req, res) => {
-  const { name, company, email, phone, service, message } = req.body;
-  if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
-  const contacts = readJSON('contacts.json') || [];
-  contacts.unshift({
-    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
-    name, company: company || '', email, phone: phone || '',
-    service: service || '', message: message || '',
-    createdAt: new Date().toISOString(),
-    status: 'new'
-  });
-  writeJSON('contacts.json', contacts);
-  const settings = readJSON('settings.json') || {};
-  if (isGmailReady(settings)) {
-    try {
-      await sendEmail({
-        to: settings.gmailAddress,
-        subject: `Nieuwe aanvraag: ${name}${company ? ' — ' + company : ''}`,
-        body: `Nieuwe websiteaanvraag:\n\nNaam: ${name}\nBedrijf: ${company || '—'}\nEmail: ${email}\nTelefoon: ${phone || '—'}\nDienst: ${service || '—'}\n\nBericht:\n${message || '—'}`,
-        settings
-      });
-    } catch (_) { /* email is optional */ }
-  }
-  res.json({ ok: true });
-});
-
 // ─── Contacts management ──────────────────────────────────────────────────────
 app.get('/api/contacts', authMiddleware, (req, res) => {
   res.json(readJSON('contacts.json') || []);
