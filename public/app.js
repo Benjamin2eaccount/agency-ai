@@ -734,7 +734,7 @@ function buildInboxCard(item) {
   return `
     <div class="inbox-card" data-id="${item.id}" id="card-${item.id}" data-selected-version="A">
       <label class="inbox-checkbox-wrap" onclick="event.stopPropagation()">
-        <input type="checkbox" class="bulk-checkbox" data-id="${item.id}" onchange="updateBulkSelCount()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
+        <input type="checkbox" class="bulk-checkbox" data-id="${item.id}" onchange="updateBulkSelCount()">
       </label>
 
       <div class="inbox-card-header">

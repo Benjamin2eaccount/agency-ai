@@ -1500,10 +1500,61 @@ input, select, textarea { font-family: inherit; }
 }
 .inbox-primary-actions { display: flex; gap: 8px; margin-left: auto; }
 
-/* Inbox checkbox */
+/* ── Custom checkbox base ─────────────────────────────────────── */
+input[type="checkbox"].bulk-checkbox,
+input[type="checkbox"].lc2-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  vertical-align: middle;
+}
+
+input[type="checkbox"].bulk-checkbox:hover,
+input[type="checkbox"].lc2-checkbox:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+}
+
+input[type="checkbox"].bulk-checkbox:checked,
+input[type="checkbox"].lc2-checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+}
+
+input[type="checkbox"].bulk-checkbox:checked::after,
+input[type="checkbox"].lc2-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 6px;
+  height: 10px;
+  border: 2px solid #fff;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg);
+}
+
+/* Inbox checkbox wrapper */
 .inbox-checkbox-wrap {
   position: absolute; top: 14px; right: 14px;
   cursor: pointer; z-index: 2;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.inbox-card:hover .inbox-checkbox-wrap,
+.inbox-card .inbox-checkbox-wrap:has(.bulk-checkbox:checked) {
+  opacity: 1;
 }
 
 /* Bulk bar */
@@ -2259,7 +2310,19 @@ input, select, textarea { font-family: inherit; }
 .pill-amber { background: #fef3c7; color: #92400e; }
 .pill-red   { background: #fee2e2; color: #991b1b; }
 .pill-blue  { background: var(--accent-light); color: var(--accent); }
-.lc2-checkbox { position: absolute; top: 14px; right: 14px; accent-color: var(--accent); }
+.lc2-checkbox {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 3;
+}
+
+.lead-card-v2:hover .lc2-checkbox,
+.lead-card-v2-selected .lc2-checkbox {
+  opacity: 1;
+}
 
 @media (max-width: 900px) { .lead-cards-v2 { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 580px) {
