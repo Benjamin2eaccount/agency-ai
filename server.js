@@ -4957,15 +4957,102 @@ Example format:
   // Log run summary (costs already tracked per-call in aiCall(); costUsd:0 here avoids double-counting in P&L)
   addActivity('run', `Run klaar: ${inboxItems.length} leads gevonden (${skipped} overgeslagen zonder email)`, { tokensIn: runTokIn, tokensOut: runTokOut, costUsd: 0, meta: { leadsFound: inboxItems.length, skipped, attempts, totalValue, runCostUsd } });
 
-  if (inboxItems.length > 0) {
-    const pendingCount = inboxItems.length;
-    const highScoreCount = inboxItems.filter(i => i.score >= 8).length;
-    addNotification('run_complete', `Run klaar: ${inboxItems.length} leads gevonden`,
+  const pendingCount   = inboxItems.length;
+  const highScoreCount = inboxItems.filter(i => i.score >= 8).length;
+
+  if (pendingCount > 0) {
+    addNotification('run_complete', `Run klaar: ${pendingCount} leads gevonden`,
       `${pendingCount} wachten op goedkeuring${highScoreCount > 0 ? ` · ${highScoreCount} met score 8+` : ''}`);
-    fireWebhooks('run.complete', { leadsFound: inboxItems.length, pendingCount, highScoreCount, totalValue, completedAt: new Date().toISOString() });
+    fireWebhooks('run.complete', { leadsFound: pendingCount, pendingCount, highScoreCount, totalValue, completedAt: new Date().toISOString() });
   }
-  console.log(`\n[Agency AI] ─── Run klaar: ${inboxItems.length} leads gevonden (${skipped} overgeslagen zonder email, ${attempts} bedrijven gecontroleerd), €${totalValue} pipeline ───\n`);
-  return inboxItems.length;
+
+  // Run-complete notification email
+  const runSettings = readJSON('settings.json');
+  if (isGmailReady(runSettings)) {
+    try {
+      const agencyName = runSettings.agencyName || 'Agency AI';
+      const runDate    = new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const fmt        = n => '€' + Number(n).toLocaleString('nl-NL');
+
+      const topLeads = [...inboxItems]
+        .sort((a, b) => (b.score || 0) - (a.score || 0))
+        .slice(0, 5);
+
+      const scoreColor = s => s >= 8 ? '#10b981' : s >= 6 ? '#f59e0b' : '#ef4444';
+
+      const leadsRows = topLeads.map(item =>
+        `<tr style="border-bottom:1px solid #f3f4f6">
+          <td style="padding:9px 12px;font-size:13px;color:#111;font-weight:500">${item.companyName || '—'}</td>
+          <td style="padding:9px 12px;font-size:12px;color:#6b7280">${item.city || '—'}</td>
+          <td style="padding:9px 12px;font-size:12px;color:#6b7280">${item.niche || '—'}</td>
+          <td style="padding:9px 12px;font-size:12px;font-weight:700;color:${scoreColor(item.score || 0)}">${item.score || '—'}/10</td>
+        </tr>`
+      ).join('');
+
+      const statPill = (label, value, bg, color) =>
+        `<div style="display:inline-block;background:${bg};color:${color};border-radius:8px;padding:10px 18px;margin:0 6px 6px 0;text-align:center;min-width:90px">
+          <div style="font-size:20px;font-weight:700">${value}</div>
+          <div style="font-size:11px;opacity:0.8;margin-top:2px">${label}</div>
+        </div>`;
+
+      const runEmailHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif">
+<div style="max-width:560px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08)">
+
+  <div style="background:#111;padding:26px 30px">
+    <div style="color:#fff;font-size:17px;font-weight:700">⚡ ${agencyName}</div>
+    <div style="color:#9ca3af;font-size:12px;margin-top:2px">Dagelijkse run voltooid — ${runDate}</div>
+  </div>
+
+  <div style="padding:26px 30px">
+    <div style="font-size:16px;font-weight:700;color:#111;margin-bottom:16px">
+      ${pendingCount > 0 ? `${pendingCount} nieuwe lead${pendingCount !== 1 ? 's' : ''} gevonden` : 'Run voltooid — geen nieuwe leads'}
+    </div>
+
+    <div style="margin-bottom:20px">
+      ${statPill('Gevonden', pendingCount, '#eff6ff', '#1d4ed8')}
+      ${statPill('Score 8+', highScoreCount, '#f0fdf4', '#15803d')}
+      ${statPill('Pipeline', fmt(totalValue), '#faf5ff', '#7c3aed')}
+      ${statPill('Gecontroleerd', attempts, '#f9fafb', '#374151')}
+    </div>
+
+    ${topLeads.length ? `
+    <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:8px">
+      Top leads (op score)
+    </div>
+    <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden">
+      <thead><tr style="background:#f9fafb">
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase">Bedrijf</th>
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase">Stad</th>
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase">Niche</th>
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase">Score</th>
+      </tr></thead>
+      <tbody>${leadsRows}</tbody>
+    </table>` : ''}
+
+    ${skipped > 0 ? `<div style="margin-top:14px;font-size:12px;color:#9ca3af">${skipped} bedrijf${skipped !== 1 ? 'en' : ''} overgeslagen (blacklist / duplicaat / geen email)</div>` : ''}
+
+    <div style="margin-top:20px;text-align:center">
+      <a href="${BASE_URL || 'https://www.agencyai.info'}/app" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;padding:12px 28px;font-size:14px;font-weight:600">Inbox bekijken →</a>
+    </div>
+  </div>
+</div>
+</body></html>`;
+
+      await sendEmail({
+        to: runSettings.gmailAddress,
+        subject: `✅ Run klaar: ${pendingCount} leads · ${highScoreCount} score 8+ · ${fmt(totalValue)}`,
+        html: runEmailHtml,
+        settings: runSettings
+      });
+      console.log('[Run] Notificatie email verstuurd');
+    } catch (err) {
+      console.error('[Run] Notificatie email fout:', err.message);
+    }
+  }
+
+  console.log(`\n[Agency AI] ─── Run klaar: ${pendingCount} leads gevonden (${skipped} overgeslagen zonder email, ${attempts} bedrijven gecontroleerd), €${totalValue} pipeline ───\n`);
+  return pendingCount;
 }
 
 // â"€â"€â"€ Find leads endpoint â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
