@@ -4034,3 +4034,8 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
 .invoice-fallback-box { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
 .invoice-fallback-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
 [data-theme="dark"] .invoice-fallback-box { background: var(--surface-2); border-color: var(--border); }
+
+/* Chat DM additions */
+.chat-sidebar-section-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); padding: 0 12px; margin-bottom: 2px; }
+.chat-dm-avatar { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0; }
+.chat-dm-role { font-size: 10px; color: var(--text-muted); margin-left: auto; }

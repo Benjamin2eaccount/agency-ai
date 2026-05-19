@@ -6259,6 +6259,60 @@ app.delete('/api/chat/messages/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── Chat: DMs ────────────────────────────────────────────────────────────────
+if (!readJSON('dm-messages.json')) writeJSON('dm-messages.json', []);
+
+app.get('/api/chat/users', authMiddleware, (req, res) => {
+  const users = (readJSON('users.json') || [])
+    .filter(u => u.id !== req.user.id)
+    .map(u => ({ id: u.id, name: u.name, username: u.username, role: u.role }));
+  res.json(users);
+});
+
+app.get('/api/chat/dm/:partnerId/messages', authMiddleware, (req, res) => {
+  const myId = req.user.id;
+  const pid  = req.params.partnerId;
+  const { since, limit = 100 } = req.query;
+  const all = readJSON('dm-messages.json') || [];
+  let msgs = all.filter(m =>
+    (m.fromId === myId && m.toId === pid) ||
+    (m.fromId === pid  && m.toId === myId)
+  );
+  if (since) msgs = msgs.filter(m => m.createdAt > since);
+  res.json(msgs.slice(-parseInt(limit)));
+});
+
+app.post('/api/chat/dm/:partnerId/messages', authMiddleware, (req, res) => {
+  const { text } = req.body;
+  if (!text?.trim()) return res.status(400).json({ error: 'Tekst verplicht' });
+  const users = readJSON('users.json') || [];
+  const partner = users.find(u => u.id === req.params.partnerId);
+  if (!partner) return res.status(404).json({ error: 'Gebruiker niet gevonden' });
+  const msgs = readJSON('dm-messages.json') || [];
+  const msg = {
+    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+    fromId: req.user.id,
+    toId:   req.params.partnerId,
+    fromName: req.user.name || req.user.username,
+    fromRole: req.user.role,
+    text: text.trim(),
+    createdAt: new Date().toISOString()
+  };
+  msgs.push(msg);
+  if (msgs.length > 2000) msgs.splice(0, msgs.length - 2000);
+  writeJSON('dm-messages.json', msgs);
+  res.json(msg);
+});
+
+app.delete('/api/chat/dm/messages/:id', authMiddleware, (req, res) => {
+  const msgs = readJSON('dm-messages.json') || [];
+  const msg = msgs.find(m => m.id === req.params.id);
+  if (!msg) return res.status(404).json({ error: 'Niet gevonden' });
+  if (msg.fromId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Geen toegang' });
+  writeJSON('dm-messages.json', msgs.filter(m => m.id !== req.params.id));
+  res.json({ ok: true });
+});
+
 // ─── Users management ─────────────────────────────────────────────────────────
 
 app.get('/api/users', requireAdmin, (req, res) => {
