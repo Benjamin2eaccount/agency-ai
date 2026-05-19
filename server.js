@@ -5099,20 +5099,30 @@ function toImapDate(d) {
   return `${d.getDate()}-${IMAP_MONTHS[d.getMonth()]}-${d.getFullYear()}`;
 }
 
+function decodeEmailBody(rawBody, encoding) {
+  const enc = (encoding || '').toLowerCase().trim();
+  if (enc === 'base64') {
+    try { return Buffer.from(rawBody.replace(/\s+/g, ''), 'base64').toString('utf-8'); } catch { return rawBody; }
+  }
+  if (enc === 'quoted-printable') {
+    return rawBody
+      .replace(/=\r?\n/g, '')
+      .replace(/=([A-F0-9]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  }
+  return rawBody;
+}
+
 function extractReplyText(raw) {
   if (!raw) return '';
   let text = raw.replace(/\r\n/g, '\n');
-  // Strip base64 encoded blocks
-  text = text.replace(/[A-Za-z0-9+/]{60,}={0,2}/g, '');
-  // Remove quoted reply block (lines starting with >)
-  const parts = text.split(/^>.*$/m);
-  text = parts[0];
-  // Remove "On ... wrote:" type quote markers
+  // Strip quoted reply block (lines starting with > or "Op/On ... schreef/wrote:")
+  text = text.split(/\r?\n>|\r?\nOp .+schreef:|On .+ wrote:/)[0];
+  // Remove "On ... wrote:" type quote markers on same line
   text = text.replace(/^On .{10,200}\bwrote:[\s\S]*/m, '');
-  // Strip HTML tags if any
-  text = text.replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, ' ');
+  // Strip HTML tags and entities
+  text = text.replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/gi, ' ');
   // Collapse whitespace
-  text = text.replace(/\n{3,}/g, '\n\n').trim();
+  text = text.replace(/\s+/g, ' ').trim();
   return text.substring(0, 600);
 }
 
@@ -5341,9 +5351,11 @@ async function checkReplies() {
           matched.processedMessageIds = matched.processedMessageIds.slice(-20);
         }
 
-        // Extract clean reply text from TEXT body part
-        const textPart = msg.parts.find(p => p.which === 'TEXT');
-        const bodyText = (textPart?.body || '').toString();
+        // Extract clean reply text from TEXT body part (decode base64/QP first)
+        const textPart  = msg.parts.find(p => p.which === 'TEXT');
+        const rawBody   = (textPart?.body || '').toString();
+        const encoding  = header['content-transfer-encoding']?.[0] || '';
+        const bodyText  = decodeEmailBody(rawBody, encoding);
         const replyText = extractReplyText(bodyText);
 
         matched.status        = 'replied';
