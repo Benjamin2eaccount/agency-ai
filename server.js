@@ -5465,7 +5465,8 @@ app.post('/api/check-replies', async (req, res) => {
 });
 
 // ─── IMAP diagnostic — public, no auth needed ─────────────────────────────────
-app.get('/api/test-imap', async (req, res) => {
+// Route is outside /api/ to bypass the app.use('/api', authMiddleware) global guard
+app.get('/test-imap', async (req, res) => {
   const log  = [];
   const say  = msg => { log.push(msg); console.log(msg); };
   const result = { log, emails: [], leads: [], matches: [], errors: [] };
