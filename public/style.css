@@ -3831,6 +3831,18 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
   .chat-layout { height: calc(100vh - 120px); }
   .chat-sidebar { width: 150px; }
   .chat-channel-preview { display: none; }
+
+  /* Touch target minimum 44px for action buttons */
+  .inbox-primary-actions .btn { min-height: 44px; font-size: 13px; }
+  .inbox-primary-actions .btn-sm { height: 44px; min-height: 44px; padding: 0 14px; }
+  .inbox-actions > .btn { min-height: 44px; }
+  .filter-chip { min-height: 36px; padding: 6px 12px; }
+
+  /* Lead cards: single column on phones */
+  .lead-cards-v2 { grid-template-columns: 1fr; }
+
+  /* Pipeline table min-width so horizontal scroll works */
+  .leads-table { min-width: 700px; }
 }
 
 @media (max-width: 480px) {
@@ -3838,8 +3850,13 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
   .lead-cards { grid-template-columns: 1fr; }
   .stat-card { padding: 12px 14px; }
   .stat-value { font-size: 24px; }
-  .modal-box { border-radius: var(--radius-lg); }
+  .modal-box { border-radius: var(--radius-lg); max-height: 95vh; }
   .topbar-breadcrumb span:not(.topbar-current):not(.topbar-sep) { display: none; }
+  .inbox-card { padding: 14px; }
+  .inbox-card-meta { font-size: 12px; }
+  .modal-box { max-width: calc(100vw - 24px); }
+  .page-header { margin-bottom: 16px; }
+  .filter-chips { gap: 4px; }
 }
 
 /* ── Dark mode comprehensive overrides ─────────────────────────────────────── */

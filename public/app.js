@@ -584,8 +584,8 @@ async function renderDashboard() {
         ${upsells.map(o => `
           <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f3f4f6;gap:12px;flex-wrap:wrap">
             <div style="min-width:0">
-              <div style="font-size:14px;font-weight:600;color:#111">${o.companyName}</div>
-              <div style="font-size:12px;color:#6b7280;margin-top:2px">Huidig: <em>${o.currentService}</em> &rarr; Voorstel: <strong>${o.upsellService}</strong> &mdash; €${(o.upsellPrice||0).toLocaleString('nl-NL')}/mnd &mdash; klant ${o.daysSince} dagen</div>
+              <div style="font-size:14px;font-weight:600;color:var(--text-primary)">${o.companyName}</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Huidig: <em>${o.currentService}</em> &rarr; Voorstel: <strong>${o.upsellService}</strong> &mdash; €${(o.upsellPrice||0).toLocaleString('nl-NL')}/mnd &mdash; klant ${o.daysSince} dagen</div>
             </div>
             <button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="generateUpsellEmail('${o.leadId}')">
               <i class="ti ti-mail"></i> Genereer upsell email
@@ -693,16 +693,28 @@ async function renderInbox() {
   }
 
   if (pending.length === 0) {
+    const nextRun = getNextRunTime(state.settings?.dailyRunTime || '09:00');
     container.innerHTML = `
       <div class="empty-card">
-        <i class="ti ti-inbox-off"></i>
-        <h3>Inbox is leeg</h3>
-        <p>Kom morgen terug of run handmatig via het dashboard</p>
-        <button class="btn btn-primary" onclick="setView('dashboard')">
-          <i class="ti ti-layout-dashboard"></i> Naar dashboard
-        </button>
+        <i class="ti ti-inbox-off" style="font-size:48px;color:var(--border);margin-bottom:12px"></i>
+        <h3 style="margin-bottom:8px">Inbox is leeg</h3>
+        <p style="color:var(--text-secondary);margin-bottom:20px">Alle leads zijn beoordeeld — goed gedaan!</p>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;text-align:left;min-width:260px">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Volgende automatische run</div>
+          <div style="font-size:18px;font-weight:700;color:var(--text-primary)">${nextRun.label}</div>
+          <div style="font-size:12px;color:var(--accent);font-weight:600;margin-top:4px" id="inboxCountdown">${nextRun.countdown}</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+          <button class="btn btn-primary" onclick="setView('runs')">
+            <i class="ti ti-player-play"></i> Start handmatige run
+          </button>
+          <button class="btn btn-outline" onclick="setView('pipeline')">
+            <i class="ti ti-git-branch"></i> Bekijk pipeline →
+          </button>
+        </div>
       </div>
     `;
+    startInboxCountdown(nextRun.target);
     return;
   }
 
@@ -2404,6 +2416,9 @@ function buildLeadTableRow(l, dupIds) {
         ${['bounced','delivery_delayed'].includes(l.status)
           ? `<span class="status-pill-bounced"><i class="ti ti-mail-off"></i> Niet aangekomen</span>`
           : `<span class="status-pill status-${STATUS_COLORS[l.status] || 'gray'}">${STATUS_LABELS[l.status] || 'Inbox'}</span>`}
+        ${l.followup1SentAt ? `<br><span style="font-size:10px;font-weight:600;color:#d97706;background:#fef3c7;border-radius:3px;padding:1px 5px">FU1</span>` : ''}
+        ${l.followup2SentAt ? ` <span style="font-size:10px;font-weight:600;color:#ea580c;background:#fff7ed;border-radius:3px;padding:1px 5px">FU2</span>` : ''}
+        ${l.sentAt && !l.repliedAt ? (() => { const d = Math.floor((Date.now() - new Date(l.sentAt)) / 86400000); return d > 0 ? `<br><span class="text-muted" style="font-size:10px">${d}d geleden</span>` : ''; })() : ''}
         ${l.scheduledAt ? `<br><span class="text-warning" style="font-size:11px"><i class="ti ti-clock"></i> ${formatOptimalTime(l.scheduledAt)}</span>` : ''}
         ${l.openedAt ? `<br><span class="text-success" style="font-size:11px"><i class="ti ti-eye"></i> Geopend ${formatDate(l.openedAt)}${l.openCount > 1 ? ' (' + l.openCount + 'x)' : ''}</span>` : ''}
       </td>
@@ -2700,6 +2715,40 @@ async function renderProjectPage() {
         </div>
       </div>
 
+      ${(() => {
+        const websiteScore  = lead.website?.speedScore ?? null;
+        const socialRaw     = lead.social?.growthPotential;
+        const socialScore   = typeof socialRaw === 'number' ? socialRaw : null;
+        const engagePct     = lead.social?.engagementRate ?? null;
+        const engageScore   = engagePct !== null ? Math.min(10, Math.round(engagePct * 1.5)) : null;
+        const urgencyMap    = { critical: { label: 'Kritiek', color: 'var(--danger)' }, high: { label: 'Hoog', color: '#f97316' }, hoog: { label: 'Hoog', color: '#f97316' }, medium: { label: 'Medium', color: 'var(--warning)' }, low: { label: 'Laag', color: 'var(--success)' } };
+        const urgInfo       = urgencyMap[lead.urgency] || null;
+        const barColor      = v => v >= 8 ? 'var(--success)' : v >= 5 ? 'var(--warning)' : 'var(--danger)';
+        const scoreBar      = (label, val) => val === null ? '' : `
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <span style="font-size:12px;color:var(--text-secondary)">${label}</span>
+              <span style="font-size:12px;font-weight:700;color:${barColor(val)}">${val.toFixed(1)}/10</span>
+            </div>
+            <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${val*10}%;background:${barColor(val)};border-radius:3px;transition:width 0.4s"></div>
+            </div>
+          </div>`;
+        const hasAny = websiteScore !== null || socialScore !== null || engageScore !== null || lead.score || urgInfo;
+        if (!hasAny) return '';
+        return `
+          <div style="margin-bottom:20px">
+            <div class="project-section-title"><i class="ti ti-chart-bar" style="color:var(--accent);margin-right:6px"></i>Score analyse</div>
+            <div style="padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--surface)">
+              ${scoreBar('Website kwaliteit', websiteScore)}
+              ${scoreBar('Social media potentieel', socialScore)}
+              ${engageScore !== null ? scoreBar(`Engagement (${engagePct?.toFixed(1)}%)`, engageScore) : ''}
+              ${lead.score ? scoreBar('Totale score', lead.score) : ''}
+              ${urgInfo ? `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:10px;border-top:1px solid var(--border)"><span style="font-size:12px;color:var(--text-secondary)">Urgentie</span><span style="font-size:12px;font-weight:700;color:${urgInfo.color}">${urgInfo.label}</span></div>` : ''}
+            </div>
+          </div>`;
+      })()}
+
       ${lead.problems?.length ? `
         <div style="margin-bottom:20px">
           <div class="project-section-title">Gevonden problemen</div>
@@ -2735,7 +2784,7 @@ async function renderProjectPage() {
           <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
             ${lead.competitors.competitorNames.map(n => `<span style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:500">${esc(n)}</span>`).join('')}
           </div>
-          ${lead.competitors.competitorGap ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;font-size:13px;color:#9a3412"><i class="ti ti-alert-triangle" style="margin-right:6px;color:#f97316"></i>${esc(lead.competitors.competitorGap)}</div>` : ''}
+          ${lead.competitors.competitorGap ? `<div style="background:var(--warning-light);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--warning)"><i class="ti ti-alert-triangle" style="margin-right:6px;color:var(--warning)"></i>${esc(lead.competitors.competitorGap)}</div>` : ''}
         </div>
       ` : ''}
 
@@ -3358,7 +3407,7 @@ function openLeadDetail(id) {
       ${lead.competitors?.competitorNames?.length ? `
         <div class="detail-section">
           <div class="detail-section-title"><i class="ti ti-chart-dots" style="color:#f97316;margin-right:4px"></i>Concurrentie analyse</div>
-          <div style="font-size:12px;color:#6b7280;margin-bottom:8px">Concurrenten in ${lead.location}</div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Concurrenten in ${lead.location}</div>
           <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
             ${lead.competitors.competitorNames.map(n => `<span style="background:#f3f4f6;border-radius:6px;padding:3px 8px;font-size:12px;font-weight:500">${n}</span>`).join('')}
           </div>
@@ -3368,8 +3417,8 @@ function openLeadDetail(id) {
             </ul>
           ` : ''}
           ${lead.competitors.competitorGap ? `
-            <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;font-size:13px;color:#9a3412">
-              <i class="ti ti-alert-triangle" style="margin-right:6px;color:#f97316"></i>${lead.competitors.competitorGap}
+            <div style="background:var(--warning-light);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--warning)">
+              <i class="ti ti-alert-triangle" style="margin-right:6px;color:var(--warning)"></i>${lead.competitors.competitorGap}
             </div>
           ` : ''}
         </div>
@@ -3466,12 +3515,12 @@ function openLeadDetail(id) {
             </button>
           </div>
           ${lead.caseStudy ? `
-            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px">
+            <div style="background:var(--success-light);border:1px solid var(--border);border-radius:10px;padding:14px">
               <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#16a34a;margin-bottom:6px">${esc(lead.caseStudy.industry || lead.niche)}</div>
-              <div style="font-size:14px;font-weight:700;color:#111;margin-bottom:8px">${esc(lead.caseStudy.title || '')}</div>
-              <p style="font-size:12px;color:#374151;line-height:1.6;margin-bottom:10px">${esc(lead.caseStudy.challenge || '')}</p>
+              <div style="font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:8px">${esc(lead.caseStudy.title || '')}</div>
+              <p style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-bottom:10px">${esc(lead.caseStudy.challenge || '')}</p>
               ${(lead.caseStudy.results || []).length ? `<ul style="list-style:none;display:flex;flex-direction:column;gap:4px;margin-bottom:10px">${(lead.caseStudy.results || []).map(r => `<li style="font-size:12px;font-weight:600;color:#16a34a;padding-left:16px;position:relative"><span style="position:absolute;left:0">✓</span>${esc(r)}</li>`).join('')}</ul>` : ''}
-              ${lead.caseStudy.quote ? `<div style="border-left:3px solid #86efac;padding:8px 12px;font-size:12px;font-style:italic;color:#374151">&ldquo;${esc(lead.caseStudy.quote)}&rdquo;<div style="font-style:normal;font-size:11px;font-weight:600;color:#111;margin-top:4px">${esc(lead.caseStudy.quoteName || '')}</div></div>` : ''}
+              ${lead.caseStudy.quote ? `<div style="border-left:3px solid var(--success);padding:8px 12px;font-size:12px;font-style:italic;color:var(--text-secondary)">&ldquo;${esc(lead.caseStudy.quote)}&rdquo;<div style="font-style:normal;font-size:11px;font-weight:600;color:var(--text-primary);margin-top:4px">${esc(lead.caseStudy.quoteName || '')}</div></div>` : ''}
             </div>
             <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
               <button class="btn btn-ghost btn-sm" onclick="copyCaseStudy('${lead.id}')"><i class="ti ti-copy"></i> Kopiëren</button>
@@ -3573,7 +3622,7 @@ function openLeadDetail(id) {
                   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
                     <div style="flex:1">
                       <div style="font-size:14px;font-weight:700">€${(p.amount||0).toLocaleString('nl-NL')}</div>
-                      <div style="font-size:12px;color:#6b7280;margin-top:2px">${esc(p.description||'')}${p.splitIndex ? ` — deel ${p.splitIndex}/${p.splitTotal}` : ''}</div>
+                      <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">${esc(p.description||'')}${p.splitIndex ? ` — deel ${p.splitIndex}/${p.splitTotal}` : ''}</div>
                       <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
                         <span style="font-size:10px;font-weight:700;background:${isOverdue?'#fef2f2':'#f3f4f6'};color:${isOverdue?'#dc2626':statusColors[p.status]||'#6b7280'};border-radius:4px;padding:2px 6px">${isOverdue?'ACHTERSTALLIG':statusLabels[p.status]||p.status}</span>
                         <span style="font-size:10px;background:#f3f4f6;border-radius:4px;padding:2px 6px">${esc(p.method||'')}</span>
@@ -3629,15 +3678,15 @@ function openLeadDetail(id) {
           <div style="display:flex;flex-direction:column;gap:8px">
             ${[...(lead.clientEmailLog || [])].reverse().map(log => `
               <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
-                <div style="background:#f9fafb;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;cursor:pointer"
+                <div style="background:var(--surface-2);padding:8px 12px;display:flex;align-items:center;justify-content:space-between;cursor:pointer"
                      onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
                   <div>
                     <div style="font-size:13px;font-weight:600">${esc(log.subject || '')}</div>
-                    <div style="font-size:11px;color:#6b7280">${formatDate(log.sentAt)} · ${esc(log.to || '')} · ${esc(log.sentBy || 'systeem')}</div>
+                    <div style="font-size:11px;color:var(--text-secondary)">${formatDate(log.sentAt)} · ${esc(log.to || '')} · ${esc(log.sentBy || 'systeem')}</div>
                   </div>
                   <i class="ti ti-chevron-down" style="color:#9ca3af;font-size:12px"></i>
                 </div>
-                <div style="display:none;padding:12px;font-size:12px;color:#374151;white-space:pre-line;line-height:1.6">${esc(log.body || '')}</div>
+                <div style="display:none;padding:12px;font-size:12px;color:var(--text-secondary);white-space:pre-line;line-height:1.6">${esc(log.body || '')}</div>
               </div>
             `).join('')}
           </div>
@@ -3658,15 +3707,15 @@ function openLeadDetail(id) {
         <div style="display:flex;flex-direction:column;gap:10px">
           ${lead.reports.map(r => `
             <div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden">
-              <div style="background:#f9fafb;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer"
+              <div style="background:var(--surface-2);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer"
                    onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
                 <div>
                   <div style="font-size:13px;font-weight:600">${r.title}</div>
-                  <div style="font-size:11px;color:#6b7280">${formatDate(r.createdAt)}</div>
+                  <div style="font-size:11px;color:var(--text-secondary)">${formatDate(r.createdAt)}</div>
                 </div>
-                <i class="ti ti-chevron-down" style="color:#6b7280;font-size:13px"></i>
+                <i class="ti ti-chevron-down" style="color:var(--text-secondary);font-size:13px"></i>
               </div>
-              <div style="padding:14px;font-size:13px;color:#374151;line-height:1.7;white-space:pre-line">
+              <div style="padding:14px;font-size:13px;color:var(--text-secondary);line-height:1.7;white-space:pre-line">
                 ${r.content || ''}
               </div>
             </div>
@@ -3694,14 +3743,14 @@ function openLeadDetail(id) {
         ${lead.intakeAnswers && Object.keys(lead.intakeAnswers).length ? `
           <div style="display:flex;flex-direction:column;gap:10px">
             ${Object.entries(lead.intakeAnswers).map(([q, a]) => `
-              <div style="padding:10px 12px;background:#f9fafb;border:1px solid var(--border);border-radius:8px">
-                <div style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:4px">${esc(q)}</div>
-                <div style="font-size:13px;color:#111;white-space:pre-line">${esc(a)}</div>
+              <div style="padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px">
+                <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:4px">${esc(q)}</div>
+                <div style="font-size:13px;color:var(--text-primary);white-space:pre-line">${esc(a)}</div>
               </div>
             `).join('')}
           </div>
         ` : `
-          <div style="font-size:13px;color:#6b7280;margin-bottom:14px">De klant heeft de intake nog niet ingevuld.</div>
+          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">De klant heeft de intake nog niet ingevuld.</div>
         `}
         <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
           <a href="/intake/${lead.id}/${lead.intakeToken}" target="_blank" class="btn btn-ghost btn-sm">
@@ -3731,7 +3780,7 @@ function openLeadDetail(id) {
             </button>
           </div>
         </div>
-        ${lead.projectPlan.overview ? `<p style="font-size:13px;color:#374151;line-height:1.6;margin-bottom:14px">${esc(lead.projectPlan.overview)}</p>` : ''}
+        ${lead.projectPlan.overview ? `<p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:14px">${esc(lead.projectPlan.overview)}</p>` : ''}
         <div style="display:flex;flex-direction:column;gap:10px">
           ${(lead.projectPlan.weeks || []).map(w => `
             <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
@@ -3740,7 +3789,7 @@ function openLeadDetail(id) {
                 <span style="font-size:13px;font-weight:600">${esc(w.focus || '')}</span>
               </div>
               <ul style="padding:10px 14px 10px 28px;margin:0;display:flex;flex-direction:column;gap:4px">
-                ${(w.deliverables || []).map(d => `<li style="font-size:13px;color:#374151">${esc(d)}</li>`).join('')}
+                ${(w.deliverables || []).map(d => `<li style="font-size:13px;color:var(--text-secondary)">${esc(d)}</li>`).join('')}
               </ul>
             </div>
           `).join('')}
@@ -3763,7 +3812,7 @@ function openLeadDetail(id) {
                 <span style="font-size:11px;background:#fefce8;color:#d97706;border-radius:4px;padding:2px 6px;font-weight:600">${esc(item.type || '')}</span>
               </div>
               <div style="font-size:13px;font-weight:600">${esc(item.topic || '')}</div>
-              ${item.caption ? `<div style="font-size:12px;color:#6b7280;margin-top:3px">${esc(item.caption)}</div>` : ''}
+              ${item.caption ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:3px">${esc(item.caption)}</div>` : ''}
             </div>
           `).join('')}
         </div>
@@ -3796,18 +3845,18 @@ function openLeadDetail(id) {
 
         ${lead.delivery.contentCalendar?.items?.length ? `
         <div style="margin-bottom:16px">
-          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:8px">Content Kalender — Maand 1</div>
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);margin-bottom:8px">Content Kalender — Maand 1</div>
           <div style="display:flex;flex-direction:column;gap:5px">
             ${(lead.delivery.contentCalendar.items || []).slice(0,5).map(item => `
-              <div style="padding:8px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:7px;font-size:12px">
+              <div style="padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:7px;font-size:12px">
                 <div style="display:flex;gap:6px;margin-bottom:3px;flex-wrap:wrap">
                   <span style="background:#eef2ff;color:#6366f1;border-radius:4px;padding:1px 5px;font-weight:700">W${item.week} ${item.day||''}</span>
                   <span style="background:#f3f4f6;border-radius:4px;padding:1px 5px">${esc(item.platform||'')}</span>
                   <span style="background:#fefce8;color:#d97706;border-radius:4px;padding:1px 5px">${esc(item.type||'')}</span>
                   ${item.bestTime ? `<span style="background:#f0fdf4;color:#16a34a;border-radius:4px;padding:1px 5px">${item.bestTime}</span>` : ''}
                 </div>
-                <div style="font-weight:600;color:#111">${esc(item.topic||'')}</div>
-                ${item.caption ? `<div style="color:#6b7280;margin-top:2px;line-height:1.4">${esc(item.caption)}</div>` : ''}
+                <div style="font-weight:600;color:var(--text-primary)">${esc(item.topic||'')}</div>
+                ${item.caption ? `<div style="color:var(--text-secondary);margin-top:2px;line-height:1.4">${esc(item.caption)}</div>` : ''}
                 ${item.hashtags?.length ? `<div style="color:#6366f1;margin-top:3px">${item.hashtags.join(' ')}</div>` : ''}
               </div>
             `).join('')}
@@ -3818,12 +3867,12 @@ function openLeadDetail(id) {
 
         ${lead.delivery.chatbotFlow?.faqs?.length ? `
         <div style="margin-bottom:16px">
-          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:8px">Chatbot FAQ Script</div>
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);margin-bottom:8px">Chatbot FAQ Script</div>
           <div style="display:flex;flex-direction:column;gap:5px">
             ${(lead.delivery.chatbotFlow.faqs || []).slice(0,4).map(faq => `
-              <div style="padding:8px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:7px;font-size:12px">
-                <div style="font-weight:700;color:#111;margin-bottom:3px">${esc(faq.question||'')}</div>
-                <div style="color:#374151;line-height:1.5">${esc(faq.answer||'')}</div>
+              <div style="padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:7px;font-size:12px">
+                <div style="font-weight:700;color:var(--text-primary);margin-bottom:3px">${esc(faq.question||'')}</div>
+                <div style="color:var(--text-secondary);line-height:1.5">${esc(faq.answer||'')}</div>
               </div>
             `).join('')}
             ${lead.delivery.chatbotFlow.faqs.length > 4 ? `<div style="font-size:12px;color:#9ca3af;padding:4px 0">+ ${lead.delivery.chatbotFlow.faqs.length - 4} meer FAQs</div>` : ''}
@@ -3833,14 +3882,14 @@ function openLeadDetail(id) {
 
         ${lead.delivery.milestones?.milestones?.length ? `
         <div>
-          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:8px">Mijlpalen — 12 weken</div>
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);margin-bottom:8px">Mijlpalen — 12 weken</div>
           <div style="display:flex;flex-direction:column;gap:5px">
             ${(lead.delivery.milestones.milestones || []).slice(0,4).map(m => `
-              <div style="padding:8px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:7px;font-size:12px;display:flex;gap:8px;align-items:flex-start">
+              <div style="padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:7px;font-size:12px;display:flex;gap:8px;align-items:flex-start">
                 <span style="background:#6366f1;color:#fff;border-radius:4px;padding:2px 6px;font-weight:700;flex-shrink:0;font-size:11px">W${m.week}</span>
                 <div>
-                  <div style="font-weight:700;color:#111">${esc(m.title||'')}</div>
-                  ${m.description ? `<div style="color:#6b7280;margin-top:2px">${esc(m.description)}</div>` : ''}
+                  <div style="font-weight:700;color:var(--text-primary)">${esc(m.title||'')}</div>
+                  ${m.description ? `<div style="color:var(--text-secondary);margin-top:2px">${esc(m.description)}</div>` : ''}
                 </div>
               </div>
             `).join('')}
@@ -3851,7 +3900,7 @@ function openLeadDetail(id) {
 
         ${Object.keys(lead.delivery.serviceDeliveries || {}).length ? `
         <div style="margin-top:12px">
-          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:8px">Service Leveringen (${Object.keys(lead.delivery.serviceDeliveries).length})</div>
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);margin-bottom:8px">Service Leveringen (${Object.keys(lead.delivery.serviceDeliveries).length})</div>
           <div style="display:flex;flex-direction:column;gap:5px">
             ${Object.entries(lead.delivery.serviceDeliveries).map(([name, del]) => `
               <div style="padding:8px 10px;background:${del.error ? '#fef2f2' : '#f9fafb'};border:1px solid ${del.error ? '#fecaca' : 'var(--border)'};border-radius:7px;font-size:12px;display:flex;justify-content:space-between;align-items:center">
@@ -4130,7 +4179,7 @@ function buildWebsiteTab(lead) {
             </a>
           ` : ''}
           ${lead.linkedinCompanyFollowers ? `
-            <span style="font-size:13px;color:#6b7280"><strong>${lead.linkedinCompanyFollowers.toLocaleString('nl-NL')}</strong> volgers</span>
+            <span style="font-size:13px;color:var(--text-secondary)"><strong>${lead.linkedinCompanyFollowers.toLocaleString('nl-NL')}</strong> volgers</span>
           ` : ''}
           <span style="font-size:12px;padding:3px 8px;border-radius:999px;background:${lead.linkedinActive !== false ? '#f0fdf4' : '#fef2f2'};color:${lead.linkedinActive !== false ? '#15803d' : '#dc2626'};font-weight:600">
             ${lead.linkedinActive !== false ? 'Actief' : 'Inactief'}
@@ -4415,13 +4464,13 @@ async function loadBackupList() {
       const kb = Math.round(b.size / 1024);
       const date = new Date(b.createdAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
       return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:13px">' +
-        '<i class="ti ti-file-description" style="color:#6b7280;font-size:14px"></i>' +
-        '<span style="flex:1;color:#374151">' + b.filename + '</span>' +
+        '<i class="ti ti-file-description" style="color:var(--text-secondary);font-size:14px"></i>' +
+        '<span style="flex:1;color:var(--text-secondary)">' + b.filename + '</span>' +
         '<span style="color:#9ca3af">' + kb + ' KB</span>' +
         '<span style="color:#9ca3af">' + date + '</span>' +
         '</div>';
     }).join('');
-    container.innerHTML = '<div style="margin-top:4px"><div style="font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Recente backups</div>' + rows + '</div>';
+    container.innerHTML = '<div style="margin-top:4px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Recente backups</div>' + rows + '</div>';
   } catch { /* ignore */ }
 }
 
@@ -4480,7 +4529,7 @@ async function generateUpsellEmail(leadId) {
     </div>
     <div style="padding:20px;text-align:center">
       <div class="spinner-lg" style="margin:0 auto 12px"></div>
-      <p style="color:#6b7280;font-size:13px">Email genereren met AI...</p>
+      <p style="color:var(--text-secondary);font-size:13px">Email genereren met AI...</p>
     </div>
   `);
 
@@ -4499,7 +4548,7 @@ async function generateUpsellEmail(leadId) {
     </div>
     <div style="padding:20px">
       <div style="margin-bottom:12px">
-        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">Onderwerp</label>
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Onderwerp</label>
         <input id="upsellSubject" class="form-input" style="width:100%;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:14px" value="${(email.subject||'').replace(/"/g,'&quot;')}">
       </div>
       <div class="email-preview" style="margin-bottom:16px">
@@ -4636,7 +4685,7 @@ function _doStartProject(leadId) {
       <div class="pstep-icon" id="pstep-icon-${i+1}" style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;color:#9ca3af">
         ${i+1}
       </div>
-      <span id="pstep-label-${i+1}" style="font-size:13px;color:#6b7280">${s.label}</span>
+      <span id="pstep-label-${i+1}" style="font-size:13px;color:var(--text-secondary)">${s.label}</span>
       <span id="pstep-note-${i+1}" style="font-size:11px;color:#9ca3af;margin-left:auto"></span>
     </div>
   `).join('');
@@ -4969,14 +5018,14 @@ async function sendClientEmail(leadId, trigger) {
     </div>
     <div style="padding:16px 24px;display:flex;flex-direction:column;gap:12px">
       <div>
-        <div style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:4px">ONDERWERP</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:4px">ONDERWERP</div>
         <div style="font-size:14px;font-weight:600">${esc(prev.subject || '')}</div>
       </div>
       <div>
-        <div style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:6px">INHOUD</div>
-        <div style="background:#f9fafb;border:1px solid var(--border);border-radius:8px;padding:14px;font-size:13px;line-height:1.7;white-space:pre-line;max-height:300px;overflow-y:auto">${esc(prev.body || '')}</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">INHOUD</div>
+        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:13px;line-height:1.7;white-space:pre-line;max-height:300px;overflow-y:auto">${esc(prev.body || '')}</div>
       </div>
-      ${!lead.email ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 12px;font-size:13px;color:#dc2626"><i class="ti ti-alert-triangle"></i> Geen email adres bekend voor dit bedrijf.</div>` : `<div style="font-size:12px;color:#6b7280"><i class="ti ti-send"></i> Wordt verstuurd naar: <strong>${esc(lead.email || lead.contactEmail || '—')}</strong></div>`}
+      ${!lead.email ? `<div style="background:var(--danger-light);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--danger)"><i class="ti ti-alert-triangle"></i> Geen email adres bekend voor dit bedrijf.</div>` : `<div style="font-size:12px;color:var(--text-secondary)"><i class="ti ti-send"></i> Wordt verstuurd naar: <strong>${esc(lead.email || lead.contactEmail || '—')}</strong></div>`}
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
@@ -5024,7 +5073,7 @@ function generateDelivery(leadId) {
       ${steps.map((s, i) => `
         <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
           <div id="dstep-icon-${i+1}" style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;color:#9ca3af">${i+1}</div>
-          <span id="dstep-label-${i+1}" style="font-size:13px;color:#6b7280">${s.label}</span>
+          <span id="dstep-label-${i+1}" style="font-size:13px;color:var(--text-secondary)">${s.label}</span>
         </div>
       `).join('')}
       <div id="deliv-result" style="display:none;margin-top:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px;font-size:14px;font-weight:700;color:#15803d">
@@ -5120,7 +5169,7 @@ function generateSite(leadId) {
       ${steps.map((s, i) => `
         <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
           <div id="site-step-icon-${i+1}" style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;color:#9ca3af">${i+1}</div>
-          <span id="site-step-label-${i+1}" style="font-size:13px;color:#6b7280">${s.label}</span>
+          <span id="site-step-label-${i+1}" style="font-size:13px;color:var(--text-secondary)">${s.label}</span>
         </div>
       `).join('')}
       <div id="site-result" style="display:none;margin-top:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px">
@@ -5380,7 +5429,7 @@ function buildTaskCard(t, leadId, userMap) {
       </button>
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600;${t.status==='klaar'?'text-decoration:line-through':''}">${esc(t.title||'')}</div>
-        ${t.description ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;line-height:1.4">${esc(t.description)}</div>` : ''}
+        ${t.description ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.4">${esc(t.description)}</div>` : ''}
         <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">
           <span style="font-size:10px;font-weight:700;background:${st.bg};color:${st.color};border-radius:4px;padding:1px 5px">${st.label}</span>
           <span style="font-size:10px;font-weight:700;background:${pri.bg};color:${pri.color};border-radius:4px;padding:1px 5px">${t.priority||'middel'}</span>
@@ -9211,6 +9260,20 @@ function getNextRunTime(timeStr) {
     countdown: `${pad(hh)}:${pad(mm)}:${pad(ss)}`,
     target: next
   };
+}
+
+function startInboxCountdown(target) {
+  const el = document.getElementById('inboxCountdown');
+  if (!el) return;
+  const tick = () => {
+    const diff = target - Date.now();
+    if (diff <= 0) { el.textContent = 'Nu...'; return; }
+    const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000), s = Math.floor((diff % 60000) / 1000);
+    const pad = n => String(n).padStart(2, '0');
+    el.textContent = `over ${pad(h)}:${pad(m)}:${pad(s)}`;
+    setTimeout(tick, 1000);
+  };
+  tick();
 }
 
 async function toggleAutoRun(currentlyPaused) {

@@ -3224,6 +3224,8 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
       leads[leadIdx].sentAt = inbox[idx].sentAt;
       if (inbox[idx].status === 'sent') leads[leadIdx].sentVersion = version;
       if (inbox[idx].trackingToken) leads[leadIdx].trackingToken = inbox[idx].trackingToken;
+      if (item.type === 'followup1' && inbox[idx].status === 'sent') leads[leadIdx].followup1SentAt = inbox[idx].sentAt;
+      if (item.type === 'followup2' && inbox[idx].status === 'sent') leads[leadIdx].followup2SentAt = inbox[idx].sentAt;
     }
     if (item.type === 'referral' && inbox[idx].status === 'sent') {
       leads[leadIdx].referralEmailSent = true;
