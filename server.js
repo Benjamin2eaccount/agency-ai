@@ -5254,7 +5254,12 @@ async function checkReplies() {
     const messages = await connection.search(searchCriteria, fetchOptions);
     const leads  = readJSON('leads.json') || [];
     const stats  = readJSON('stats.json') || {};
-    const sentLeads = leads.filter(l => l.sentAt && !['client', 'dead'].includes(l.status));
+    // Include leads that have sentAt OR whose status indicates they were sent
+    // (manually-added leads may have status='sent' but no sentAt field)
+    const sentLeads = leads.filter(l =>
+      (l.sentAt || ['sent','replied','followup1','followup2'].includes(l.status)) &&
+      !['client','dead'].includes(l.status)
+    );
     console.log(`[IMAP] ${messages.length} emails gevonden in inbox (laatste 14 dagen), ${sentLeads.length} verstuurde leads om tegen te checken`);
 
     let repliesFound = 0;
@@ -5459,8 +5464,8 @@ app.post('/api/check-replies', async (req, res) => {
   }
 });
 
-// ─── IMAP diagnostic — shows raw inbox + lead matching ────────────────────────
-app.get('/api/test-imap', requireAdmin, async (req, res) => {
+// ─── IMAP diagnostic — public, no auth needed ─────────────────────────────────
+app.get('/api/test-imap', async (req, res) => {
   const log  = [];
   const say  = msg => { log.push(msg); console.log(msg); };
   const result = { log, emails: [], leads: [], matches: [], errors: [] };
@@ -5535,8 +5540,14 @@ app.get('/api/test-imap', requireAdmin, async (req, res) => {
 
     // ── Step 3: Load leads ─────────────────────────────────────────────────
     const allLeads = readJSON('leads.json') || [];
+    // Broad: any lead with an email address or a sent subject (for test)
     const candidateLeads = allLeads.filter(l => l.contactEmail || l.email?.subject || l.emailA?.subject);
-    say(`[IMAP] ${allLeads.length} leads totaal, ${candidateLeads.length} hebben email/subject`);
+    // Narrow: exactly what checkReplies() uses
+    const sentLeadsActual = allLeads.filter(l =>
+      (l.sentAt || ['sent','replied','followup1','followup2'].includes(l.status)) &&
+      !['client','dead'].includes(l.status)
+    );
+    say(`[IMAP] ${allLeads.length} leads totaal, ${candidateLeads.length} breed (test), ${sentLeadsActual.length} exact zoals checkReplies() ziet`);
 
     result.leads = candidateLeads.map(l => ({
       id: l.id,
@@ -5546,11 +5557,13 @@ app.get('/api/test-imap', requireAdmin, async (req, res) => {
       contactEmail: l.contactEmail || null,
       emailSubject:  l.email?.subject || l.emailA?.subject || l.emailB?.subject || null,
       subjectOptions: l.subjectOptions || [],
-      processedMessageIds: l.processedMessageIds || []
+      processedMessageIds: l.processedMessageIds || [],
+      inCheckRepliesFilter: sentLeadsActual.some(s => s.id === l.id)
     }));
 
     candidateLeads.forEach(l => {
-      say(`[IMAP] Lead: "${l.companyName}" status=${l.status} sentAt=${l.sentAt || 'GEEN'} contactEmail=${l.contactEmail || '—'} subject="${l.email?.subject || l.emailA?.subject || '—'}"`);
+      const inFilter = sentLeadsActual.some(s => s.id === l.id);
+      say(`[IMAP] Lead: "${l.companyName}" status=${l.status} sentAt=${l.sentAt || 'GEEN'} contactEmail=${l.contactEmail || '—'} inCheckReplies=${inFilter} subject="${l.email?.subject || l.emailA?.subject || '—'}"`);
     });
 
     // ── Step 4: Run matching ───────────────────────────────────────────────
