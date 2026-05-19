@@ -2869,7 +2869,9 @@ app.post('/api/leads/:id/client-email', requireAdmin, async (req, res) => {
     // If preview=true, just return without sending
     if (preview) return res.json({ subject: email.subject, body: email.body });
 
-    const to = lead.email || lead.contactEmail || '';
+    const to = (lead.contactEmail || '').trim();
+    console.log(`[ClientEmail] contactEmail raw: ${JSON.stringify(lead.contactEmail)}`);
+    console.log(`[ClientEmail] Char codes: ${[...(lead.contactEmail || '')].map(c => c.charCodeAt(0)).join(',')}`);
     if (!to) return res.status(400).json({ error: 'Geen email adres bekend voor dit bedrijf' });
     if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet geconfigureerd' });
 
@@ -2893,6 +2895,36 @@ app.post('/api/leads/:id/client-email', requireAdmin, async (req, res) => {
     res.json({ ok: true, subject: email.subject });
   } catch (err) {
     console.error('[ClientEmail] Fout:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const settings = readJSON('settings.json') || {};
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const lead = leads[idx];
+
+  console.log(`[WelcomeEmail] Lead: "${lead.companyName}"`);
+  console.log(`[WelcomeEmail] contactEmail raw: ${JSON.stringify(lead.contactEmail)}`);
+  console.log(`[WelcomeEmail] Char codes: ${[...(lead.contactEmail || '')].map(c => c.charCodeAt(0)).join(',')}`);
+
+  const to = (lead.contactEmail || '').trim();
+  if (!to) return res.status(400).json({ error: 'Geen contactEmail op deze lead — stel het handmatig in.' });
+  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Email niet geconfigureerd' });
+
+  try {
+    const portalUrl = lead.portalToken ? `${BASE_URL}/portal/${lead.portalToken}` : BASE_URL;
+    const intakeUrl = lead.intakeToken ? `${BASE_URL}/intake/${lead.id}/${lead.intakeToken}` : '';
+    const welcomeBody = `Beste ${lead.contactName || lead.companyName},\n\nWelkom! We zijn verheugd om samen te werken.\n\n${intakeUrl ? `Via de onderstaande link kun je jouw intake-vragenlijst invullen:\n${intakeUrl}\n\n` : ''}Heb je vragen? Stuur dan gerust een bericht via je klantportaal:\n${portalUrl}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.myTitle || ''}\n${settings.agencyName}`;
+    await sendEmail({ to, subject: `Welkom bij ${settings.agencyName} — volgende stappen`, body: welcomeBody, settings });
+    addLeadHistory(leads, lead.id, { event: 'welcomeEmailSent', label: `Welkomstmail (opnieuw) verstuurd naar ${to}` });
+    writeJSON('leads.json', leads);
+    console.log(`[WelcomeEmail] Verstuurd naar: "${to}" ✓`);
+    res.json({ ok: true, to });
+  } catch (err) {
+    console.error('[WelcomeEmail] Fout:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

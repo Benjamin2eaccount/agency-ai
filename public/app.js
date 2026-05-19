@@ -2926,7 +2926,12 @@ function openLeadDetail(id) {
             <div class="detail-section-title" style="margin:0">${esc(lead.projectPlan.title || '')}</div>
             <div style="font-size:11px;color:var(--text-secondary);margin-top:3px">Gestart: ${lead.projectStartedAt ? formatDate(lead.projectStartedAt) : '—'}</div>
           </div>
-          <span class="badge badge-green"><i class="ti ti-rocket"></i> Actief</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="badge badge-green"><i class="ti ti-rocket"></i> Actief</span>
+            <button class="btn btn-ghost btn-sm" onclick="resendWelcomeEmail('${lead.id}')" title="Welkomstmail opnieuw sturen">
+              <i class="ti ti-mail-forward"></i> Welkomstmail
+            </button>
+          </div>
         </div>
         ${lead.projectPlan.overview ? `<p style="font-size:13px;color:#374151;line-height:1.6;margin-bottom:14px">${esc(lead.projectPlan.overview)}</p>` : ''}
         <div style="display:flex;flex-direction:column;gap:10px">
@@ -4019,6 +4024,21 @@ const CLIENT_EMAIL_LABELS = {
   monthlyUpdate:  'Maandupdate',
   checkIn:        'Check-in',
 };
+
+async function resendWelcomeEmail(leadId) {
+  const btn = document.querySelector(`button[onclick="resendWelcomeEmail('${leadId}')"]`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Versturen...'; }
+  try {
+    const res = await api(`/api/leads/${leadId}/send-welcome`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Versturen mislukt', 'error'); return; }
+    toast(`Welkomstmail verstuurd naar ${data.to}`, 'success');
+  } catch (err) {
+    toast('Fout: ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-mail-forward"></i> Welkomstmail'; }
+  }
+}
 
 async function sendClientEmail(leadId, trigger) {
   const lead = state.leads.find(l => l.id === leadId);
