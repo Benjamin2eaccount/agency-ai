@@ -16,6 +16,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'agency_ai_secret';
 const DATA_DIR = path.join(__dirname, 'data');
+const BASE_URL = process.env.BASE_URL || 'https://www.agencyai.info';
 
 // ── In-memory error log (last 100, resets on restart) ─────────────────────────
 const RUN_ERRORS = [];
@@ -405,7 +406,7 @@ function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken, opts) 
   opts = opts || {};
   const myEmail = opts.myEmail || '';
   const calendlyLink = opts.calendlyLink || '';
-  const baseUrl = process.env.BASE_URL || '';
+  const baseUrl = BASE_URL;
 
   const e = function(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
 
@@ -729,12 +730,13 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
 
   // Auto-send intake confirmation email to client
   const lead = leads[idx];
-  if (settings.autoClientEmails?.intakeReceived !== false && lead.email && isGmailReady(settings)) {
+  const intakeConfirmTo = (lead.contactEmail || '').trim();
+  if (settings.autoClientEmails?.intakeReceived !== false && intakeConfirmTo && isGmailReady(settings)) {
     try {
       const email = await generateClientEmail(lead, 'intakeReceived', settings);
-      await sendEmail({ to: lead.email, subject: email.subject, body: email.body, settings });
+      await sendEmail({ to: intakeConfirmTo, subject: email.subject, body: email.body, settings });
       if (!leads[idx].clientEmailLog) leads[idx].clientEmailLog = [];
-      leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'intakeReceived', subject: email.subject, body: email.body, to: lead.email, sentAt: new Date().toISOString(), sentBy: 'systeem' });
+      leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'intakeReceived', subject: email.subject, body: email.body, to: intakeConfirmTo, sentAt: new Date().toISOString(), sentBy: 'systeem' });
       writeJSON('leads.json', leads);
     } catch { /* optional */ }
   }
@@ -774,7 +776,7 @@ Antwoord ALLEEN als JSON: { "headline": "string", "subheadline": "string", "abou
         fs.mkdirSync(sitesDir, { recursive: true });
         fs.writeFileSync(path.join(sitesDir, 'index.html'), siteHtml, 'utf8');
 
-        const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+        const baseUrl = BASE_URL;
         const siteUrl = `${baseUrl}/sites/${siteSlug}`;
 
         const updatedLeads = readJSON('leads.json') || [];
@@ -1742,14 +1744,12 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
     const idx = leads.findIndex(l => l.id === req.params.id);
     if (idx === -1) { send(0, 'Lead niet gevonden', 'error'); res.end(); return; }
     const lead = leads[idx];
-    const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-
     // Step 1 — Portal token
     send(1, 'Portaaltoegang instellen', 'running');
     if (!lead.portalToken) {
       lead.portalToken = Math.random().toString(36).substr(2, 8) + Math.random().toString(36).substr(2, 4);
     }
-    const portalUrl = `${baseUrl}/portal/${lead.portalToken}`;
+    const portalUrl = `${BASE_URL}/portal/${lead.portalToken}`;
     send(1, 'Portaaltoegang instellen', 'done', { portalUrl });
 
     // Step 2 — Intake token
@@ -1757,19 +1757,21 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
     if (!lead.intakeToken) {
       lead.intakeToken = Math.random().toString(36).substr(2, 10) + Date.now().toString(36);
     }
-    const intakeUrl = `${baseUrl}/intake/${lead.id}/${lead.intakeToken}`;
+    const intakeUrl = `${BASE_URL}/intake/${lead.id}/${lead.intakeToken}`;
     send(2, 'Intake link genereren', 'done', { intakeUrl });
 
     // Step 3 — Welcome email to client
     send(3, 'Welkomstmail versturen', 'running');
-    const clientEmail = lead.email || lead.contactEmail || '';
+    const clientEmail = (lead.contactEmail || '').trim();
     let emailSent = false;
     if (clientEmail && isGmailReady(settings)) {
       try {
         const welcomeBody = `Beste ${lead.contactName || lead.companyName},\n\nWelkom! We zijn verheugd om samen te werken.\n\nVia de onderstaande link kun je jouw intake-vragenlijst invullen, zodat we zo snel mogelijk kunnen starten:\n${intakeUrl}\n\nHeb je vragen? Stuur dan gerust een bericht via je klantportaal:\n${portalUrl}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.myTitle || ''}\n${settings.agencyName}`;
         await sendEmail({ to: clientEmail, subject: `Welkom bij ${settings.agencyName} — volgende stappen`, body: welcomeBody, settings });
         emailSent = true;
-      } catch { /* email optional */ }
+      } catch (emailErr) {
+        console.warn(`[Project] Welkomstmail mislukt voor ${lead.companyName}:`, emailErr.message);
+      }
     }
     send(3, 'Welkomstmail versturen', emailSent ? 'done' : 'skipped', { note: emailSent ? clientEmail : 'Geen email of Gmail niet geconfigureerd' });
 
@@ -2600,7 +2602,7 @@ Geef ALLEEN de volledige HTML terug. Geen uitleg, geen markdown, geen backticks.
 
     fs.writeFileSync(path.join(sitesDir, 'index.html'), siteHtml, 'utf8');
 
-    const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const baseUrl = BASE_URL;
     const siteUrl = `${baseUrl}/sites/${siteSlug}`;
 
     leads[idx].generatedSite = {
@@ -2769,8 +2771,7 @@ const CLIENT_EMAIL_TEMPLATES = {
 async function generateClientEmail(lead, trigger, settings, extra = {}) {
   const serviceNames = (lead.services || []).map(s => s.name).join(', ') || 'AI-diensten';
   const intakeCtx = lead.intakeAnswers ? '\nIntake antwoorden:\n' + Object.entries(lead.intakeAnswers).map(([k,v]) => `- ${k}: ${v}`).join('\n') : '';
-  const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-  const portalUrl = lead.portalToken ? `${baseUrl}/portal/${lead.portalToken}` : '';
+  const portalUrl = lead.portalToken ? `${BASE_URL}/portal/${lead.portalToken}` : '';
 
   const prompts = {
     welcome: `Schrijf een warme welkomstmail voor een nieuw klant.
@@ -6374,7 +6375,7 @@ async function runMonthlyReports() {
     // Email notification if portal exists
     if (client.portalToken && isGmailReady(settings)) {
       try {
-        const portalUrl = 'http://localhost:' + (process.env.PORT || 3000) + '/portal/' + client.portalToken;
+        const portalUrl = BASE_URL + '/portal/' + client.portalToken;
         const subject = lang === 'nl'
           ? agencyName + ' — Uw maandrapport voor ' + monthName + ' staat klaar'
           : agencyName + ' — Your monthly report for ' + monthName + ' is ready';
