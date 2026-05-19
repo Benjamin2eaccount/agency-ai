@@ -5099,28 +5099,46 @@ function toImapDate(d) {
   return `${d.getDate()}-${IMAP_MONTHS[d.getMonth()]}-${d.getFullYear()}`;
 }
 
-function decodeEmailBody(rawBody, encoding) {
-  const enc = (encoding || '').toLowerCase().trim();
-  if (enc === 'base64') {
-    try { return Buffer.from(rawBody.replace(/\s+/g, ''), 'base64').toString('utf-8'); } catch { return rawBody; }
-  }
-  if (enc === 'quoted-printable') {
-    return rawBody
-      .replace(/=\r?\n/g, '')
-      .replace(/=([A-F0-9]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
-  }
-  return rawBody;
-}
+function extractReplyText(rawBody) {
+  if (!rawBody) return '';
+  let text = rawBody;
 
-function extractReplyText(raw) {
-  if (!raw) return '';
-  let text = raw.replace(/\r\n/g, '\n');
-  // Strip quoted reply block (lines starting with > or "Op/On ... schreef/wrote:")
-  text = text.split(/\r?\n>|\r?\nOp .+schreef:|On .+ wrote:/)[0];
-  // Remove "On ... wrote:" type quote markers on same line
-  text = text.replace(/^On .{10,200}\bwrote:[\s\S]*/m, '');
+  // Multipart MIME: extract text/plain part (handles Outlook/Exchange messages)
+  if (text.includes('Content-Type: text/plain')) {
+    const parts = text.split(/--[^\r\n]+/);
+    for (const part of parts) {
+      if (!part.includes('Content-Type: text/plain')) continue;
+      const bodyStart = part.indexOf('\r\n\r\n');
+      if (bodyStart !== -1) {
+        text = part.substring(bodyStart + 4);
+      } else {
+        const bodyStart2 = part.indexOf('\n\n');
+        if (bodyStart2 !== -1) text = part.substring(bodyStart2 + 2);
+      }
+      if (part.includes('Content-Transfer-Encoding: base64')) {
+        try { text = Buffer.from(text.replace(/\s/g, ''), 'base64').toString('utf-8'); } catch {}
+      } else if (part.includes('Content-Transfer-Encoding: quoted-printable')) {
+        text = text.replace(/=\r?\n/g, '').replace(/=([A-F0-9]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
+      }
+      break;
+    }
+  } else {
+    // Single-part: honour top-level transfer encoding if declared in raw body
+    const encMatch = rawBody.match(/Content-Transfer-Encoding:\s*(\S+)/i);
+    const enc = (encMatch?.[1] || '').toLowerCase();
+    if (enc === 'base64') {
+      const sep = rawBody.indexOf('\n\n');
+      const b64 = sep !== -1 ? rawBody.substring(sep + 2) : rawBody;
+      try { text = Buffer.from(b64.replace(/\s/g, ''), 'base64').toString('utf-8'); } catch {}
+    } else if (enc === 'quoted-printable') {
+      text = text.replace(/=\r?\n/g, '').replace(/=([A-F0-9]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
+    }
+  }
+
+  // Strip quoted reply (everything after quote markers)
+  text = text.split(/\r?\n>|\r?\nOp |On .+ wrote:|Op .+ schreef:/)[0];
   // Strip HTML tags and entities
-  text = text.replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/gi, ' ');
+  text = text.replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ');
   // Collapse whitespace
   text = text.replace(/\s+/g, ' ').trim();
   return text.substring(0, 600);
@@ -5351,12 +5369,10 @@ async function checkReplies() {
           matched.processedMessageIds = matched.processedMessageIds.slice(-20);
         }
 
-        // Extract clean reply text from TEXT body part (decode base64/QP first)
+        // Extract clean reply text — extractReplyText handles MIME parsing + encoding
         const textPart  = msg.parts.find(p => p.which === 'TEXT');
         const rawBody   = (textPart?.body || '').toString();
-        const encoding  = header['content-transfer-encoding']?.[0] || '';
-        const bodyText  = decodeEmailBody(rawBody, encoding);
-        const replyText = extractReplyText(bodyText);
+        const replyText = extractReplyText(rawBody);
 
         matched.status        = 'replied';
         matched.repliedAt     = new Date().toISOString();
