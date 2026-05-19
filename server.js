@@ -6703,15 +6703,128 @@ async function runDailyBackup(manual = false) {
     try {
       const toAddr   = settings.gmailAddress || process.env.GMAIL_ADDRESS || (settings.resendFromAddress || process.env.RESEND_FROM_ADDRESS || 'noreply@agencyai.info');
       const fromAddr = settings.resendFromAddress || process.env.RESEND_FROM_ADDRESS || 'noreply@agencyai.info';
+
+      // Build summary stats from bundle
+      const leads      = bundle.leads || [];
+      const inbox      = bundle.inbox || [];
+      const runs       = bundle.runs  || [];
+      const statsData  = bundle.stats || {};
+      const agencyName = settings.agencyName || 'Agency AI';
+
+      const totalLeads    = leads.length;
+      const clientCount   = leads.filter(l => l.status === 'client').length;
+      const pendingCount  = inbox.filter(i => !i.status || i.status === 'pending').length;
+      const sentCount     = leads.filter(l => l.status === 'sent').length;
+      const repliedCount  = leads.filter(l => l.status === 'replied').length;
+      const pipelineValue = leads.reduce((s, l) => s + (Array.isArray(l.services) ? l.services.reduce((ss, sv) => ss + (sv.price || 0), 0) : 0), 0);
+      const earnedTotal   = leads.reduce((s, l) => s + (l.payments || []).filter(p => p.status === 'paid').reduce((ps, p) => ps + (p.amount || 0), 0), 0);
+      const lastRun       = runs.length ? runs[runs.length - 1] : null;
+      const last24hLeads  = leads.filter(l => l.createdAt && (Date.now() - new Date(l.createdAt).getTime()) < 86400000).length;
+      const totalApiCost  = (statsData.totalApiCostUsd || 0).toFixed(2);
+
+      // Recent 5 leads
+      const recentLeads = [...leads]
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+        .slice(0, 5);
+
+      const STATUS_NL = { new:'Nieuw', inbox:'Inbox', pending:'Wachtend', approved:'Goedgekeurd', sent:'Verstuurd', replied:'Gereageerd', client:'Klant', dead:'Dead', scheduled:'Gepland' };
+
+      const fmt = n => '€' + Number(n).toLocaleString('nl-NL');
+
+      const statCard = (label, value, color) =>
+        `<td style="width:25%;padding:0 8px 0 0"><div style="background:${color}14;border:1px solid ${color}30;border-radius:10px;padding:14px 16px;text-align:center"><div style="font-size:22px;font-weight:700;color:${color}">${value}</div><div style="font-size:11px;color:#6b7280;margin-top:2px">${label}</div></div></td>`;
+
+      const recentRows = recentLeads.map(l =>
+        `<tr style="border-bottom:1px solid #f3f4f6">
+          <td style="padding:9px 12px;font-size:13px;color:#111;font-weight:500">${l.companyName || '—'}</td>
+          <td style="padding:9px 12px;font-size:12px;color:#6b7280">${l.niche || '—'}</td>
+          <td style="padding:9px 12px;font-size:12px"><span style="background:#f3f4f6;border-radius:5px;padding:2px 8px">${STATUS_NL[l.status] || l.status || '—'}</span></td>
+          <td style="padding:9px 12px;font-size:12px;color:#2563eb;font-weight:600">${l.score ? l.score + '/10' : '—'}</td>
+        </tr>`
+      ).join('');
+
+      const lastRunInfo = lastRun
+        ? `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;font-size:13px;color:#374151">
+            <strong>Laatste run:</strong> ${lastRun.startedAt ? new Date(lastRun.startedAt).toLocaleString('nl-NL') : '—'}
+            &nbsp;·&nbsp; Gevonden: <strong>${lastRun.found || 0}</strong>
+            &nbsp;·&nbsp; Verwerkt: <strong>${lastRun.processed || 0}</strong>
+            &nbsp;·&nbsp; Status: <strong>${lastRun.status || '—'}</strong>
+           </div>`
+        : '';
+
+      const backupHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif">
+<div style="max-width:600px;margin:32px auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08)">
+
+  <!-- Header -->
+  <div style="background:#111111;padding:28px 32px;display:flex;align-items:center">
+    <div style="width:36px;height:36px;background:#2563eb;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;margin-right:12px;vertical-align:middle">
+      <span style="color:#fff;font-size:18px;font-weight:700">⚡</span>
+    </div>
+    <div style="display:inline-block;vertical-align:middle">
+      <div style="color:#ffffff;font-size:17px;font-weight:700">${agencyName}</div>
+      <div style="color:#9ca3af;font-size:12px">Dagelijkse backup — ${new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div style="padding:28px 32px">
+
+    <!-- KPI row -->
+    <table style="width:100%;border-collapse:separate;border-spacing:0;margin-bottom:24px"><tr>
+      ${statCard('Totaal leads', totalLeads, '#2563eb')}
+      ${statCard('Klanten', clientCount, '#10b981')}
+      ${statCard('Te beoordelen', pendingCount, '#f59e0b')}
+      ${statCard('Verdiend', fmt(earnedTotal), '#6366f1')}
+    </tr></table>
+
+    <!-- Secondary row -->
+    <table style="width:100%;border-collapse:separate;border-spacing:0;margin-bottom:24px"><tr>
+      ${statCard('Verstuurd', sentCount, '#3b82f6')}
+      ${statCard('Gereageerd', repliedCount, '#8b5cf6')}
+      ${statCard('Afgelopen 24u', last24hLeads, '#ec4899')}
+      ${statCard('AI kosten', '$' + totalApiCost, '#ef4444')}
+    </tr></table>
+
+    <!-- Pipeline value -->
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;margin-bottom:24px;font-size:14px;color:#1d4ed8">
+      Pipeline waarde: <strong>${fmt(pipelineValue)}</strong> totaal over ${totalLeads} leads
+    </div>
+
+    <!-- Last run -->
+    ${lastRunInfo}
+    ${lastRun ? '<div style="height:16px"></div>' : ''}
+
+    <!-- Recent leads table -->
+    ${recentLeads.length ? `
+    <div style="margin-bottom:8px;font-size:13px;font-weight:600;color:#374151">Recente leads</div>
+    <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;font-size:13px">
+      <thead><tr style="background:#f9fafb">
+        <th style="padding:9px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase">Bedrijf</th>
+        <th style="padding:9px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase">Niche</th>
+        <th style="padding:9px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase">Status</th>
+        <th style="padding:9px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase">Score</th>
+      </tr></thead>
+      <tbody>${recentRows}</tbody>
+    </table>` : ''}
+
+    <!-- Footer note -->
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid #f3f4f6;font-size:11px;color:#9ca3af">
+      Backup bestand bijgevoegd: <em>${filename}</em><br>
+      Bevat: leads, inbox, runs, stats, memory en instellingen (zonder wachtwoorden).
+    </div>
+  </div>
+</div>
+</body></html>`;
+
       const { default: fetch } = await import('node-fetch');
       const r = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          from: `"${settings.agencyName || 'Agency AI'}" <${fromAddr}>`,
+          from: `"${agencyName}" <${fromAddr}>`,
           to: toAddr,
-          subject: 'Agency AI Backup — ' + dateStr,
-          html: '<div style="font-family:sans-serif;padding:24px"><h2 style="margin:0 0 12px;font-size:18px">Agency AI — Dagelijkse backup</h2><p style="color:#6b7280;font-size:14px">Automatische backup van ' + dateStr + '.</p><p style="font-size:12px;color:#9ca3af;margin-top:24px">Bevat: leads, inbox, runs, stats, memory en instellingen (zonder wachtwoorden).</p><p><em>Bijlage: ' + filename + '</em></p></div>',
+          subject: `${agencyName} Backup ${dateStr} — ${totalLeads} leads · ${clientCount} klanten`,
+          html: backupHtml,
           attachments: [{ filename, content: Buffer.from(JSON.stringify(bundle, null, 2)).toString('base64') }]
         })
       });
