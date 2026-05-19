@@ -88,7 +88,8 @@ async function claudeCall(prompt, expectJson = false) {
 // ─── Routing ──────────────────────────────────────────────────────────────────
 const VIEW_LABELS = {
   dashboard: 'Dashboard', inbox: 'Inbox', leads: 'Leads', pipeline: 'Pipeline',
-  agents: 'Agents', runs: 'Runs', stats: 'Statistieken', chat: 'Chat', settings: 'Instellingen'
+  agents: 'Agents', runs: 'Runs', stats: 'Statistieken', chat: 'Chat', settings: 'Instellingen',
+  project: 'Project'
 };
 
 function setView(view) {
@@ -118,7 +119,8 @@ function setView(view) {
     runs:      renderRuns,
     stats:     renderStats,
     chat:      renderChat,
-    settings:  renderSettings
+    settings:  renderSettings,
+    project:   renderProjectPage
   };
 
   const render = views[view] || renderDashboard;
@@ -2066,7 +2068,6 @@ async function renderPipeline() {
     </div>
     <div class="pipeline-layout" id="pipelineLayout">
       <div id="pipelineContent"><div class="loading-state"><div class="spinner-lg"></div></div></div>
-      <div id="detailPanel" class="detail-panel"></div>
     </div>
   `;
 
@@ -2196,7 +2197,7 @@ function renderKanban(leads, container) {
       setTimeout(() => card.classList.add('dragging'), 0);
     });
     card.addEventListener('dragend', () => card.classList.remove('dragging'));
-    card.addEventListener('click', () => openLeadDetail(card.dataset.id));
+    card.addEventListener('click', () => openProjectPage(card.dataset.id));
   });
 
   // "X meer" expand buttons
@@ -2259,7 +2260,7 @@ function buildLeadTableRow(l, dupIds) {
       <td class="text-secondary">${l.repliedAt ? formatDate(l.repliedAt) : '—'}</td>
       <td class="text-secondary">${l.estimatedValue ? '€' + l.estimatedValue.toLocaleString('nl-NL') : '—'}</td>
       <td style="display:flex;gap:4px;align-items:center">
-        <button class="btn btn-ghost btn-sm" onclick="openLeadDetail('${l.id}')"><i class="ti ti-chevron-right"></i></button>
+        <button class="btn btn-ghost btn-sm" onclick="openProjectPage('${l.id}')"><i class="ti ti-chevron-right"></i></button>
         <button class="btn btn-ghost btn-sm" title="Blacklisten" onclick="quickBlacklist('${l.id}','${esc(l.companyName)}')" style="color:var(--danger)"><i class="ti ti-ban"></i></button>
       </td>
     </tr>`;
@@ -2387,7 +2388,7 @@ function renderPipelineTable(leads, container) {
   document.querySelectorAll('.leads-row').forEach(row => {
     row.addEventListener('click', e => {
       if (e.target.closest('button')) return;
-      openLeadDetail(row.dataset.id);
+      openProjectPage(row.dataset.id);
     });
     row.style.cursor = 'pointer';
   });
@@ -2473,6 +2474,533 @@ function applyPipelineGroupFilter(filter) {
     }
   });
 }
+
+// ─── Project Page ─────────────────────────────────────────────────────────────
+
+function openProjectPage(id) {
+  state.currentLeadId = id;
+  setView('project');
+}
+
+function switchProjectTab(tab) {
+  window._projectTab = tab;
+  document.querySelectorAll('.project-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.project-tab-content').forEach(c => {
+    c.style.display = c.dataset.tabContent === tab ? '' : 'none';
+  });
+}
+
+async function renderProjectPage() {
+  const lead = state.leads.find(l => l.id === state.currentLeadId);
+  if (!lead) {
+    document.getElementById('appView').innerHTML = `<div class="empty-card"><i class="ti ti-alert-circle"></i><h3>Lead niet gevonden</h3><button class="btn btn-primary" onclick="setView('pipeline')">← Pipeline</button></div>`;
+    return;
+  }
+
+  window._agentChats = window._agentChats || {};
+  if (!window._agentChats[lead.id]) window._agentChats[lead.id] = {};
+
+  const activeTab = window._projectTab || 'overzicht';
+
+  // Build score/status pills
+  const scoreCls = lead.score >= 8 ? 'score-num-green' : lead.score >= 6 ? 'score-num-amber' : 'score-num-red';
+  const statusLabel = STATUS_LABELS[lead.status] || lead.status || 'Inbox';
+  const statusColor = STATUS_COLORS[lead.status] || 'gray';
+
+  // ── Tab: Overzicht ─────────────────────────────────────────────────────────
+  const tabOverzicht = `
+    <div class="project-tab-content" data-tab-content="overzicht" style="${activeTab !== 'overzicht' ? 'display:none' : ''}">
+      <div class="project-info-grid">
+        <div class="project-info-item">
+          <div class="project-info-label">Email</div>
+          <div class="project-info-value">${lead.contactEmail ? `<a href="mailto:${esc(lead.contactEmail)}" class="link">${esc(lead.contactEmail)}</a>` : '<span style="color:var(--text-muted)">Geen email</span>'}</div>
+        </div>
+        <div class="project-info-item">
+          <div class="project-info-label">Website</div>
+          <div class="project-info-value">${lead.websiteUrl ? `<a href="${esc(lead.websiteUrl)}" target="_blank" class="link">${esc(lead.websiteUrl)}</a>` : '<span style="color:var(--text-muted)">—</span>'}</div>
+        </div>
+        <div class="project-info-item">
+          <div class="project-info-label">Instagram</div>
+          <div class="project-info-value">${lead.instagram ? `<a href="https://instagram.com/${esc(lead.instagram.replace('@',''))}" target="_blank" class="link">${esc(lead.instagram)}</a>` : '<span style="color:var(--text-muted)">—</span>'}</div>
+        </div>
+        <div class="project-info-item">
+          <div class="project-info-label">Locatie</div>
+          <div class="project-info-value">${esc(lead.location || '—')}</div>
+        </div>
+        <div class="project-info-item">
+          <div class="project-info-label">Volgers</div>
+          <div class="project-info-value">${lead.followers ? lead.followers.toLocaleString('nl-NL') : '—'}</div>
+        </div>
+        <div class="project-info-item">
+          <div class="project-info-label">Deal waarde</div>
+          <div class="project-info-value">${lead.estimatedValue ? '€' + lead.estimatedValue.toLocaleString('nl-NL') : '—'}</div>
+        </div>
+      </div>
+
+      ${lead.problems?.length ? `
+        <div style="margin-bottom:20px">
+          <div class="project-section-title">Gevonden problemen</div>
+          ${lead.problems.map((p, i) => {
+            const txt = typeof p === 'string' ? p : (p.text || p.description || JSON.stringify(p));
+            const low = txt.toLowerCase();
+            const isCritical = low.includes('geen') || low.includes('niet') || low.includes('slecht') || low.includes('0');
+            return `<div class="problem-card ${isCritical ? '' : ''}">
+              <span style="font-size:16px">${isCritical ? '🔴' : '🟡'}</span>
+              <span style="flex:1;font-size:13px">${esc(txt)}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      ` : ''}
+
+      ${lead.services?.length ? `
+        <div style="margin-bottom:20px">
+          <div class="project-section-title">Aanbevolen diensten</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${lead.services.map(s => `
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface)">
+                <span style="font-size:13px;font-weight:500">${esc(s.name)}</span>
+                <span style="font-size:13px;color:var(--accent);font-weight:600">€${s.price}/mnd</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      ${lead.competitors?.competitorNames?.length ? `
+        <div style="margin-bottom:20px">
+          <div class="project-section-title">Concurrentie analyse</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+            ${lead.competitors.competitorNames.map(n => `<span style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:500">${esc(n)}</span>`).join('')}
+          </div>
+          ${lead.competitors.competitorGap ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;font-size:13px;color:#9a3412"><i class="ti ti-alert-triangle" style="margin-right:6px;color:#f97316"></i>${esc(lead.competitors.competitorGap)}</div>` : ''}
+        </div>
+      ` : ''}
+
+      <div style="margin-bottom:20px">
+        <div class="project-section-title">Score</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="score-pill score-${scoreColor(lead.score || 0)}" style="font-size:22px;padding:6px 14px">${(lead.score || 0).toFixed(1)}</span>
+          <span style="font-size:13px;color:var(--text-secondary)">/10</span>
+          ${lead.scoreDetails ? `<span style="font-size:12px;color:var(--text-muted)">${esc(lead.scoreDetails)}</span>` : ''}
+        </div>
+      </div>
+    </div>`;
+
+  // ── Tab: Problemen & Taken ─────────────────────────────────────────────────
+  function buildProblemsTab() {
+    const problems = lead.problems || [];
+    const tasks    = lead.tasks    || [];
+
+    const problemCards = problems.length
+      ? problems.map((p, i) => {
+          const txt = typeof p === 'string' ? p : (p.text || p.description || JSON.stringify(p));
+          const low = txt.toLowerCase();
+          const isCritical = low.includes('geen') || low.includes('niet') || low.includes('slecht') || low.includes('0');
+          const solved = p._solved || false;
+          return `<div class="problem-card${solved ? ' solved' : ''}" data-problem-idx="${i}" onclick="selectProblemCard(${i},'${esc(lead.id)}')">
+            <span style="font-size:16px">${solved ? '✅' : (isCritical ? '🔴' : '🟡')}</span>
+            <span style="flex:1;font-size:13px">${esc(txt)}</span>
+            ${solved ? '<span style="font-size:11px;color:var(--success);font-weight:600;white-space:nowrap">Opgelost ✓</span>' : ''}
+          </div>`;
+        }).join('')
+      : '<div style="font-size:13px;color:var(--text-muted);padding:12px 0">Geen problemen gevonden voor deze lead.</div>';
+
+    const taskCards = tasks.length
+      ? tasks.map(t => {
+          const isDone = t.status === 'klaar';
+          const priorityColor = t.priority === 'hoog' ? 'var(--danger)' : t.priority === 'middel' ? 'var(--warning)' : 'var(--text-muted)';
+          return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--surface)">
+            <input type="checkbox" ${isDone ? 'checked' : ''} style="cursor:pointer;width:16px;height:16px;accent-color:var(--accent)"
+              onchange="toggleProjectTask('${esc(lead.id)}','${esc(t.id || t._id || '')}',this.checked)">
+            <span style="flex:1;font-size:13px;${isDone ? 'text-decoration:line-through;color:var(--text-muted)' : ''}">${esc(t.title || t.name || '')}</span>
+            ${t.priority ? `<span style="font-size:11px;font-weight:600;color:${priorityColor};white-space:nowrap">${esc(t.priority)}</span>` : ''}
+            ${t.week ? `<span style="font-size:11px;color:var(--text-muted);white-space:nowrap">W${t.week}</span>` : ''}
+          </div>`;
+        }).join('')
+      : '<div style="font-size:13px;color:var(--text-muted);padding:12px 0">Geen taken. Start eerst het project.</div>';
+
+    // Build initial chat panel for first problem (if any)
+    const firstProblem = problems[0];
+    const firstProblemTxt = firstProblem ? (typeof firstProblem === 'string' ? firstProblem : (firstProblem.text || firstProblem.description || '')) : '';
+    const chatPanel = problems.length
+      ? `<div class="problem-chat-panel" id="agentChatPanel">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text)" id="chatProblemTitle">
+            ${firstProblemTxt ? '<i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>' + esc(firstProblemTxt.substring(0, 80)) : 'Selecteer een probleem'}
+          </div>
+          <div class="agent-chat-history" id="agentChatHistory"></div>
+          <div class="agent-chat-input">
+            <textarea id="agentChatMsg" placeholder="Beschrijf wat je wilt bouwen of vraag een actieplan..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAgentChat('${esc(lead.id)}');}"></textarea>
+            <button class="btn btn-primary btn-sm" onclick="sendAgentChat('${esc(lead.id)}')"><i class="ti ti-send"></i></button>
+          </div>
+        </div>`
+      : `<div class="problem-chat-panel" style="display:flex;align-items:center;justify-content:center;min-height:120px;color:var(--text-muted);font-size:13px">
+          <i class="ti ti-robot" style="margin-right:8px"></i> Selecteer een probleem om te bespreken
+        </div>`;
+
+    return `
+      <div class="project-tab-content" data-tab-content="taken" style="${activeTab !== 'taken' ? 'display:none' : ''}">
+        <div class="project-two-col">
+          <div>
+            <div class="project-section-title"><i class="ti ti-alert-circle" style="color:var(--danger);margin-right:6px"></i>Problemen gevonden</div>
+            ${problemCards}
+          </div>
+          <div>
+            <div class="project-section-title"><i class="ti ti-checklist" style="color:var(--accent);margin-right:6px"></i>Taken</div>
+            ${taskCards}
+          </div>
+        </div>
+        <div style="margin-top:20px">
+          <div class="project-section-title"><i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>AI Agent Chat</div>
+          ${chatPanel}
+        </div>
+      </div>`;
+  }
+
+  // ── Tab: Emails ─────────────────────────────────────────────────────────────
+  function buildEmailsTab() {
+    const emailEvents = new Set(['emailSent','followupSent','aiReplySent','clientEmailSent','sent','followup1','followup2']);
+    const historyEmails = (lead.history || []).filter(h => emailEvents.has(h.event));
+    const clientEmails = lead.clientEmailLog || [];
+
+    const historyRows = historyEmails.length
+      ? historyEmails.slice().sort((a,b) => new Date(b.time)-new Date(a.time)).map(h => `
+          <div style="padding:12px 16px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface)">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+              <i class="ti ti-mail" style="color:var(--accent)"></i>
+              <span style="font-size:13px;font-weight:500;flex:1">${esc(h.label || h.event)}</span>
+              ${lead.emailOpened ? `<span class="badge badge-blue" style="font-size:10px"><i class="ti ti-eye"></i> Geopend</span>` : ''}
+              ${lead.repliedAt ? `<span class="badge badge-green" style="font-size:10px"><i class="ti ti-message"></i> Gereageerd</span>` : ''}
+              <span style="font-size:11px;color:var(--text-muted)">${relativeTime(h.time)}</span>
+            </div>
+            ${lead.contactEmail ? `<div style="font-size:12px;color:var(--text-secondary)">→ ${esc(lead.contactEmail)}</div>` : ''}
+          </div>
+        `).join('')
+      : '';
+
+    const clientRows = clientEmails.map(e => `
+      <div style="padding:12px 16px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+          <i class="ti ti-mail-forward" style="color:#7c3aed"></i>
+          <span style="font-size:13px;font-weight:500;flex:1">${esc(e.trigger || 'Klant email')}</span>
+          <span style="font-size:11px;color:var(--text-muted)">${relativeTime(e.sentAt || e.createdAt)}</span>
+        </div>
+        ${e.subject ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px">${esc(e.subject)}</div>` : ''}
+        ${e.body ? `<details style="font-size:12px;color:var(--text-secondary)"><summary style="cursor:pointer">Bekijk email</summary><pre style="white-space:pre-wrap;margin-top:6px">${esc(e.body.substring(0,400))}${e.body.length > 400 ? '...' : ''}</pre></details>` : ''}
+      </div>
+    `).join('');
+
+    const replySection = lead.lastReplyText ? `
+      <div style="margin-bottom:20px">
+        <div class="project-section-title"><i class="ti ti-message-reply" style="color:var(--success);margin-right:6px"></i>Laatste reactie</div>
+        <div style="padding:14px 16px;border:1px solid var(--success);border-radius:10px;background:#f0fdf4;font-size:13px;color:var(--text);white-space:pre-wrap">${esc(lead.lastReplyText)}</div>
+      </div>
+    ` : '';
+
+    return `
+      <div class="project-tab-content" data-tab-content="emails" style="${activeTab !== 'emails' ? 'display:none' : ''}">
+        ${replySection}
+        ${historyRows || clientRows
+          ? `${historyRows}${clientRows}`
+          : '<div style="font-size:13px;color:var(--text-muted);padding:20px 0">Geen emails verstuurd.</div>'}
+      </div>`;
+  }
+
+  // ── Tab: Website ────────────────────────────────────────────────────────────
+  function buildWebsiteTabProject() {
+    const site = lead.generatedSite;
+    if (!site) {
+      return `
+        <div class="project-tab-content" data-tab-content="website" style="${activeTab !== 'website' ? 'display:none' : ''}">
+          <div style="text-align:center;padding:40px 20px;color:var(--text-secondary)">
+            <i class="ti ti-world" style="font-size:40px;margin-bottom:12px;display:block;color:var(--text-muted)"></i>
+            <div style="font-size:15px;font-weight:600;margin-bottom:8px">Nog geen website gegenereerd</div>
+            <div style="font-size:13px;margin-bottom:20px">Genereer een professionele website op maat voor ${esc(lead.companyName)}.</div>
+            <button class="btn btn-primary" onclick="generateSite('${esc(lead.id)}')"><i class="ti ti-wand"></i> Website genereren</button>
+          </div>
+        </div>`;
+    }
+    return `
+      <div class="project-tab-content" data-tab-content="website" style="${activeTab !== 'website' ? 'display:none' : ''}">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          <span class="site-status-badge ${site.status === 'live' ? 'site-status-live' : 'site-status-preview'}">${site.status === 'live' ? 'Live' : 'Preview'}</span>
+          <a href="${esc(site.siteUrl)}" target="_blank" class="btn btn-sm btn-outline"><i class="ti ti-external-link"></i> Bekijk live</a>
+          <button class="btn btn-sm btn-outline" onclick="openSeoPanel('${esc(lead.id)}')"><i class="ti ti-search"></i> SEO</button>
+          <button class="btn btn-sm btn-ghost" onclick="generateSite('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Regenereer</button>
+        </div>
+        <iframe src="${esc(site.siteUrl)}?_t=${Date.now()}" style="width:100%;height:480px;border:1px solid var(--border);border-radius:10px" sandbox="allow-scripts allow-same-origin"></iframe>
+      </div>`;
+  }
+
+  // ── Tab: Afspraken ──────────────────────────────────────────────────────────
+  const tabAfspraken = `
+    <div class="project-tab-content" data-tab-content="afspraken" style="${activeTab !== 'afspraken' ? 'display:none' : ''}">
+      ${lead.calendlyBooking ? `
+        <div style="padding:16px;border:1px solid #bfdbfe;border-radius:10px;background:#eff6ff;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <i class="ti ti-calendar-check" style="color:#2563eb"></i>
+            <span style="font-size:14px;font-weight:600">${esc(lead.calendlyBooking.eventName || 'Gesprek ingepland')}</span>
+          </div>
+          ${lead.calendlyBooking.startTime ? `<div style="font-size:13px;color:#1d4ed8">${new Date(lead.calendlyBooking.startTime).toLocaleString('nl-NL', {dateStyle:'full',timeStyle:'short'})}</div>` : ''}
+          ${lead.calendlyBooking.inviteeName ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Naam: ${esc(lead.calendlyBooking.inviteeName)}</div>` : ''}
+        </div>
+      ` : `
+        <div style="text-align:center;padding:40px 20px;color:var(--text-secondary)">
+          <i class="ti ti-calendar-off" style="font-size:40px;margin-bottom:12px;display:block;color:var(--text-muted)"></i>
+          <div style="font-size:15px;font-weight:600;margin-bottom:8px">Geen afspraken gevonden</div>
+          ${state.settings?.calendlyUrl && lead.contactEmail ? `
+            <a class="btn btn-primary" href="${esc(state.settings.calendlyUrl)}" target="_blank" rel="noopener">
+              <i class="ti ti-calendar-plus"></i> Plan gesprek via Calendly
+            </a>` : '<div style="font-size:13px">Stel Calendly in bij Instellingen → API.</div>'}
+        </div>
+      `}
+    </div>`;
+
+  // ── Tab: Klantportaal ───────────────────────────────────────────────────────
+  const portalUrl = lead.portalToken ? `${window.location.origin}/portal/${lead.portalToken}` : null;
+  const clientMessages = lead.clientMessages || [];
+  const tabPortaal = `
+    <div class="project-tab-content" data-tab-content="portaal" style="${activeTab !== 'portaal' ? 'display:none' : ''}">
+      ${portalUrl ? `
+        <div style="margin-bottom:20px">
+          <div class="project-section-title">Portaal URL</div>
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface)">
+            <code style="flex:1;font-size:12px;color:var(--accent);word-break:break-all">${esc(portalUrl)}</code>
+            <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText('${esc(portalUrl)}');toast('URL gekopieerd!')"><i class="ti ti-copy"></i></button>
+            <a href="${esc(portalUrl)}" target="_blank" class="btn btn-ghost btn-sm"><i class="ti ti-external-link"></i></a>
+          </div>
+        </div>
+      ` : `
+        <div style="margin-bottom:20px">
+          <div style="font-size:13px;color:var(--text-muted)">Nog geen portaal aangemaakt. Start eerst het project.</div>
+        </div>
+      `}
+      <div style="margin-bottom:20px">
+        <div class="project-section-title">Klantberichten ${clientMessages.length > 0 ? `<span class="tab-badge">${clientMessages.length}</span>` : ''}</div>
+        ${clientMessages.length ? clientMessages.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(m => `
+          <div style="padding:10px 14px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--surface)">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+              <span style="font-size:12px;font-weight:600">${esc(m.from || 'Klant')}</span>
+              <span style="font-size:11px;color:var(--text-muted)">${relativeTime(m.createdAt)}</span>
+            </div>
+            <div style="font-size:13px">${esc(m.message || '')}</div>
+          </div>
+        `).join('') : '<div style="font-size:13px;color:var(--text-muted)">Nog geen berichten ontvangen.</div>'}
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="resendWelcomeEmail('${esc(lead.id)}')"><i class="ti ti-mail-forward"></i> Welkomstmail opnieuw sturen</button>
+    </div>`;
+
+  // ── Tab: Geschiedenis ───────────────────────────────────────────────────────
+  const tabGeschiedenis = `
+    <div class="project-tab-content" data-tab-content="geschiedenis" style="${activeTab !== 'geschiedenis' ? 'display:none' : ''}">
+      <div class="project-timeline-wrap timeline-list">
+        ${buildTimeline(lead) || '<div style="font-size:13px;color:var(--text-muted)">Nog geen activiteit</div>'}
+      </div>
+    </div>`;
+
+  // ── Tab: Notities ───────────────────────────────────────────────────────────
+  const tabNotities = `
+    <div class="project-tab-content" data-tab-content="notities" style="${activeTab !== 'notities' ? 'display:none' : ''}">
+      <div class="project-section-title">Notities</div>
+      <textarea class="project-notes-area" id="projectNotesArea" placeholder="Schrijf notities over deze lead..."
+        oninput="clearTimeout(window._notesSaveTimer);window._notesSaveTimer=setTimeout(()=>saveProjectNotes('${esc(lead.id)}'),500)"
+      >${esc(lead.notes || '')}</textarea>
+      <div style="margin-top:8px;font-size:12px;color:var(--text-muted)" id="notesSavedLabel"></div>
+    </div>`;
+
+  document.getElementById('appView').innerHTML = `
+    <div class="project-page">
+      <div class="project-header">
+        <button class="project-back-btn" onclick="setView('pipeline')">
+          <i class="ti ti-arrow-left"></i> Pipeline
+        </button>
+        <div class="project-title-row">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span class="project-company-name">${esc(lead.companyName || '—')}</span>
+              ${nicheBadge(lead.niche)}
+              <span class="score-pill score-${scoreColor(lead.score || 0)}">${(lead.score || 0).toFixed(1)}</span>
+              <span class="status-pill status-${statusColor}">${statusLabel}</span>
+            </div>
+            <div class="project-meta">
+              ${lead.location ? `<span><i class="ti ti-map-pin"></i> ${esc(lead.location)}</span>` : ''}
+              ${lead.contactEmail ? `<span><i class="ti ti-mail"></i> ${esc(lead.contactEmail)}</span>` : ''}
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap">
+            ${['approved','scheduled','sent','replied'].includes(lead.status) && !lead.projectStartedAt
+              ? `<button class="btn btn-primary btn-sm" onclick="startProject('${esc(lead.id)}')"><i class="ti ti-rocket"></i> Project starten</button>`
+              : ''}
+          </div>
+        </div>
+        <div class="project-tabs">
+          <button class="project-tab${activeTab==='overzicht'?' active':''}" data-tab="overzicht" onclick="switchProjectTab('overzicht')">Overzicht</button>
+          <button class="project-tab${activeTab==='taken'?' active':''}" data-tab="taken" onclick="switchProjectTab('taken')">Problemen &amp; Taken</button>
+          <button class="project-tab${activeTab==='emails'?' active':''}" data-tab="emails" onclick="switchProjectTab('emails')">Emails</button>
+          <button class="project-tab${activeTab==='website'?' active':''}" data-tab="website" onclick="switchProjectTab('website')">Website</button>
+          <button class="project-tab${activeTab==='afspraken'?' active':''}" data-tab="afspraken" onclick="switchProjectTab('afspraken')">Afspraken</button>
+          <button class="project-tab${activeTab==='portaal'?' active':''}" data-tab="portaal" onclick="switchProjectTab('portaal')">Klantportaal</button>
+          <button class="project-tab${activeTab==='geschiedenis'?' active':''}" data-tab="geschiedenis" onclick="switchProjectTab('geschiedenis')">Geschiedenis</button>
+          <button class="project-tab${activeTab==='notities'?' active':''}" data-tab="notities" onclick="switchProjectTab('notities')">Notities</button>
+        </div>
+      </div>
+      <div class="project-content">
+        ${tabOverzicht}
+        ${buildProblemsTab()}
+        ${buildEmailsTab()}
+        ${buildWebsiteTabProject()}
+        ${tabAfspraken}
+        ${tabPortaal}
+        ${tabGeschiedenis}
+        ${tabNotities}
+      </div>
+    </div>`;
+
+  // Init: select first problem card if any
+  if (lead.problems?.length) {
+    selectProblemCard(0, lead.id);
+  }
+}
+
+// Called when a problem card is clicked in the project page
+window.selectProblemCard = function(idx, leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead) return;
+
+  document.querySelectorAll('.problem-card').forEach((c, i) => c.classList.toggle('selected', i === idx));
+
+  window._agentChats = window._agentChats || {};
+  if (!window._agentChats[leadId]) window._agentChats[leadId] = {};
+
+  const problems = lead.problems || [];
+  const p = problems[idx];
+  const txt = p ? (typeof p === 'string' ? p : (p.text || p.description || '')) : '';
+
+  window._selectedProblemIdx   = idx;
+  window._selectedProblemLead  = leadId;
+  window._selectedProblemType  = txt;
+
+  const titleEl = document.getElementById('chatProblemTitle');
+  if (titleEl) titleEl.innerHTML = `<i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>${esc(txt.substring(0, 80))}`;
+
+  // Restore chat history for this problem
+  const historyEl = document.getElementById('agentChatHistory');
+  if (historyEl) {
+    const msgs = window._agentChats[leadId][idx] || [];
+    historyEl.innerHTML = msgs.map(m =>
+      `<div class="agent-msg ${m.role}">${esc(m.text)}</div>`
+    ).join('');
+    historyEl.scrollTop = historyEl.scrollHeight;
+  }
+};
+
+async function sendAgentChat(leadId) {
+  const msgEl = document.getElementById('agentChatMsg');
+  if (!msgEl) return;
+  const message = msgEl.value.trim();
+  if (!message) return;
+
+  const idx = window._selectedProblemIdx ?? 0;
+  const problemType = window._selectedProblemType || '';
+
+  window._agentChats = window._agentChats || {};
+  if (!window._agentChats[leadId]) window._agentChats[leadId] = {};
+  if (!window._agentChats[leadId][idx]) window._agentChats[leadId][idx] = [];
+
+  // Check if this is a build confirmation
+  const isBuild = message.toLowerCase().includes('ja bouwen') || message.toLowerCase().includes('bouwen');
+  const action = isBuild ? 'build' : 'chat';
+
+  // Add user message to history
+  window._agentChats[leadId][idx].push({ role: 'user', text: message });
+  msgEl.value = '';
+
+  // Render history
+  const historyEl = document.getElementById('agentChatHistory');
+  if (historyEl) {
+    historyEl.innerHTML = window._agentChats[leadId][idx].map(m =>
+      `<div class="agent-msg ${m.role}">${esc(m.text)}</div>`
+    ).join('');
+    // Add thinking indicator
+    historyEl.innerHTML += `<div class="agent-msg ai" id="agentThinking"><i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Bezig...</div>`;
+    historyEl.scrollTop = historyEl.scrollHeight;
+  }
+
+  try {
+    const res = await api(`/api/leads/${leadId}/agent-chat`, {
+      method: 'POST',
+      body: JSON.stringify({ problemType, message, action })
+    });
+    const data = await res?.json();
+
+    // Remove thinking indicator
+    document.getElementById('agentThinking')?.remove();
+
+    if (data?.response) {
+      window._agentChats[leadId][idx].push({ role: 'ai', text: data.response });
+    }
+    if (data?.built && data?.url) {
+      window._agentChats[leadId][idx].push({ role: 'ai', text: `✓ Gebouwd! Beschikbaar op: ${data.url}` });
+      // Refresh lead data
+      const updatedLeads = await apiJSON('/api/leads');
+      if (updatedLeads) state.leads = updatedLeads;
+    }
+    if (data?.error) {
+      window._agentChats[leadId][idx].push({ role: 'ai', text: `Fout: ${data.error}` });
+    }
+  } catch (err) {
+    document.getElementById('agentThinking')?.remove();
+    window._agentChats[leadId][idx].push({ role: 'ai', text: `Verbindingsfout: ${err.message}` });
+  }
+
+  // Re-render history
+  if (historyEl) {
+    historyEl.innerHTML = window._agentChats[leadId][idx].map(m =>
+      `<div class="agent-msg ${m.role}">${esc(m.text)}</div>`
+    ).join('');
+    historyEl.scrollTop = historyEl.scrollHeight;
+  }
+}
+
+async function toggleProjectTask(leadId, taskId, checked) {
+  const newStatus = checked ? 'klaar' : 'todo';
+  const res = await api(`/api/leads/${leadId}/tasks/${taskId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: newStatus })
+  });
+  if (res?.ok) {
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead?.tasks) {
+      const task = lead.tasks.find(t => (t.id || t._id) === taskId);
+      if (task) task.status = newStatus;
+    }
+    toast(checked ? 'Taak voltooid!' : 'Taak heropend', 'success');
+  } else {
+    toast('Kon taak niet bijwerken', 'error');
+  }
+}
+
+async function saveProjectNotes(leadId) {
+  const notes = document.getElementById('projectNotesArea')?.value || '';
+  const res = await api(`/api/leads/${leadId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ notes })
+  });
+  if (res?.ok) {
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead) lead.notes = notes;
+    const lbl = document.getElementById('notesSavedLabel');
+    if (lbl) { lbl.textContent = '✓ Opgeslagen'; setTimeout(() => { if (lbl) lbl.textContent = ''; }, 2000); }
+  }
+}
+
+async function resendWelcomeEmail(leadId) {
+  if (!confirm('Welkomstmail opnieuw sturen naar deze klant?')) return;
+  const res = await api(`/api/leads/${leadId}/send-welcome`, { method: 'POST' });
+  if (res?.ok) toast('Welkomstmail verstuurd!', 'success');
+  else toast('Kon welkomstmail niet sturen', 'error');
+}
+
+// ─── End Project Page ──────────────────────────────────────────────────────────
 
 function renderLeadDetail(id) { openLeadDetail(id); }
 

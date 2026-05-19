@@ -2929,6 +2929,68 @@ app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
   }
 });
 
+// ─── Agent Chat (project page AI agent) ──────────────────────────────────────
+
+app.post('/api/leads/:id/agent-chat', requireAdmin, async (req, res) => {
+  const { problemType, message, action } = req.body || {};
+  const leads = readJSON('leads.json') || [];
+  const idx   = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const lead     = leads[idx];
+  const settings = readJSON('settings.json') || {};
+
+  if (!message?.trim()) return res.status(400).json({ error: 'Geen bericht opgegeven' });
+
+  try {
+    if (action === 'build') {
+      const buildPrompt = `Je bent een AI-agent die deliverables bouwt voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).
+Probleem type: ${problemType || 'algemeen'}
+Instructie: ${message}
+
+Genereer een complete, werkende, standalone HTML pagina die dit probleem oplost.
+Gebruik inline CSS en vanilla JS. Geen externe dependencies.
+Geef ALLEEN de HTML terug — geen uitleg, geen markdown, geen code blocks.`;
+
+      const html = await aiCall(buildPrompt);
+
+      const siteSlug = lead.generatedSite?.siteSlug
+        || (lead.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + req.params.id.slice(-4));
+      const sitesDir = path.join(__dirname, 'public', 'sites', siteSlug);
+      if (!fs.existsSync(sitesDir)) fs.mkdirSync(sitesDir, { recursive: true });
+      const filename = `${(problemType || 'tool').replace(/[^a-z0-9]/gi, '-')}-${Date.now()}.html`;
+      fs.writeFileSync(path.join(sitesDir, filename), html, 'utf8');
+      const url = `${BASE_URL}/sites/${siteSlug}/${filename}`;
+
+      if (!leads[idx].agentBuilds) leads[idx].agentBuilds = [];
+      leads[idx].agentBuilds.push({ type: problemType, url, filename, builtAt: new Date().toISOString() });
+      addLeadHistory(leads, req.params.id, { event: 'agentBuild', label: `Agent bouwde: ${problemType || 'deliverable'}` });
+      writeJSON('leads.json', leads);
+
+      return res.json({ built: true, url, response: `✓ Gebouwd! Beschikbaar op: ${url}` });
+    }
+
+    // action === 'chat': generate a plan and ask for confirmation
+    const chatPrompt = `Je bent een gespecialiseerde AI-agent voor: ${problemType || 'marketing'}.
+
+Klant: ${lead.companyName} (${lead.niche || 'onbekend'}, ${lead.location || ''})
+Website: ${lead.websiteUrl || 'geen'}
+Probleem: ${problemType || 'onbekend'}
+
+De gebruiker zegt: "${message}"
+
+Geef een concreet actieplan in max 120 woorden. Sluit altijd af met:
+"Wil je dat ik dit nu maak? Typ 'ja bouwen' om te bevestigen."
+
+Schrijf in het Nederlands.`;
+
+    const response = await aiCall(chatPrompt);
+    res.json({ built: false, response });
+  } catch (err) {
+    console.error('[AgentChat] Fout:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/leads/:id/client-emails', (req, res) => {
   const leads = readJSON('leads.json') || [];
   const lead = leads.find(l => l.id === req.params.id);
