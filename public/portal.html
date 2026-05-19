@@ -8,185 +8,212 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root { --accent: #6366f1; --success: #10b981; --border: #e5e7eb; --muted: #6b7280; }
+    :root {
+      --accent: #6366f1;
+      --success: #10b981;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --border: #e5e7eb;
+      --muted: #6b7280;
+      --surface: #f9fafb;
+    }
 
     body {
       font-family: 'Plus Jakarta Sans', sans-serif;
       background: #f9fafb;
       color: #111;
       min-height: 100vh;
-      padding: 20px 16px 48px;
+      padding-bottom: 48px;
     }
 
-    .container { max-width: 560px; margin: 0 auto; }
+    .container { max-width: 600px; margin: 0 auto; padding: 0 16px; }
 
-    .agency-header {
-      text-align: center;
-      padding: 28px 0 22px;
-    }
+    /* Agency header */
+    .agency-header { text-align: center; padding: 28px 0 20px; }
     .agency-logo {
-      width: 44px; height: 44px;
-      background: #111;
-      border-radius: 12px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 10px;
+      width: 44px; height: 44px; background: #111; border-radius: 12px;
+      display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px;
     }
     .agency-logo svg { width: 22px; height: 22px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .agency-name { font-size: 15px; font-weight: 700; color: #111; }
 
-    .card {
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 24px;
-      margin-bottom: 14px;
+    /* Project banner */
+    .project-banner {
+      background: #fff; border: 1px solid var(--border); border-radius: 14px;
+      padding: 20px 24px; margin-bottom: 0;
     }
-    .card-label {
-      font-size: 10px;
-      font-weight: 700;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.07em;
-      margin-bottom: 10px;
-    }
-    .company-name { font-size: 22px; font-weight: 700; margin-bottom: 3px; }
+    .company-name { font-size: 22px; font-weight: 700; margin-bottom: 2px; }
     .company-sub { font-size: 13px; color: var(--muted); }
 
     /* Phase tracker */
-    .phase-track {
-      display: flex;
-      align-items: flex-start;
-      margin: 22px 0 10px;
-      position: relative;
-    }
-    .phase-step {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      position: relative;
-    }
-    .phase-connector {
-      flex: 1;
-      height: 2px;
-      margin-top: 13px;
-      background: var(--border);
-      transition: background 0.3s;
-    }
+    .phase-track { display: flex; align-items: flex-start; margin: 20px 0 10px; }
+    .phase-step { flex: 1; display: flex; flex-direction: column; align-items: center; }
+    .phase-connector { flex: 1; height: 2px; margin-top: 13px; background: var(--border); transition: background 0.3s; }
     .phase-connector.done { background: var(--success); }
     .phase-dot {
-      width: 26px; height: 26px;
-      border-radius: 50%;
+      width: 26px; height: 26px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 700;
-      border: 2px solid var(--border);
-      background: #fff;
-      color: var(--muted);
-      position: relative; z-index: 1;
+      font-size: 11px; font-weight: 700; border: 2px solid var(--border);
+      background: #fff; color: var(--muted); position: relative; z-index: 1;
     }
-    .phase-dot.done { background: var(--success); border-color: var(--success); color: #fff; }
-    .phase-dot.current { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 0 0 4px #6366f120; }
-    .phase-label {
-      font-size: 10px;
-      font-weight: 500;
-      color: var(--muted);
-      margin-top: 7px;
-      text-align: center;
-      max-width: 56px;
-      line-height: 1.3;
-    }
-    .phase-label.done { color: var(--success); }
+    .phase-dot.done    { background: var(--success); border-color: var(--success); color: #fff; }
+    .phase-dot.current { background: var(--accent);  border-color: var(--accent);  color: #fff; box-shadow: 0 0 0 4px rgba(99,102,241,.15); }
+    .phase-label { font-size: 10px; font-weight: 500; color: var(--muted); margin-top: 7px; text-align: center; max-width: 56px; line-height: 1.3; }
+    .phase-label.done    { color: var(--success); }
     .phase-label.current { color: var(--accent); font-weight: 600; }
 
     .progress-wrap { background: #f3f4f6; border-radius: 99px; height: 5px; margin: 4px 0 10px; overflow: hidden; }
     .progress-fill { height: 100%; border-radius: 99px; background: linear-gradient(to right, var(--success), var(--accent)); transition: width 0.6s ease; }
-
     .phase-caption { font-size: 13px; color: var(--muted); }
     .phase-caption strong { color: #111; }
 
     .date-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 14px;
-      background: #f9fafb;
-      border-radius: 8px;
-      font-size: 13px;
-      margin-top: 14px;
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; background: var(--surface); border-radius: 8px;
+      font-size: 13px; margin-top: 14px;
     }
     .date-row svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
 
+    /* Tabs */
+    .tabs-wrap { background: #fff; border: 1px solid var(--border); border-radius: 14px; margin: 14px 0 0; overflow: hidden; }
+    .tabs-nav {
+      display: flex; border-bottom: 1px solid var(--border);
+      overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    }
+    .tabs-nav::-webkit-scrollbar { display: none; }
+    .tab-btn {
+      flex-shrink: 0; padding: 13px 16px; font-family: inherit; font-size: 13px;
+      font-weight: 600; color: var(--muted); background: none; border: none;
+      border-bottom: 2px solid transparent; margin-bottom: -1px;
+      cursor: pointer; transition: color 0.15s, border-color 0.15s; white-space: nowrap;
+    }
+    .tab-btn:hover { color: #111; }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-pane { padding: 20px 24px; display: none; }
+    .tab-pane.active { display: block; }
+
+    /* Sections inside tabs */
+    .inner-section { margin-bottom: 24px; }
+    .inner-section:last-child { margin-bottom: 0; }
+    .inner-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px; }
+
     /* Services */
     .svc-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px 0;
-      border-bottom: 1px solid #f3f4f6;
-      font-size: 14px;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 14px;
     }
     .svc-row:last-of-type { border-bottom: none; }
     .svc-price { font-weight: 600; font-size: 13px; }
-    .svc-total {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 0 0;
-      font-size: 14px;
-      font-weight: 700;
-      border-top: 1px solid var(--border);
-      margin-top: 4px;
-    }
+    .svc-total { display: flex; justify-content: space-between; align-items: center; padding: 12px 0 0; font-size: 14px; font-weight: 700; border-top: 1px solid var(--border); margin-top: 4px; }
 
-    /* Contact form */
+    /* Status badges */
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+    .badge-paid      { background: #f0fdf4; color: #16a34a; }
+    .badge-pending   { background: #fefce8; color: #d97706; }
+    .badge-sent      { background: #eff6ff; color: #2563eb; }
+    .badge-overdue   { background: #fef2f2; color: #dc2626; }
+    .badge-cancelled { background: #f3f4f6; color: var(--muted); }
+
+    /* Invoice cards */
+    .invoice-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
+    .invoice-card:last-child { margin-bottom: 0; }
+    .invoice-card.overdue { border-color: #fca5a5; }
+    .invoice-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+    .invoice-desc   { font-size: 14px; font-weight: 600; color: #111; }
+    .invoice-amount { font-size: 15px; font-weight: 700; color: #111; }
+    .invoice-meta   { font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .invoice-pay-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 7px 14px; background: var(--accent); color: #fff;
+      border-radius: 7px; text-decoration: none; font-size: 12px; font-weight: 600; margin-top: 10px;
+    }
+    .invoice-pay-btn:hover { opacity: .9; }
+
+    /* Timeline */
+    .timeline { display: flex; flex-direction: column; }
+    .tl-item { display: flex; gap: 12px; padding-bottom: 16px; position: relative; }
+    .tl-item::before { content: ''; position: absolute; left: 9px; top: 20px; bottom: 0; width: 2px; background: var(--border); }
+    .tl-item:last-child::before { display: none; }
+    .tl-dot { width: 20px; height: 20px; border-radius: 50%; background: #d1d5db; flex-shrink: 0; margin-top: 2px; border: 2px solid #fff; box-shadow: 0 0 0 1px #d1d5db; }
+    .tl-dot.accent  { background: var(--accent);  box-shadow: 0 0 0 1px var(--accent); }
+    .tl-dot.success { background: var(--success); box-shadow: 0 0 0 1px var(--success); }
+    .tl-dot.warn    { background: var(--warn);    box-shadow: 0 0 0 1px var(--warn); }
+    .tl-content { flex: 1; }
+    .tl-label { font-size: 13px; font-weight: 600; color: #111; line-height: 1.4; }
+    .tl-time  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* Messages */
+    .msg-thread { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+    .msg-bubble {
+      max-width: 85%; padding: 10px 14px; border-radius: 12px;
+      font-size: 13px; line-height: 1.55;
+    }
+    .msg-bubble.client { background: var(--accent); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+    .msg-meta { font-size: 11px; margin-top: 4px; }
+
+    /* Content calendar */
+    .cal-item { padding: 10px 12px; background: var(--surface); border: 1px solid #f3f4f6; border-radius: 8px; margin-bottom: 8px; font-size: 13px; }
+    .cal-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 6px; }
+    .cal-tag { border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: 700; }
+    .tag-week { background: #eef2ff; color: #6366f1; }
+    .tag-plat { background: #f3f4f6; color: #374151; }
+    .tag-type { background: #fefce8; color: #d97706; }
+    .tag-time { background: #f0fdf4; color: #16a34a; }
+    .cal-topic    { font-weight: 700; color: #111; margin-bottom: 3px; }
+    .cal-caption  { color: var(--muted); line-height: 1.5; margin-bottom: 3px; }
+    .cal-hashtags { color: var(--accent); font-size: 12px; }
+
+    /* FAQ / collapsible */
+    .faq-item { border: 1px solid #f3f4f6; border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
+    .faq-q { background: var(--surface); padding: 10px 14px; cursor: pointer; font-size: 13px; font-weight: 600; color: #111; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .faq-a { display: none; padding: 12px 14px; font-size: 13px; color: #374151; line-height: 1.6; }
+    .faq-item.open .faq-a { display: block; }
+    .faq-chevron { transition: transform 0.2s; flex-shrink: 0; }
+    .faq-item.open .faq-chevron { transform: rotate(180deg); }
+
+    /* Milestones */
+    .milestone-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; background: var(--surface); border: 1px solid #f3f4f6; border-radius: 8px; margin-bottom: 8px; }
+    .milestone-week  { background: var(--accent); color: #fff; border-radius: 5px; padding: 3px 7px; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+    .milestone-title { font-size: 13px; font-weight: 700; color: #111; }
+    .milestone-desc  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* Calendly button */
+    .calendly-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: #006bff; color: #fff; padding: 10px 18px;
+      border-radius: 8px; font-weight: 600; font-size: 14px; text-decoration: none;
+    }
+    .calendly-btn:hover { opacity: .9; }
+
+    /* Empty state */
+    .empty-state { text-align: center; padding: 32px 20px; color: var(--muted); font-size: 13px; }
+    .empty-state svg { display: block; margin: 0 auto 10px; opacity: 0.35; }
+
+    /* Form */
     .form-group { margin-bottom: 12px; }
     .form-group label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; color: #374151; }
     .form-group input, .form-group textarea {
-      width: 100%;
-      border: 1.5px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 12px;
-      font-size: 14px;
-      font-family: inherit;
-      outline: none;
-      color: #111;
-      transition: border-color 0.15s;
+      width: 100%; border: 1.5px solid var(--border); border-radius: 8px; padding: 10px 12px;
+      font-size: 14px; font-family: inherit; outline: none; color: #111; transition: border-color 0.15s;
     }
     .form-group input:focus, .form-group textarea:focus { border-color: var(--accent); }
-    .form-group textarea { min-height: 100px; resize: vertical; }
+    .form-group textarea { min-height: 80px; resize: vertical; }
 
     .btn-send {
-      width: 100%;
-      padding: 13px;
-      background: #111;
-      color: #fff;
-      border: none;
-      border-radius: 9px;
-      font-size: 14px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      transition: opacity 0.15s;
-      margin-top: 4px;
+      width: 100%; padding: 12px; background: #111; color: #fff; border: none;
+      border-radius: 9px; font-size: 14px; font-weight: 600; font-family: inherit;
+      cursor: pointer; transition: opacity 0.15s; margin-top: 4px;
     }
     .btn-send:hover { opacity: 0.85; }
     .btn-send:disabled { opacity: 0.45; cursor: not-allowed; }
 
     .success-msg {
-      background: #f0fdf4;
-      border: 1px solid #bbf7d0;
-      border-radius: 10px;
-      padding: 16px;
-      font-size: 14px;
-      color: #166534;
-      display: flex;
-      align-items: center;
-      gap: 10px;
+      background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px;
+      padding: 14px; font-size: 14px; color: #166534;
+      display: flex; align-items: center; gap: 10px;
     }
 
-    /* States */
+    /* Loader */
     .center-page { text-align: center; padding: 80px 20px; color: var(--muted); }
     .center-page h2 { font-size: 18px; color: #111; margin: 12px 0 6px; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -207,7 +234,9 @@
       { num: 5, label: 'Optimalisatie' }
     ];
 
-    const CHECK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    const CHECK   = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    const CHEVRON = `<svg class="faq-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+    const CAL_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
 
     function getToken() {
       return window.location.pathname.split('/').filter(Boolean).pop();
@@ -218,12 +247,14 @@
       return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
     }
 
+    function fmtS(iso) {
+      if (!iso) return '';
+      return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
     async function load() {
       const token = getToken();
-      if (!token || token === 'portal') {
-        renderError('Geen portaallink gevonden.');
-        return;
-      }
+      if (!token || token === 'portal') { renderError('Geen portaallink gevonden.'); return; }
       try {
         const res = await fetch('/api/portal/' + token);
         if (!res.ok) { renderError('Portaal niet gevonden. Controleer de link.'); return; }
@@ -237,35 +268,254 @@
       document.getElementById('root').innerHTML = `
         <div class="center-page">
           <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <h2>Niet gevonden</h2>
-          <p>${msg}</p>
+          <h2>Niet gevonden</h2><p>${msg}</p>
         </div>`;
     }
 
-    function renderPortal(data, token) {
-      document.title = `Projectstatus – ${data.companyName}`;
-      const cur   = data.currentPhase || 1;
-      const pct   = Math.round(((cur - 1) / (PHASES.length - 1)) * 100);
-      const svcs  = data.services || [];
-      const total = svcs.reduce((s, v) => s + (v.price || 0), 0);
+    function showTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === tab));
+    }
 
+    function toggleFaq(id) {
+      document.getElementById(id).classList.toggle('open');
+    }
+
+    function payBadge(p) {
+      const overdue = p.dueDate && !p.paidAt && new Date(p.dueDate) < new Date() && p.status !== 'paid';
+      if (p.status === 'paid')      return `<span class="badge badge-paid">Betaald</span>`;
+      if (overdue)                   return `<span class="badge badge-overdue">Te laat</span>`;
+      if (p.status === 'sent')       return `<span class="badge badge-sent">Verzonden</span>`;
+      if (p.status === 'cancelled')  return `<span class="badge badge-cancelled">Geannuleerd</span>`;
+      return `<span class="badge badge-pending">In afwachting</span>`;
+    }
+
+    function tlDotClass(event) {
+      if (['projectStarted','approved','client','replied'].includes(event)) return 'accent';
+      if (['emailSent','followup1','followup2'].includes(event))            return 'warn';
+      if (['intakeSubmitted','deliveryReady','taskCompleted'].includes(event)) return 'success';
+      return '';
+    }
+
+    function tlLabel(h) {
+      const map = {
+        projectStarted: 'Project gestart',
+        approved:       'Lead goedgekeurd',
+        emailSent:      'E-mail verstuurd',
+        followup1:      'Follow-up 1 verstuurd',
+        followup2:      'Follow-up 2 verstuurd',
+        replied:        'Klant heeft gereageerd',
+        intakeSubmitted:'Intakeformulier ingevuld',
+        deliveryReady:  'Levering klaar',
+        clientMessage:  'Klantbericht ontvangen',
+        taskCompleted:  'Taak afgerond',
+        weekComplete:   'Week afgerond',
+        proposalSent:   'Voorstel verstuurd',
+        contractSent:   'Contract verstuurd',
+        caseStudy:      'Case study bijgewerkt',
+        upsell:         'Upsell aangeboden',
+      };
+      return map[h.event] || h.label || h.event || 'Gebeurtenis';
+    }
+
+    function renderPortal(data, token) {
+      document.title = 'Projectstatus – ' + data.companyName;
+      const cur      = data.currentPhase || 1;
+      const pct      = Math.round(((cur - 1) / (PHASES.length - 1)) * 100);
+      const svcs     = data.services  || [];
+      const payments = data.payments  || [];
+      const messages = data.messages  || [];
+      const timeline = data.timeline  || [];
+
+      /* ── Phase tracker ── */
       const phaseTrack = PHASES.map((p, i) => {
-        const isDone    = p.num < cur;
-        const isCurrent = p.num === cur;
-        const dotClass  = isDone ? 'done' : isCurrent ? 'current' : '';
-        const lblClass  = isDone ? 'done' : isCurrent ? 'current' : '';
-        const connector = i < PHASES.length - 1
-          ? `<div class="phase-connector${isDone ? ' done' : ''}"></div>`
-          : '';
-        return `
-          <div class="phase-step">
-            <div class="phase-dot ${dotClass}">${isDone ? CHECK_SVG : p.num}</div>
-            <div class="phase-label ${lblClass}">${p.label}</div>
-          </div>
-          ${connector}
-        `;
+        const done = p.num < cur, current = p.num === cur;
+        const conn = i < PHASES.length - 1
+          ? `<div class="phase-connector${done ? ' done' : ''}"></div>` : '';
+        return `<div class="phase-step">
+          <div class="phase-dot ${done ? 'done' : current ? 'current' : ''}">${done ? CHECK : p.num}</div>
+          <div class="phase-label ${done ? 'done' : current ? 'current' : ''}">${p.label}</div>
+        </div>${conn}`;
       }).join('');
 
+      /* ── Overzicht tab ── */
+      const monthlyTotal = svcs.filter(s => !(s.description||'').includes('eenmalig')).reduce((s,v)=>s+(v.price||0),0);
+      const onceTotal    = svcs.filter(s =>  (s.description||'').includes('eenmalig')).reduce((s,v)=>s+(v.price||0),0);
+
+      const svcsHtml = svcs.length > 0 ? `
+        <div class="inner-section">
+          <div class="inner-label">Diensten &amp; Investering</div>
+          ${svcs.map(s => {
+            const isOnce = (s.description||'').includes('eenmalig');
+            return `<div class="svc-row"><span>${s.name}</span><span class="svc-price">€${(s.price||0).toLocaleString('nl-NL')}${isOnce?' eenmalig':'/mnd'}</span></div>`;
+          }).join('')}
+          ${svcs.length > 1 ? (
+            (monthlyTotal > 0 ? `<div class="svc-total"><span>Totaal per maand</span><span>€${monthlyTotal.toLocaleString('nl-NL')}</span></div>` : '') +
+            (onceTotal > 0   ? `<div class="svc-total"><span>Totaal eenmalig</span><span>€${onceTotal.toLocaleString('nl-NL')}</span></div>` : '')
+          ) : ''}
+        </div>` : '';
+
+      const calendlyHtml = data.calendlyUrl ? `
+        <div class="inner-section">
+          <div class="inner-label">Gesprek inplannen</div>
+          <p style="font-size:13px;color:#6b7280;margin-bottom:14px">Kies direct een moment dat jou uitkomt.</p>
+          <a href="${data.calendlyUrl}" target="_blank" rel="noopener" class="calendly-btn">
+            ${CAL_SVG} Gesprek inplannen
+          </a>
+        </div>` : '';
+
+      /* ── Facturen tab ── */
+      const openCount = payments.filter(p => p.status !== 'paid' && p.status !== 'cancelled').length;
+      const facturenHtml = payments.length > 0
+        ? payments.map(p => {
+            const ov = p.dueDate && !p.paidAt && new Date(p.dueDate) < new Date() && p.status !== 'paid';
+            return `<div class="invoice-card${ov ? ' overdue' : ''}">
+              <div class="invoice-header">
+                <div class="invoice-desc">${p.description || 'Factuur'}</div>
+                <div class="invoice-amount">€${(p.amount||0).toLocaleString('nl-NL')}</div>
+              </div>
+              <div class="invoice-meta">
+                ${payBadge(p)}
+                ${p.dueDate ? `<span>${CAL_SVG} Vervaldatum: ${fmtS(p.dueDate)}</span>` : ''}
+                ${p.paidAt  ? `<span style="color:#16a34a">✓ Betaald op ${fmtS(p.paidAt)}</span>` : ''}
+              </div>
+              ${p.paymentUrl && p.status !== 'paid' && p.status !== 'cancelled' ? `
+                <a href="${p.paymentUrl}" target="_blank" rel="noopener" class="invoice-pay-btn">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                  Nu betalen
+                </a>` : ''}
+            </div>`;
+          }).join('')
+        : `<div class="empty-state">
+             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+             <p>Nog geen facturen aangemaakt</p>
+           </div>`;
+
+      /* ── Timeline tab ── */
+      const timelineHtml = timeline.length > 0
+        ? `<div class="timeline">
+             ${timeline.map(h => `
+               <div class="tl-item">
+                 <div class="tl-dot ${tlDotClass(h.event)}"></div>
+                 <div class="tl-content">
+                   <div class="tl-label">${tlLabel(h)}</div>
+                   <div class="tl-time">${fmtS(h.time || h.createdAt)}</div>
+                 </div>
+               </div>`).join('')}
+           </div>`
+        : `<div class="empty-state"><p>Nog geen projectactiviteit beschikbaar.</p></div>`;
+
+      /* ── Berichten tab ── */
+      const msgHtml = messages.length > 0
+        ? `<div class="msg-thread">
+             ${messages.map(m => `
+               <div style="align-self:flex-end;display:flex;flex-direction:column;align-items:flex-end">
+                 <div class="msg-bubble client">${(m.message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+                 <div class="msg-meta" style="color:#6b7280;font-size:11px;margin-top:3px">${m.name || ''} · ${fmtS(m.time)}</div>
+               </div>`).join('')}
+           </div>`
+        : `<div class="msg-thread"><div class="empty-state"><p>Nog geen berichten verstuurd.</p></div></div>`;
+
+      /* ── Leveringen tab ── */
+      const calItems   = data.delivery?.contentCalendar?.items || [];
+      const faqs       = data.delivery?.chatbotFlow?.faqs || [];
+      const milestones = data.delivery?.milestones?.milestones || [];
+      const hasSite    = !!data.generatedSite;
+      const hasReports = (data.reports || []).length > 0;
+
+      const calHtml = calItems.length > 0 ? `
+        <div class="inner-section">
+          <div class="inner-label">Content kalender — Maand 1</div>
+          ${calItems.map(item => `
+            <div class="cal-item">
+              <div class="cal-tags">
+                <span class="cal-tag tag-week">Week ${item.week}${item.day ? ' · '+item.day : ''}</span>
+                ${item.platform ? `<span class="cal-tag tag-plat">${item.platform}</span>` : ''}
+                ${item.type     ? `<span class="cal-tag tag-type">${item.type}</span>` : ''}
+                ${item.bestTime ? `<span class="cal-tag tag-time">${item.bestTime}</span>` : ''}
+              </div>
+              <div class="cal-topic">${item.topic||''}</div>
+              ${item.caption    ? `<div class="cal-caption">${item.caption}</div>` : ''}
+              ${item.hashtags?.length ? `<div class="cal-hashtags">${item.hashtags.join(' ')}</div>` : ''}
+            </div>`).join('')}
+        </div>` : '';
+
+      const faqHtml = faqs.length > 0 ? `
+        <div class="inner-section">
+          <div class="inner-label">Chatbot FAQ Script</div>
+          <p style="font-size:13px;color:#6b7280;margin-bottom:12px;line-height:1.5">Gebruik deze antwoorden op jullie website chat of WhatsApp.</p>
+          ${faqs.map((f, i) => `
+            <div class="faq-item" id="faq${i}">
+              <div class="faq-q" onclick="toggleFaq('faq${i}')"><span>${f.question||''}</span>${CHEVRON}</div>
+              <div class="faq-a">${f.answer||''}</div>
+            </div>`).join('')}
+        </div>` : '';
+
+      const msHtml = milestones.length > 0 ? `
+        <div class="inner-section">
+          <div class="inner-label">Projectmijlpalen</div>
+          ${milestones.map(m => `
+            <div class="milestone-row">
+              <span class="milestone-week">W${m.week}</span>
+              <div>
+                <div class="milestone-title">${m.title||''}</div>
+                ${m.description ? `<div class="milestone-desc">${m.description}</div>` : ''}
+              </div>
+            </div>`).join('')}
+        </div>` : '';
+
+      const siteHtml = hasSite ? `
+        <div class="inner-section">
+          <div class="inner-label">Website preview</div>
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+            <span style="background:${data.generatedSite.status==='live'?'#16a34a':'#d97706'};color:#fff;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700">${data.generatedSite.status==='live'?'Live':'Preview'}</span>
+            <span style="font-size:12px;color:#6b7280">Gegenereerd op ${fmt(data.generatedSite.generatedAt)}</span>
+          </div>
+          <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:12px">
+            <iframe src="${data.generatedSite.siteUrl}" style="width:100%;height:300px;border:none;display:block" loading="lazy" sandbox="allow-same-origin allow-scripts"></iframe>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+            <a href="${data.generatedSite.siteUrl}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#111;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">Bekijk website</a>
+            <button onclick="document.getElementById('siteFbSec').style.display=''" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;color:#111;border:1.5px solid #e5e7eb;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Aanpassingen doorgeven</button>
+          </div>
+          <div id="siteFbSec" style="display:none">
+            <div class="form-group">
+              <label>Beschrijf de aanpassingen</label>
+              <textarea id="portalSiteFb" placeholder="Bijv: andere kleur, andere tekst..." style="width:100%;min-height:80px;padding:10px;border:1.5px solid #e5e7eb;border-radius:8px;font-family:inherit;font-size:13px;resize:vertical"></textarea>
+            </div>
+            <button onclick="submitSiteFeedback('${token}')" class="btn-send" style="margin-top:0">Verstuur aanpassingen</button>
+            <div id="siteFbOk" style="display:none;margin-top:10px;color:#16a34a;font-size:13px;font-weight:600">✓ Aanpassingen ontvangen!</div>
+          </div>
+        </div>` : '';
+
+      const reportsHtml = hasReports ? `
+        <div class="inner-section">
+          <div class="inner-label">Rapporten</div>
+          ${(data.reports||[]).map((r,i) => `
+            <div class="faq-item" id="rep${i}" style="margin-bottom:8px">
+              <div class="faq-q" onclick="toggleFaq('rep${i}')">
+                <div>
+                  <div style="font-size:13px;font-weight:600;color:#111">${r.title}</div>
+                  <div style="font-size:11px;color:#6b7280">${fmt(r.createdAt)}</div>
+                </div>${CHEVRON}
+              </div>
+              <div class="faq-a" style="white-space:pre-line">${r.content}</div>
+            </div>`).join('')}
+        </div>` : '';
+
+      const leveringenHtml = (calHtml || faqHtml || msHtml || siteHtml || reportsHtml)
+        ? calHtml + faqHtml + msHtml + siteHtml + reportsHtml
+        : `<div class="empty-state">
+             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+             <p>Nog geen leveringen beschikbaar</p>
+           </div>`;
+
+      /* ── Tab badge for open invoices ── */
+      const payTabLabel = openCount > 0
+        ? `Facturen <span style="background:#ef4444;color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;font-weight:700;margin-left:3px">${openCount}</span>`
+        : 'Facturen';
+
+      /* ── Render ── */
       document.getElementById('root').innerHTML = `
         <div class="agency-header">
           <div class="agency-logo">
@@ -274,206 +524,74 @@
           <div class="agency-name">${data.agencyName}</div>
         </div>
 
-        <div class="card">
-          <div class="card-label">Projectstatus</div>
+        <div class="project-banner">
           <div class="company-name">${data.companyName}</div>
           <div class="company-sub">Bijgewerkt door ${data.myName || data.agencyName}</div>
-
           <div class="phase-track">${phaseTrack}</div>
-          <div class="progress-wrap">
-            <div class="progress-fill" style="width:${pct}%"></div>
-          </div>
-          <div class="phase-caption">Huidige fase: <strong>Fase ${cur} — ${PHASES[cur - 1]?.label}</strong></div>
-
+          <div class="progress-wrap"><div class="progress-fill" style="width:${pct}%"></div></div>
+          <div class="phase-caption">Fase: <strong>Fase ${cur} — ${PHASES[cur-1]?.label}</strong></div>
           ${data.estimatedCompletion ? `
-            <div class="date-row">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              Verwachte afronddatum: <strong>${fmt(data.estimatedCompletion)}</strong>
-            </div>
-          ` : ''}
+            <div class="date-row">${CAL_SVG} Verwachte afronddatum: <strong>${fmt(data.estimatedCompletion)}</strong></div>` : ''}
         </div>
 
-        ${svcs.length > 0 ? `
-          <div class="card">
-            <div class="card-label">Investering</div>
-            ${svcs.map(s => {
-              const isOnce = (s.description || '').includes('eenmalig');
-              return `
-              <div class="svc-row">
-                <span>${s.name}</span>
-                <span class="svc-price">€${(s.price || 0).toLocaleString('nl-NL')}${isOnce ? ' eenmalig' : '/mnd'}</span>
-              </div>`;
-            }).join('')}
-            ${svcs.length > 1 ? (() => {
-              const monthlyTotal = svcs.filter(s => !(s.description||'').includes('eenmalig')).reduce((sum, s) => sum + (s.price||0), 0);
-              const onceTotal    = svcs.filter(s =>  (s.description||'').includes('eenmalig')).reduce((sum, s) => sum + (s.price||0), 0);
-              return (monthlyTotal > 0 ? `<div class="svc-total"><span>Totaal per maand</span><span>€${monthlyTotal.toLocaleString('nl-NL')}</span></div>` : '') +
-                     (onceTotal > 0   ? `<div class="svc-total"><span>Totaal eenmalig</span><span>€${onceTotal.toLocaleString('nl-NL')}</span></div>` : '');
-            })() : ''}
+        <div class="tabs-wrap">
+          <nav class="tabs-nav">
+            <button class="tab-btn active" data-tab="overview"   onclick="showTab('overview')">Overzicht</button>
+            <button class="tab-btn"         data-tab="leveringen" onclick="showTab('leveringen')">Leveringen</button>
+            <button class="tab-btn"         data-tab="facturen"   onclick="showTab('facturen')">${payTabLabel}</button>
+            <button class="tab-btn"         data-tab="timeline"   onclick="showTab('timeline')">Timeline</button>
+            <button class="tab-btn"         data-tab="berichten"  onclick="showTab('berichten')">Berichten</button>
+          </nav>
+
+          <div class="tab-pane active" data-pane="overview">
+            ${svcsHtml}
+            ${calendlyHtml}
+            ${!svcsHtml && !calendlyHtml ? '<div class="empty-state"><p>Nog geen projectinformatie beschikbaar.</p></div>' : ''}
           </div>
-        ` : ''}
 
-        ${data.delivery?.contentCalendar?.items?.length ? `
-          <div class="card">
-            <div class="card-label">Content Kalender — Maand 1</div>
-            <div style="display:flex;flex-direction:column;gap:8px">
-              ${(data.delivery.contentCalendar.items || []).map(item => `
-                <div style="padding:10px 12px;background:#f9fafb;border:1px solid #f3f4f6;border-radius:8px;font-size:13px">
-                  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:5px">
-                    <span style="background:#eef2ff;color:#6366f1;border-radius:4px;padding:2px 6px;font-size:11px;font-weight:700">Week ${item.week}${item.day ? ' · ' + item.day : ''}</span>
-                    <span style="background:#f3f4f6;border-radius:4px;padding:2px 6px;font-size:11px">${item.platform||''}</span>
-                    <span style="background:#fefce8;color:#d97706;border-radius:4px;padding:2px 6px;font-size:11px">${item.type||''}</span>
-                    ${item.bestTime ? `<span style="background:#f0fdf4;color:#16a34a;border-radius:4px;padding:2px 6px;font-size:11px">${item.bestTime}</span>` : ''}
-                  </div>
-                  <div style="font-weight:700;color:#111;margin-bottom:3px">${item.topic||''}</div>
-                  ${item.caption ? `<div style="color:#6b7280;line-height:1.5;margin-bottom:4px">${item.caption}</div>` : ''}
-                  ${item.hashtags?.length ? `<div style="color:#6366f1;font-size:12px">${item.hashtags.join(' ')}</div>` : ''}
-                </div>
-              `).join('')}
-            </div>
+          <div class="tab-pane" data-pane="leveringen">
+            ${leveringenHtml}
           </div>
-        ` : ''}
 
-        ${data.delivery?.chatbotFlow?.faqs?.length ? `
-          <div class="card">
-            <div class="card-label">Chatbot FAQ Script</div>
-            <p style="font-size:13px;color:#6b7280;margin-bottom:14px;line-height:1.5">Gebruik deze antwoorden op jullie website chat of WhatsApp.</p>
-            <div style="display:flex;flex-direction:column;gap:10px">
-              ${(data.delivery.chatbotFlow.faqs || []).map((faq, i) => `
-                <div style="border:1px solid #f3f4f6;border-radius:8px;overflow:hidden">
-                  <div style="background:#f9fafb;padding:10px 14px;cursor:pointer;font-size:13px;font-weight:600;color:#111;display:flex;justify-content:space-between;align-items:center"
-                       onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
-                    <span>${faq.question||''}</span>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                  </div>
-                  <div style="display:none;padding:12px 14px;font-size:13px;color:#374151;line-height:1.6">${faq.answer||''}</div>
-                </div>
-              `).join('')}
-            </div>
+          <div class="tab-pane" data-pane="facturen">
+            ${facturenHtml}
           </div>
-        ` : ''}
 
-        ${data.delivery?.milestones?.milestones?.length ? `
-          <div class="card">
-            <div class="card-label">Projectmijlpalen</div>
-            <div style="display:flex;flex-direction:column;gap:8px">
-              ${(data.delivery.milestones.milestones || []).map(m => `
-                <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:#f9fafb;border:1px solid #f3f4f6;border-radius:8px">
-                  <span style="background:#6366f1;color:#fff;border-radius:5px;padding:3px 7px;font-size:11px;font-weight:700;flex-shrink:0">W${m.week}</span>
-                  <div>
-                    <div style="font-size:13px;font-weight:700;color:#111">${m.title||''}</div>
-                    ${m.description ? `<div style="font-size:12px;color:#6b7280;margin-top:2px">${m.description}</div>` : ''}
-                  </div>
-                </div>
-              `).join('')}
-            </div>
+          <div class="tab-pane" data-pane="timeline">
+            ${timelineHtml}
           </div>
-        ` : ''}
 
-        ${Object.keys(data.delivery?.serviceDeliveries || {}).filter(k => !data.delivery.serviceDeliveries[k].error).length ? `
-          ${Object.entries(data.delivery.serviceDeliveries).filter(([,d]) => !d.error).map(([name, del]) => `
-            <div class="card">
-              <div class="card-label">${name}</div>
-              <div style="font-size:12px;color:#6b7280;margin-bottom:12px">Gegenereerd op ${del.generatedAt ? new Date(del.generatedAt).toLocaleDateString('nl-NL') : '—'}</div>
-              <div style="font-size:13px;line-height:1.7;color:#374151;overflow-x:auto">${del.html || ''}</div>
-            </div>
-          `).join('')}
-        ` : ''}
-
-        ${data.generatedSite ? `
-          <div class="card">
-            <div class="card-label">Website preview</div>
-            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-              <span style="background:${data.generatedSite.status === 'live' ? '#16a34a' : '#d97706'};color:#fff;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700">${data.generatedSite.status === 'live' ? 'Live' : 'Preview'}</span>
-              <span style="font-size:12px;color:#6b7280">Gegenereerd op ${new Date(data.generatedSite.generatedAt).toLocaleDateString('nl-NL')}</span>
-            </div>
-            <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:12px">
-              <iframe src="${data.generatedSite.siteUrl}" style="width:100%;height:320px;border:none;display:block" loading="lazy" sandbox="allow-same-origin allow-scripts" title="Website preview"></iframe>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <a href="${data.generatedSite.siteUrl}" target="_blank"
-                 style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#111;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">
-                &#x1F517; Bekijk website
-              </a>
-              <button onclick="document.getElementById('siteFeedbackSection').style.display=''"
-                 style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;color:#111;border:1.5px solid #e5e7eb;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
-                &#x1F4AC; Aanpassingen doorgeven
-              </button>
-            </div>
-            <div id="siteFeedbackSection" style="display:none;margin-top:14px">
+          <div class="tab-pane" data-pane="berichten">
+            ${msgHtml}
+            <div id="msgForm">
               <div class="form-group">
-                <label>Beschrijf de aanpassingen</label>
-                <textarea id="portalSiteFeedback" placeholder="Bijv: Andere kleur voor de knoppen, andere tekst in de over ons sectie..." style="width:100%;min-height:90px;padding:10px;border:1.5px solid #e5e7eb;border-radius:8px;font-family:inherit;font-size:13px;resize:vertical"></textarea>
+                <label>Jouw naam</label>
+                <input type="text" id="msgName" placeholder="Je naam">
               </div>
-              <button onclick="submitPortalSiteFeedback('${token}')" class="btn-send" style="margin-top:0">Verstuur aanpassingen</button>
-              <div id="siteFeedbackSuccess" style="display:none;margin-top:10px;color:#16a34a;font-size:13px;font-weight:600">&#10003; Aanpassingen ontvangen! We verwerken dit zo snel mogelijk.</div>
-            </div>
-          </div>
-        ` : ''}
-
-        ${data.reports?.length > 0 ? `
-          <div class="card">
-            <div class="card-label">Rapporten</div>
-            ${data.reports.map(r => `
-              <div style="border:1px solid #f3f4f6;border-radius:8px;overflow:hidden;margin-bottom:10px">
-                <div style="background:#f9fafb;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer"
-                     onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
-                  <div>
-                    <div style="font-size:13px;font-weight:600;color:#111">${r.title}</div>
-                    <div style="font-size:11px;color:#6b7280">${fmt(r.createdAt)}</div>
-                  </div>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                </div>
-                <div style="display:none;padding:14px;font-size:13px;color:#374151;line-height:1.7;white-space:pre-line">${r.content}</div>
+              <div class="form-group">
+                <label>Bericht</label>
+                <textarea id="msgText" placeholder="Schrijf hier je vraag of opmerking..."></textarea>
               </div>
-            `).join('')}
-          </div>
-        ` : ''}
-
-        ${data.calendlyUrl ? `
-        <div class="card">
-          <div class="card-label">Gesprek inplannen</div>
-          <p style="font-size:13px;color:#6b7280;margin-bottom:14px">Wil je een kort gesprek inplannen? Kies direct een moment dat jou uitkomt.</p>
-          <a href="${data.calendlyUrl}" target="_blank" rel="noopener"
-             style="display:inline-flex;align-items:center;gap:8px;background:#006bff;color:#fff;padding:10px 18px;border-radius:8px;font-weight:600;font-size:14px;text-decoration:none">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            Gesprek inplannen
-          </a>
-        </div>
-        ` : ''}
-
-        <div class="card">
-          <div class="card-label">Vragen of aanpassingen?</div>
-          <p style="font-size:13px;color:#6b7280;margin-bottom:18px">Heb je een vraag of wil je iets laten weten? Stuur een bericht en we reageren zo snel mogelijk.</p>
-          <div id="contactForm">
-            <div class="form-group">
-              <label>Jouw naam</label>
-              <input type="text" id="msgName" placeholder="Je naam">
+              <button class="btn-send" id="sendBtn" onclick="sendMsg('${token}')">Verstuur bericht</button>
             </div>
-            <div class="form-group">
-              <label>Bericht</label>
-              <textarea id="msgText" placeholder="Schrijf hier je vraag of opmerking..."></textarea>
-            </div>
-            <button class="btn-send" id="sendBtn" onclick="sendMsg('${token}')">Verstuur bericht</button>
           </div>
         </div>
       `;
     }
 
-    async function submitPortalSiteFeedback(token) {
-      const feedback = document.getElementById('portalSiteFeedback')?.value?.trim();
+    async function submitSiteFeedback(token) {
+      const feedback = document.getElementById('portalSiteFb')?.value?.trim();
       if (!feedback) { alert('Voer feedback in.'); return; }
       try {
         const res = await fetch('/api/portal/' + token + '/site-feedback', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ feedback })
         });
         if (res.ok) {
-          document.getElementById('siteFeedbackSuccess').style.display = '';
-          document.getElementById('portalSiteFeedback').value = '';
-        } else { alert('Versturen mislukt. Probeer het opnieuw.'); }
-      } catch { alert('Verbindingsfout. Probeer het opnieuw.'); }
+          document.getElementById('siteFbOk').style.display = '';
+          document.getElementById('portalSiteFb').value = '';
+        } else { alert('Versturen mislukt.'); }
+      } catch { alert('Verbindingsfout.'); }
     }
 
     async function sendMsg(token) {
@@ -481,29 +599,26 @@
       const message = document.getElementById('msgText')?.value?.trim();
       const btn     = document.getElementById('sendBtn');
       if (!name || !message) { alert('Vul je naam en een bericht in.'); return; }
-
-      btn.disabled    = true;
+      btn.disabled = true;
       btn.textContent = 'Versturen...';
-
       try {
         const res = await fetch('/api/portal/' + token + '/message', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ name, message })
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, message })
         });
         if (res.ok) {
-          document.getElementById('contactForm').innerHTML = `
+          document.getElementById('msgForm').innerHTML = `
             <div class="success-msg">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
               Bericht verstuurd! We nemen zo snel mogelijk contact op.
             </div>`;
         } else {
-          btn.disabled    = false;
+          btn.disabled = false;
           btn.textContent = 'Verstuur bericht';
           alert('Versturen mislukt. Probeer het opnieuw.');
         }
       } catch {
-        btn.disabled    = false;
+        btn.disabled = false;
         btn.textContent = 'Verstuur bericht';
         alert('Verbindingsfout. Probeer het opnieuw.');
       }

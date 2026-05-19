@@ -1089,7 +1089,14 @@ app.get('/api/portal/:token', (req, res) => {
     reports:             (lead.reports || []).map(r => ({ title: r.title, month: r.month, createdAt: r.createdAt, content: r.content })),
     delivery:            lead.delivery || null,
     generatedSite:       lead.generatedSite ? { siteUrl: lead.generatedSite.siteUrl, status: lead.generatedSite.status, generatedAt: lead.generatedSite.generatedAt } : null,
-    calendlyUrl:         settings.calendlyUrl || null
+    calendlyUrl:         settings.calendlyUrl || null,
+    payments:            (lead.payments || []).map(p => ({
+                           id: p.id, description: p.description, amount: p.amount,
+                           status: p.status, dueDate: p.dueDate, paidAt: p.paidAt,
+                           paymentUrl: p.paymentUrl, type: p.type, billing: p.billing
+                         })),
+    messages:            (lead.clientMessages || []),
+    timeline:            (lead.history || []).slice(-40).reverse()
   });
 });
 
