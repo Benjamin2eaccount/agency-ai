@@ -5509,34 +5509,51 @@ app.get('/test-imap', async (req, res) => {
     say('[IMAP] Verbinden...');
     connection = await imapSimple.connect(imapConfig);
     say('[IMAP] Verbonden ✓');
-    await connection.openBox('INBOX');
+    const box = await connection.openBox('INBOX');
+    say(`[IMAP] Box: ${box.name}, totaal berichten: ${box.messages.total}`);
 
-    // Search last 14 days, all emails (not just UNSEEN)
-    const since = new Date();
-    since.setDate(since.getDate() - 7);
-    const searchCriteria = [['SINCE', since]];
-    const fetchOptions = {
-      bodies: ['HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)'],
-      markSeen: false
-    };
-    const messages = await connection.search(searchCriteria, fetchOptions);
-    say(`[IMAP] ${messages.length} emails gevonden in inbox (laatste 7 dagen)`);
+    // ── Test 1: ALL search (no filter) ────────────────────────────────────
+    let allMessages = [];
+    try {
+      allMessages = await connection.search(['ALL'], { bodies: ['HEADER'], markSeen: false });
+      say(`[IMAP] Test 1 (ALL): ${allMessages.length} emails gevonden ✓`);
+      result.test1 = { ok: true, count: allMessages.length };
+    } catch (e) {
+      say(`[IMAP] Test 1 (ALL) mislukt: ${e.message}`);
+      result.test1 = { ok: false, error: e.message };
+    }
 
-    // ── Step 2: Parse each email header ───────────────────────────────────
+    // ── Test 2: SINCE date filter ─────────────────────────────────────────
+    let sinceMessages = [];
+    try {
+      const since = new Date();
+      since.setDate(since.getDate() - 14);
+      say(`[IMAP] Test 2 SINCE date object: ${since.toISOString()}`);
+      sinceMessages = await connection.search([['SINCE', since]], { bodies: ['HEADER'], markSeen: false });
+      say(`[IMAP] Test 2 (SINCE 14 dagen): ${sinceMessages.length} emails gevonden ✓`);
+      result.test2 = { ok: true, count: sinceMessages.length };
+    } catch (e) {
+      say(`[IMAP] Test 2 (SINCE) mislukt: ${e.message}`);
+      result.test2 = { ok: false, error: e.message };
+    }
+
+    // ── Step 2: Parse headers from whichever search worked ────────────────
+    const messages = sinceMessages.length ? sinceMessages : allMessages;
     const parsedEmails = [];
-    for (const msg of messages) {
+    for (const msg of messages.slice(0, 50)) { // cap at 50 to avoid timeout
       try {
-        const headerPart = msg.parts.find(p => p.which === 'HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)');
-        const raw = (headerPart?.body || '').toString();
-        const from    = (raw.match(/^From:\s*(.+)/im)?.[1] || '').trim().replace(/^.*<(.+)>.*$/, '$1').toLowerCase();
-        const subject = (raw.match(/^Subject:\s*(.+)/im)?.[1] || '').trim();
-        const msgId   = (raw.match(/^Message-ID:\s*(.+)/im)?.[1] || `uid-${msg.attributes.uid}`).trim();
-        const isReply = /^re:/i.test(subject);
-        const entry = { from, subject, msgId, isReply, uid: msg.attributes.uid };
-        parsedEmails.push(entry);
+        const headerPart = msg.parts.find(p => p.which === 'HEADER') || msg.parts[0];
+        const raw = headerPart?.body || {};
+        // imap-simple HEADER body is already a parsed object with lowercase keys
+        const fromRaw  = (Array.isArray(raw.from)    ? raw.from[0]       : raw.from    || '');
+        const subject  = (Array.isArray(raw.subject)  ? raw.subject[0]    : raw.subject || '').trim();
+        const msgId    = (Array.isArray(raw['message-id']) ? raw['message-id'][0] : raw['message-id'] || `uid-${msg.attributes.uid}`).trim();
+        const from     = fromRaw.replace(/^.*<(.+)>.*$/, '$1').replace(/"/g, '').toLowerCase().trim() || fromRaw.toLowerCase().trim();
+        const isReply  = /^re:/i.test(subject);
+        parsedEmails.push({ from, subject, msgId, isReply, uid: msg.attributes.uid });
         say(`[IMAP] Email: from="${from}" subject="${subject}" isReply=${isReply}`);
       } catch (e) {
-        say(`[IMAP] Parse fout: ${e.message}`);
+        say(`[IMAP] Header parse fout: ${e.message}`);
       }
     }
     result.emails = parsedEmails;
