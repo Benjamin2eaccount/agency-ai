@@ -5248,7 +5248,7 @@ async function checkReplies() {
 
     const since = new Date();
     since.setDate(since.getDate() - 14);
-    const searchCriteria = [['SINCE', toImapDate(since)]];
+    const searchCriteria = [['SINCE', since]];
     const fetchOptions = { bodies: ['RFC822'], markSeen: false };
 
     const messages = await connection.search(searchCriteria, fetchOptions);
@@ -5380,7 +5380,7 @@ async function checkReplies() {
     try {
       const bounceSince = new Date();
       bounceSince.setDate(bounceSince.getDate() - 14);
-      const bounceCriteria = [['SINCE', toImapDate(bounceSince)], ['FROM', 'MAILER-DAEMON']];
+      const bounceCriteria = [['SINCE', bounceSince], ['FROM', 'MAILER-DAEMON']];
       const bounceFetch   = { bodies: ['HEADER.FIELDS (FROM SUBJECT TO)', 'TEXT'], markSeen: false };
       const bounceMessages = await connection.search(bounceCriteria, bounceFetch);
 
@@ -5513,25 +5513,28 @@ app.get('/test-imap', async (req, res) => {
 
     // Search last 14 days, all emails (not just UNSEEN)
     const since = new Date();
-    since.setDate(since.getDate() - 14);
-    const messages = await connection.search([['SINCE', toImapDate(since)]], { bodies: ['RFC822'], markSeen: false });
-    say(`[IMAP] ${messages.length} emails gevonden in inbox (laatste 14 dagen)`);
+    since.setDate(since.getDate() - 7);
+    const searchCriteria = [['SINCE', since]];
+    const fetchOptions = {
+      bodies: ['HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)'],
+      markSeen: false
+    };
+    const messages = await connection.search(searchCriteria, fetchOptions);
+    say(`[IMAP] ${messages.length} emails gevonden in inbox (laatste 7 dagen)`);
 
-    // ── Step 2: Parse each email ───────────────────────────────────────────
+    // ── Step 2: Parse each email header ───────────────────────────────────
     const parsedEmails = [];
     for (const msg of messages) {
-      const rfc822 = msg.parts.find(p => p.which === 'RFC822');
-      if (!rfc822) continue;
       try {
-        const parsed = await simpleParser(rfc822.body);
-        const from    = parsed.from?.value?.[0]?.address || '';
-        const fromName = parsed.from?.value?.[0]?.name || '';
-        const subject = parsed.subject || '';
-        const msgId   = parsed.messageId || `uid-${msg.attributes.uid}`;
-        const isReply = /^re:/i.test(subject.trim());
-        const entry = { from, fromName, subject, msgId, isReply, uid: msg.attributes.uid };
+        const headerPart = msg.parts.find(p => p.which === 'HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)');
+        const raw = (headerPart?.body || '').toString();
+        const from    = (raw.match(/^From:\s*(.+)/im)?.[1] || '').trim().replace(/^.*<(.+)>.*$/, '$1').toLowerCase();
+        const subject = (raw.match(/^Subject:\s*(.+)/im)?.[1] || '').trim();
+        const msgId   = (raw.match(/^Message-ID:\s*(.+)/im)?.[1] || `uid-${msg.attributes.uid}`).trim();
+        const isReply = /^re:/i.test(subject);
+        const entry = { from, subject, msgId, isReply, uid: msg.attributes.uid };
         parsedEmails.push(entry);
-        say(`[IMAP] Email: from="${from}" subject="${subject}" isReply=${isReply} msgId=${msgId}`);
+        say(`[IMAP] Email: from="${from}" subject="${subject}" isReply=${isReply}`);
       } catch (e) {
         say(`[IMAP] Parse fout: ${e.message}`);
       }
