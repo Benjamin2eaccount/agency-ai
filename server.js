@@ -92,6 +92,7 @@ if (!readJSON('settings.json')) {
     agencyName: 'Agency AI', myName: 'Ekow', myTitle: 'AI Growth Specialist',
     gmailAddress: '', gmailPassword: '', linkedinUrl: '', stripeSecretKey: '',
     mollieApiKey: '', paypalMe: '', preferredPaymentMethod: 'stripe',
+    bankTransferIban: '', bankTransferName: '', bankTransferBic: '',
     dailyRunTime: '09:00', leadsPerDay: 15, autoApproveScore: 8.0, automationPaused: false,
     replyDetection: true, dailyBriefingEnabled: true, dailyBriefingTime: '08:45',
     smartAutoApprove: { enabled: false, scoreThreshold: 8.0, requireNoAds: true, minFollowers: 5000, requireWebsite: true },
@@ -3281,6 +3282,10 @@ app.get('/api/settings', (req, res) => {
   safe.stripeConfigured = !!(s.stripeSecretKey);
   safe.mollieConfigured = !!(s.mollieApiKey);
   safe.paypalConfigured = !!(s.paypalMe);
+  safe.bankTransferConfigured = !!(s.bankTransferIban);
+  safe.bankTransferIban = s.bankTransferIban || '';
+  safe.bankTransferName = s.bankTransferName || '';
+  safe.bankTransferBic  = s.bankTransferBic  || '';
   safe.preferredPaymentMethod = s.preferredPaymentMethod || 'stripe';
   safe.autoInvoiceEnabled = s.autoInvoiceEnabled || false;
   safe.autoInvoiceDay = s.autoInvoiceDay || 1;
@@ -3550,11 +3555,14 @@ app.post('/api/settings/test-imap', requireAdmin, async (req, res) => {
 
 app.patch('/api/settings/stripe', requireAdmin, (req, res) => {
   const settings = readJSON('settings.json');
-  const { stripeSecretKey, mollieApiKey, paypalMe, preferredPaymentMethod } = req.body;
+  const { stripeSecretKey, mollieApiKey, paypalMe, preferredPaymentMethod, bankTransferIban, bankTransferName, bankTransferBic } = req.body;
   if (stripeSecretKey !== undefined) settings.stripeSecretKey = stripeSecretKey;
   if (mollieApiKey !== undefined) settings.mollieApiKey = mollieApiKey;
   if (paypalMe !== undefined) settings.paypalMe = paypalMe;
   if (preferredPaymentMethod !== undefined) settings.preferredPaymentMethod = preferredPaymentMethod;
+  if (bankTransferIban !== undefined) settings.bankTransferIban = bankTransferIban;
+  if (bankTransferName !== undefined) settings.bankTransferName = bankTransferName;
+  if (bankTransferBic  !== undefined) settings.bankTransferBic  = bankTransferBic;
   writeJSON('settings.json', settings);
   res.json({ ok: true });
 });
@@ -3668,6 +3676,10 @@ async function createPaymentLink(method, { companyName, amount, description, bil
     const handle = settings.paypalMe.replace(/^.*paypal\.me\//i, '').replace(/\/$/, '');
     return `https://www.paypal.me/${handle}/${Math.round(amount)}EUR`;
   }
+  if (method === 'bank_transfer') {
+    // No URL — bank details stored separately on the payment record
+    return null;
+  }
   throw new Error('Onbekende betaalmethode');
 }
 
@@ -3701,6 +3713,12 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
   const effectiveMethod = method || settings.preferredPaymentMethod || 'stripe';
   const newPayments = [];
 
+  const bankDetails = effectiveMethod === 'bank_transfer' ? {
+    iban: settings.bankTransferIban || '',
+    name: settings.bankTransferName || settings.agencyName || '',
+    bic:  settings.bankTransferBic  || ''
+  } : null;
+
   try {
     if (type === 'split' && splitParts > 1) {
       const partAmount = Math.round(amount / splitParts);
@@ -3708,24 +3726,28 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
         const partDesc = `${description || 'AI-diensten'} — deel ${i}/${splitParts}`;
         const url = await createPaymentLink(effectiveMethod, { companyName: leads[idx].companyName, amount: partAmount, description: partDesc, billing: 'eenmalig', settings });
         const dueDays = (i - 1) * 14; // every 2 weeks
-        newPayments.push({
+        const rec = {
           id: Date.now().toString(36) + Math.random().toString(36).slice(2,5),
           type: 'split', amount: partAmount, description: partDesc, billing: 'eenmalig',
           method: effectiveMethod, paymentUrl: url, status: 'sent',
           dueDate: dueDate ? new Date(new Date(dueDate).getTime() + dueDays * 86400000).toISOString() : new Date(Date.now() + dueDays * 86400000).toISOString(),
           splitIndex: i, splitTotal: splitParts, createdAt: new Date().toISOString()
-        });
+        };
+        if (bankDetails) rec.bankDetails = bankDetails;
+        newPayments.push(rec);
       }
     } else {
       const url = await createPaymentLink(effectiveMethod, { companyName: leads[idx].companyName, amount, description, billing: billing || 'maandelijks', settings });
-      newPayments.push({
+      const rec = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2,5),
         type: type || (billing === 'eenmalig' ? 'once' : 'subscription'),
         amount, description: description || 'AI-diensten', billing: billing || 'maandelijks',
         method: effectiveMethod, paymentUrl: url, status: 'sent',
         dueDate: dueDate || new Date(Date.now() + 7 * 86400000).toISOString(),
         createdAt: new Date().toISOString()
-      });
+      };
+      if (bankDetails) rec.bankDetails = bankDetails;
+      newPayments.push(rec);
     }
 
     if (!leads[idx].payments) leads[idx].payments = [];
@@ -3737,11 +3759,17 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
     const lead = leads[idx];
     if (lead.email && isGmailReady(settings)) {
       try {
-        const linksText = newPayments.map((p, i) => `${newPayments.length > 1 ? `Deel ${i+1}/${newPayments.length}: ` : ''}€${p.amount} → ${p.paymentUrl}`).join('\n');
+        let paymentInfo;
+        if (effectiveMethod === 'bank_transfer' && bankDetails) {
+          const ref = `INV-${Date.now().toString(36).toUpperCase()}`;
+          paymentInfo = `Gelieve het bedrag over te maken via bankoverschrijving:\n\nIBAN:       ${bankDetails.iban}\nTenaamstelling: ${bankDetails.name}${bankDetails.bic ? `\nBIC:        ${bankDetails.bic}` : ''}\nBedrag:     €${amount}\nOmschrijving: ${description || 'AI-diensten'} / ${ref}`;
+        } else {
+          paymentInfo = newPayments.map((p, i) => `${newPayments.length > 1 ? `Deel ${i+1}/${newPayments.length}: ` : ''}€${p.amount} → ${p.paymentUrl}`).join('\n');
+        }
         await sendEmail({
           to: lead.email,
           subject: `Factuur ${description || 'AI-diensten'} — ${settings.agencyName}`,
-          body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder vind je de betaallink(s) voor ${description || 'onze diensten'}:\n\n${linksText}\n\nHeb je vragen? Neem gerust contact op.\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`,
+          body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder vind je de betaalinformatie voor ${description || 'onze diensten'}:\n\n${paymentInfo}\n\nHeb je vragen? Neem gerust contact op.\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`,
           settings
         });
       } catch { /* optional */ }

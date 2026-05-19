@@ -3368,6 +3368,7 @@ function openLeadDetail(id) {
                     </div>
                     <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex-shrink:0">
                       ${p.paymentUrl ? `<a href="${p.paymentUrl}" target="_blank" class="btn btn-ghost btn-sm" style="font-size:11px"><i class="ti ti-external-link"></i> Link</a>` : ''}
+                      ${p.method === 'bank_transfer' && p.bankDetails ? `<button onclick="showBankDetails('${lead.id}','${p.id}')" class="btn btn-ghost btn-sm" style="font-size:11px"><i class="ti ti-building-bank"></i> Bankgegevens</button>` : ''}
                       ${p.status !== 'paid' ? `<button onclick="markPaymentPaid('${lead.id}','${p.id}')" class="btn btn-ghost btn-sm" style="font-size:11px;color:#16a34a"><i class="ti ti-check"></i> Betaald</button>` : ''}
                       ${p.status === 'sent' ? `<button onclick="remindPayment('${lead.id}','${p.id}')" class="btn btn-ghost btn-sm" style="font-size:11px"><i class="ti ti-bell"></i> Herinner</button>` : ''}
                       <button onclick="deletePayment('${lead.id}','${p.id}')" class="btn btn-ghost btn-sm" style="font-size:11px;color:#dc2626"><i class="ti ti-trash"></i></button>
@@ -4510,6 +4511,7 @@ function createPayment(leadId) {
             ${s.stripeConfigured ? '<option value="stripe">Stripe</option>' : ''}
             ${s.mollieConfigured ? '<option value="mollie">Mollie</option>' : ''}
             ${s.paypalConfigured ? '<option value="paypal">PayPal</option>' : ''}
+            ${s.bankTransferConfigured ? '<option value="bank_transfer">Bankoverschrijving</option>' : ''}
           </select>
         </div>
         <div class="form-group">
@@ -4593,6 +4595,35 @@ async function deletePayment(leadId, payId) {
   if (lead?.payments) lead.payments = lead.payments.filter(p => p.id !== payId);
   toast('Betaling verwijderd', 'success');
   renderLeadDetail(leadId);
+}
+
+function showBankDetails(leadId, payId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  const p = lead?.payments?.find(p => p.id === payId);
+  if (!p?.bankDetails) return toast('Geen bankgegevens gevonden', 'error');
+  const d = p.bankDetails;
+  openModal(`
+    <div class="modal-header">
+      <h3><i class="ti ti-building-bank"></i> Bankgegevens</h3>
+      <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px">
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px;font-size:14px">
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">IBAN</span><strong>${esc(d.iban)}</strong></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">Tenaamstelling</span><strong>${esc(d.name)}</strong></div>
+        ${d.bic ? `<div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">BIC</span><strong>${esc(d.bic)}</strong></div>` : ''}
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">Bedrag</span><strong style="color:var(--accent)">€${(p.amount||0).toLocaleString('nl-NL')}</strong></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">Omschrijving</span><strong>${esc(p.description||'')}</strong></div>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted)">Stuur bovenstaande gegevens naar de klant zodat zij de betaling kunnen uitvoeren.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Sluiten</button>
+      <button class="btn btn-primary" onclick="navigator.clipboard.writeText('IBAN: ${esc(d.iban)}\\nTenaamstelling: ${esc(d.name)}${d.bic ? '\\nBIC: ' + esc(d.bic) : ''}\\nBedrag: €${p.amount}\\nOmschrijving: ${esc(p.description||'')}');toast('Gekopieerd','success')">
+        <i class="ti ti-copy"></i> Kopiëren
+      </button>
+    </div>
+  `);
 }
 
 // ─── Client email sender ──────────────────────────────────────────────────────
@@ -5297,9 +5328,10 @@ function createInvoice(leadId) {
   const defaultBilling = lead.services?.[0]?.billing || 'maandelijks';
 
   const methodOpts = [
-    { value: 'stripe',  label: 'Stripe',  icon: 'ti-brand-stripe', enabled: s.stripeConfigured },
-    { value: 'mollie',  label: 'Mollie',  icon: 'ti-credit-card',  enabled: s.mollieConfigured },
-    { value: 'paypal',  label: 'PayPal',  icon: 'ti-brand-paypal', enabled: s.paypalConfigured },
+    { value: 'stripe',        label: 'Stripe',         icon: 'ti-brand-stripe',   enabled: s.stripeConfigured },
+    { value: 'mollie',        label: 'Mollie',         icon: 'ti-credit-card',    enabled: s.mollieConfigured },
+    { value: 'paypal',        label: 'PayPal',         icon: 'ti-brand-paypal',   enabled: s.paypalConfigured },
+    { value: 'bank_transfer', label: 'Overboeking',    icon: 'ti-building-bank',  enabled: s.bankTransferConfigured },
   ].filter(m => m.enabled || m.value === preferred);
 
   openModal(`
@@ -8147,6 +8179,9 @@ async function renderSettings() {
               <label class="radio-card ${s.preferredPaymentMethod === 'paypal' ? 'radio-card-active' : ''}">
                 <input type="radio" name="preferredPayment" value="paypal" ${s.preferredPaymentMethod === 'paypal' ? 'checked' : ''}><i class="ti ti-brand-paypal"></i> PayPal${s.paypalConfigured ? ' <span class="stg-status-badge stg-badge-green">✓</span>' : ''}
               </label>
+              <label class="radio-card ${s.preferredPaymentMethod === 'bank_transfer' ? 'radio-card-active' : ''}">
+                <input type="radio" name="preferredPayment" value="bank_transfer" ${s.preferredPaymentMethod === 'bank_transfer' ? 'checked' : ''}><i class="ti ti-building-bank"></i> Overboeking${s.bankTransferConfigured ? ' <span class="stg-status-badge stg-badge-green">✓</span>' : ''}
+              </label>
             </div>
           </div>
           <div class="stg-grid-2">
@@ -8166,6 +8201,25 @@ async function renderSettings() {
               ${s.paypalConfigured ? '<p class="stg-configured-note"><i class="ti ti-check"></i> PayPal ingesteld</p>' : ''}
             </div>
           </div>
+
+          <div style="margin-top:18px;margin-bottom:8px">
+            <label class="stg-label">BANKOVERSCHRIJVING</label>
+          </div>
+          <div class="stg-grid-2">
+            <div class="stg-field">
+              <label class="stg-label">IBAN</label>
+              <input type="text" class="stg-input" id="bankTransferIban" value="${esc(s.bankTransferIban || '')}" placeholder="NL00BANK0000000000">
+            </div>
+            <div class="stg-field">
+              <label class="stg-label">TENAAMSTELLING</label>
+              <input type="text" class="stg-input" id="bankTransferName" value="${esc(s.bankTransferName || '')}" placeholder="${esc(s.agencyName || 'Agency AI')}">
+            </div>
+            <div class="stg-field">
+              <label class="stg-label">BIC / SWIFT (optioneel)</label>
+              <input type="text" class="stg-input" id="bankTransferBic" value="${esc(s.bankTransferBic || '')}" placeholder="INGBNL2A">
+            </div>
+          </div>
+
           <button class="btn btn-primary stg-save-btn" id="saveStripeBtn"><i class="ti ti-device-floppy"></i> Betaalmethoden opslaan</button>
         </div>
 
@@ -8670,14 +8724,16 @@ function attachSettingsHandlers(s) {
   });
 
   document.getElementById('saveStripeBtn').addEventListener('click', async () => {
-    const stripeKey = document.getElementById('stripeSecretKey').value;
-    const mollieKey = document.getElementById('mollieApiKey').value;
-    const paypalMe  = document.getElementById('paypalMe').value.trim();
-    const preferred = document.querySelector('input[name="preferredPayment"]:checked')?.value || 'stripe';
-    const body = { preferredPaymentMethod: preferred };
+    const stripeKey       = document.getElementById('stripeSecretKey').value;
+    const mollieKey       = document.getElementById('mollieApiKey').value;
+    const paypalMe        = document.getElementById('paypalMe').value.trim();
+    const bankIban        = document.getElementById('bankTransferIban').value.trim();
+    const bankName        = document.getElementById('bankTransferName').value.trim();
+    const bankBic         = document.getElementById('bankTransferBic').value.trim();
+    const preferred       = document.querySelector('input[name="preferredPayment"]:checked')?.value || 'stripe';
+    const body = { preferredPaymentMethod: preferred, paypalMe, bankTransferIban: bankIban, bankTransferName: bankName, bankTransferBic: bankBic };
     if (stripeKey) body.stripeSecretKey = stripeKey;
     if (mollieKey) body.mollieApiKey = mollieKey;
-    if (paypalMe !== undefined) body.paypalMe = paypalMe;
     const res = await api('/api/settings/stripe', { method: 'PATCH', body: JSON.stringify(body) });
     if (res.ok) {
       toast('Betalingen opgeslagen', 'success');
