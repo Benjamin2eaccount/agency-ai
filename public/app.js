@@ -252,6 +252,7 @@ async function renderDashboard() {
 
   const settings = await apiJSON('/api/settings');
   state.settings = settings || {};
+  updateSidebarLogo(settings?.agencyLogo || '');
 
   const nextRun = getNextRunTime(settings?.dailyRunTime || '09:00');
   const recentRuns = (runs || []).slice(0, 10);
@@ -7509,6 +7510,35 @@ function copyZapierUrl() {
   if (val) navigator.clipboard.writeText(val).then(() => toast('Zapier URL gekopieerd.', 'success'));
 }
 
+function updateSidebarLogo(logoUrl) {
+  const logoIcon = document.querySelector('.logo-icon');
+  if (!logoIcon) return;
+  if (logoUrl) {
+    logoIcon.innerHTML = `<img src="${logoUrl}" style="width:26px;height:26px;object-fit:contain;border-radius:4px;display:block">`;
+  } else {
+    logoIcon.innerHTML = '<i class="ti ti-bolt"></i>';
+  }
+}
+
+function previewLogo(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  if (file.size > 512 * 1024) { toast('Logo moet kleiner zijn dan 500KB', 'error'); input.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    window._pendingLogo = e.target.result;
+    const preview = document.getElementById('logoPreview');
+    if (preview) preview.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:contain;border-radius:6px">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeLogo() {
+  window._pendingLogo = '';
+  const preview = document.getElementById('logoPreview');
+  if (preview) preview.innerHTML = '<i class="ti ti-bolt" style="font-size:22px;color:var(--accent)"></i>';
+}
+
 function copyZapierToken() {
   const val = document.getElementById('zapierTokenDisplay')?.textContent;
   if (val) navigator.clipboard.writeText(val).then(() => toast('Token gekopieerd.', 'success'));
@@ -7787,6 +7817,25 @@ async function renderSettings() {
             <div class="stg-title">Profiel</div>
             <div class="stg-sub">Je naam en agencynaam worden gebruikt in alle uitgaande emails</div>
           </div>
+          <!-- Logo upload -->
+          <div class="logo-upload-row" style="margin-bottom:18px">
+            <div class="logo-upload-preview" id="logoPreview">
+              ${s.agencyLogo
+                ? `<img src="${s.agencyLogo}" style="width:100%;height:100%;object-fit:contain;border-radius:6px">`
+                : `<i class="ti ti-bolt" style="font-size:22px;color:var(--accent)"></i>`}
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;gap:6px;align-items:center">
+                <label class="btn btn-ghost btn-sm" for="logoFileInput" style="cursor:pointer">
+                  <i class="ti ti-upload"></i> Logo uploaden
+                </label>
+                <input type="file" id="logoFileInput" accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp" style="display:none" onchange="previewLogo(this)">
+                ${s.agencyLogo ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="removeLogo()" title="Logo verwijderen"><i class="ti ti-trash"></i></button>` : ''}
+              </div>
+              <p style="font-size:11px;color:var(--text-muted);margin:0">PNG, JPG of SVG · max 500KB · zichtbaar in de sidebar</p>
+            </div>
+          </div>
+
           <div class="stg-grid-2">
             <div class="stg-field"><label class="stg-label">AGENCY NAAM</label><input type="text" class="stg-input" id="agencyName" value="${esc(s.agencyName)}"></div>
             <div class="stg-field"><label class="stg-label">MIJN NAAM</label><input type="text" class="stg-input" id="myName" value="${esc(s.myName)}"></div>
@@ -8581,6 +8630,9 @@ function attachSettingsHandlers(s) {
       websiteAbout: document.getElementById('websiteAbout')?.value,
       websiteContact: document.getElementById('websiteContact')?.value
     };
+    if (window._pendingLogo !== undefined) {
+      body.agencyLogo = window._pendingLogo;
+    }
     const res = await api('/api/settings/account', { method: 'PATCH', body: JSON.stringify(body) });
     const data = await res.json();
     if (res.ok) {
@@ -8588,6 +8640,11 @@ function attachSettingsHandlers(s) {
       localStorage.setItem('myName', body.myName);
       document.getElementById('userName').textContent = body.myName;
       document.getElementById('userAvatar').textContent = body.myName[0].toUpperCase();
+      if (window._pendingLogo !== undefined) {
+        updateSidebarLogo(window._pendingLogo);
+        if (state.settings) state.settings.agencyLogo = window._pendingLogo;
+        window._pendingLogo = undefined;
+      }
     } else {
       toast(data.error, 'error');
     }

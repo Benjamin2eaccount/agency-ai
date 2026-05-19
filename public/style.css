@@ -2990,6 +2990,26 @@ input[type="checkbox"].lc2-checkbox:checked::after {
 .stg-sub { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
 .stg-divider { border: none; border-top: 1px solid var(--border); margin: 0; }
 
+/* Logo upload */
+.logo-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.logo-upload-preview {
+  width: 56px;
+  height: 56px;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
 /* Grid layouts */
 .stg-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 .stg-grid-4 { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }

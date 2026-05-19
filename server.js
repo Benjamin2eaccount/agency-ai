@@ -3301,7 +3301,7 @@ app.get('/api/settings', (req, res) => {
 
 app.patch('/api/settings/account', async (req, res) => {
   const settings = readJSON('settings.json');
-  const { agencyName, myName, myTitle, username, newPassword, currentPassword, websiteTagline, websiteAbout, websiteContact, calendlyUrl } = req.body;
+  const { agencyName, myName, myTitle, username, newPassword, currentPassword, websiteTagline, websiteAbout, websiteContact, calendlyUrl, agencyLogo } = req.body;
 
   if (agencyName) settings.agencyName = agencyName;
   if (myName) settings.myName = myName;
@@ -3311,6 +3311,12 @@ app.patch('/api/settings/account', async (req, res) => {
   if (websiteAbout   !== undefined) settings.websiteAbout   = websiteAbout;
   if (websiteContact !== undefined) settings.websiteContact = websiteContact;
   if (calendlyUrl    !== undefined) settings.calendlyUrl    = calendlyUrl;
+  if (agencyLogo     !== undefined) {
+    // Validate: must be empty string or a data URL (image/*)
+    if (agencyLogo === '' || /^data:image\/(png|jpeg|jpg|gif|svg\+xml|webp);base64,/.test(agencyLogo)) {
+      settings.agencyLogo = agencyLogo;
+    }
+  }
   const { gaId } = req.body;
   if (gaId !== undefined) settings.gaId = gaId;
 
