@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { font-size: 16px; scroll-behavior: smooth; }
@@ -145,16 +146,17 @@
     /* Hero */
     .hero {
       min-height: 100vh; display: flex; align-items: center;
-      padding: 120px 24px 80px;
+      padding: 130px 24px 100px;
       background: radial-gradient(ellipse 80% 55% at 50% -5%, rgba(99,102,241,.07) 0%, transparent 65%);
     }
     .hero-inner { max-width: var(--max-w); margin: 0 auto; text-align: center; }
-    .hero-title { font-size: clamp(3.2rem, 8vw, 5.75rem); font-weight: 900; line-height: 1.08; letter-spacing: -.03em; margin-bottom: 26px; }
+    .hero-title { font-size: clamp(2.8rem, 7vw, 5.25rem); font-weight: 900; line-height: 1.1; letter-spacing: -.03em; margin-bottom: 26px; }
     .hl-1, .hl-3 { display: block; color: var(--black); }
     .hl-2 {
       display: block;
       background: linear-gradient(135deg, var(--indigo) 0%, var(--indigo2) 100%);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      padding-bottom: 0.12em;
     }
     .hero-sub { font-size: clamp(1rem, 2vw, 1.2rem); color: var(--t2); max-width: 600px; margin: 0 auto 36px; line-height: 1.7; }
     .hero-ctas  { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 44px; }
@@ -171,14 +173,16 @@
     /* Services */
     .cat-section { margin-bottom: 52px; }
     .cat-section:last-child { margin-bottom: 0; }
-    .cat-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; color: var(--t2); margin-bottom: 20px; display: flex; align-items: center; gap: 12px; }
+    .cat-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; color: var(--t2); margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
     .cat-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-    .service-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
-    .service-card { background: #fff; border: 1px solid var(--border); border-left: 3px solid transparent; border-radius: var(--r); padding: 22px 20px; transition: transform .2s, box-shadow .2s, border-left-color .2s; }
+    .cat-title .ti { font-size: 16px; color: var(--indigo); flex-shrink: 0; }
+    .service-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+    .service-card { background: #fff; border: 1px solid var(--border); border-left: 3px solid transparent; border-radius: var(--r); padding: 20px 18px; transition: transform .2s, box-shadow .2s, border-left-color .2s; }
     .service-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.08); border-left-color: var(--indigo); }
-    .svc-icon { font-size: 1.75rem; margin-bottom: 10px; line-height: 1; }
+    .svc-icon { font-size: 1.5rem; margin-bottom: 10px; color: var(--indigo); display: block; }
     .svc-name { font-size: 14px; font-weight: 700; margin-bottom: 5px; }
-    .svc-desc { font-size: 13px; color: var(--t2); line-height: 1.55; }
+    .svc-desc { font-size: 13px; color: var(--t2); line-height: 1.5; }
+    .svc-price { font-size: 12px; font-weight: 700; color: var(--indigo); margin-top: 8px; }
 
     /* Werkwijze */
     .werkwijze { background: var(--surface); }
@@ -196,9 +200,9 @@
     .waarom-list li { display: flex; gap: 12px; align-items: flex-start; font-size: 15px; }
     .wcheck { width: 22px; height: 22px; background: var(--indigo); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; font-size: 11px; color: #fff; font-weight: 900; }
     .waarom-visual { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .w-box { border-radius: var(--r-lg); padding: 24px 18px; display: flex; flex-direction: column; gap: 8px; transition: transform .2s; }
+    .w-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 24px 18px; display: flex; flex-direction: column; gap: 8px; transition: transform .2s; }
     .w-box:hover { transform: translateY(-2px); }
-    .w-box-icon { font-size: 2rem; line-height: 1; }
+    .w-box-icon { font-size: 1.5rem; color: var(--indigo); }
     .w-box-lbl  { font-size: 13px; font-weight: 700; }
 
     /* Resultaten */
@@ -228,7 +232,7 @@
     .form-submit:disabled { background: #9ca3af; cursor: not-allowed; }
     .form-error { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 11px 14px; font-size: 13px; color: #dc2626; font-weight: 500; margin-bottom: 20px; display: none; }
     .form-success { text-align: center; padding: 20px 0; display: none; }
-    .form-success-icon  { font-size: 3.5rem; margin-bottom: 14px; }
+    .form-success-icon  { font-size: 3.5rem; color: var(--indigo); margin-bottom: 14px; }
     .form-success-title { font-size: 1.3rem; font-weight: 800; margin-bottom: 8px; }
     .form-success-sub   { font-size: 14px; color: var(--t2); line-height: 1.6; }
 
@@ -256,7 +260,7 @@
     @media (max-width: 768px) {
       .nav-links { display: none; }
       .nav-burger { display: block; }
-      .hero { min-height: auto; padding: 104px 20px 60px; }
+      .hero { min-height: auto; padding: 100px 20px 60px; }
       .hero-trust { gap: 14px; flex-direction: column; align-items: center; }
       .stats-inner { grid-template-columns: 1fr 1fr; }
       .steps-line { display: none; }
@@ -285,7 +289,7 @@
 <nav id="nav">
   <div class="nav-inner">
     <a href="/" class="nav-logo">
-      <div class="nav-logo-icon">⚡</div>
+      <div class="nav-logo-icon"><i class="ti ti-bolt"></i></div>
       <span>Agency AI</span>
     </a>
     <div class="nav-links">
@@ -318,7 +322,7 @@
     <a href="#contact" onclick="closeMobile()" data-i18n="nav.contact">Contact</a>
     <a href="/login" data-i18n="nav.signinArrow">Sign in →</a>
     <div class="mobile-lang">
-      <span class="mobile-lang-lbl">🌐</span>
+      <span class="mobile-lang-lbl"><i class="ti ti-world"></i></span>
       <div class="mobile-lang-btns">
         <button onclick="setLanguage('nl');closeMobile()" data-lang="nl" title="Nederlands">🇳🇱</button>
         <button onclick="setLanguage('en');closeMobile()" data-lang="en" title="English">🇬🇧</button>
@@ -384,137 +388,157 @@
     </div>
 
     <div class="cat-section fade-in">
-      <div class="cat-title" data-i18n="cat.web">🌐 &nbsp;Web &amp; Design</div>
+      <div class="cat-title"><i class="ti ti-world"></i><span data-i18n="cat.web">Web &amp; Design</span></div>
       <div class="service-grid">
         <div class="service-card">
-          <div class="svc-icon">🖥️</div>
+          <i class="ti ti-device-desktop svc-icon"></i>
           <div class="svc-name" data-i18n="svc.website.name">Website laten bouwen</div>
           <div class="svc-desc" data-i18n="svc.website.desc">Snelle, moderne websites die bezoekers omzetten in klanten.</div>
+          <div class="svc-price">vanaf €795</div>
         </div>
         <div class="service-card">
-          <div class="svc-icon">🛒</div>
+          <i class="ti ti-shopping-cart svc-icon"></i>
           <div class="svc-name" data-i18n="svc.webshop.name">Webshop bouwen</div>
           <div class="svc-desc" data-i18n="svc.webshop.desc">Professionele webshops met volledige betaalintegratie en voorraadbeheer.</div>
+          <div class="svc-price">vanaf €1.495</div>
         </div>
         <div class="service-card">
-          <div class="svc-icon">🎯</div>
+          <i class="ti ti-target svc-icon"></i>
           <div class="svc-name" data-i18n="svc.landing.name">Landing page ontwerp</div>
           <div class="svc-desc" data-i18n="svc.landing.desc">Conversiegerichte pagina's voor campagnes en advertenties.</div>
+          <div class="svc-price">vanaf €495</div>
         </div>
       </div>
     </div>
 
     <div class="cat-section fade-in">
-      <div class="cat-title" data-i18n="cat.marketing">📣 &nbsp;Marketing &amp; Advertenties</div>
+      <div class="cat-title"><i class="ti ti-speakerphone"></i><span data-i18n="cat.marketing">Marketing &amp; Advertenties</span></div>
       <div class="service-grid">
         <div class="service-card">
-          <div class="svc-icon">📱</div>
+          <i class="ti ti-brand-meta svc-icon"></i>
           <div class="svc-name" data-i18n="svc.meta.name">Meta advertenties (Facebook &amp; Instagram)</div>
           <div class="svc-desc" data-i18n="svc.meta.desc">AI-gestuurde campagnes die meer opleveren voor minder budget.</div>
+          <div class="svc-price">vanaf €375/mo</div>
         </div>
         <div class="service-card">
-          <div class="svc-icon">🔍</div>
+          <i class="ti ti-brand-google svc-icon"></i>
           <div class="svc-name" data-i18n="svc.google.name">Google Ads</div>
           <div class="svc-desc" data-i18n="svc.google.desc">Bovenaan in Google verschijnen precies wanneer klanten zoeken.</div>
+          <div class="svc-price">vanaf €375/mo</div>
         </div>
         <div class="service-card">
-          <div class="svc-icon">📧</div>
+          <i class="ti ti-mail svc-icon"></i>
           <div class="svc-name" data-i18n="svc.email.name">Email marketing</div>
           <div class="svc-desc" data-i18n="svc.email.desc">Geautomatiseerde email campagnes die leads omzetten in betalende klanten.</div>
+          <div class="svc-price">vanaf €295/mo</div>
         </div>
         <div class="service-card">
-          <div class="svc-icon">📸</div>
+          <i class="ti ti-camera svc-icon"></i>
           <div class="svc-name" data-i18n="svc.social.name">Content &amp; Social media</div>
           <div class="svc-desc" data-i18n="svc.social.desc">Dagelijkse posts, Reels en Stories — afgestemd op jouw merk en doelgroep.</div>
+          <div class="svc-price">vanaf €495/mo</div>
         </div>
       </div>
     </div>
 
     <div class="cat-section fade-in">
-      <div class="cat-title" data-i18n="cat.ai">🤖 &nbsp;AI &amp; Automatisering</div>
+      <div class="cat-title"><i class="ti ti-robot"></i><span data-i18n="cat.ai">AI &amp; Automatisering</span></div>
       <div class="service-grid">
         <div class="service-card">
-          <div class="svc-icon">🎯</div>
+          <i class="ti ti-robot svc-icon"></i>
           <div class="svc-name" data-i18n="svc.leadgen.name">AI Leadgeneratie systeem</div>
           <div class="svc-desc" data-i18n="svc.leadgen.desc">Volledig automatisch nieuwe klanten vinden en benaderen — 24/7.</div>
+          <div class="svc-price">vanaf €795/mo</div>
         </div>
         <div class="service-card">
-          <div class="svc-icon">💬</div>
+          <i class="ti ti-message-chatbot svc-icon"></i>
           <div class="svc-name" data-i18n="svc.chatbot.name">AI Chatbot voor website</div>
           <div class="svc-desc" data-i18n="svc.chatbot.desc">Beantwoordt vragen, vangt leads en plant afspraken in — zonder menselijke tussenkomst.</div>
+          <div class="svc-price">vanaf €695</div>
         </div>
         <div class="service-card">
-          <div class="svc-icon">⚙️</div>
+          <i class="ti ti-settings-automation svc-icon"></i>
           <div class="svc-name" data-i18n="svc.workflow.name">Workflow automatisering</div>
           <div class="svc-desc" data-i18n="svc.workflow.desc">Herhaalbare taken automatiseren zodat jij je focust op wat echt telt.</div>
+          <div class="svc-price">vanaf €995</div>
         </div>
         <div class="service-card">
-          <div class="svc-icon">✨</div>
+          <i class="ti ti-sparkles svc-icon"></i>
           <div class="svc-name" data-i18n="svc.aicontent.name">AI content creatie</div>
           <div class="svc-desc" data-i18n="svc.aicontent.desc">Teksten, afbeeldingen en video's gegenereerd door AI op schaal.</div>
+          <div class="svc-price">vanaf €395/mo</div>
         </div>
       </div>
     </div>
 
     <div class="cat-section fade-in">
-      <div class="cat-title" data-i18n="cat.security">🔒 &nbsp;Security &amp; Beveiliging</div>
+      <div class="cat-title"><i class="ti ti-shield-lock"></i><span data-i18n="cat.security">Security &amp; Beveiliging</span></div>
       <div class="service-grid">
         <div class="service-card">
-          <div class="svc-icon">🛡️</div>
+          <i class="ti ti-shield svc-icon"></i>
           <div class="svc-name" data-i18n="svc.websec.name">Website beveiliging</div>
           <div class="svc-desc" data-i18n="svc.websec.desc">SSL, firewalls, malware scanning en continue monitoring van jouw website.</div>
+          <div class="svc-price">vanaf €295/mo</div>
         </div>
         <div class="service-card">
-          <div class="svc-icon">⚖️</div>
+          <i class="ti ti-scale svc-icon"></i>
           <div class="svc-name" data-i18n="svc.gdpr.name">GDPR &amp; privacybeheer</div>
           <div class="svc-desc" data-i18n="svc.gdpr.desc">Volledig compliant met Europese wetgeving — cookies, privacy policy en meer.</div>
+          <div class="svc-price">vanaf €395</div>
         </div>
         <div class="service-card">
-          <div class="svc-icon">💾</div>
+          <i class="ti ti-database svc-icon"></i>
           <div class="svc-name" data-i18n="svc.backup.name">Backup &amp; herstel</div>
           <div class="svc-desc" data-i18n="svc.backup.desc">Automatische dagelijkse backups en snel herstel bij problemen.</div>
+          <div class="svc-price">vanaf €95/mo</div>
         </div>
       </div>
     </div>
 
     <div class="cat-section fade-in">
-      <div class="cat-title" data-i18n="cat.seo">📈 &nbsp;SEO &amp; Vindbaarheid</div>
+      <div class="cat-title"><i class="ti ti-trending-up"></i><span data-i18n="cat.seo">SEO &amp; Vindbaarheid</span></div>
       <div class="service-grid">
         <div class="service-card">
-          <div class="svc-icon">📍</div>
+          <i class="ti ti-map-pin svc-icon"></i>
           <div class="svc-name" data-i18n="svc.localseo.name">Lokale SEO</div>
           <div class="svc-desc" data-i18n="svc.localseo.desc">Gevonden worden in Google door klanten in jouw stad of regio.</div>
+          <div class="svc-price">vanaf €395/mo</div>
         </div>
         <div class="service-card">
-          <div class="svc-icon">🗺️</div>
+          <i class="ti ti-building-store svc-icon"></i>
           <div class="svc-name" data-i18n="svc.gmb.name">Google Bedrijfsprofiel</div>
           <div class="svc-desc" data-i18n="svc.gmb.desc">Optimalisatie van je Google Maps aanwezigheid en reviews.</div>
+          <div class="svc-price">vanaf €295/mo</div>
         </div>
         <div class="service-card">
-          <div class="svc-icon">⚡</div>
+          <i class="ti ti-bolt svc-icon"></i>
           <div class="svc-name" data-i18n="svc.techseo.name">Technische SEO</div>
           <div class="svc-desc" data-i18n="svc.techseo.desc">Snelheid, structuur en code geoptimaliseerd voor maximale Google ranking.</div>
+          <div class="svc-price">vanaf €495/mo</div>
         </div>
       </div>
     </div>
 
     <div class="cat-section fade-in">
-      <div class="cat-title" data-i18n="cat.strategy">📊 &nbsp;Advies &amp; Strategie</div>
+      <div class="cat-title"><i class="ti ti-chart-bar"></i><span data-i18n="cat.strategy">Advies &amp; Strategie</span></div>
       <div class="service-grid">
         <div class="service-card">
-          <div class="svc-icon">🧭</div>
+          <i class="ti ti-compass svc-icon"></i>
           <div class="svc-name" data-i18n="svc.strategy.name">Digitale strategie</div>
           <div class="svc-desc" data-i18n="svc.strategy.desc">Een helder plan welke kanalen en tools het meest opleveren voor jouw business.</div>
+          <div class="svc-price">vanaf €795</div>
         </div>
         <div class="service-card">
-          <div class="svc-icon">🔬</div>
+          <i class="ti ti-chart-dots svc-icon"></i>
           <div class="svc-name" data-i18n="svc.competitor.name">Concurrentieanalyse</div>
           <div class="svc-desc" data-i18n="svc.competitor.desc">Wij analyseren wat jouw concurrenten doen en hoe jij ze voorbij gaat.</div>
+          <div class="svc-price">vanaf €395</div>
         </div>
         <div class="service-card">
-          <div class="svc-icon">📊</div>
+          <i class="ti ti-chart-bar svc-icon"></i>
           <div class="svc-name" data-i18n="svc.analytics.name">Analytics &amp; rapportage</div>
           <div class="svc-desc" data-i18n="svc.analytics.desc">Inzicht in wat werkt via duidelijke dashboards en maandelijkse rapporten.</div>
+          <div class="svc-price">vanaf €295/mo</div>
         </div>
       </div>
     </div>
@@ -585,12 +609,12 @@
       </div>
       <div class="fade-in d2">
         <div class="waarom-visual">
-          <div class="w-box" style="background:#eff6ff"><div class="w-box-icon">🌐</div><div class="w-box-lbl" data-i18n="wbox.web">Web &amp; Design</div></div>
-          <div class="w-box" style="background:#f5f3ff"><div class="w-box-icon">📣</div><div class="w-box-lbl" data-i18n="wbox.marketing">Marketing</div></div>
-          <div class="w-box" style="background:#eef2ff"><div class="w-box-icon">🤖</div><div class="w-box-lbl" data-i18n="wbox.ai">AI &amp; Auto</div></div>
-          <div class="w-box" style="background:#fef2f2"><div class="w-box-icon">🔒</div><div class="w-box-lbl" data-i18n="wbox.security">Security</div></div>
-          <div class="w-box" style="background:#ecfdf5"><div class="w-box-icon">📈</div><div class="w-box-lbl" data-i18n="wbox.seo">SEO</div></div>
-          <div class="w-box" style="background:#fffbeb"><div class="w-box-icon">📊</div><div class="w-box-lbl" data-i18n="wbox.strategy">Strategie</div></div>
+          <div class="w-box"><i class="ti ti-world w-box-icon"></i><div class="w-box-lbl" data-i18n="wbox.web">Web &amp; Design</div></div>
+          <div class="w-box"><i class="ti ti-speakerphone w-box-icon"></i><div class="w-box-lbl" data-i18n="wbox.marketing">Marketing</div></div>
+          <div class="w-box"><i class="ti ti-robot w-box-icon"></i><div class="w-box-lbl" data-i18n="wbox.ai">AI &amp; Auto</div></div>
+          <div class="w-box"><i class="ti ti-shield w-box-icon"></i><div class="w-box-lbl" data-i18n="wbox.security">Security</div></div>
+          <div class="w-box"><i class="ti ti-trending-up w-box-icon"></i><div class="w-box-lbl" data-i18n="wbox.seo">SEO</div></div>
+          <div class="w-box"><i class="ti ti-chart-bar w-box-icon"></i><div class="w-box-lbl" data-i18n="wbox.strategy">Strategie</div></div>
         </div>
       </div>
     </div>
@@ -659,7 +683,7 @@
         <button type="submit" class="form-submit" id="formSubmit" data-i18n="form.submit">Stuur aanvraag</button>
       </form>
       <div class="form-success" id="formSuccess">
-        <div class="form-success-icon">🎉</div>
+        <div class="form-success-icon"><i class="ti ti-circle-check"></i></div>
         <div class="form-success-title" data-i18n="success.title">Bedankt!</div>
         <div class="form-success-sub" data-i18n="success.sub">We bellen je binnen 24 uur terug.<br>Check ook je inbox voor een bevestiging.</div>
       </div>
@@ -672,7 +696,7 @@
   <div class="footer-inner">
     <div class="footer-top">
       <div>
-        <div class="footer-logo"><div class="footer-logo-icon">⚡</div><span>Agency AI</span></div>
+        <div class="footer-logo"><div class="footer-logo-icon"><i class="ti ti-bolt"></i></div><span>Agency AI</span></div>
         <div class="footer-tagline" data-i18n="footer.tagline">Jouw volledige digitale partner</div>
       </div>
       <div class="footer-links">
@@ -699,8 +723,8 @@ const TRANSLATIONS = {
     'hero.trust1':'Alles onder één dak','hero.trust2':'Resultaat binnen 30 dagen','hero.trust3':'Geen verborgen kosten',
     'stats.services':'Diensten','stats.available':'Bereikbaar','stats.days':'dagen','stats.firstResult':'Eerste resultaat','stats.transparent':'Transparant',
     'services.badge':'✦ Onze diensten','services.title':'Alles wat jouw bedrijf nodig heeft','services.sub':'Één partner voor elk digitaal vraagstuk.',
-    'cat.web':'🌐  Web & Design','cat.marketing':'📣  Marketing & Advertenties','cat.ai':'🤖  AI & Automatisering',
-    'cat.security':'🔒  Security & Beveiliging','cat.seo':'📈  SEO & Vindbaarheid','cat.strategy':'📊  Advies & Strategie',
+    'cat.web':'Web & Design','cat.marketing':'Marketing & Advertenties','cat.ai':'AI & Automatisering',
+    'cat.security':'Security & Beveiliging','cat.seo':'SEO & Vindbaarheid','cat.strategy':'Advies & Strategie',
     'svc.website.name':'Website laten bouwen','svc.website.desc':'Snelle, moderne websites die bezoekers omzetten in klanten.',
     'svc.webshop.name':'Webshop bouwen','svc.webshop.desc':'Professionele webshops met volledige betaalintegratie en voorraadbeheer.',
     'svc.landing.name':'Landing page ontwerp','svc.landing.desc':'Conversiegerichte pagina\'s voor campagnes en advertenties.',
@@ -754,8 +778,8 @@ const TRANSLATIONS = {
     'hero.trust1':'All under one roof','hero.trust2':'Results within 30 days','hero.trust3':'No hidden costs',
     'stats.services':'Services','stats.available':'Available','stats.days':'days','stats.firstResult':'First result','stats.transparent':'Transparent',
     'services.badge':'✦ Our services','services.title':'Everything your business needs','services.sub':'One partner for every digital challenge.',
-    'cat.web':'🌐  Web & Design','cat.marketing':'📣  Marketing & Advertising','cat.ai':'🤖  AI & Automation',
-    'cat.security':'🔒  Security & Protection','cat.seo':'📈  SEO & Visibility','cat.strategy':'📊  Advice & Strategy',
+    'cat.web':'Web & Design','cat.marketing':'Marketing & Advertising','cat.ai':'AI & Automation',
+    'cat.security':'Security & Protection','cat.seo':'SEO & Visibility','cat.strategy':'Advice & Strategy',
     'svc.website.name':'Website development','svc.website.desc':'Fast, modern websites that convert visitors into clients.',
     'svc.webshop.name':'Online shop development','svc.webshop.desc':'Professional online shops with full payment integration and inventory management.',
     'svc.landing.name':'Landing page design','svc.landing.desc':'Conversion-focused pages for campaigns and advertising.',
@@ -809,8 +833,8 @@ const TRANSLATIONS = {
     'hero.trust1':'Alles unter einem Dach','hero.trust2':'Ergebnisse in 30 Tagen','hero.trust3':'Keine versteckten Kosten',
     'stats.services':'Leistungen','stats.available':'Erreichbar','stats.days':'Tage','stats.firstResult':'Erstes Ergebnis','stats.transparent':'Transparent',
     'services.badge':'✦ Unsere Leistungen','services.title':'Alles, was Ihr Unternehmen braucht','services.sub':'Ein Partner für jede digitale Herausforderung.',
-    'cat.web':'🌐  Web & Design','cat.marketing':'📣  Marketing & Werbung','cat.ai':'🤖  KI & Automatisierung',
-    'cat.security':'🔒  Sicherheit & Schutz','cat.seo':'📈  SEO & Sichtbarkeit','cat.strategy':'📊  Beratung & Strategie',
+    'cat.web':'Web & Design','cat.marketing':'Marketing & Werbung','cat.ai':'KI & Automatisierung',
+    'cat.security':'Sicherheit & Schutz','cat.seo':'SEO & Sichtbarkeit','cat.strategy':'Beratung & Strategie',
     'svc.website.name':'Website-Entwicklung','svc.website.desc':'Schnelle, moderne Websites, die Besucher in Kunden verwandeln.',
     'svc.webshop.name':'Online-Shop-Entwicklung','svc.webshop.desc':'Professionelle Online-Shops mit vollständiger Zahlungsintegration und Lagerverwaltung.',
     'svc.landing.name':'Landing-Page-Design','svc.landing.desc':'Konversionsorientierte Seiten für Kampagnen und Werbung.',
@@ -864,8 +888,8 @@ const TRANSLATIONS = {
     'hero.trust1':'Tout sous un même toit','hero.trust2':'Résultats en 30 jours','hero.trust3':'Sans frais cachés',
     'stats.services':'Services','stats.available':'Disponible','stats.days':'jours','stats.firstResult':'Premier résultat','stats.transparent':'Transparent',
     'services.badge':'✦ Nos services','services.title':'Tout ce dont votre entreprise a besoin','services.sub':'Un partenaire pour chaque défi numérique.',
-    'cat.web':'🌐  Web & Design','cat.marketing':'📣  Marketing & Publicité','cat.ai':'🤖  IA & Automatisation',
-    'cat.security':'🔒  Sécurité & Protection','cat.seo':'📈  SEO & Visibilité','cat.strategy':'📊  Conseil & Stratégie',
+    'cat.web':'Web & Design','cat.marketing':'Marketing & Publicité','cat.ai':'IA & Automatisation',
+    'cat.security':'Sécurité & Protection','cat.seo':'SEO & Visibilité','cat.strategy':'Conseil & Stratégie',
     'svc.website.name':'Création de site web','svc.website.desc':'Sites web rapides et modernes qui convertissent les visiteurs en clients.',
     'svc.webshop.name':'Création de boutique en ligne','svc.webshop.desc':'Boutiques en ligne professionnelles avec intégration de paiement complète et gestion des stocks.',
     'svc.landing.name':'Conception de landing page','svc.landing.desc':'Pages orientées conversion pour les campagnes et la publicité.',
@@ -919,8 +943,8 @@ const TRANSLATIONS = {
     'hero.trust1':'Todo bajo un mismo techo','hero.trust2':'Resultados en 30 días','hero.trust3':'Sin costes ocultos',
     'stats.services':'Servicios','stats.available':'Disponible','stats.days':'días','stats.firstResult':'Primer resultado','stats.transparent':'Transparente',
     'services.badge':'✦ Nuestros servicios','services.title':'Todo lo que tu empresa necesita','services.sub':'Un socio para cada reto digital.',
-    'cat.web':'🌐  Web & Diseño','cat.marketing':'📣  Marketing & Publicidad','cat.ai':'🤖  IA & Automatización',
-    'cat.security':'🔒  Seguridad & Protección','cat.seo':'📈  SEO & Visibilidad','cat.strategy':'📊  Consultoría & Estrategia',
+    'cat.web':'Web & Diseño','cat.marketing':'Marketing & Publicidad','cat.ai':'IA & Automatización',
+    'cat.security':'Seguridad & Protección','cat.seo':'SEO & Visibilidad','cat.strategy':'Consultoría & Estrategia',
     'svc.website.name':'Desarrollo web','svc.website.desc':'Sitios web rápidos y modernos que convierten visitantes en clientes.',
     'svc.webshop.name':'Desarrollo de tienda online','svc.webshop.desc':'Tiendas online profesionales con integración de pagos completa y gestión de inventario.',
     'svc.landing.name':'Diseño de landing page','svc.landing.desc':'Páginas orientadas a conversión para campañas y publicidad.',
