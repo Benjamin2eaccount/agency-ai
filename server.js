@@ -499,7 +499,7 @@ async function sendEmail({ to, subject, body, html, settings: _settings = {}, tr
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: `"${agencyName}" <${fromAddress}>`, to, subject: cleanSubject, html: htmlBody, text: body || '' }),
+    body: JSON.stringify({ from: `"${agencyName}" <${fromAddress}>`, to, reply_to: s.gmailAddress ? `${myName} <${s.gmailAddress}>` : undefined, subject: cleanSubject, html: htmlBody, text: body || '' }),
     signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
   });
   const d = await r.json();
@@ -4063,7 +4063,7 @@ async function processOneLead(lead, settings) {
     console.log(`  [Agent 2] MX check: ${emailDomain} → DNS fout (${mxErr.code || mxErr.message}), email toegestaan`);
   }
 
-  const emailSource = 'agent1_websearch';
+  const emailSource = 'verified';
 
   console.log(`  [Agent 3] Social media analyseren...`);
   let social;

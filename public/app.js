@@ -2213,7 +2213,7 @@ function buildLeadTableRow(l, dupIds) {
       <td><strong>${esc(l.companyName || '—')}${l.language === 'nl' ? ' 🇳🇱' : l.language === 'en' ? ' 🇬🇧' : ''}${l.status === 'auto-approved' ? ' <span title="Auto-goedgekeurd" style="color:#10b981;font-size:11px">⚡</span>' : ''}${l.referralPending ? ' <span title="Referral email klaar voor goedkeuring" style="font-size:11px">🎁</span>' : ''}${(l.clientMessages || []).some(m => !m.read) ? ' <span class="msg-dot" title="Ongelezen klantbericht"></span>' : ''}${dupIds.has(l.id) ? ' <span title="Mogelijk duplicaat" style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid #fde68a">Dubbel</span>' : ''}</strong><br><span class="text-muted" style="font-size:12px">${esc(l.location || '')}</span></td>
       <td>${nicheBadge(l.niche)}</td>
       <td>${l.contactEmail
-        ? `<span class="table-email">${esc(l.contactEmail)}</span><span class="email-src-badge ${l.emailSource === 'gevonden' ? 'email-src-found' : 'email-src-guess'}" style="margin-left:4px">${l.emailSource === 'gevonden' ? 'Gevonden' : 'Geschat'}</span>`
+        ? `<span class="table-email">${esc(l.contactEmail)}</span>${['verified','scraped','gevonden','agent1_websearch'].includes(l.emailSource) ? `<span class="email-src-badge email-src-found" style="margin-left:4px">✓ Geverifieerd</span>` : l.emailSource === 'guessed' || l.emailSource === 'geschat' ? `<span class="email-src-badge email-src-guess" style="margin-left:4px">Geschat</span>` : ''}`
         : `<span class="text-warning" style="font-size:11px">Geen email</span>`}</td>
       <td><span class="score-pill score-${scoreColor(l.score || 0)}">${(l.score || 0).toFixed(1)}</span></td>
       <td>
@@ -2477,7 +2477,7 @@ function openLeadDetail(id) {
           ${lead.contactEmail
             ? `<i class="ti ti-mail" style="color:var(--text-secondary);font-size:13px"></i>
                <span class="detail-email-addr">${lead.contactEmail}</span>
-               <span class="email-src-badge ${lead.emailSource === 'gevonden' ? 'email-src-found' : 'email-src-guess'}">${lead.emailSource === 'gevonden' ? 'Gevonden' : 'Geschat'}</span>
+               ${['verified','scraped','gevonden','agent1_websearch'].includes(lead.emailSource) ? `<span class="email-src-badge email-src-found">✓ Geverifieerd</span>` : lead.emailSource === 'guessed' || lead.emailSource === 'geschat' ? `<span class="email-src-badge email-src-guess">Geschat</span>` : ''}
                <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;margin-left:2px" onclick="navigator.clipboard.writeText('${lead.contactEmail}');toast('Email gekopieerd!')"><i class="ti ti-copy"></i></button>`
             : `<i class="ti ti-mail-off" style="color:#f59e0b;font-size:13px"></i><span style="font-size:12px;color:#f59e0b">Geen email gevonden</span>`}
         </div>
