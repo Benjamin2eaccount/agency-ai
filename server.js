@@ -499,11 +499,23 @@ function sanitizeSubject(s) {
 }
 
 async function sendEmail({ to, subject, body, html, settings: _settings = {}, trackingToken }) {
-  // Normalise "to" — Resend requires a plain non-empty string
+  // Normalise "to" — Resend requires a clean plain string
   const toStr = Array.isArray(to) ? to[0] : to;
-  const toFinal = (typeof toStr === 'string' ? toStr : String(toStr || '')).trim();
-  if (!toFinal) throw new Error('sendEmail: geen geldig "to" adres opgegeven (waarde was: ' + JSON.stringify(to) + ')');
-  console.log(`[Email] Versturen naar: "${toFinal}" (origineel type: ${Array.isArray(to) ? 'array' : typeof to})`);
+  const toRaw = (typeof toStr === 'string' ? toStr : String(toStr || ''));
+  console.log('[Email] Raw to value:', JSON.stringify(toRaw));
+  console.log('[Email] Char codes:', [...toRaw].map(c => c.charCodeAt(0)).join(','));
+  // Strip angle brackets, control chars, non-ASCII, all whitespace, lowercase
+  const toFinal = toRaw
+    .replace(/^<|>$/g, '')        // strip surrounding angle brackets
+    .replace(/[\r\n\t\0]/g, '')   // remove newlines, tabs, null bytes
+    .replace(/[^\x20-\x7E]/g, '') // remove non-printable / non-ASCII
+    .replace(/\s+/g, '')          // collapse any remaining whitespace
+    .toLowerCase()
+    .trim();
+  if (!toFinal || !toFinal.includes('@')) {
+    throw new Error(`sendEmail: ongeldig "to" adres na opschoning: "${toFinal}" (origineel: ${JSON.stringify(toRaw)})`);
+  }
+  console.log(`[Email] Versturen naar: "${toFinal}" (origineel: ${JSON.stringify(toRaw)})`);
 
   const s = readJSON('settings.json') || {};
   const agencyName  = s.agencyName  || _settings.agencyName || 'Agency AI';
