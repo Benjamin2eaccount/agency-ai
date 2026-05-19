@@ -2757,23 +2757,64 @@ async function renderProjectPage() {
 
   // ── Tab: Klantportaal ───────────────────────────────────────────────────────
   const portalUrl = lead.portalToken ? `${window.location.origin}/portal/${lead.portalToken}` : null;
+  const clientLoginUrl = `${window.location.origin}/client/login`;
   const clientMessages = lead.clientMessages || [];
   const tabPortaal = `
     <div class="project-tab-content" data-tab-content="portaal" style="${activeTab !== 'portaal' ? 'display:none' : ''}">
-      ${portalUrl ? `
-        <div style="margin-bottom:20px">
-          <div class="project-section-title">Portaal URL</div>
-          <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface)">
-            <code style="flex:1;font-size:12px;color:var(--accent);word-break:break-all">${esc(portalUrl)}</code>
-            <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText('${esc(portalUrl)}');toast('URL gekopieerd!')"><i class="ti ti-copy"></i></button>
-            <a href="${esc(portalUrl)}" target="_blank" class="btn btn-ghost btn-sm"><i class="ti ti-external-link"></i></a>
+
+      ${lead.portalToken ? `
+        <div class="credentials-card" style="margin-bottom:24px">
+          <div class="credentials-card-title"><i class="ti ti-key"></i> Inloggegevens klant</div>
+
+          <div class="credentials-row">
+            <div class="credentials-label">Inlogpagina</div>
+            <div class="credentials-value-row">
+              <code class="credentials-code">${esc(clientLoginUrl)}</code>
+              <button class="btn btn-ghost btn-xs" onclick="navigator.clipboard.writeText('${esc(clientLoginUrl)}');toast('Link gekopieerd!')">
+                <i class="ti ti-copy"></i> Kopieer
+              </button>
+              <a class="btn btn-ghost btn-xs" href="${esc(clientLoginUrl)}" target="_blank"><i class="ti ti-external-link"></i></a>
+            </div>
+          </div>
+
+          <div class="credentials-row">
+            <div class="credentials-label">Portaalcode</div>
+            <div class="credentials-value-row">
+              <code class="credentials-code" id="portalCodeDisplay" style="letter-spacing:3px">••••••••••••</code>
+              <button class="btn btn-ghost btn-xs" id="showTokenBtn" onclick="togglePortalToken('${esc(lead.portalToken)}')">
+                <i class="ti ti-eye"></i> Toon
+              </button>
+              <button class="btn btn-ghost btn-xs" onclick="navigator.clipboard.writeText('${esc(lead.portalToken)}');toast('Code gekopieerd!')">
+                <i class="ti ti-copy"></i> Kopieer
+              </button>
+            </div>
+          </div>
+
+          <div class="credentials-hint">
+            <i class="ti ti-info-circle"></i>
+            Stuur de portaalcode naar de klant. Ze loggen in via de inlogpagina met deze code.
+          </div>
+
+          <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-sm btn-outline" onclick="copyPortalInstructions('${esc(lead.portalToken)}','${esc(clientLoginUrl)}','${esc(lead.companyName)}')">
+              <i class="ti ti-clipboard-text"></i> Kopieer instructies voor klant
+            </button>
+            <a class="btn btn-sm btn-ghost" href="${esc(portalUrl)}" target="_blank">
+              <i class="ti ti-external-link"></i> Open portaal
+            </a>
+            <button class="btn btn-sm btn-ghost" onclick="resendWelcomeEmail('${esc(lead.id)}')">
+              <i class="ti ti-mail-forward"></i> Welkomstmail sturen
+            </button>
           </div>
         </div>
       ` : `
-        <div style="margin-bottom:20px">
-          <div style="font-size:13px;color:var(--text-muted)">Nog geen portaal aangemaakt. Start eerst het project.</div>
+        <div class="credentials-card credentials-card-empty" style="margin-bottom:24px">
+          <i class="ti ti-lock" style="font-size:24px;color:var(--text-muted);display:block;margin-bottom:8px"></i>
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px">Nog geen portaal aangemaakt</div>
+          <div style="font-size:13px;color:var(--text-muted)">Start het project om automatisch een portaalcode aan te maken.</div>
         </div>
       `}
+
       <div style="margin-bottom:20px">
         <div class="project-section-title">Klantberichten ${clientMessages.length > 0 ? `<span class="tab-badge">${clientMessages.length}</span>` : ''}</div>
         ${clientMessages.length ? clientMessages.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(m => `
@@ -2786,7 +2827,6 @@ async function renderProjectPage() {
           </div>
         `).join('') : '<div style="font-size:13px;color:var(--text-muted)">Nog geen berichten ontvangen.</div>'}
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="resendWelcomeEmail('${esc(lead.id)}')"><i class="ti ti-mail-forward"></i> Welkomstmail opnieuw sturen</button>
     </div>`;
 
   // ── Tab: Geschiedenis ───────────────────────────────────────────────────────
@@ -2991,6 +3031,22 @@ async function saveProjectNotes(leadId) {
     const lbl = document.getElementById('notesSavedLabel');
     if (lbl) { lbl.textContent = '✓ Opgeslagen'; setTimeout(() => { if (lbl) lbl.textContent = ''; }, 2000); }
   }
+}
+
+function togglePortalToken(token) {
+  const display = document.getElementById('portalCodeDisplay');
+  const btn     = document.getElementById('showTokenBtn');
+  if (!display || !btn) return;
+  const hidden = display.textContent.includes('•');
+  display.textContent = hidden ? token : '••••••••••••';
+  display.style.letterSpacing = hidden ? '1px' : '3px';
+  btn.innerHTML = hidden ? '<i class="ti ti-eye-off"></i> Verberg' : '<i class="ti ti-eye"></i> Toon';
+}
+
+function copyPortalInstructions(token, loginUrl, companyName) {
+  const text = `Beste ${companyName},\n\nHieronder vind je de inloggegevens voor je klantportaal:\n\nInlogpagina: ${loginUrl}\nPortaalcode: ${token}\n\nVia het portaal kun je de voortgang van je project bekijken en ons berichten sturen.\n\nMet vriendelijke groet`;
+  navigator.clipboard.writeText(text);
+  toast('Instructies gekopieerd naar klembord!', 'success');
 }
 
 async function resendWelcomeEmail(leadId) {
