@@ -6687,6 +6687,11 @@ pgInitPromise.then(() => {
     }
     console.log('\nAgency AI klaar voor deployment');
     console.log('Ga naar railway.app om online te zetten\n');
+    // Run a reply check shortly after startup so any replies that arrived during downtime are detected immediately
+    setTimeout(() => {
+      console.log('[Startup] Directe reply check uitvoeren...');
+      checkReplies().catch(err => console.warn('[Startup] Reply check fout:', err.message));
+    }, 5000);
   });
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {

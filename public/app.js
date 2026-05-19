@@ -498,12 +498,17 @@ async function renderInbox() {
         <div class="page-label">Beoordelen</div>
         <h1 class="page-title">Inbox</h1>
       </div>
-      <div class="inbox-kb-legend" title="Toetsenbordsnelkoppelingen">
-        <span class="kb-key">A</span><span class="kb-hint">Goedkeuren</span>
-        <span class="kb-key">R</span><span class="kb-hint">Afwijzen</span>
-        <span class="kb-key">E</span><span class="kb-hint">Email</span>
-        <span class="kb-key">S</span><span class="kb-hint">Volgende</span>
-        <span class="kb-key">↑↓</span><span class="kb-hint">Navigeren</span>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div class="inbox-kb-legend" title="Toetsenbordsnelkoppelingen">
+          <span class="kb-key">A</span><span class="kb-hint">Goedkeuren</span>
+          <span class="kb-key">R</span><span class="kb-hint">Afwijzen</span>
+          <span class="kb-key">E</span><span class="kb-hint">Email</span>
+          <span class="kb-key">S</span><span class="kb-hint">Volgende</span>
+          <span class="kb-key">↑↓</span><span class="kb-hint">Navigeren</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="checkRepliesBtn" onclick="triggerReplyCheck()" title="Controleer Gmail inbox nu op nieuwe replies">
+          <i class="ti ti-mail-forward"></i> Controleer replies
+        </button>
       </div>
     </div>
     <div id="swipeHint" style="display:none">
@@ -1139,6 +1144,21 @@ async function markLinkedinDmSent(id) {
     card.style.opacity = '0';
     card.style.transform = 'translateY(-8px)';
     setTimeout(() => card.remove(), 320);
+  }
+}
+
+async function triggerReplyCheck() {
+  const btn = document.getElementById('checkRepliesBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...'; }
+  try {
+    const data = await apiJSON('/api/check-replies', { method: 'POST' });
+    const found = data?.found ?? 0;
+    toast(found > 0 ? `${found} nieuwe repl${found === 1 ? 'y' : 'ies'} gevonden` : 'Geen nieuwe replies', found > 0 ? 'success' : 'info');
+    if (found > 0) renderInbox();
+  } catch (err) {
+    toast('Reply check mislukt: ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-mail-forward"></i> Controleer replies'; }
   }
 }
 
