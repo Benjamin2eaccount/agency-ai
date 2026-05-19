@@ -3978,9 +3978,21 @@ async function aiCall(prompt) {
   const data = await res.json();
   if (!data.content) throw new Error(data.error?.message || 'Claude API fout');
   const usage = data.usage || {};
-  _sessionTokensIn  += usage.input_tokens  || 0;
-  _sessionTokensOut += usage.output_tokens || 0;
+  const tokIn  = usage.input_tokens  || 0;
+  const tokOut = usage.output_tokens || 0;
+  _sessionTokensIn  += tokIn;
+  _sessionTokensOut += tokOut;
   _aiCallLog.push({ ts: Date.now() });
+  // Log every call so costs are tracked outside of run batches too
+  const callCost = calcCostUsd(tokIn, tokOut);
+  const promptLabel = prompt.slice(0, 60).replace(/\n/g, ' ');
+  addActivity('ai_call', `Claude: ${promptLabel}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost });
+  // Update running stats.json totals
+  const statsNow = readJSON('stats.json') || {};
+  statsNow.totalApiTokensIn  = (statsNow.totalApiTokensIn  || 0) + tokIn;
+  statsNow.totalApiTokensOut = (statsNow.totalApiTokensOut || 0) + tokOut;
+  statsNow.totalApiCostUsd   = Math.round(((statsNow.totalApiCostUsd || 0) + callCost) * 10000) / 10000;
+  writeJSON('stats.json', statsNow);
   return data.content[0].text;
 }
 
@@ -4941,12 +4953,8 @@ Example format:
   const runTokOut = _sessionTokensOut;
   _sessionTokensIn = 0; _sessionTokensOut = 0;
   const runCostUsd = calcCostUsd(runTokIn, runTokOut);
-  addActivity('run', `Run klaar: ${inboxItems.length} leads gevonden (${skipped} overgeslagen zonder email)`, { tokensIn: runTokIn, tokensOut: runTokOut, costUsd: runCostUsd, meta: { leadsFound: inboxItems.length, skipped, attempts, totalValue } });
-  const statsAft = readJSON('stats.json') || {};
-  statsAft.totalApiTokensIn  = (statsAft.totalApiTokensIn  || 0) + runTokIn;
-  statsAft.totalApiTokensOut = (statsAft.totalApiTokensOut || 0) + runTokOut;
-  statsAft.totalApiCostUsd   = Math.round(((statsAft.totalApiCostUsd || 0) + runCostUsd) * 10000) / 10000;
-  writeJSON('stats.json', statsAft);
+  // Log run summary (costs already tracked per-call in aiCall(); costUsd:0 here avoids double-counting in P&L)
+  addActivity('run', `Run klaar: ${inboxItems.length} leads gevonden (${skipped} overgeslagen zonder email)`, { tokensIn: runTokIn, tokensOut: runTokOut, costUsd: 0, meta: { leadsFound: inboxItems.length, skipped, attempts, totalValue, runCostUsd } });
 
   if (inboxItems.length > 0) {
     const pendingCount = inboxItems.length;
