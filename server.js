@@ -303,16 +303,35 @@ function getSeasonalContext(lang = 'nl') {
 function isBlacklisted(lead) {
   const list = readJSON('blacklist.json') || [];
   if (!list.length) return false;
-  const name   = (lead.companyName  || '').toLowerCase();
-  const domain = (lead.websiteUrl   || '').replace(/^https?:\/\//,'').split('/')[0].toLowerCase();
-  const niche  = (lead.niche        || '').toLowerCase();
-  return list.some(entry => {
-    const v = (entry.value || '').toLowerCase();
-    if (entry.type === 'company') return name.includes(v) || v.includes(name);
-    if (entry.type === 'domain')  return domain.includes(v) || v.includes(domain);
-    if (entry.type === 'niche')   return niche === v;
-    return false;
-  });
+  const name   = (lead.companyName  || '').toLowerCase().trim();
+  const domain = (lead.websiteUrl   || '').replace(/^https?:\/\//,'').split('/')[0].toLowerCase().trim();
+  const niche  = (lead.niche        || '').toLowerCase().trim();
+
+  console.log(`[Blacklist] Checken: name="${name}" domain="${domain || '(leeg)'}" niche="${niche}" — ${list.length} entries`);
+
+  for (const entry of list) {
+    const v = (entry.value || '').toLowerCase().trim();
+    if (!v) continue; // skip empty entries
+
+    let blocked = false;
+    if (entry.type === 'company') {
+      // Require non-empty name; only check name.includes(v), not reverse (prevents short names matching long entries)
+      blocked = !!(name && (name === v || name.includes(v)));
+    } else if (entry.type === 'domain') {
+      // Require non-empty domain; empty websiteUrl must never trigger a domain block
+      blocked = !!(domain && (domain === v || domain.includes(v) || v.includes(domain)));
+    } else if (entry.type === 'niche') {
+      blocked = !!(niche && niche === v);
+    }
+
+    if (blocked) {
+      console.log(`[Blacklist] GEBLOKKEERD: "${lead.companyName}" — entry type=${entry.type} value="${entry.value}"`);
+      return true;
+    }
+  }
+
+  console.log(`[Blacklist] "${lead.companyName}" — niet op blacklist ✓`);
+  return false;
 }
 
 function addLeadHistory(leads, leadId, event) {
