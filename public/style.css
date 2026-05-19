@@ -4039,3 +4039,6 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
 .chat-sidebar-section-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); padding: 0 12px; margin-bottom: 2px; }
 .chat-dm-avatar { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0; }
 .chat-dm-role { font-size: 10px; color: var(--text-muted); margin-left: auto; }
+
+/* Employee permission notice */
+.employee-notice { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-muted); background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:6px 12px; }

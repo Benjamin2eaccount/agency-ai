@@ -581,9 +581,9 @@ async function renderInbox() {
           <i class="ti ti-trash"></i>
           <span class="trash-title">Prullenbak</span>
           <span class="badge badge-red">${trashed.length}</span>
-          <button class="btn btn-ghost btn-sm" onclick="emptyTrash()" style="margin-left:auto;color:var(--danger)">
+          ${isAdmin() ? `<button class="btn btn-ghost btn-sm" onclick="emptyTrash()" style="margin-left:auto;color:var(--danger)">
             <i class="ti ti-trash"></i> Alles verwijderen
-          </button>
+          </button>` : ''}
         </div>
         ${trashed.map(item => `
           <div class="trash-card">
@@ -600,9 +600,9 @@ async function renderInbox() {
               <button class="btn btn-ghost btn-sm" onclick="restoreTrash('${item.id}')">
                 <i class="ti ti-restore"></i> Herstel
               </button>
-              <button class="btn btn-ghost btn-sm" onclick="deleteTrash('${item.id}')" style="color:var(--danger)">
+              ${isAdmin() ? `<button class="btn btn-ghost btn-sm" onclick="deleteTrash('${item.id}')" style="color:var(--danger)">
                 <i class="ti ti-trash"></i>
-              </button>
+              </button>` : ''}
             </div>
           </div>
         `).join('')}
@@ -1810,8 +1810,8 @@ async function renderLeads() {
       const urgPill    = l.urgency === 'critical' ? `<span class="pill pill-red">kritiek</span>` : (l.urgency === 'high' || l.urgency === 'hoog') ? `<span class="pill pill-amber">hoog</span>` : '';
       return `
         <div class="lead-card-v2${checked ? ' lead-card-v2-selected' : ''}" onclick="openLeadDetail('${l.id}')">
-          <input type="checkbox" class="lc2-checkbox" ${checked ? 'checked' : ''}
-            onclick="event.stopPropagation();toggleLeadSelect('${l.id}')" title="Selecteer">
+          ${isAdmin() ? `<input type="checkbox" class="lc2-checkbox" ${checked ? 'checked' : ''}
+            onclick="event.stopPropagation();toggleLeadSelect('${l.id}')" title="Selecteer">` : ''}
           <div class="lc2-header">
             <div class="lead-flag-sq" style="background:${flagBg};color:${flagTxt}">${countryCode}</div>
             <div class="lc2-name">${esc(l.companyName)}</div>
@@ -1902,7 +1902,7 @@ async function renderLeads() {
   };
 
   container.innerHTML = `
-    <div id="bulkActionBar" class="bulk-action-bar" style="display:none">
+    ${isAdmin() ? `<div id="bulkActionBar" class="bulk-action-bar" style="display:none">
       <span class="bulk-count"></span>
       <button class="btn btn-danger btn-sm" onclick="bulkDeleteLeads()">
         <i class="ti ti-trash"></i> Verwijder selectie
@@ -1910,7 +1910,7 @@ async function renderLeads() {
       <button class="btn btn-ghost btn-sm" onclick="selectAllLeads()" id="selectAllBtn">
         <i class="ti ti-square"></i> Selecteer alles
       </button>
-    </div>
+    </div>` : ''}
     <div class="leads-bar">
       <div class="leads-bar-search">
         <input type="search" class="search-input" id="leadsSearch" placeholder="Zoek bedrijf of stad...">
@@ -2712,7 +2712,7 @@ async function renderProjectPage() {
             <i class="ti ti-world" style="font-size:40px;margin-bottom:12px;display:block;color:var(--text-muted)"></i>
             <div style="font-size:15px;font-weight:600;margin-bottom:8px">Nog geen website gegenereerd</div>
             <div style="font-size:13px;margin-bottom:20px">Genereer een professionele website op maat voor ${esc(lead.companyName)}.</div>
-            <button class="btn btn-primary" onclick="generateSite('${esc(lead.id)}')"><i class="ti ti-wand"></i> Website genereren</button>
+            ${isAdmin() ? `<button class="btn btn-primary" onclick="generateSite('${esc(lead.id)}')"><i class="ti ti-wand"></i> Website genereren</button>` : `<span class="employee-notice"><i class="ti ti-lock"></i> Alleen admins kunnen websites genereren</span>`}
           </div>
         </div>`;
     }
@@ -2722,7 +2722,7 @@ async function renderProjectPage() {
           <span class="site-status-badge ${site.status === 'live' ? 'site-status-live' : 'site-status-preview'}">${site.status === 'live' ? 'Live' : 'Preview'}</span>
           <a href="${esc(site.siteUrl)}" target="_blank" class="btn btn-sm btn-outline"><i class="ti ti-external-link"></i> Bekijk live</a>
           <button class="btn btn-sm btn-outline" onclick="openSeoPanel('${esc(lead.id)}')"><i class="ti ti-search"></i> SEO</button>
-          <button class="btn btn-sm btn-ghost" onclick="generateSite('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Regenereer</button>
+          ${isAdmin() ? `<button class="btn btn-sm btn-ghost" onclick="generateSite('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Regenereer</button>` : ''}
         </div>
         <iframe src="${esc(site.siteUrl)}?_t=${Date.now()}" style="width:100%;height:480px;border:1px solid var(--border);border-radius:10px" sandbox="allow-scripts allow-same-origin"></iframe>
       </div>`;
@@ -3664,9 +3664,9 @@ function openLeadDetail(id) {
                 <i class="ti ti-mail"></i> Verstuur
               </button>
             ` : ''}
-            <button class="btn btn-primary btn-sm" onclick="generateContract('${lead.id}')" id="contractGenBtn-${lead.id}">
+            ${isAdmin() ? `<button class="btn btn-primary btn-sm" onclick="generateContract('${lead.id}')" id="contractGenBtn-${lead.id}">
               <i class="ti ti-file-certificate"></i> ${lead.contract ? 'Regenereer' : 'Genereer contract'}
-            </button>
+            </button>` : ''}
           </div>
         </div>
         ${lead.contract ? `
@@ -3708,9 +3708,9 @@ function openLeadDetail(id) {
                 <i class="ti ti-mail"></i> Verstuur
               </button>
             ` : ''}
-            <button class="btn btn-primary btn-sm" onclick="generateProposal('${lead.id}')" id="propGenBtn-${lead.id}">
+            ${isAdmin() ? `<button class="btn btn-primary btn-sm" onclick="generateProposal('${lead.id}')" id="propGenBtn-${lead.id}">
               <i class="ti ti-file-text"></i> ${lead.proposal ? 'Regenereer' : 'Genereer voorstel'}
-            </button>
+            </button>` : ''}
           </div>
         </div>
         ${lead.proposal ? `
@@ -5840,6 +5840,7 @@ async function renderRuns() {
       <div class="card-header">
         <h3 class="card-title">Run configuratie</h3>
       </div>
+      ${!isAdmin() ? `<div class="employee-notice"><i class="ti ti-lock"></i> Alleen admins kunnen runs starten</div>` : `
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
         <div>
           <label class="settings-label">Aantal leads</label>
@@ -5854,7 +5855,7 @@ async function renderRuns() {
         <button class="btn btn-primary" id="startRunBtn" onclick="startCustomRun()">
           <i class="ti ti-player-play"></i> Start run
         </button>
-      </div>
+      </div>`}
       <div style="margin-top:14px">
         <p id="run-status" style="display:none;font-size:13px;color:var(--text-muted);margin:0 0 6px"></p>
         <div id="run-progress-bar" style="display:none"></div>
