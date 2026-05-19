@@ -3045,6 +3045,26 @@ app.get('/api/leads/:id/client-emails', (req, res) => {
   res.json(lead.clientEmailLog || []);
 });
 
+app.post('/api/leads/:id/manual-email', requireAdmin, async (req, res) => {
+  const { subject, body } = req.body;
+  if (!subject || !body) return res.status(400).json({ error: 'Onderwerp en inhoud zijn verplicht' });
+  const leads = readJSON('leads.json') || [];
+  const settings = readJSON('settings.json') || {};
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const lead = leads[idx];
+  if (!lead.contactEmail) return res.status(400).json({ error: 'Lead heeft geen email adres' });
+  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld' });
+  await sendEmail({ to: lead.contactEmail, subject, body, settings });
+  const entry = { id: Date.now().toString(36), trigger: 'manual', subject, body, sentAt: new Date().toISOString() };
+  leads[idx].clientEmailLog = leads[idx].clientEmailLog || [];
+  leads[idx].clientEmailLog.push(entry);
+  addLeadHistory(leads, lead.id, { event: 'clientEmailSent', label: `Handmatige email: ${subject}` });
+  writeJSON('leads.json', leads);
+  addActivity('email', `Handmatige email → ${lead.companyName}`, { leadId: lead.id });
+  res.json({ ok: true });
+});
+
 app.post('/api/leads/:id/portal/read', (req, res) => {
   const leads = readJSON('leads.json') || [];
   const lead = leads.find(l => l.id === req.params.id);

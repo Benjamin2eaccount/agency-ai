@@ -191,6 +191,64 @@ function formatOptimalTime(iso) {
   const days = ['zondag','maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag'];
   return `${days[d.getDay()]} om ${String(d.getHours()).padStart(2,'0')}:00`;
 }
+function copyToClipboard(text, successMsg) {
+  navigator.clipboard.writeText(text).then(() => toast(successMsg || 'Gekopieerd!')).catch(() => toast('Kopiëren mislukt', 'error'));
+}
+
+async function openManualEmailModal(leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead) return;
+  openModal(`
+    <div class="modal-header">
+      <strong>Handmatige email</strong>
+      <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div style="padding:0 0 16px">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Aan: ${esc(lead.contactEmail || '—')}</div>
+      <div class="form-group">
+        <label>Onderwerp</label>
+        <input type="text" id="manualEmailSubject" class="form-control" placeholder="Onderwerp..." style="width:100%">
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label>Inhoud</label>
+        <textarea id="manualEmailBody" class="form-control" rows="8" placeholder="Schrijf je email..." style="width:100%;resize:vertical"></textarea>
+      </div>
+      <div id="manualEmailError" style="color:var(--danger);font-size:12px;margin-top:8px;display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
+      <button class="btn btn-primary" onclick="sendManualEmail('${leadId}')"><i class="ti ti-send"></i> Versturen</button>
+    </div>
+  `);
+}
+
+async function sendManualEmail(leadId) {
+  const subject = document.getElementById('manualEmailSubject')?.value?.trim();
+  const body    = document.getElementById('manualEmailBody')?.value?.trim();
+  const errEl   = document.getElementById('manualEmailError');
+  if (!subject || !body) {
+    if (errEl) { errEl.textContent = 'Vul onderwerp en inhoud in.'; errEl.style.display = 'block'; }
+    return;
+  }
+  const btn = document.querySelector('#modalContainer .btn-primary');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Versturen...'; }
+  const res = await api(`/api/leads/${leadId}/manual-email`, { method: 'POST', body: JSON.stringify({ subject, body }) });
+  if (!res || !res.ok) {
+    const data = res ? await res.json() : {};
+    if (errEl) { errEl.textContent = data.error || 'Versturen mislukt.'; errEl.style.display = 'block'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-send"></i> Versturen'; }
+    return;
+  }
+  closeModal();
+  toast('Email verstuurd!');
+  const idx = state.leads.findIndex(l => l.id === leadId);
+  if (idx !== -1) {
+    state.leads[idx].clientEmailLog = state.leads[idx].clientEmailLog || [];
+    state.leads[idx].clientEmailLog.push({ trigger: 'manual', subject, sentAt: new Date().toISOString() });
+    renderProjectPage();
+  }
+}
+
 // ─── Score color ──────────────────────────────────────────────────────────────
 function scoreColor(score) {
   if (score >= 8) return 'success';
@@ -2660,6 +2718,44 @@ async function renderProjectPage() {
     const historyEmails = (lead.history || []).filter(h => emailEvents.has(h.event));
     const clientEmails = lead.clientEmailLog || [];
 
+    const sentWelcome = clientEmails.find(e => e.trigger === 'welcome');
+    const sentIntake  = clientEmails.find(e => e.trigger === 'intakeReceived') || (lead.intakeToken ? clientEmails.find(e => e.trigger === 'intake') : null);
+    const sentInvoice = clientEmails.find(e => e.trigger === 'invoice' || e.trigger === 'factuur');
+    const intakeUrl   = lead.intakeToken ? `${window.location.origin}/intake/${lead.id}/${lead.intakeToken}` : null;
+
+    function actionRow(icon, label, sentEntry, actionHtml) {
+      const sentBadge = sentEntry
+        ? `<span style="font-size:11px;color:var(--success);display:flex;align-items:center;gap:4px"><i class="ti ti-check"></i> Verstuurd op ${formatDate(sentEntry.sentAt || sentEntry.createdAt)}</span>`
+        : actionHtml;
+      return `
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface)">
+          <i class="ti ${icon}" style="color:var(--accent);font-size:18px;flex-shrink:0"></i>
+          <span style="font-size:14px;font-weight:500;flex:1">${label}</span>
+          ${sentBadge}
+        </div>`;
+    }
+
+    const actionSection = `
+      <div style="margin-bottom:20px">
+        <div class="project-section-title"><i class="ti ti-send" style="color:var(--accent);margin-right:6px"></i>Versturen</div>
+        ${actionRow('ti-hand-stop', 'Welkomstmail', sentWelcome,
+            `<button class="btn btn-sm btn-primary" onclick="sendClientEmail('${lead.id}','welcome')"><i class="ti ti-send"></i> Versturen</button>`)}
+        ${actionRow('ti-clipboard-list', 'Intake formulier', sentIntake,
+            intakeUrl
+              ? `<div style="display:flex;align-items:center;gap:6px">
+                   <button class="btn btn-sm btn-primary" onclick="sendClientEmail('${lead.id}','intakeReceived')"><i class="ti ti-send"></i> Versturen</button>
+                   <button class="btn btn-sm btn-outline" onclick="copyToClipboard('${intakeUrl}','Link gekopieerd!')"><i class="ti ti-copy"></i> Link</button>
+                 </div>`
+              : `<span style="font-size:12px;color:var(--text-muted)">Start eerst het project</span>`)}
+        ${actionRow('ti-receipt', 'Factuur versturen', sentInvoice,
+            `<button class="btn btn-sm btn-outline" onclick="createPayment('${lead.id}')"><i class="ti ti-plus"></i> Factuur aanmaken</button>`)}
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface)">
+          <i class="ti ti-pencil" style="color:var(--accent);font-size:18px;flex-shrink:0"></i>
+          <span style="font-size:14px;font-weight:500;flex:1">Handmatige email</span>
+          <button class="btn btn-sm btn-outline" onclick="openManualEmailModal('${lead.id}')"><i class="ti ti-mail-plus"></i> Opstellen</button>
+        </div>
+      </div>`;
+
     const historyRows = historyEmails.length
       ? historyEmails.slice().sort((a,b) => new Date(b.time)-new Date(a.time)).map(h => `
           <div style="padding:12px 16px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface)">
@@ -2696,10 +2792,12 @@ async function renderProjectPage() {
 
     return `
       <div class="project-tab-content" data-tab-content="emails" style="${activeTab !== 'emails' ? 'display:none' : ''}">
+        ${actionSection}
         ${replySection}
-        ${historyRows || clientRows
-          ? `${historyRows}${clientRows}`
-          : '<div style="font-size:13px;color:var(--text-muted);padding:20px 0">Geen emails verstuurd.</div>'}
+        ${historyRows || clientRows ? `
+          <div class="project-section-title" style="margin-top:4px"><i class="ti ti-history" style="color:var(--text-muted);margin-right:6px"></i>Geschiedenis</div>
+          ${historyRows}${clientRows}
+        ` : ''}
       </div>`;
   }
 
