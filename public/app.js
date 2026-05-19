@@ -1441,7 +1441,7 @@ async function generateProposal(leadId) {
   try {
     const res = await fetch(`/api/leads/${leadId}/generate-proposal`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      headers: { Authorization: `Bearer ${getToken()}` }
     });
     if (!res.ok || !res.body) throw new Error('Server error');
 
@@ -1519,7 +1519,7 @@ async function generateContract(leadId) {
   try {
     const res = await fetch(`/api/leads/${leadId}/generate-contract`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      headers: { Authorization: `Bearer ${getToken()}` }
     });
     if (!res.ok || !res.body) throw new Error('Server error');
 
