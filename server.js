@@ -5440,6 +5440,165 @@ app.post('/api/check-replies', async (req, res) => {
   }
 });
 
+// ─── IMAP diagnostic — shows raw inbox + lead matching ────────────────────────
+app.get('/api/test-imap', requireAdmin, async (req, res) => {
+  const log  = [];
+  const say  = msg => { log.push(msg); console.log(msg); };
+  const result = { log, emails: [], leads: [], matches: [], errors: [] };
+
+  const settings = readJSON('settings.json') || {};
+
+  // ── Step 1: Check config ───────────────────────────────────────────────────
+  say(`[IMAP] gmailAddress: ${settings.gmailAddress || '(leeg)'}`);
+  say(`[IMAP] gmailConfigured: ${!!(settings.gmailAddress && (settings.gmailPasswordEncrypted || settings.gmailPassword))}`);
+  say(`[IMAP] replyDetection: ${settings.replyDetection !== false ? 'aan' : 'UIT'}`);
+
+  if (!settings.gmailAddress) {
+    result.errors.push('gmailAddress niet ingesteld');
+    return res.json(result);
+  }
+
+  let imapSimple, simpleParser;
+  try {
+    imapSimple = require('imap-simple');
+    ({ simpleParser } = require('mailparser'));
+  } catch (e) {
+    result.errors.push('imap-simple of mailparser niet geïnstalleerd: ' + e.message);
+    return res.json(result);
+  }
+
+  const imapConfig = {
+    imap: {
+      user:        settings.gmailAddress,
+      password:    getGmailPassword(settings),
+      host:        'imap.gmail.com',
+      port:        993,
+      tls:         true,
+      tlsOptions:  { rejectUnauthorized: false },
+      authTimeout: 15000
+    }
+  };
+
+  let connection;
+  try {
+    say('[IMAP] Verbinden...');
+    connection = await imapSimple.connect(imapConfig);
+    say('[IMAP] Verbonden ✓');
+    await connection.openBox('INBOX');
+
+    // Search last 14 days, all emails (not just UNSEEN)
+    const since = new Date();
+    since.setDate(since.getDate() - 14);
+    const messages = await connection.search([['SINCE', toImapDate(since)]], { bodies: ['RFC822'], markSeen: false });
+    say(`[IMAP] ${messages.length} emails gevonden in inbox (laatste 14 dagen)`);
+
+    // ── Step 2: Parse each email ───────────────────────────────────────────
+    const parsedEmails = [];
+    for (const msg of messages) {
+      const rfc822 = msg.parts.find(p => p.which === 'RFC822');
+      if (!rfc822) continue;
+      try {
+        const parsed = await simpleParser(rfc822.body);
+        const from    = parsed.from?.value?.[0]?.address || '';
+        const fromName = parsed.from?.value?.[0]?.name || '';
+        const subject = parsed.subject || '';
+        const msgId   = parsed.messageId || `uid-${msg.attributes.uid}`;
+        const isReply = /^re:/i.test(subject.trim());
+        const entry = { from, fromName, subject, msgId, isReply, uid: msg.attributes.uid };
+        parsedEmails.push(entry);
+        say(`[IMAP] Email: from="${from}" subject="${subject}" isReply=${isReply} msgId=${msgId}`);
+      } catch (e) {
+        say(`[IMAP] Parse fout: ${e.message}`);
+      }
+    }
+    result.emails = parsedEmails;
+    connection.end();
+
+    // ── Step 3: Load leads ─────────────────────────────────────────────────
+    const allLeads = readJSON('leads.json') || [];
+    const candidateLeads = allLeads.filter(l => l.contactEmail || l.email?.subject || l.emailA?.subject);
+    say(`[IMAP] ${allLeads.length} leads totaal, ${candidateLeads.length} hebben email/subject`);
+
+    result.leads = candidateLeads.map(l => ({
+      id: l.id,
+      companyName: l.companyName,
+      status: l.status,
+      sentAt: l.sentAt || null,
+      contactEmail: l.contactEmail || null,
+      emailSubject:  l.email?.subject || l.emailA?.subject || l.emailB?.subject || null,
+      subjectOptions: l.subjectOptions || [],
+      processedMessageIds: l.processedMessageIds || []
+    }));
+
+    candidateLeads.forEach(l => {
+      say(`[IMAP] Lead: "${l.companyName}" status=${l.status} sentAt=${l.sentAt || 'GEEN'} contactEmail=${l.contactEmail || '—'} subject="${l.email?.subject || l.emailA?.subject || '—'}"`);
+    });
+
+    // ── Step 4: Run matching ───────────────────────────────────────────────
+    say('[IMAP] Matching starten...');
+    for (const email of parsedEmails.filter(e => e.isReply)) {
+      const cleanSubject = email.subject.replace(/^(re:\s*)+/i, '').trim().toLowerCase();
+      const senderLower  = email.from.toLowerCase().trim();
+      say(`[IMAP] Matching reply: from="${email.from}" cleanSubject="${cleanSubject}"`);
+
+      let matchedLead = null, matchStrategy = null;
+
+      for (const l of candidateLeads) {
+        if (l.processedMessageIds?.includes(email.msgId)) {
+          say(`[IMAP]   Skip "${l.companyName}" — al verwerkt (msgId in processedMessageIds)`);
+          continue;
+        }
+
+        // Strategy 1: sender email == contactEmail
+        if (senderLower && l.contactEmail && senderLower === l.contactEmail.toLowerCase().trim()) {
+          matchedLead = l; matchStrategy = `sender email match (${l.contactEmail})`;
+          break;
+        }
+
+        // Strategy 2: company name in subject
+        const companyLower = (l.companyName || '').toLowerCase().trim();
+        if (companyLower.length >= 3 && cleanSubject.includes(companyLower)) {
+          matchedLead = l; matchStrategy = `company name in subject ("${l.companyName}")`;
+          break;
+        }
+
+        // Strategy 3: subject variants
+        const subjectVariants = [
+          l.email?.subject, l.emailA?.subject, l.emailB?.subject,
+          ...(Array.isArray(l.subjectOptions) ? l.subjectOptions : [])
+        ].filter(Boolean).map(s => s.toLowerCase().trim());
+
+        for (const orig of subjectVariants) {
+          if (cleanSubject === orig ||
+              (orig.length >= 10 && cleanSubject.includes(orig.substring(0, 30))) ||
+              (cleanSubject.length >= 10 && orig.includes(cleanSubject.substring(0, 30)))) {
+            matchedLead = l; matchStrategy = `subject match ("${orig}")`;
+            break;
+          }
+        }
+        if (matchedLead) break;
+      }
+
+      if (matchedLead) {
+        say(`[IMAP]   ✓ MATCH: "${matchedLead.companyName}" via ${matchStrategy}`);
+        result.matches.push({ email: email.from, subject: email.subject, matchedLead: matchedLead.companyName, strategy: matchStrategy });
+      } else {
+        say(`[IMAP]   ✗ Geen match voor "${email.from}" / "${email.subject}"`);
+        result.matches.push({ email: email.from, subject: email.subject, matchedLead: null, strategy: null });
+      }
+    }
+
+    say('[IMAP] Diagnose klaar');
+    return res.json(result);
+
+  } catch (err) {
+    say(`[IMAP] FOUT: ${err.message}`);
+    result.errors.push(err.message);
+    if (connection) try { connection.end(); } catch {}
+    return res.json(result);
+  }
+});
+
 app.post('/api/backup/run', requireAdmin, async (req, res) => {
   try {
     const filename = await runDailyBackup(true);
