@@ -1228,13 +1228,17 @@ app.post('/api/analyze-company', requireAdmin, async (req, res) => {
     const cleanEmail = (email || '').toLowerCase().trim();
     if (cleanEmail && cleanEmail.includes('@')) {
       lead.email = cleanEmail;
-      console.log(`[Aangepast bedrijf] Email handmatig opgegeven: ${lead.email}`);
+      console.log(`[Manual] Email handmatig opgegeven: ${lead.email}`);
     } else {
-      console.log(`[Aangepast bedrijf] Email zoeken via web search...`);
+      console.log(`[Manual] Geen email opgegeven — web search starten...`);
       try {
         const domain = websiteUrl ? websiteUrl.replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0] : '';
-        const searchText = await aiWebSearch(`${companyName} ${domain} contact email`);
+        const searchQuery = `${companyName} ${domain} contact email`;
+        console.log(`[Manual] Web search query: "${searchQuery}"`);
+        const searchText = await aiWebSearch(searchQuery);
+        console.log(`[Manual] Web search resultaat (eerste 300 tekens): ${(searchText || '').substring(0, 300)}`);
         const allMatches = (searchText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g) || []);
+        console.log(`[Manual] Gevonden email adressen: ${JSON.stringify(allMatches)}`);
         const validEmail = allMatches.find(e =>
           !e.includes('@example') && !e.includes('@test.') && !e.includes('@sentry') &&
           !/noreply|no-reply|donotreply/i.test(e) &&
@@ -1242,17 +1246,18 @@ app.post('/api/analyze-company', requireAdmin, async (req, res) => {
         );
         if (validEmail) {
           lead.email = validEmail.toLowerCase();
-          console.log(`[Aangepast bedrijf] Email gevonden via web search: ${lead.email}`);
+          console.log(`[Manual] Email geselecteerd: ${lead.email}`);
         } else {
-          console.log(`[Aangepast bedrijf] Geen email gevonden via web search`);
+          console.log(`[Manual] Geen geldig email gevonden via web search — doorgaan zonder email`);
         }
       } catch (searchErr) {
-        console.warn(`[Aangepast bedrijf] Web search mislukt: ${searchErr.message}`);
+        console.warn(`[Manual] Web search mislukt: ${searchErr.message} — doorgaan zonder email`);
       }
     }
 
+    console.log(`[Manual] lead.email voor processOneLead: "${lead.email || 'leeg'}"`);
     const result = await processOneLead(lead, settings, { manualRun: true });
-    if (!result) return res.status(400).json({ error: 'Overgeslagen: bedrijf staat op de blacklist of geen geldig emailadres gevonden' });
+    if (!result) return res.status(400).json({ error: 'Overgeslagen: bedrijf staat op de blacklist' });
     const { item, leadRecord } = result;
 
     const inbox = readJSON('inbox.json') || [];
@@ -4061,42 +4066,56 @@ async function processOneLead(lead, settings, options = {}) {
   }
 
   // Email: provided by Agent 1 web search — validate format + MX here
+  // For manual runs (options.manualRun) never block on missing/invalid email —
+  // the lead goes to inbox without email so the user can add it manually.
   const rawEmail = (lead.email || '').toLowerCase().trim().replace(/^mailto:/i, '');
   const isValidEmailFormat = e => e && e.includes('@') && e.includes('.') && e.length <= 80 &&
     !/\.(png|jpg|gif|svg|css|js|woff|ico|pdf)$/i.test(e) &&
     !e.includes('@example') && !e.includes('@test.') && !e.includes('@sentry');
   const isNoReplyAddr = e => /noreply|no-reply|donotreply|do-not-reply/i.test(e);
 
-  if (!rawEmail || !isValidEmailFormat(rawEmail) || isNoReplyAddr(rawEmail)) {
-    console.log(`  ✗ Email ongeldig van Agent 1: "${rawEmail || 'leeg'}" — ${lead.companyName} overgeslagen`);
-    addActivity('skip', `${lead.companyName} overgeslagen — geen geldig email van Agent 1`, { meta: { companyName: lead.companyName, niche: lead.niche } });
-    return null;
-  }
-
-  // DNS MX check — only reject on empty array, allow on DNS errors
   let contactEmail = null;
   let emailVerified = false;
-  const emailDomain = rawEmail.split('@')[1];
-  console.log(`  [Agent 2] Email verifiëren: ${rawEmail}`);
-  try {
-    const mx = await dnsPromises.resolveMx(emailDomain);
-    if (mx && mx.length > 0) {
-      contactEmail  = rawEmail;
-      emailVerified = true;
-      console.log(`  [Agent 2] MX check: ${emailDomain} → valid ✓ — email: ${contactEmail}`);
+
+  console.log(`  [Email debug] manualRun=${!!options.manualRun}, rawEmail="${rawEmail || 'leeg'}", validFormat=${isValidEmailFormat(rawEmail)}, noReply=${isNoReplyAddr(rawEmail)}`);
+
+  if (!rawEmail || !isValidEmailFormat(rawEmail) || isNoReplyAddr(rawEmail)) {
+    if (options.manualRun) {
+      console.log(`  ⚠ [Manual] Geen geldig email voor ${lead.companyName} — doorgaan zonder email`);
+      // contactEmail stays null — inbox will show "Geen email" so user can add manually
     } else {
-      console.log(`  ✗ MX check: ${emailDomain} → no records — ${lead.companyName} overgeslagen`);
-      addActivity('skip', `${lead.companyName} overgeslagen — email domein ontvangt geen mail`, { meta: { companyName: lead.companyName } });
+      console.log(`  ✗ Email ongeldig van Agent 1: "${rawEmail || 'leeg'}" — ${lead.companyName} overgeslagen`);
+      addActivity('skip', `${lead.companyName} overgeslagen — geen geldig email van Agent 1`, { meta: { companyName: lead.companyName, niche: lead.niche } });
       return null;
     }
-  } catch (mxErr) {
-    // DNS error (Railway network issue) → allow the email
-    contactEmail  = rawEmail;
-    emailVerified = false;
-    console.log(`  [Agent 2] MX check: ${emailDomain} → DNS fout (${mxErr.code || mxErr.message}), email toegestaan`);
+  } else {
+    // DNS MX check — only reject on empty array, allow on DNS errors
+    const emailDomain = rawEmail.split('@')[1];
+    console.log(`  [Agent 2] Email verifiëren: ${rawEmail}`);
+    try {
+      const mx = await dnsPromises.resolveMx(emailDomain);
+      if (mx && mx.length > 0) {
+        contactEmail  = rawEmail;
+        emailVerified = true;
+        console.log(`  [Agent 2] MX check: ${emailDomain} → valid ✓ — email: ${contactEmail}`);
+      } else {
+        if (options.manualRun) {
+          console.log(`  ⚠ [Manual] MX check: ${emailDomain} → geen MX records — doorgaan zonder email`);
+        } else {
+          console.log(`  ✗ MX check: ${emailDomain} → no records — ${lead.companyName} overgeslagen`);
+          addActivity('skip', `${lead.companyName} overgeslagen — email domein ontvangt geen mail`, { meta: { companyName: lead.companyName } });
+          return null;
+        }
+      }
+    } catch (mxErr) {
+      // DNS error (Railway network issue) → allow the email
+      contactEmail  = rawEmail;
+      emailVerified = false;
+      console.log(`  [Agent 2] MX check: ${emailDomain} → DNS fout (${mxErr.code || mxErr.message}), email toegestaan`);
+    }
   }
 
-  const emailSource = 'verified';
+  const emailSource = contactEmail ? 'verified' : null;
 
   console.log(`  [Agent 3] Social media analyseren...`);
   let social;
