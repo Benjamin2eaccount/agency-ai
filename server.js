@@ -832,6 +832,7 @@ app.get('/track/open/:token', (req, res) => {
       const now = new Date().toISOString();
       if (!leads[idx].openedAt) {
         leads[idx].openedAt = now;
+        leads[idx].emailOpened = true;
         addLeadHistory(leads, leads[idx].id, { event: 'opened', label: 'Email geopend' });
         addActivity('open', 'Email geopend door ' + (leads[idx].companyName || 'Onbekend'), { meta: { leadId: leads[idx].id } });
         console.log(`[Tracking] Email geopend: ${leads[idx].companyName}`);

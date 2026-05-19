@@ -2805,7 +2805,7 @@ async function renderProjectPage() {
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
               <i class="ti ti-mail" style="color:var(--accent)"></i>
               <span style="font-size:13px;font-weight:500;flex:1">${esc(h.label || h.event)}</span>
-              ${lead.emailOpened ? `<span class="badge badge-blue" style="font-size:10px"><i class="ti ti-eye"></i> Geopend</span>` : ''}
+              ${(lead.emailOpened || lead.openedAt) ? `<span class="badge badge-blue" style="font-size:10px"><i class="ti ti-eye"></i> Geopend${lead.openCount > 1 ? ' (' + lead.openCount + 'x)' : ''}</span>` : ''}
               ${lead.repliedAt ? `<span class="badge badge-green" style="font-size:10px"><i class="ti ti-message"></i> Gereageerd</span>` : ''}
               <span style="font-size:11px;color:var(--text-muted)">${relativeTime(h.time)}</span>
             </div>
