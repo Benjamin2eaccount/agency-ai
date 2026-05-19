@@ -2256,7 +2256,7 @@ function renderKanban(leads, container) {
     const expanded = window._kanbanExpanded[col.key];
     const visible  = expanded ? all : all.slice(0, KANBAN_PAGE_SIZE);
     const hidden   = all.length - visible.length;
-    const totalVal = all.reduce((s, l) => s + (l.estimatedValue || 0), 0);
+    const totalVal = all.filter(l => (l.estimatedValue || 0) > 0).reduce((s, l) => s + l.estimatedValue, 0);
     return `
       <div class="kanban-col" data-col-key="${col.key}" data-drop-status="${col.key}">
         <div class="kanban-col-header">

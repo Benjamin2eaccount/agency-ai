@@ -1423,14 +1423,14 @@ app.get('/api/stats', (req, res) => {
     leadsFound:       leads.length,
     emailsSent:       leads.filter(l => ['sent','scheduled','replied','client'].includes(l.status)).length,
     replies:          leads.filter(l => ['replied','client'].includes(l.status)).length,
-    pipelineValue:    active.reduce((s, l) => s + (l.estimatedValue || 0), 0),
+    pipelineValue:    active.filter(l => (l.estimatedValue || 0) > 0).reduce((s, l) => s + l.estimatedValue, 0),
     totalEarned:      leads.reduce((s, l) => s + (l.payments || []).filter(p => p.status === 'paid').reduce((ps, p) => ps + (p.amount || 0), 0), 0),
     inboxPending:     inbox.filter(i => !i.status || i.status === 'pending').length,
     clients:          leads.filter(l => l.status === 'client').length,
     last24hLeads:     leadsLast24h.length,
     last24hValue:     leadsLast24h
-                        .filter(l => l.status !== 'disapproved' && l.status !== 'dead')
-                        .reduce((s, l) => s + (l.estimatedValue || 0), 0),
+                        .filter(l => l.status !== 'disapproved' && l.status !== 'dead' && (l.estimatedValue || 0) > 0)
+                        .reduce((s, l) => s + l.estimatedValue, 0),
     todayLeads: (() => {
       const today = new Date().toISOString().slice(0, 10);
       const entry = (stored.weeklyData || []).find(w => w.date === today);
