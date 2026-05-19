@@ -499,6 +499,12 @@ function sanitizeSubject(s) {
 }
 
 async function sendEmail({ to, subject, body, html, settings: _settings = {}, trackingToken }) {
+  // Normalise "to" — Resend requires a plain non-empty string
+  const toStr = Array.isArray(to) ? to[0] : to;
+  const toFinal = (typeof toStr === 'string' ? toStr : String(toStr || '')).trim();
+  if (!toFinal) throw new Error('sendEmail: geen geldig "to" adres opgegeven (waarde was: ' + JSON.stringify(to) + ')');
+  console.log(`[Email] Versturen naar: "${toFinal}" (origineel type: ${Array.isArray(to) ? 'array' : typeof to})`);
+
   const s = readJSON('settings.json') || {};
   const agencyName  = s.agencyName  || _settings.agencyName || 'Agency AI';
   const myName      = s.myName      || _settings.myName     || 'Admin';
@@ -519,12 +525,12 @@ async function sendEmail({ to, subject, body, html, settings: _settings = {}, tr
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: `"${agencyName}" <${fromAddress}>`, to, reply_to: s.gmailAddress ? `${myName} <${s.gmailAddress}>` : undefined, subject: cleanSubject, html: htmlBody, text: body || '' }),
+    body: JSON.stringify({ from: `"${agencyName}" <${fromAddress}>`, to: toFinal, reply_to: s.gmailAddress ? `${myName} <${s.gmailAddress}>` : undefined, subject: cleanSubject, html: htmlBody, text: body || '' }),
     signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
   });
   const d = await r.json();
   if (!r.ok) throw new Error(d.message || d.error || `Resend fout ${r.status}`);
-  addActivity('email_sent', `Email verstuurd → ${to}`, { cost: 0 });
+  addActivity('email_sent', `Email verstuurd → ${toFinal}`, { cost: 0 });
 }
 
 // â"€â"€â"€ Auth middleware â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -1744,6 +1750,7 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
     const idx = leads.findIndex(l => l.id === req.params.id);
     if (idx === -1) { send(0, 'Lead niet gevonden', 'error'); res.end(); return; }
     const lead = leads[idx];
+    console.log(`[ProjectStart] Lead: "${lead.companyName}" | contactEmail: ${JSON.stringify(lead.contactEmail)} | type: ${typeof lead.contactEmail} | email field type: ${typeof lead.email}`);
     // Step 1 — Portal token
     send(1, 'Portaaltoegang instellen', 'running');
     if (!lead.portalToken) {
