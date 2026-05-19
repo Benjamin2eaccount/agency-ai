@@ -4029,3 +4029,8 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
 .btn-danger-ghost:hover { background: rgba(239,68,68,0.08); border-color: var(--danger); }
 [data-theme="dark"] .contact-card { background: var(--surface); border-color: var(--border); }
 [data-theme="dark"] .contact-card-message { background: var(--surface-2); }
+
+/* Invoice fallback box */
+.invoice-fallback-box { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+.invoice-fallback-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+[data-theme="dark"] .invoice-fallback-box { background: var(--surface-2); border-color: var(--border); }

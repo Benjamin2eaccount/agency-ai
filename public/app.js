@@ -5413,12 +5413,6 @@ async function submitInvoice(leadId) {
 
   if (!amount || amount < 1) return toast('Voer een geldig bedrag in', 'error');
 
-  btn.disabled = true;
-  btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...';
-
-  const endpointMap = { stripe: '/api/stripe/invoice', mollie: '/api/mollie/invoice', paypal: '/api/paypal/invoice' };
-  const endpoint = endpointMap[method] || '/api/stripe/invoice';
-
   const s2 = state.settings || {};
   const btwEnabled2 = s2.btwEnabled || false;
   const btwRate2    = s2.btwRate !== undefined ? s2.btwRate : 21;
@@ -5426,16 +5420,59 @@ async function submitInvoice(leadId) {
   const amountIncl  = btwEnabled2 ? Math.round((amount + btwAmt2) * 100) / 100 : amount;
   const descWithBtw = btwEnabled2 ? `${desc} (incl. ${btwRate2}% BTW)` : desc;
 
-  const res  = await api(endpoint, {
-    method: 'POST',
-    body: JSON.stringify({ companyName: lead?.companyName, description: descWithBtw, amount: amountIncl, billing })
-  });
-  const data = await res.json();
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...';
 
-  if (!res.ok) {
-    toast(data.error || 'Betaallink fout', 'error');
-    btn.disabled = false;
-    btn.innerHTML = '<i class="ti ti-link"></i> Maak betaallink';
+  const endpointMap = { stripe: '/api/stripe/invoice', mollie: '/api/mollie/invoice', paypal: '/api/paypal/invoice' };
+  const endpoint = endpointMap[method] || '/api/stripe/invoice';
+
+  const resetBtn = () => {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-link"></i> Maak betaallink'; }
+  };
+
+  let data;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const res = await api(endpoint, {
+      method: 'POST',
+      body: JSON.stringify({ companyName: lead?.companyName, description: descWithBtw, amount: amountIncl, billing }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (!res) { resetBtn(); return; } // logged out by api()
+
+    data = await res.json();
+
+    if (!res.ok) {
+      resetBtn();
+      // Show fallback manual modal when payment provider not configured
+      const errMsg = data?.error || 'Betaallink aanmaken mislukt';
+      openModal(`
+        <div class="modal-header">
+          <h3><i class="ti ti-alert-triangle" style="color:var(--warning)"></i> Betaallink mislukt</h3>
+          <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+        </div>
+        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:14px">
+          <p class="text-secondary">${esc(errMsg)}</p>
+          <div class="invoice-fallback-box">
+            <div class="invoice-fallback-label">Stuur handmatig een betalingsverzoek:</div>
+            <div id="fallbackInvoiceText" style="font-size:13px;white-space:pre-wrap;color:var(--text-primary)">${esc(`Betalingsverzoek voor ${lead?.companyName || ''}\n\nBedrag: €${amountIncl}\nOmschrijving: ${descWithBtw}\nBetalingstermijn: 14 dagen\n\nOmschrijving bij overboeking: ${(lead?.companyName || '').slice(0,20)}-factuur`)}</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="copyText(document.getElementById('fallbackInvoiceText').innerText); toast('Gekopieerd!','success')"><i class="ti ti-copy"></i> Kopiëren</button>
+          <button class="btn btn-ghost" onclick="setView('settings')">Instellingen</button>
+          <button class="btn btn-primary" onclick="closeModal()">Sluiten</button>
+        </div>
+      `);
+      return;
+    }
+  } catch (err) {
+    resetBtn();
+    const isTimeout = err.name === 'AbortError';
+    toast(isTimeout ? 'Tijdlimiet overschreden — probeer opnieuw' : 'Verbindingsfout — controleer je internetverbinding', 'error');
     return;
   }
 
