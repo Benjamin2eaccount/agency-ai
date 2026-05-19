@@ -5249,13 +5249,12 @@ async function checkReplies() {
     const since = new Date();
     since.setDate(since.getDate() - 14);
     const searchCriteria = [['SINCE', since]];
-    const fetchOptions = { bodies: ['RFC822'], markSeen: false };
+    // Fetch HEADER (pre-parsed object) + TEXT (body) separately — avoids RFC822/simpleParser issues
+    const fetchOptions = { bodies: ['HEADER', 'TEXT'], markSeen: false };
 
     const messages = await connection.search(searchCriteria, fetchOptions);
     const leads  = readJSON('leads.json') || [];
     const stats  = readJSON('stats.json') || {};
-    // Include leads that have sentAt OR whose status indicates they were sent
-    // (manually-added leads may have status='sent' but no sentAt field)
     const sentLeads = leads.filter(l =>
       (l.sentAt || ['sent','replied','followup1','followup2'].includes(l.status)) &&
       !['client','dead'].includes(l.status)
@@ -5268,17 +5267,15 @@ async function checkReplies() {
     const aiReplyQueue = [];
 
     for (const msg of messages) {
-      const rfc822 = msg.parts.find(p => p.which === 'RFC822');
-      if (!rfc822) continue;
+      const headerPart = msg.parts.find(p => p.which === 'HEADER');
+      if (!headerPart) continue;
 
-      let parsed;
-      try { parsed = await simpleParser(rfc822.body); }
-      catch (parseErr) { console.warn('[IMAP] Mailparser fout:', parseErr.message); continue; }
-
-      const rawSubject = (parsed.subject || '').trim();
+      const header     = headerPart.body;
+      const rawSubject = (header.subject?.[0] || '').trim();
       const subject    = rawSubject.toLowerCase();
-      const senderEmail = (parsed.from?.value?.[0]?.address || '').toLowerCase().trim();
-      const msgId = parsed.messageId || `uid-${msg.attributes.uid}`;
+      const fromRaw    = (header.from?.[0] || '').trim();
+      const senderEmail = fromRaw.replace(/^.*<(.+)>.*$/, '$1').toLowerCase().trim() || fromRaw.toLowerCase().trim();
+      const msgId      = (header['message-id']?.[0] || `uid-${msg.attributes.uid}`).trim();
 
       // Only look at replies (subject starts with Re:)
       if (!/^re:/i.test(subject)) continue;
@@ -5344,16 +5341,16 @@ async function checkReplies() {
           matched.processedMessageIds = matched.processedMessageIds.slice(-20);
         }
 
-        // Extract clean reply text (mailparser already decoded charset + base64)
-        const bodyText = parsed.text ||
-          (parsed.html || '').replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, ' ');
+        // Extract clean reply text from TEXT body part
+        const textPart = msg.parts.find(p => p.which === 'TEXT');
+        const bodyText = (textPart?.body || '').toString();
         const replyText = extractReplyText(bodyText);
 
         matched.status        = 'replied';
         matched.repliedAt     = new Date().toISOString();
         matched.lastReplyText = replyText || '';
         matched.lastReplyAt   = matched.repliedAt;
-        matched.lastReplyFrom = parsed.from?.text || (matched.contactEmail || '');
+        matched.lastReplyFrom = fromRaw || matched.contactEmail || '';
 
         addLeadHistory(leads, matched.id, {
           event: 'replied',
@@ -5381,18 +5378,18 @@ async function checkReplies() {
       const bounceSince = new Date();
       bounceSince.setDate(bounceSince.getDate() - 14);
       const bounceCriteria = [['SINCE', bounceSince], ['FROM', 'MAILER-DAEMON']];
-      const bounceFetch   = { bodies: ['HEADER.FIELDS (FROM SUBJECT TO)', 'TEXT'], markSeen: false };
+      const bounceFetch   = { bodies: ['HEADER', 'TEXT'], markSeen: false };
       const bounceMessages = await connection.search(bounceCriteria, bounceFetch);
 
       const EMAIL_RE = /[\w.+%-]+@[\w-]+\.[a-z]{2,}/gi;
 
       for (const msg of bounceMessages) {
-        const hdr  = msg.parts.find(p => p.which === 'HEADER.FIELDS (FROM SUBJECT TO)');
-        const body = msg.parts.find(p => p.which === 'TEXT');
-        if (!hdr) continue;
+        const hdrPart = msg.parts.find(p => p.which === 'HEADER');
+        const body    = msg.parts.find(p => p.which === 'TEXT');
+        if (!hdrPart) continue;
 
-        const hdrRaw  = hdr.body;
-        const subj    = (hdrRaw.match(/^Subject:\s*(.+)/im)?.[1] || '').toLowerCase();
+        const hdr     = hdrPart.body;
+        const subj    = (hdr.subject?.[0] || '').toLowerCase();
         const isBounce = /delivery.*(fail|status|report)|undeliver|failure notice|mail delivery|non.delivery|returned mail|bounce/i.test(subj);
         if (!isBounce) continue;
 
