@@ -2799,6 +2799,7 @@ async function generateClientEmail(lead, trigger, settings, extra = {}) {
   const serviceNames = (lead.services || []).map(s => s.name).join(', ') || 'AI-diensten';
   const intakeCtx = lead.intakeAnswers ? '\nIntake antwoorden:\n' + Object.entries(lead.intakeAnswers).map(([k,v]) => `- ${k}: ${v}`).join('\n') : '';
   const portalUrl = lead.portalToken ? `${BASE_URL}/portal/${lead.portalToken}` : '';
+  const intakeUrl = lead.intakeToken ? `${BASE_URL}/intake/${lead.id}/${lead.intakeToken}` : '';
 
   const prompts = {
     welcome: `Schrijf een warme welkomstmail voor een nieuw klant.
@@ -2807,6 +2808,7 @@ Diensten: ${serviceNames}.
 Bureau: ${settings.agencyName}, contactpersoon: ${settings.myName} (${settings.myTitle||''}).
 ${intakeCtx}
 De mail is professioneel maar persoonlijk, max 200 woorden. Geen bullet lists. Noem concreet wat er de komende week gaat gebeuren.
+${intakeUrl ? `Vraag de klant om de intake-vragenlijst in te vullen via: ${intakeUrl} — dit is belangrijk voor een goede start.` : ''}
 ${portalUrl ? `Vermeld de klantportaal link: ${portalUrl}` : ''}
 Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`,
 
@@ -2870,6 +2872,13 @@ app.post('/api/leads/:id/client-email', requireAdmin, async (req, res) => {
   const { trigger, customNote, preview } = req.body;
 
   if (!CLIENT_EMAIL_TEMPLATES[trigger]) return res.status(400).json({ error: 'Ongeldig trigger type' });
+
+  // Auto-generate intake token for welcome emails so the link is always present
+  if (trigger === 'welcome' && !lead.intakeToken) {
+    leads[idx].intakeToken = Math.random().toString(36).substr(2, 10) + Date.now().toString(36);
+    lead.intakeToken = leads[idx].intakeToken;
+    writeJSON('leads.json', leads);
+  }
 
   try {
     const email = await generateClientEmail(lead, trigger, settings, req.body);
