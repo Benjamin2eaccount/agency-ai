@@ -821,14 +821,20 @@ function buildInboxCard(item) {
       ${item.emailA && item.emailB ? `
         <div class="inbox-section inbox-ab-section">
           <div class="inbox-ab-header">
-            <div class="inbox-section-title" style="margin-bottom:0"><i class="ti ti-test-pipe" style="color:var(--accent)"></i> A/B email versies</div>
-            <div style="display:flex;gap:4px">
-              <button id="btnA-${item.id}" class="ab-btn ab-btn-active" onclick="selectVersion('${item.id}','A')">A</button>
-              <button id="btnB-${item.id}" class="ab-btn" onclick="selectVersion('${item.id}','B')">B</button>
+            <div class="inbox-section-title" style="margin-bottom:0"><i class="ti ti-test-pipe" style="color:var(--accent)"></i> A/B email versies — klik om te kiezen</div>
+          </div>
+          <div class="inbox-ab-compare">
+            <div class="inbox-ab-ver selected" id="abVerA-${item.id}" onclick="selectVersion('${item.id}','A')">
+              <div class="inbox-ab-ver-top"><span class="inbox-ab-ver-label">A</span><span class="inbox-ab-ver-desc">Probleem-gericht</span></div>
+              <div class="inbox-ab-ver-subject">${esc(item.emailA.subject)}</div>
+              <div class="inbox-ab-ver-preview">${esc((item.emailA.body || '').replace(/<[^>]+>/g,'').slice(0,130))}…</div>
+            </div>
+            <div class="inbox-ab-ver" id="abVerB-${item.id}" onclick="selectVersion('${item.id}','B')">
+              <div class="inbox-ab-ver-top"><span class="inbox-ab-ver-label">B</span><span class="inbox-ab-ver-desc">Groeikansen-gericht</span></div>
+              <div class="inbox-ab-ver-subject">${esc(item.emailB.subject)}</div>
+              <div class="inbox-ab-ver-preview">${esc((item.emailB.body || '').replace(/<[^>]+>/g,'').slice(0,130))}…</div>
             </div>
           </div>
-          <div id="abSubject-${item.id}" class="ab-subject">${esc(item.emailA.subject)}</div>
-          <div id="abDesc-${item.id}" class="ab-desc">Probleem-gericht</div>
         </div>
       ` : ''}
 
@@ -888,18 +894,10 @@ function selectVersion(id, version) {
   const card = document.getElementById('card-' + id);
   if (!card) return;
   card.dataset.selectedVersion = version;
-  const item = state.inbox?.find(i => i.id === id);
-  if (!item) return;
-  const email = version === 'B' ? item.emailB : item.emailA;
-  const desc  = version === 'B' ? 'Groeikansen-gericht' : 'Probleem-gericht';
-  const subjectEl = document.getElementById('abSubject-' + id);
-  const descEl    = document.getElementById('abDesc-' + id);
-  const btnA = document.getElementById('btnA-' + id);
-  const btnB = document.getElementById('btnB-' + id);
-  if (subjectEl && email) subjectEl.textContent = email.subject || '';
-  if (descEl) descEl.textContent = desc;
-  if (btnA) { btnA.classList.toggle('ab-btn-active', version === 'A'); }
-  if (btnB) { btnB.classList.toggle('ab-btn-active', version === 'B'); }
+  const verA = document.getElementById('abVerA-' + id);
+  const verB = document.getElementById('abVerB-' + id);
+  if (verA) verA.classList.toggle('selected', version === 'A');
+  if (verB) verB.classList.toggle('selected', version === 'B');
 }
 
 function initSwipeHandlers() {
