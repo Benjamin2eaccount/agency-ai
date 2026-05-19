@@ -3381,11 +3381,33 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
 .toast-info    { background: var(--accent); }
 
 /* ── Notifications ──────────────────────────────────────────────────────────── */
+.notif-backdrop {
+  position: fixed; inset: 0;
+  background: transparent;
+  z-index: 199;
+}
+
 .notif-panel {
-  position: absolute; top: calc(100% + 4px); right: 0;
-  width: 320px; background: var(--surface);
-  border: 1px solid var(--border); border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg); z-index: 200; overflow: hidden;
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.14);
+  z-index: 200;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  display: none;
+}
+
+.notif-panel.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .notif-header {

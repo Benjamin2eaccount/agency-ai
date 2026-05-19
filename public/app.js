@@ -8952,6 +8952,9 @@ async function openNotificationPanel() {
     return;
   }
 
+  // Remove old backdrop if any
+  document.getElementById('notifBackdrop')?.remove();
+
   let panelEl = document.getElementById('notifPanel');
   if (!panelEl) {
     panelEl = document.createElement('div');
@@ -8963,24 +8966,20 @@ async function openNotificationPanel() {
   panelEl.style.display = '';
   requestAnimationFrame(() => panelEl.classList.add('visible'));
 
-  setTimeout(() => document.addEventListener('click', _closeNotifOnOutsideClick), 50);
-}
-
-function _closeNotifOnOutsideClick(e) {
-  const panel = document.getElementById('notifPanel');
-  const btn = document.getElementById('notifBtn');
-  if (panel && !panel.contains(e.target) && btn && !btn.contains(e.target)) {
-    closeNotificationPanel();
-    document.removeEventListener('click', _closeNotifOnOutsideClick);
-  }
+  // Backdrop closes on click outside
+  const backdrop = document.createElement('div');
+  backdrop.id = 'notifBackdrop';
+  backdrop.className = 'notif-backdrop';
+  backdrop.addEventListener('click', closeNotificationPanel);
+  document.body.insertBefore(backdrop, panelEl);
 }
 
 function closeNotificationPanel() {
   const panel = document.getElementById('notifPanel');
   if (!panel) return;
   panel.classList.remove('visible');
+  document.getElementById('notifBackdrop')?.remove();
   setTimeout(() => { if (panel) panel.style.display = 'none'; }, 200);
-  document.removeEventListener('click', _closeNotifOnOutsideClick);
 }
 
 async function handleNotificationClick(id, leadId) {
