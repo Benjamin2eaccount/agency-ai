@@ -9311,34 +9311,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Sidebar search — filters nav items by label text
-  const sidebarSearchInput = document.getElementById('sidebarSearch');
-  if (sidebarSearchInput) {
-    sidebarSearchInput.addEventListener('input', () => {
-      const q = sidebarSearchInput.value.trim().toLowerCase();
-      const navItems = document.querySelectorAll('.sidebar-nav .nav-item');
-      const sectionLabel = document.querySelector('.sidebar-nav .sidebar-section-label');
-
-      navItems.forEach(item => {
-        const label = item.querySelector('span:not(.nav-badge)')?.textContent?.toLowerCase() || '';
-        const match = !q || label.includes(q);
-        item.style.display = match ? '' : 'none';
-      });
-
-      // Hide section label when searching
-      if (sectionLabel) sectionLabel.style.display = q ? 'none' : '';
-    });
-
-    // Clear on Escape
-    sidebarSearchInput.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        sidebarSearchInput.value = '';
-        sidebarSearchInput.dispatchEvent(new Event('input'));
-        sidebarSearchInput.blur();
-      }
-    });
-  }
-
   // Logout
   document.getElementById('logoutBtn')?.addEventListener('click', () => {
     if (confirm('Wil je uitloggen?')) logout();
