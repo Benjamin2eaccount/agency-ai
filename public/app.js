@@ -249,6 +249,41 @@ async function sendManualEmail(leadId) {
   }
 }
 
+function startEditEmail(leadId, currentEmail) {
+  document.getElementById(`emailDisplayRow-${leadId}`).style.display = 'none';
+  const row = document.getElementById(`emailEditRow-${leadId}`);
+  row.style.display = 'flex';
+  const input = document.getElementById(`emailEditInput-${leadId}`);
+  input.value = currentEmail;
+  input.focus();
+  input.select();
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') saveLeadEmail(leadId);
+    if (e.key === 'Escape') cancelEditEmail(leadId);
+  };
+}
+
+function cancelEditEmail(leadId) {
+  document.getElementById(`emailDisplayRow-${leadId}`).style.display = '';
+  document.getElementById(`emailEditRow-${leadId}`).style.display = 'none';
+}
+
+async function saveLeadEmail(leadId) {
+  const input = document.getElementById(`emailEditInput-${leadId}`);
+  const email = input?.value?.trim() || '';
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    input.style.borderColor = 'var(--danger)';
+    toast('Ongeldig email adres', 'error');
+    return;
+  }
+  const res = await api(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify({ contactEmail: email }) });
+  if (!res || !res.ok) { toast('Opslaan mislukt', 'error'); return; }
+  const idx = state.leads.findIndex(l => l.id === leadId);
+  if (idx !== -1) state.leads[idx].contactEmail = email;
+  toast('Email opgeslagen');
+  renderProjectPage();
+}
+
 // ─── Score color ──────────────────────────────────────────────────────────────
 function scoreColor(score) {
   if (score >= 8) return 'success';
@@ -2569,7 +2604,15 @@ async function renderProjectPage() {
       <div class="project-info-grid">
         <div class="project-info-item">
           <div class="project-info-label">Email</div>
-          <div class="project-info-value">${lead.contactEmail ? `<a href="mailto:${esc(lead.contactEmail)}" class="link">${esc(lead.contactEmail)}</a>` : '<span style="color:var(--text-muted)">Geen email</span>'}</div>
+          <div class="project-info-value" id="emailDisplayRow-${lead.id}">
+            ${lead.contactEmail ? `<a href="mailto:${esc(lead.contactEmail)}" class="link">${esc(lead.contactEmail)}</a>` : '<span style="color:var(--text-muted)">Geen email</span>'}
+            <button class="btn btn-xs btn-ghost" style="margin-left:6px;padding:2px 6px;font-size:11px" onclick="startEditEmail('${lead.id}','${esc(lead.contactEmail||'')}')"><i class="ti ti-pencil"></i></button>
+          </div>
+          <div id="emailEditRow-${lead.id}" style="display:none;align-items:center;gap:6px;margin-top:4px">
+            <input type="email" id="emailEditInput-${lead.id}" value="${esc(lead.contactEmail||'')}" placeholder="email@domein.nl" style="height:32px;padding:0 10px;border:1.5px solid var(--accent);border-radius:6px;font-size:13px;flex:1;background:var(--surface);color:var(--text);outline:none">
+            <button class="btn btn-xs btn-primary" onclick="saveLeadEmail('${lead.id}')"><i class="ti ti-check"></i></button>
+            <button class="btn btn-xs btn-ghost" onclick="cancelEditEmail('${lead.id}')"><i class="ti ti-x"></i></button>
+          </div>
         </div>
         <div class="project-info-item">
           <div class="project-info-label">Website</div>
