@@ -5209,6 +5209,10 @@ async function renderRuns() {
           <input type="text" id="custWebsite" placeholder="https://..." oninput="checkDuplicateLive()" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit">
         </div>
         <div>
+          <label class="settings-label">Email <span style="font-weight:400;color:var(--text-muted)">(optioneel — anders zoekt Agent 1)</span></label>
+          <input type="email" id="custEmail" placeholder="info@bedrijf.nl" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit">
+        </div>
+        <div>
           <label class="settings-label">Instagram handle</label>
           <input type="text" id="custInstagram" placeholder="@handle" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit">
         </div>
@@ -5960,6 +5964,7 @@ async function analyzeCustomCompany() {
       body: JSON.stringify({
         companyName,
         websiteUrl:      domain,
+        email:           document.getElementById('custEmail')?.value?.trim() || '',
         instagramHandle: document.getElementById('custInstagram')?.value?.trim() || '',
         niche:           document.getElementById('custNiche')?.value || 'retail',
         location:        document.getElementById('custLocation')?.value?.trim() || 'Nederland',
@@ -5999,7 +6004,7 @@ async function analyzeCustomCompany() {
       resultEl.innerHTML = `<strong>✓ ${esc(companyName)} toegevoegd!</strong> Score: ${score}/10 &nbsp;—&nbsp; <a href="#" onclick="event.preventDefault();setView('inbox')">Bekijk in inbox →</a>`;
     }
     if (titleEl) titleEl.textContent = 'Analyse voltooid';
-    ['custCompany','custWebsite','custInstagram','custLocation'].forEach(id => {
+    ['custCompany','custWebsite','custEmail','custInstagram','custLocation'].forEach(id => {
       const el = document.getElementById(id); if (el) el.value = '';
     });
     const warn = document.getElementById('dupWarning');

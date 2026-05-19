@@ -1211,7 +1211,7 @@ app.post('/api/claude', async (req, res) => {
 // ─── Analyze single company (bypasses Agent 1, runs agents 2-6) ──────────────
 
 app.post('/api/analyze-company', requireAdmin, async (req, res) => {
-  const { companyName, websiteUrl, instagramHandle, niche, location, country, estimatedFollowers, companySize } = req.body || {};
+  const { companyName, websiteUrl, instagramHandle, niche, location, country, estimatedFollowers, companySize, email } = req.body || {};
   if (!companyName) return res.status(400).json({ error: 'companyName verplicht' });
   const lead = {
     companyName, websiteUrl: websiteUrl || '', instagramHandle: instagramHandle || '',
@@ -1223,8 +1223,36 @@ app.post('/api/analyze-company', requireAdmin, async (req, res) => {
     console.log(`[Aangepast bedrijf] ${companyName} analyseren...`);
     const dupCheck = isDuplicate(lead);
     if (dupCheck) return res.status(409).json({ error: `Duplicaat: ${lead.companyName} bestaat al (status: ${dupCheck.status})`, existing: { id: dupCheck.id, status: dupCheck.status } });
-    const result = await processOneLead(lead, settings);
-    if (!result) return res.status(400).json({ error: 'Overgeslagen: bedrijf staat op de blacklist of geen emailadres gevonden op de website' });
+
+    // Email: 1) use manually entered email, or 2) find via web search
+    const cleanEmail = (email || '').toLowerCase().trim();
+    if (cleanEmail && cleanEmail.includes('@')) {
+      lead.email = cleanEmail;
+      console.log(`[Aangepast bedrijf] Email handmatig opgegeven: ${lead.email}`);
+    } else {
+      console.log(`[Aangepast bedrijf] Email zoeken via web search...`);
+      try {
+        const domain = websiteUrl ? websiteUrl.replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0] : '';
+        const searchText = await aiWebSearch(`${companyName} ${domain} contact email`);
+        const allMatches = (searchText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g) || []);
+        const validEmail = allMatches.find(e =>
+          !e.includes('@example') && !e.includes('@test.') && !e.includes('@sentry') &&
+          !/noreply|no-reply|donotreply/i.test(e) &&
+          !/\.(png|jpg|gif|svg|css|js|woff|ico|pdf)$/i.test(e)
+        );
+        if (validEmail) {
+          lead.email = validEmail.toLowerCase();
+          console.log(`[Aangepast bedrijf] Email gevonden via web search: ${lead.email}`);
+        } else {
+          console.log(`[Aangepast bedrijf] Geen email gevonden via web search`);
+        }
+      } catch (searchErr) {
+        console.warn(`[Aangepast bedrijf] Web search mislukt: ${searchErr.message}`);
+      }
+    }
+
+    const result = await processOneLead(lead, settings, { manualRun: true });
+    if (!result) return res.status(400).json({ error: 'Overgeslagen: bedrijf staat op de blacklist of geen geldig emailadres gevonden' });
     const { item, leadRecord } = result;
 
     const inbox = readJSON('inbox.json') || [];
@@ -3994,7 +4022,7 @@ function isDuplicate(lead) {
   return null;
 }
 
-async function processOneLead(lead, settings) {
+async function processOneLead(lead, settings, options = {}) {
   if (isBlacklisted(lead)) {
     console.log(`  ✗ Geblokkeerd (blacklist): ${lead.companyName}`);
     return null;
@@ -4021,10 +4049,15 @@ async function processOneLead(lead, settings) {
   console.log(`  [Agent 2] Bereikbaar: ${website.reachable}, laadtijd: ${website.loadTimeMs || '—'}ms`);
 
   // Skip immediately if website unreachable — don't waste agent credits on fake companies
+  // Exception: manual runs (options.manualRun) — user knowingly entered the company
   if (!website.reachable) {
-    console.log(`  ✗ Website onbereikbaar — ${lead.companyName} overgeslagen (${website.notes || 'geen verbinding'})`);
-    addActivity('skip', `${lead.companyName} overgeslagen — website onbereikbaar`, { meta: { companyName: lead.companyName, websiteUrl: lead.websiteUrl || '' } });
-    return null;
+    if (options.manualRun) {
+      console.log(`  ⚠ Website onbereikbaar — ${lead.companyName} (handmatige run, doorgaan)`);
+    } else {
+      console.log(`  ✗ Website onbereikbaar — ${lead.companyName} overgeslagen (${website.notes || 'geen verbinding'})`);
+      addActivity('skip', `${lead.companyName} overgeslagen — website onbereikbaar`, { meta: { companyName: lead.companyName, websiteUrl: lead.websiteUrl || '' } });
+      return null;
+    }
   }
 
   // Email: provided by Agent 1 web search — validate format + MX here
