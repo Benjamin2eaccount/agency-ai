@@ -1393,6 +1393,7 @@ app.get('/api/stats', (req, res) => {
     emailsSent:       leads.filter(l => ['sent','scheduled','replied','client'].includes(l.status)).length,
     replies:          leads.filter(l => ['replied','client'].includes(l.status)).length,
     pipelineValue:    active.reduce((s, l) => s + (l.estimatedValue || 0), 0),
+    totalEarned:      leads.reduce((s, l) => s + (l.payments || []).filter(p => p.status === 'paid').reduce((ps, p) => ps + (p.amount || 0), 0), 0),
     inboxPending:     inbox.filter(i => !i.status || i.status === 'pending').length,
     clients:          leads.filter(l => l.status === 'client').length,
     last24hLeads:     leadsLast24h.length,

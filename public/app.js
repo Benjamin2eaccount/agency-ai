@@ -245,9 +245,7 @@ async function renderDashboard() {
   state.inbox = inbox || [];
   state.leads = allLeads || [];
 
-  const earned = state.leads
-    .filter(l => l.status === 'client')
-    .reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
+  const earned = stats.totalEarned || 0;
 
   const pending = state.inbox.filter(i => !i.status || i.status === 'pending').length;
   updateInboxBadge(pending);
@@ -309,7 +307,7 @@ async function renderDashboard() {
       <div class="stat-card">
         <div class="stat-icon"><i class="ti ti-trophy"></i></div>
         <div class="stat-value">€${earned.toLocaleString('nl-NL')}</div>
-        <div class="stat-label">Verdiend${stats.clients > 0 ? ` · ${stats.clients} klant${stats.clients !== 1 ? 'en' : ''}` : ''}</div>
+        <div class="stat-label">Verdiend (betaald)${stats.clients > 0 ? ` · ${stats.clients} klant${stats.clients !== 1 ? 'en' : ''}` : ''}</div>
       </div>
     </div>
 
