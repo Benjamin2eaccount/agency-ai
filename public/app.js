@@ -249,6 +249,50 @@ async function sendManualEmail(leadId) {
   }
 }
 
+function copyLinkedinDm(text, cardId) {
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById(`li-copy-${cardId}`);
+    if (btn) {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="ti ti-check"></i> Gekopieerd!';
+      btn.style.color = 'var(--success)';
+      setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 2000);
+    }
+  }).catch(() => toast('Kopiëren mislukt', 'error'));
+}
+
+function quickFollowup(leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead) return;
+  if (!lead.contactEmail) { toast('Lead heeft geen email adres', 'error'); return; }
+  openManualEmailModal(leadId);
+}
+
+async function quickDeleteLead(leadId, companyName) {
+  if (!confirm(`Lead "${companyName}" verwijderen? Dit kan niet ongedaan worden gemaakt.`)) return;
+  const res = await api(`/api/leads/${leadId}`, { method: 'DELETE' });
+  if (!res || !res.ok) { toast('Verwijderen mislukt', 'error'); return; }
+  state.leads = state.leads.filter(l => l.id !== leadId);
+  toast(`${companyName} verwijderd`);
+  renderPipeline();
+}
+
+async function changeLeadStatus(leadId, newStatus) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead || lead.status === newStatus) return;
+  const oldLabel = STATUS_LABELS[lead.status] || lead.status;
+  const newLabel = STATUS_LABELS[newStatus] || newStatus;
+  const res = await api(`/api/leads/${leadId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: newStatus, statusChangedAt: new Date().toISOString() })
+  });
+  if (!res || !res.ok) { toast('Status wijzigen mislukt', 'error'); renderProjectPage(); return; }
+  const idx = state.leads.findIndex(l => l.id === leadId);
+  if (idx !== -1) state.leads[idx].status = newStatus;
+  toast(`Status: ${oldLabel} → ${newLabel}`);
+  renderProjectPage();
+}
+
 function startEditEmail(leadId, currentEmail) {
   document.getElementById(`emailDisplayRow-${leadId}`).style.display = 'none';
   const row = document.getElementById(`emailEditRow-${leadId}`);
@@ -561,7 +605,13 @@ async function renderDashboard() {
       <div class="card" style="margin-top:0">
         <div class="card-header">
           <h3 class="card-title"><i class="ti ti-users-group" style="color:var(--accent);margin-right:6px"></i>Referral programma</h3>
+          <button class="btn btn-ghost btn-sm" style="padding:3px 7px" title="Hoe werkt dit?" onclick="document.getElementById('referralInfoBox').style.display=document.getElementById('referralInfoBox').style.display==='none'?'block':'none'"><i class="ti ti-info-circle"></i></button>
           ${rs.totalSent > 0 ? `<span class="badge badge-blue">${rs.totalSent} verzoek${rs.totalSent !== 1 ? 'en' : ''} verstuurd</span>` : ''}
+        </div>
+        <div id="referralInfoBox" style="display:none;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--text-secondary);margin-bottom:14px;line-height:1.6">
+          <strong style="color:var(--text-primary);display:block;margin-bottom:4px"><i class="ti ti-info-circle" style="color:var(--accent)"></i> Hoe werkt het referral programma?</strong>
+          Het referral programma stuurt automatisch een vriendelijk verzoek naar klanten die al 90 dagen actief zijn om jouw agency aan te bevelen. Als zij iemand doorverwijzen die klant wordt, ontvangen ze een korting op hun volgende factuur.
+          <div style="margin-top:8px;font-size:12px;color:var(--text-muted)"><i class="ti ti-clock"></i> Eerste referral mogelijk na 90 dagen klant zijn.</div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:4px 0 14px">
           ${[
@@ -732,10 +782,13 @@ function buildLinkedinDmCard(item) {
       <div class="linkedin-dm-footer">
         <span class="char-count" style="font-size:11px;color:var(--text-muted)">${charCount}/280 tekens</span>
         <div style="display:flex;gap:8px">
-          ${item.linkedinUrl ? `<a class="btn btn-ghost btn-sm" href="${esc(item.linkedinUrl)}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> Profiel</a>` : ''}
-          <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText(\`${dmRaw}\`).then(()=>toast('DM gekopieerd!','success'))">
+          <button class="btn btn-ghost btn-sm" id="li-copy-${item.id}" onclick="copyLinkedinDm(\`${dmRaw}\`,'${item.id}')">
             <i class="ti ti-copy"></i> Kopiëren
           </button>
+          <a class="btn btn-ghost btn-sm" href="https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(item.companyName || '')}" target="_blank" rel="noopener" title="Zoek op LinkedIn">
+            <i class="ti ti-brand-linkedin"></i> Zoeken
+          </a>
+          ${item.linkedinUrl ? `<a class="btn btn-ghost btn-sm" href="${esc(item.linkedinUrl)}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> Profiel</a>` : ''}
           <button class="btn btn-primary btn-sm" onclick="markLinkedinDmSent('${item.id}')">
             <i class="ti ti-check"></i> Verstuurd
           </button>
@@ -2357,9 +2410,13 @@ function buildLeadTableRow(l, dupIds) {
       <td class="text-secondary">${l.sentAt ? formatDate(l.sentAt) : '—'}</td>
       <td class="text-secondary">${l.repliedAt ? formatDate(l.repliedAt) : '—'}</td>
       <td class="text-secondary">${l.estimatedValue ? '€' + l.estimatedValue.toLocaleString('nl-NL') : '—'}</td>
-      <td style="display:flex;gap:4px;align-items:center">
-        <button class="btn btn-ghost btn-sm" onclick="openProjectPage('${l.id}')"><i class="ti ti-chevron-right"></i></button>
-        <button class="btn btn-ghost btn-sm" title="Blacklisten" onclick="quickBlacklist('${l.id}','${esc(l.companyName)}')" style="color:var(--danger)"><i class="ti ti-ban"></i></button>
+      <td class="row-actions-cell">
+        <div class="row-actions">
+          <button class="btn btn-ghost btn-sm" title="Open project" onclick="openProjectPage('${l.id}')"><i class="ti ti-arrow-right"></i></button>
+          ${l.contactEmail ? `<button class="btn btn-ghost btn-sm" title="Kopieer email" onclick="copyToClipboard('${esc(l.contactEmail)}','Email gekopieerd!')"><i class="ti ti-copy"></i></button>` : ''}
+          <button class="btn btn-ghost btn-sm" title="Stuur follow-up" onclick="quickFollowup('${l.id}')"><i class="ti ti-mail-forward"></i></button>
+          <button class="btn btn-ghost btn-sm" title="Verwijder lead" style="color:var(--danger)" onclick="quickDeleteLead('${l.id}','${esc(l.companyName)}')"><i class="ti ti-trash"></i></button>
+        </div>
       </td>
     </tr>`;
 }
@@ -3005,7 +3062,12 @@ async function renderProjectPage() {
               <span class="project-company-name">${esc(lead.companyName || '—')}</span>
               ${nicheBadge(lead.niche)}
               <span class="score-pill score-${scoreColor(lead.score || 0)}">${(lead.score || 0).toFixed(1)}</span>
-              <span class="status-pill status-${statusColor}">${statusLabel}</span>
+              ${isAdmin()
+                ? `<select class="status-pill status-${statusColor}" id="projectStatusSelect" onchange="changeLeadStatus('${lead.id}',this.value)" style="cursor:pointer;border:none;font-weight:600;font-size:12px;appearance:none;padding-right:18px;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 4px center">
+                    ${[['inbox','Inbox'],['approved','Goedgekeurd'],['sent','Verstuurd'],['replied','Gereageerd'],['meeting','Afspraak'],['client','Klant'],['dead','Dead']].map(([v,l]) => `<option value="${v}" ${lead.status===v?'selected':''}>${l}</option>`).join('')}
+                  </select>`
+                : `<span class="status-pill status-${statusColor}">${statusLabel}</span>`
+              }
             </div>
             <div class="project-meta">
               ${lead.location ? `<span><i class="ti ti-map-pin"></i> ${esc(lead.location)}</span>` : ''}
@@ -3443,9 +3505,14 @@ function openLeadDetail(id) {
           <div class="detail-section-title">LinkedIn DM</div>
           <div class="detail-email-body">${linkedinData.replace(/\n/g,'<br>')}</div>
           <div class="char-count" style="margin-top:8px">${linkedinData.length} / 280 tekens</div>
-          <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="copyText(\`${linkedinData.replace(/`/g,'\\`')}\`)">
-            <i class="ti ti-copy"></i> Kopiëren
-          </button>
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" id="li-copy-detail-${lead.id}" onclick="copyLinkedinDm(\`${linkedinData.replace(/`/g,'\\`')}\`,'detail-${lead.id}')">
+              <i class="ti ti-copy"></i> Kopiëren
+            </button>
+            <a class="btn btn-ghost btn-sm" href="https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(lead.companyName||'')}" target="_blank" rel="noopener">
+              <i class="ti ti-brand-linkedin"></i> Zoeken op LinkedIn
+            </a>
+          </div>
         </div>
       ` : '<div class="empty-state"><i class="ti ti-brand-linkedin"></i><p>Geen LinkedIn DM beschikbaar</p></div>'}
       ${(inboxItem?.voicenoteScript || lead.voicenoteScript) ? (() => {
@@ -5859,41 +5926,46 @@ async function renderAgents() {
     </div>
 
     <div class="card" style="margin-top:20px">
-      <div class="card-header">
+      <div class="card-header" style="cursor:pointer;user-select:none" onclick="const b=document.getElementById('memTableBody');const c=document.getElementById('memChevron');const open=b.style.display!=='none';b.style.display=open?'none':'';c.style.transform=open?'':'rotate(90deg)'">
         <h3 class="card-title"><i class="ti ti-brain" style="color:#7c3aed;margin-right:6px"></i> Wat het systeem heeft geleerd</h3>
+        <i class="ti ti-chevron-right" id="memChevron" style="color:var(--text-muted);transition:transform 0.2s"></i>
       </div>
-      <p class="text-secondary" style="font-size:13px;margin-bottom:14px">Agent 4 past scores automatisch aan op basis van historische reply rates per niche + land. Minimaal 5 verstuurde emails nodig voor aanpassing.</p>
-      ${memEntries.length === 0 ? `
-        <div class="empty-state">
-          <i class="ti ti-database-off"></i>
-          <p>Nog geen data — wordt gevuld na de eerste verstuurde emails</p>
+      <div id="memTableBody" style="display:none">
+        <p class="text-secondary" style="font-size:13px;margin-bottom:14px">Agent 4 past scores automatisch aan op basis van historische reply rates per niche + land. Minimaal 5 verstuurde emails nodig voor aanpassing.</p>
+        ${memEntries.length === 0 ? `
+          <div class="empty-state">
+            <i class="ti ti-database-off"></i>
+            <p>Nog geen data — wordt gevuld na de eerste verstuurde emails</p>
+          </div>
+        ` : `
+        <div style="overflow-x:auto">
+          <table class="table">
+            <thead><tr>
+              <th>Niche</th><th>Land</th><th>Leads verstuurd</th><th>Reply rate</th><th>Score aanpassing</th>
+            </tr></thead>
+            <tbody>
+              ${memEntries.map(m => {
+                const cappedRate = Math.min(100, m.replyRate || 0);
+                const tooFewData = m.sent < 5;
+                let adj = '—', adjClass = 'text-secondary';
+                if (!tooFewData) {
+                  if (cappedRate > 20) { adj = '+0.5'; adjClass = 'text-success'; }
+                  else if (cappedRate < 5) { adj = '-0.3'; adjClass = 'text-danger'; }
+                  else { adj = '0'; adjClass = ''; }
+                }
+                return `<tr>
+                  <td>${nicheBadge(m.niche)}</td>
+                  <td>${m.country}</td>
+                  <td>${m.sent}</td>
+                  <td>${tooFewData ? `<span class="text-muted" style="font-size:12px">te weinig data</span>` : `${cappedRate}%`}</td>
+                  <td class="${adjClass}" style="font-weight:600">${adj}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
         </div>
-      ` : `
-      <div style="overflow-x:auto">
-        <table class="table">
-          <thead><tr>
-            <th>Niche</th><th>Land</th><th>Leads verstuurd</th><th>Reply rate</th><th>Score aanpassing</th>
-          </tr></thead>
-          <tbody>
-            ${memEntries.map(m => {
-              let adj = '—', adjClass = 'text-secondary';
-              if (m.sent >= 5) {
-                if (m.replyRate > 20) { adj = '+0.5'; adjClass = 'text-success'; }
-                else if (m.replyRate < 5) { adj = '-0.3'; adjClass = 'text-danger'; }
-                else { adj = '0'; adjClass = ''; }
-              }
-              return `<tr>
-                <td>${nicheBadge(m.niche)}</td>
-                <td>${m.country}</td>
-                <td>${m.sent}</td>
-                <td>${m.replyRate}%${m.sent < 5 ? ' <span class="text-muted" style="font-size:11px">(te weinig data)</span>' : ''}</td>
-                <td class="${adjClass}" style="font-weight:600">${adj}</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
+        `}
       </div>
-      `}
     </div>
 
     <div class="card" style="margin-top:16px">
@@ -7192,6 +7264,33 @@ async function loadStatsData(days) {
         </tbody>
       </table>
     </div>
+
+    <!-- Case study info card -->
+    ${(() => {
+      const clients = (state.leads || []).filter(l => l.status === 'client');
+      const caseStudyCount = clients.filter(l => l.caseStudy).length;
+      const earliest = clients.filter(l => !l.caseStudy && l.projectStartedAt)
+        .map(l => { const daysIn = Math.floor((Date.now() - new Date(l.projectStartedAt)) / 86400000); return 30 - daysIn; })
+        .filter(d => d > 0).sort((a,b) => a-b)[0];
+      return `
+        <div class="card" style="margin-top:24px">
+          <div class="card-header">
+            <h3 class="card-title"><i class="ti ti-file-text" style="color:var(--accent);margin-right:6px"></i>Case studies</h3>
+            <span class="badge badge-${caseStudyCount > 0 ? 'green' : 'gray'}">${caseStudyCount} gegenereerd</span>
+          </div>
+          <div style="font-size:13px;color:var(--text-secondary);line-height:1.7;margin-bottom:12px">
+            Case studies worden automatisch gegenereerd 30 dagen nadat een klant actief is. Het systeem maakt een geanonimiseerd succesverhaal op basis van de dienst en resultaten. Dit verschijnt automatisch op je publieke website onder <em>Resultaten</em> als social proof.
+          </div>
+          <div style="font-size:12px;color:var(--text-muted)">
+            <i class="ti ti-clock"></i>
+            ${caseStudyCount === 0
+              ? earliest !== undefined
+                ? `Eerste case study mogelijk over ${earliest} dag${earliest !== 1 ? 'en' : ''}.`
+                : 'Nog geen klanten actief lang genoeg voor een case study.'
+              : `${caseStudyCount} case stud${caseStudyCount !== 1 ? 'ies' : 'y'} beschikbaar — zichtbaar op de publieke website wanneer gepubliceerd.`}
+          </div>
+        </div>`;
+    })()}
   `;
 
   // Chart colours

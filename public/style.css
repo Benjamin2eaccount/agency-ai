@@ -2381,6 +2381,10 @@ input[type="checkbox"].lc2-checkbox:checked::after {
 .leads-row:hover td { background: var(--bg); cursor: pointer; }
 .leads-row.row-active td { background: var(--accent-light); }
 
+.row-actions-cell { white-space: nowrap; }
+.row-actions { display: flex; gap: 2px; align-items: center; opacity: 0; transition: opacity 0.15s; }
+.leads-row:hover .row-actions { opacity: 1; }
+
 .table-email { font-size: 11px; color: var(--text-muted); }
 
 /* ── Pipeline summary bar ──────────────────────────────────────────────────── */
