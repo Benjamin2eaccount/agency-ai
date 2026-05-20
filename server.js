@@ -3007,15 +3007,63 @@ app.post('/api/leads/:id/agent-chat', requireAdmin, async (req, res) => {
 
   try {
     if (action === 'build') {
-      const buildPrompt = `Je bent een AI-agent die deliverables bouwt voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).
-Probleem type: ${problemType || 'algemeen'}
-Instructie: ${message}
+      const isBooking = (problemType || '').toLowerCase().match(/boek|reserv|afspra|agenda|appointment/);
+      const buildPrompt = isBooking
+        ? `Build a complete, beautiful, fully functional HTML booking page for ${lead.companyName}.
 
-Genereer een complete, werkende, standalone HTML pagina die dit probleem oplost.
-Gebruik inline CSS en vanilla JS. Geen externe dependencies.
-Geef ALLEEN de HTML terug — geen uitleg, geen markdown, geen code blocks.`;
+CRITICAL: Return ONLY raw HTML starting with <!DOCTYPE html>. No explanation, no markdown, no backticks, no code fences. Just pure HTML.
 
-      const html = await aiCall(buildPrompt);
+Requirements:
+- Complete standalone HTML file
+- All CSS inside a <style> tag in <head>
+- All JavaScript inside a <script> tag before </body>
+- No external dependencies except optionally Google Fonts
+- Mobile responsive layout
+- Professional design: white background, clean typography, indigo accent color #6366f1
+
+The page must include:
+${message}
+
+Company: ${lead.companyName}
+Location: ${lead.location || ''}
+Niche: ${lead.niche || ''}`
+        : `Build a complete, fully functional standalone HTML page for ${lead.companyName}.
+
+CRITICAL: Return ONLY raw HTML starting with <!DOCTYPE html>. No explanation, no markdown, no backticks, no code fences. Just pure HTML.
+
+Requirements:
+- Complete standalone HTML file
+- All CSS inside a <style> tag
+- All JS inside a <script> tag
+- No external dependencies
+- Mobile responsive
+- Professional design with white background and indigo accent #6366f1
+
+Task: ${message}
+Company: ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''})`;
+
+      let html = await aiCall(buildPrompt);
+
+      console.log('[Build] HTML length:', html?.length);
+      console.log('[Build] HTML start:', html?.substring(0, 300));
+
+      // Strip markdown code fences if Claude wrapped the response
+      html = (html || '')
+        .replace(/^```html\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
+
+      // If still not valid HTML, try extracting it from the response
+      if (!html.startsWith('<!DOCTYPE') && !html.startsWith('<html') && !html.startsWith('<HTML')) {
+        const match = html.match(/<!DOCTYPE[\s\S]*<\/html>/i);
+        if (match) {
+          html = match[0];
+        } else {
+          console.error('[Build] No valid HTML found in response. Raw response:', html.substring(0, 500));
+          throw new Error('Claude returned no valid HTML. Check API response in logs.');
+        }
+      }
 
       const companySlug = lead.companyName
         .toLowerCase()
