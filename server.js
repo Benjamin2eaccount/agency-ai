@@ -3017,20 +3017,41 @@ Geef ALLEEN de HTML terug — geen uitleg, geen markdown, geen code blocks.`;
 
       const html = await aiCall(buildPrompt);
 
-      const siteSlug = lead.generatedSite?.siteSlug
-        || (lead.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + req.params.id.slice(-4));
-      const sitesDir = path.join(__dirname, 'public', 'sites', siteSlug);
-      if (!fs.existsSync(sitesDir)) fs.mkdirSync(sitesDir, { recursive: true });
-      const filename = `${(problemType || 'tool').replace(/[^a-z0-9]/gi, '-')}-${Date.now()}.html`;
-      fs.writeFileSync(path.join(sitesDir, filename), html, 'utf8');
-      const url = `${BASE_URL}/sites/${siteSlug}/${filename}`;
+      const companySlug = lead.companyName
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+      // Map problem type to a short clean keyword
+      const typeKeywords = {
+        booking: ['boek', 'reserv', 'afspra', 'agenda', 'appointment'],
+        chatbot: ['chat', 'bot', 'faq', 'vragen', 'support'],
+        website: ['website', 'site', 'pagina', 'webshop', 'shop'],
+        forms: ['formulier', 'form', 'intake', 'aanvraag'],
+        social: ['social', 'instagram', 'facebook', 'linkedin'],
+        review: ['review', 'beoorde', 'google'],
+        email: ['email', 'mail', 'nieuwsbrief', 'newsletter'],
+      };
+      const probLower = (problemType || '').toLowerCase();
+      let typeSlug = 'tool';
+      for (const [key, keywords] of Object.entries(typeKeywords)) {
+        if (keywords.some(k => probLower.includes(k))) { typeSlug = key; break; }
+      }
+      const sitesDir = path.join(__dirname, 'public', 'sites', companySlug);
+      fs.mkdirSync(sitesDir, { recursive: true });
+      const filePath = path.join(sitesDir, `${typeSlug}.html`);
+      fs.writeFileSync(filePath, html, 'utf8');
+      console.log('[Build] Saved to:', filePath);
+      console.log('[Build] File exists:', fs.existsSync(filePath));
+      const filename = `${typeSlug}.html`;
+      const url = `${BASE_URL}/sites/${companySlug}/${filename}`;
 
       if (!leads[idx].agentBuilds) leads[idx].agentBuilds = [];
-      leads[idx].agentBuilds.push({ type: problemType, url, filename, builtAt: new Date().toISOString() });
-      addLeadHistory(leads, req.params.id, { event: 'agentBuild', label: `Agent bouwde: ${problemType || 'deliverable'}` });
+      leads[idx].agentBuilds.push({ type: typeSlug, url, filename, builtAt: new Date().toISOString() });
+      addLeadHistory(leads, req.params.id, { event: 'agentBuild', label: `Agent bouwde: ${typeSlug}` });
       writeJSON('leads.json', leads);
 
-      return res.json({ built: true, url, response: `✓ Gebouwd! Beschikbaar op: ${url}` });
+      return res.json({ built: true, url, typeSlug, companySlug, response: `✓ Gebouwd! Beschikbaar op: ${url}` });
     }
 
     // action === 'chat': generate a plan and ask for confirmation

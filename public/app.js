@@ -3363,9 +3363,21 @@ window.selectProblemCard = function(idx, leadId) {
   const historyEl = document.getElementById('agentChatHistory');
   if (historyEl) {
     const msgs = window._agentChats[leadId][idx] || [];
-    historyEl.innerHTML = msgs.map(m =>
-      `<div class="agent-msg ${m.role}">${esc(m.text)}</div>`
-    ).join('');
+    historyEl.innerHTML = msgs.map(m => {
+      if (m.builtUrl) {
+        return `<div class="agent-msg ai" style="padding:0;background:none;border:none">
+          <div style="background:var(--success-light);border:1px solid var(--success);border-radius:10px;padding:12px 14px">
+            <div style="font-size:13px;font-weight:700;color:var(--success);margin-bottom:6px"><i class="ti ti-check"></i> Gebouwd!</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Bekijk op:</div>
+            <a href="${m.builtUrl}" target="_blank" style="font-size:12px;color:var(--accent);word-break:break-all;display:block;margin-bottom:10px">${m.builtUrl}</a>
+            <button class="btn btn-primary btn-sm" style="font-size:12px" onclick="navigator.clipboard.writeText('${m.builtUrl}').then(()=>toast('URL gekopieerd!','success'))">
+              <i class="ti ti-share"></i> Deel met klant
+            </button>
+          </div>
+        </div>`;
+      }
+      return `<div class="agent-msg ${m.role}">${esc(m.text)}</div>`;
+    }).join('');
     historyEl.scrollTop = historyEl.scrollHeight;
   }
 };
@@ -3416,7 +3428,8 @@ async function sendAgentChat(leadId) {
       window._agentChats[leadId][idx].push({ role: 'ai', text: data.response });
     }
     if (data?.built && data?.url) {
-      window._agentChats[leadId][idx].push({ role: 'ai', text: `✓ Gebouwd! Beschikbaar op: ${data.url}` });
+      const builtHtml = `✓ Gebouwd!\n\nBekijk op: ${data.url}\n\n__BUILT_URL__:${data.url}`;
+      window._agentChats[leadId][idx].push({ role: 'ai', text: builtHtml, builtUrl: data.url });
       // Refresh lead data
       const updatedLeads = await apiJSON('/api/leads');
       if (updatedLeads) state.leads = updatedLeads;
@@ -3431,9 +3444,21 @@ async function sendAgentChat(leadId) {
 
   // Re-render history
   if (historyEl) {
-    historyEl.innerHTML = window._agentChats[leadId][idx].map(m =>
-      `<div class="agent-msg ${m.role}">${esc(m.text)}</div>`
-    ).join('');
+    historyEl.innerHTML = window._agentChats[leadId][idx].map(m => {
+      if (m.builtUrl) {
+        return `<div class="agent-msg ai" style="padding:0;background:none;border:none">
+          <div style="background:var(--success-light);border:1px solid var(--success);border-radius:10px;padding:12px 14px">
+            <div style="font-size:13px;font-weight:700;color:var(--success);margin-bottom:6px"><i class="ti ti-check"></i> Gebouwd!</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Bekijk op:</div>
+            <a href="${m.builtUrl}" target="_blank" style="font-size:12px;color:var(--accent);word-break:break-all;display:block;margin-bottom:10px">${m.builtUrl}</a>
+            <button class="btn btn-primary btn-sm" style="font-size:12px" onclick="navigator.clipboard.writeText('${m.builtUrl}').then(()=>toast('URL gekopieerd!','success'))">
+              <i class="ti ti-share"></i> Deel met klant
+            </button>
+          </div>
+        </div>`;
+      }
+      return `<div class="agent-msg ${m.role}">${esc(m.text)}</div>`;
+    }).join('');
     historyEl.scrollTop = historyEl.scrollHeight;
   }
 }
