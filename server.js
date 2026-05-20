@@ -3185,7 +3185,155 @@ app.post('/api/leads/:id/portal/read', (req, res) => {
   res.json({ ok: true });
 });
 
-// â"€â"€â"€ Inbox â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ── Agent deliverables builder ────────────────────────────────────────────────
+const CODE_KEYWORDS = ['website', 'booking', 'boek', 'chatbot', 'reserv', 'webshop', 'landing', 'pagina', 'formulier', 'faq bot', 'chatbot'];
+function isCodeService(name) {
+  const n = (name || '').toLowerCase();
+  return CODE_KEYWORDS.some(k => n.includes(k));
+}
+
+app.post('/api/leads/:id/run-agents', requireAdmin, async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const send = (idx, label, status, extra = {}) =>
+    res.write(`data: ${JSON.stringify({ idx, label, status, ...extra })}\n\n`);
+
+  try {
+    const leads    = readJSON('leads.json') || [];
+    const settings = readJSON('settings.json') || {};
+    const li       = leads.findIndex(l => l.id === req.params.id);
+    if (li === -1) { send(-1, 'Lead niet gevonden', 'error'); res.end(); return; }
+    const lead = leads[li];
+
+    const services = lead.services || [];
+    if (!services.length) { send(-1, 'Geen diensten ingesteld op dit project', 'error'); res.end(); return; }
+
+    const intakeContext = lead.intakeAnswers
+      ? '\n\nKlant intake antwoorden:\n' + Object.entries(lead.intakeAnswers).map(([k,v]) => `- ${k}: ${v}`).join('\n')
+      : '';
+    const BASE = process.env.BASE_URL || 'http://localhost:3000';
+    const companySlug = (lead.companyName || 'bedrijf')
+      .toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+
+    const deliverables = [];
+
+    for (let i = 0; i < services.length; i++) {
+      const svc = services[i];
+      send(i, svc.name, 'running', { total: services.length });
+
+      try {
+        if (isCodeService(svc.name)) {
+          // Build HTML page
+          const typeSlug = svc.name.toLowerCase().replace(/[^a-z0-9]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'') || 'page';
+          const prompt = `Build a complete HTML page for ${lead.companyName}: ${svc.name}.
+Return ONLY raw HTML starting with <!DOCTYPE html>. No markdown, no backticks, no explanation.
+Includes all features for: ${svc.name}.${intakeContext}
+Style: white bg, indigo #6366f1 accent, Plus Jakarta Sans from Google Fonts, mobile responsive.
+All CSS in <style> in <head>. All JS in <script> before </body>.`;
+
+          let html = await aiCallBuild(prompt);
+          html = html.replace(/^```html\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/i,'').trim();
+          if (!html.startsWith('<!DOCTYPE') && !html.startsWith('<html')) {
+            const m = html.match(/<!DOCTYPE[\s\S]*<\/html>/i);
+            if (m) html = m[0]; else throw new Error('Geen geldige HTML gegenereerd');
+          }
+
+          // Save file
+          const sitesDir = path.join(__dirname, 'public', 'sites', companySlug);
+          fs.mkdirSync(sitesDir, { recursive: true });
+          const filename = `${typeSlug}.html`;
+          fs.writeFileSync(path.join(sitesDir, filename), html, 'utf8');
+          const url = `${BASE}/sites/${companySlug}/${filename}`;
+
+          // Auto-generate todo list for client
+          const todoText = await aiCall(`Voor het volgende project, maak een korte stap-voor-stap lijst voor de klant wat ze zelf moeten doen om dit te activeren.
+Gebouwde pagina: ${svc.name} voor ${lead.companyName}.
+URL: ${url}
+Geef max 5 stappen in het Nederlands. Geef ALLEEN de stappen, geen uitleg eromheen.`).catch(() => '');
+
+          deliverables.push({
+            id: Date.now().toString(36) + i,
+            service: svc.name,
+            type: 'code',
+            status: 'wacht_op_goedkeuring',
+            html,
+            url,
+            todoText,
+            builtAt: new Date().toISOString()
+          });
+          send(i, svc.name, 'done', { total: services.length, type: 'code', url });
+        } else {
+          // Manual work — generate instructions
+          const instructions = await aiCall(`Maak een gedetailleerde stap-voor-stap instructiegids voor de admin om de dienst "${svc.name}" uit te voeren voor de klant ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).${intakeContext}
+
+Schrijf de instructies voor de ADMIN (niet voor de klant). Max 400 woorden, in het Nederlands.
+Wees concreet: welke tools, welke stappen, welke instellingen.`);
+
+          deliverables.push({
+            id: Date.now().toString(36) + i,
+            service: svc.name,
+            type: 'manual',
+            status: 'wacht_op_goedkeuring',
+            instructions,
+            builtAt: new Date().toISOString()
+          });
+          send(i, svc.name, 'done', { total: services.length, type: 'manual' });
+        }
+      } catch (err) {
+        deliverables.push({
+          id: Date.now().toString(36) + i,
+          service: svc.name,
+          type: 'unknown',
+          status: 'error',
+          error: err.message,
+          builtAt: new Date().toISOString()
+        });
+        send(i, svc.name, 'error', { total: services.length, error: err.message });
+      }
+    }
+
+    leads[li].agentDeliverables = deliverables;
+    leads[li].agentsRanAt = new Date().toISOString();
+    writeJSON('leads.json', leads);
+    addLeadHistory(leads, req.params.id, { event: 'agentsRan', label: `Agents bouwden ${deliverables.length} leveringen` });
+
+    send(-1, 'Klaar', 'complete', { deliverables });
+  } catch (err) {
+    send(-1, err.message, 'error');
+  }
+  res.end();
+});
+
+app.post('/api/leads/:id/deliverables/:dIdx/approve', requireAdmin, async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const settings = readJSON('settings.json') || {};
+  const li = leads.findIndex(l => l.id === req.params.id);
+  if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const dIdx = parseInt(req.params.dIdx);
+  const d = (leads[li].agentDeliverables || [])[dIdx];
+  if (!d) return res.status(404).json({ error: 'Levering niet gevonden' });
+
+  leads[li].agentDeliverables[dIdx].status = 'approved';
+  leads[li].agentDeliverables[dIdx].approvedAt = new Date().toISOString();
+
+  // Email client
+  const lead = leads[li];
+  if (isGmailReady(settings) && lead.contactEmail) {
+    const subject = `Uw ${d.service} is klaar!`;
+    const body = `Beste ${lead.companyName},\n\nGoed nieuws! Uw ${d.service} is klaar.\n\n${d.url ? `Bekijk hier: ${d.url}\n\n` : ''}Log in op uw klantportaal voor alle details.\n\nMet vriendelijke groet,\n${settings.myName || 'Het team'} — ${settings.agencyName || 'Agency AI'}`;
+    await sendEmail({ to: lead.contactEmail, subject, body, settings }).catch(e => console.warn('[Approve] Email fout:', e.message));
+  }
+
+  addLeadHistory(leads, req.params.id, { event: 'deliverableApproved', label: `Levering goedgekeurd: ${d.service}` });
+  addNotification('run_complete', `Levering goedgekeurd: ${d.service}`, `${lead.companyName} — ${d.service}`, lead.id, `project:${lead.id}`);
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+// ── Inbox ────────────────────────────────────────────────────────────────────
 
 app.get('/api/inbox', (req, res) => {
   const inbox = readJSON('inbox.json') || [];

@@ -2701,6 +2701,22 @@ async function renderProjectPage() {
   // ── Tab: Overzicht ─────────────────────────────────────────────────────────
   const tabOverzicht = `
     <div class="project-tab-content" data-tab-content="overzicht" style="${activeTab !== 'overzicht' ? 'display:none' : ''}">
+
+      ${lead.intakeSubmittedAt ? `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border:1px solid var(--accent);border-radius:10px;background:#eff6ff;margin-bottom:18px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:10px">
+          <i class="ti ti-clipboard-check" style="font-size:20px;color:var(--accent);flex-shrink:0"></i>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--accent)">Intake ingevuld door ${esc(lead.companyName)}</div>
+            <div style="font-size:11px;color:var(--text-secondary)">${lead.agentsRanAt ? `Agents liepen op ${formatDate(lead.agentsRanAt)}` : 'Agents hebben de intake nog niet verwerkt'}</div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="runAgentsForLead('${esc(lead.id)}')">
+          <i class="ti ti-robot"></i> ${lead.agentsRanAt ? 'Agents opnieuw laten bouwen' : 'Laat agents het lezen en bouwen →'}
+        </button>
+      </div>
+      ` : ''}
+
       <div class="project-info-grid">
         <div class="project-info-item">
           <div class="project-info-label">Email</div>
@@ -3132,6 +3148,84 @@ async function renderProjectPage() {
       </div>`;
   }
 
+  // ── Tab: Agents aan het werk ─────────────────────────────────────────────────
+  function buildAgentsTab() {
+    const deliverables = lead.agentDeliverables || [];
+    const running = window._agentsRunning && window._agentsRunning[lead.id];
+
+    const emptyState = !deliverables.length && !running ? `
+      <div style="text-align:center;padding:40px 20px">
+        <i class="ti ti-robot" style="font-size:40px;color:var(--text-muted);display:block;margin-bottom:12px"></i>
+        <div style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">Agents nog niet gestart</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px">${lead.intakeSubmittedAt ? 'Klik op "Laat agents het lezen en bouwen" in het Overzicht.' : 'Wacht tot de klant de intake heeft ingevuld.'}</div>
+        ${lead.intakeSubmittedAt ? `<button class="btn btn-primary" onclick="runAgentsForLead('${esc(lead.id)}')"><i class="ti ti-robot"></i> Agents starten</button>` : ''}
+      </div>` : '';
+
+    const progressSection = running ? `
+      <div id="agentsProgressCard-${lead.id}" style="border:1px solid var(--accent);border-radius:10px;padding:16px;margin-bottom:16px;background:#eff6ff">
+        <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:10px"><i class="ti ti-loader-2 spin"></i> Agents aan het werk...</div>
+        <div id="agentsProgressList-${lead.id}"></div>
+      </div>` : '';
+
+    const deliverableCards = deliverables.map((d, i) => {
+      const statusBadge = d.status === 'approved'
+        ? `<span class="badge badge-green"><i class="ti ti-check"></i> Goedgekeurd</span>`
+        : d.status === 'error'
+          ? `<span class="badge badge-red"><i class="ti ti-x"></i> Fout</span>`
+          : `<span class="badge badge-warning"><i class="ti ti-clock"></i> Wacht op goedkeuring</span>`;
+
+      const preview = d.type === 'code' && d.html
+        ? `<div style="margin:12px 0">
+            <iframe srcdoc="${esc(d.html)}" sandbox="allow-scripts allow-same-origin" style="width:100%;height:360px;border:1px solid var(--border);border-radius:8px"></iframe>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+            <a href="${esc(d.url)}" target="_blank" class="btn btn-ghost btn-sm"><i class="ti ti-external-link"></i> Live link</a>
+            <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText('${esc(d.url)}').then(()=>toast('URL gekopieerd!','success'))"><i class="ti ti-copy"></i> Deel met klant</button>
+          </div>
+          ${d.todoText ? `<div style="padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;margin-bottom:10px">
+            <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">WAT DE KLANT NOG MOET DOEN</div>
+            <div style="font-size:13px;white-space:pre-line;color:var(--text)">${esc(d.todoText)}</div>
+          </div>` : ''}`
+        : d.type === 'manual' && d.instructions
+          ? `<div style="padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;margin:10px 0">
+              <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">INSTRUCTIES VOOR ADMIN</div>
+              <div style="font-size:13px;white-space:pre-line;line-height:1.6;color:var(--text)">${esc(d.instructions)}</div>
+            </div>`
+          : d.status === 'error'
+            ? `<div style="padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin:8px 0;font-size:13px;color:#dc2626">${esc(d.error||'Onbekende fout')}</div>`
+            : '';
+
+      const actions = d.status !== 'approved' && d.status !== 'error' ? `
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${isAdmin() ? `<button class="btn btn-primary btn-sm" onclick="approveDeliverable('${esc(lead.id)}',${i})"><i class="ti ti-check"></i> Goedkeuren &amp; versturen naar klant</button>` : ''}
+        </div>` : '';
+
+      return `<div style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px;background:var(--surface)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+          <div style="font-size:14px;font-weight:700">${esc(d.service)}</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:11px;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:1px 7px">${d.type === 'code' ? '💻 Code' : '📋 Handmatig'}</span>
+            ${statusBadge}
+          </div>
+        </div>
+        ${preview}
+        ${actions}
+        ${d.approvedAt ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">Goedgekeurd op ${formatDate(d.approvedAt)}</div>` : ''}
+      </div>`;
+    }).join('');
+
+    return `
+      <div class="project-tab-content" data-tab-content="agents" style="${activeTab !== 'agents' ? 'display:none' : ''}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+          <div class="project-section-title" style="margin:0"><i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>Agents aan het werk</div>
+          ${lead.intakeSubmittedAt && isAdmin() ? `<button class="btn btn-ghost btn-sm" onclick="runAgentsForLead('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Opnieuw uitvoeren</button>` : ''}
+        </div>
+        ${emptyState}
+        ${progressSection}
+        ${deliverableCards}
+      </div>`;
+  }
+
   // ── Tab: Website ────────────────────────────────────────────────────────────
   function buildWebsiteTabProject() {
     const site = lead.generatedSite;
@@ -3319,6 +3413,7 @@ async function renderProjectPage() {
           <button class="project-tab${activeTab==='portaal'?' active':''}" data-tab="portaal" onclick="switchProjectTab('portaal')">Klantportaal</button>
           <button class="project-tab${activeTab==='geschiedenis'?' active':''}" data-tab="geschiedenis" onclick="switchProjectTab('geschiedenis')">Geschiedenis</button>
           <button class="project-tab${activeTab==='notities'?' active':''}" data-tab="notities" onclick="switchProjectTab('notities')">Notities</button>
+          ${lead.agentDeliverables?.length || lead.intakeSubmittedAt ? `<button class="project-tab${activeTab==='agents'?' active':''}" data-tab="agents" onclick="switchProjectTab('agents')" style="${lead.agentDeliverables?.some(d=>d.status==='wacht_op_goedkeuring') ? 'color:var(--warning);font-weight:700' : ''}">${lead.agentDeliverables?.some(d=>d.status==='wacht_op_goedkeuring') ? '<i class="ti ti-clock" style="margin-right:3px;color:var(--warning)"></i>' : '<i class="ti ti-robot" style="margin-right:3px"></i>'}Agents</button>` : ''}
         </div>
       </div>
       <div class="project-content">
@@ -3334,6 +3429,7 @@ async function renderProjectPage() {
         ${tabPortaal}
         ${tabGeschiedenis}
         ${tabNotities}
+        ${buildAgentsTab()}
       </div>
     </div>`;
 
@@ -3476,6 +3572,95 @@ async function sendAgentChat(leadId) {
   saveAgentChats(leadId);
   renderAgentChatHistory(leadId, idx);
 }
+
+window.runAgentsForLead = async function(leadId) {
+  window._agentsRunning = window._agentsRunning || {};
+  window._agentsRunning[leadId] = true;
+
+  // Switch to agents tab + re-render to show progress card
+  await renderProjectPage();
+  switchProjectTab('agents');
+
+  const progressList = document.getElementById(`agentsProgressList-${leadId}`);
+  const lead = state.leads.find(l => l.id === leadId);
+
+  try {
+    const res = await fetch(`/api/leads/${leadId}/run-agents`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('agencyToken')}` }
+    });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    const pump = () => reader.read().then(({ done, value }) => {
+      if (done) {
+        window._agentsRunning[leadId] = false;
+        // Re-render page to show final deliverables
+        renderProjectPage().then(() => switchProjectTab('agents'));
+        return;
+      }
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      parts.forEach(part => {
+        const line = part.trim();
+        if (!line.startsWith('data: ')) return;
+        try {
+          const d = JSON.parse(line.slice(6));
+          if (d.status === 'complete') {
+            window._agentsRunning[leadId] = false;
+            // Merge deliverables into state
+            if (lead) lead.agentDeliverables = d.deliverables || [];
+            renderProjectPage().then(() => switchProjectTab('agents'));
+            return;
+          }
+          if (d.status === 'error' && d.idx === -1) {
+            window._agentsRunning[leadId] = false;
+            toast(d.label || 'Fout bij agents', 'error');
+            return;
+          }
+          // Update progress list
+          if (progressList) {
+            const rowId = `agentRow-${leadId}-${d.idx}`;
+            let row = document.getElementById(rowId);
+            if (!row) {
+              row = document.createElement('div');
+              row.id = rowId;
+              row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px';
+              progressList.appendChild(row);
+            }
+            const icon = d.status === 'running' ? '<i class="ti ti-loader-2 spin" style="color:var(--accent)"></i>'
+              : d.status === 'done' ? '<i class="ti ti-check" style="color:var(--success)"></i>'
+              : '<i class="ti ti-x" style="color:var(--danger)"></i>';
+            row.innerHTML = `${icon} <span>${esc(d.label)}</span>`;
+          }
+        } catch {}
+      });
+      pump();
+    }).catch(err => {
+      window._agentsRunning[leadId] = false;
+      toast('Verbindingsfout: ' + err.message, 'error');
+    });
+    pump();
+  } catch (err) {
+    window._agentsRunning[leadId] = false;
+    toast('Fout: ' + err.message, 'error');
+  }
+};
+
+window.approveDeliverable = async function(leadId, dIdx) {
+  const res = await api(`/api/leads/${leadId}/deliverables/${dIdx}/approve`, { method: 'POST' });
+  if (res?.ok) {
+    toast('Levering goedgekeurd en klant genotificeerd!', 'success');
+    const freshLeads = await apiJSON('/api/leads');
+    if (freshLeads) state.leads = freshLeads;
+    renderProjectPage().then(() => switchProjectTab('agents'));
+  } else {
+    const d = await res?.json();
+    toast(d?.error || 'Goedkeuren mislukt', 'error');
+  }
+};
 
 async function toggleProjectTask(leadId, taskId, checked) {
   const newStatus = checked ? 'klaar' : 'todo';
