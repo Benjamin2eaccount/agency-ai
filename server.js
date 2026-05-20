@@ -3412,7 +3412,9 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
   // AI reply items: send our response email back to the business
   if (item.type === 'ai_reply') {
     const draft   = req.body?.aiDraft || item.aiDraft || '';
-    const subject = item.subject || `Re: ${item.companyName}`;
+    const replyLead = (readJSON('leads.json') || []).find(l => l.id === item.leadId);
+    const origSubj = item.subject || (replyLead ? (replyLead.email?.subject || replyLead.emailA?.subject || (Array.isArray(replyLead.subjectOptions) ? replyLead.subjectOptions[0] : null) || replyLead.emailSubject) : null) || item.companyName;
+    const subject = origSubj.startsWith('Re:') ? origSubj : `Re: ${origSubj}`;
     try {
       await sendEmail({ to: item.contactEmail, subject, body: draft, settings });
       inbox[idx].status       = 'sent';
@@ -5876,7 +5878,7 @@ function extractReplyText(rawBody) {
 async function generateAndQueueAiReply(lead, replyText, settings) {
   const myName     = settings.myName     || 'Admin';
   const agencyName = settings.agencyName || 'Agency AI';
-  const origSubject = lead.email?.subject || 'onze email';
+  const origSubject = lead.email?.subject || lead.emailA?.subject || (Array.isArray(lead.subjectOptions) ? lead.subjectOptions[0] : null) || lead.emailSubject || 'onze email';
   const services    = (settings.services || DEFAULT_SERVICES).slice(0, 4).map(s => s.name).join(', ');
   const calendlyCta = settings.calendlyUrl ? `\nCalendly: ${settings.calendlyUrl}` : '';
 
