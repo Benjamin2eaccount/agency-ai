@@ -890,7 +890,7 @@ function buildInboxCard(item) {
     : item.type === 'referral'
     ? `<span class="badge badge-purple">${typeLabel}</span>`
     : `<span class="badge badge-blue">${typeLabel}</span>`;
-  const langFlag = item.language === 'nl' ? '🇳🇱' : item.language === 'en' ? '🇬🇧' : '';
+  const langFlag = item.language === 'nl' ? '🇳🇱' : item.language === 'en' ? '🇬🇧' : item.language === 'de' ? '🇩🇪' : item.language === 'fr' ? '🇫🇷' : item.language === 'it' ? '🇮🇹' : '';
 
   // Email duplicate check: flag if this email already received outreach on another lead
   const emailAlreadySent = item.contactEmail && (state.leads || []).some(l =>
@@ -6426,7 +6426,7 @@ async function renderAgents() {
     { num: 2, color: '#7c3aed', icon: 'ti-world',           name: 'Website Checker',    role: 'Analyseert website technisch',           desc: 'Bezoekt de website van elk bedrijf, meet laadtijd, controleert HTTPS, mobile viewport, aanwezigheid van CTA en boekingssysteem. Genereert concrete verbeterpunten.', s1l: 'Gecheckt', s2l: 'Problemen' },
     { num: 3, color: '#16a34a', icon: 'ti-brand-instagram', name: 'Social Analyzer',    role: 'Analyseert social media',               desc: 'Schat engagement rate, postfrequentie en groeipotentieel in. Genereert een gepersonaliseerde email-opener gebaseerd op echte observaties over het account.', s1l: 'Geanalyseerd', s2l: 'Openers' },
     { num: 4, color: '#0891b2', icon: 'ti-chart-bar',       name: 'Opportunity Scorer', role: 'Score 1–10 + aanbevolen diensten',      desc: 'Combineert website- en social data om een kwaliteitsscore te berekenen. Koppelt de beste diensten aan het bedrijf en schat de maandelijkse pipeline waarde.', s1l: 'Gescoord', s2l: 'Gem. score' },
-    { num: 5, color: '#dc2626', icon: 'ti-mail',            name: 'Email Writer',       role: 'Schrijft gepersonaliseerde koude email', desc: 'Schrijft een menselijke koude email in de taal van het bedrijf (NL of EN). Max 120 woorden, informele toon, begint met de gepersonaliseerde opener van Agent 3.', s1l: 'Geschreven', s2l: 'Verstuurd' },
+    { num: 5, color: '#dc2626', icon: 'ti-mail',            name: 'Email Writer',       role: 'Schrijft gepersonaliseerde koude email', desc: 'Schrijft een menselijke koude email in de taal van het bedrijf (NL, EN, DE, FR of IT). Max 120 woorden, informele toon, begint met de gepersonaliseerde opener van Agent 3.', s1l: 'Geschreven', s2l: 'Verstuurd' },
     { num: 6, color: '#0284c7', icon: 'ti-brand-linkedin',  name: 'LinkedIn DM Writer', role: 'Schrijft LinkedIn DM (max 280 tekens)',  desc: 'Schrijft een korte, directe LinkedIn DM in de taal van het bedrijf. Max 280 tekens, vriendelijk en specifiek. Klaar om te plakken in LinkedIn.', s1l: "DM's geschreven", s2l: 'Verstuurd' },
     { num: 7, color: '#d97706', icon: 'ti-chart-dots',      name: 'Competitor Analyzer',role: 'Analyseert lokale concurrenten',         desc: 'Genereert 2-3 realistische concurrenten voor het bedrijf in hun stad of regio. Analyseert hun voordelen (ads, website, reviews). Agent 5 gebruikt dit om een concurrentie-hook toe te voegen aan de email.', s1l: 'Geanalyseerd', s2l: 'Concurrenten' }
   ];
@@ -6531,7 +6531,7 @@ async function renderAgents() {
         <div style="overflow-x:auto">
           <table class="table">
             <thead><tr>
-              <th>Niche</th><th>Land</th><th>Leads verstuurd</th><th>Reply rate</th><th>Score aanpassing</th>
+              <th>Niche</th><th>Land</th><th>Leads verstuurd</th><th>Reply rate</th><th>Score aanpassing</th><th>A/B auto</th>
             </tr></thead>
             <tbody>
               ${memEntries.map(m => {
@@ -6543,12 +6543,17 @@ async function renderAgents() {
                   else if (cappedRate < 5) { adj = '-0.3'; adjClass = 'text-danger'; }
                   else { adj = '0'; adjClass = ''; }
                 }
+                const abKey = `${(m.niche||'unknown').toLowerCase().replace(/[^a-z]/g,'')}_${(m.country||'unknown').toLowerCase().replace(/[^a-z]/g,'')}`;
+                const abCell = m.autoPickVersion
+                  ? `<span style="color:var(--accent);font-weight:600">Versie ${m.autoPickVersion} wint</span> <button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:11px;margin-left:4px" onclick="resetAbMemory('${abKey}')">Reset</button>`
+                  : `<span class="text-muted" style="font-size:12px">—</span>`;
                 return `<tr>
                   <td>${nicheBadge(m.niche)}</td>
                   <td>${m.country}</td>
                   <td>${m.sent}</td>
                   <td>${tooFewData ? `<span class="text-muted" style="font-size:12px">te weinig data</span>` : `${cappedRate}%`}</td>
                   <td class="${adjClass}" style="font-weight:600">${adj}</td>
+                  <td>${abCell}</td>
                 </tr>`;
               }).join('')}
             </tbody>
@@ -7448,6 +7453,7 @@ async function loadBlacklist() {
         <span style="font-size:13px;font-weight:600">${esc(e.value)}</span>
         <span style="font-size:11px;color:#9ca3af;margin-left:8px">${e.type}</span>
         ${e.reason ? `<span style="font-size:11px;color:#9ca3af;margin-left:6px">— ${esc(e.reason)}</span>` : ''}
+        ${e.autoAdded ? `<span style="font-size:10px;color:#9ca3af;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;margin-left:6px">Automatisch</span>` : ''}
       </div>
       <button class="btn btn-ghost btn-sm" style="color:#ef4444" onclick="removeBlacklist('${e.id}')"><i class="ti ti-x"></i></button>
     </div>`).join('');
@@ -7456,6 +7462,13 @@ async function loadBlacklist() {
 async function removeBlacklist(id) {
   const res = await api('/api/blacklist/' + id, { method: 'DELETE' });
   if (res.ok) { toast('Verwijderd', 'success'); loadBlacklist(); }
+}
+
+async function resetAbMemory(key) {
+  if (!confirm('A/B data resetten voor deze niche? De auto-pick wordt gewist en beide versies worden weer afgewisseld.')) return;
+  const res = await api(`/api/memory/${encodeURIComponent(key)}/reset-ab`, { method: 'POST' });
+  if (res.ok) { toast('A/B reset — beide versies worden weer afgewisseld', 'success'); setView('agents'); }
+  else toast('Reset mislukt', 'error');
 }
 
 async function addBlacklistEntry() {

@@ -343,6 +343,16 @@ function isBlacklisted(lead) {
   return false;
 }
 
+function autoBlacklist(domain, reason) {
+  if (!domain || domain.length < 3) return;
+  const list = readJSON('blacklist.json') || [];
+  if (list.some(e => e.value === domain)) return;
+  list.unshift({ id: 'bl-auto-' + Date.now(), type: 'domain', value: domain, reason, autoAdded: true, addedAt: new Date().toISOString() });
+  writeJSON('blacklist.json', list);
+  addActivity('blacklist', `[${domain}] automatisch geblokkeerd: ${reason}`, {});
+  console.log(`[AutoBlacklist] ${domain} geblokkeerd: ${reason}`);
+}
+
 function addLeadHistory(leads, leadId, event) {
   const lead = leads.find(l => l.id === leadId);
   if (!lead) return;
@@ -406,6 +416,30 @@ function updateMemory(niche, country, type) {
   const { sent, replied } = memory[key];
   memory[key].replyRate = sent > 0 ? Math.round((replied / sent) * 1000) / 10 : 0;
   writeJSON('memory.json', memory);
+}
+
+function updateMemoryVersion(niche, country, version, type) {
+  if (!version) return;
+  const memory = readJSON('memory.json') || {};
+  const key = getMemoryKey(niche, country);
+  if (!memory[key]) memory[key] = { niche: niche||'unknown', country: (country||'unknown').toUpperCase(), sent: 0, replied: 0, replyRate: 0 };
+  const v = version === 'B' ? 'vB' : 'vA';
+  if (!memory[key][v]) memory[key][v] = { sent: 0, replied: 0 };
+  if (type === 'sent')    memory[key][v].sent    = (memory[key][v].sent    || 0) + 1;
+  if (type === 'replied') memory[key][v].replied = (memory[key][v].replied || 0) + 1;
+  const totSent = (memory[key].vA?.sent || 0) + (memory[key].vB?.sent || 0);
+  if (totSent >= 50) {
+    const rateA = (memory[key].vA?.sent || 0) > 0 ? ((memory[key].vA.replied || 0) / memory[key].vA.sent) * 100 : 0;
+    const rateB = (memory[key].vB?.sent || 0) > 0 ? ((memory[key].vB.replied || 0) / memory[key].vB.sent) * 100 : 0;
+    if (rateA - rateB >= 10) memory[key].autoPickVersion = 'A';
+    else if (rateB - rateA >= 10) memory[key].autoPickVersion = 'B';
+    else delete memory[key].autoPickVersion;
+  }
+  writeJSON('memory.json', memory);
+}
+
+function getAutoPickVersion(niche, country) {
+  return (readJSON('memory.json') || {})[getMemoryKey(niche, country)]?.autoPickVersion || null;
 }
 
 // â"€â"€â"€ Email helper â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -3540,6 +3574,7 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
     addLeadHistory(leads, item.leadId, { event: inbox[idx].status, label: histLabel });
     if (inbox[idx].status === 'sent' && item.type !== 'referral') {
       updateMemory(leads[leadIdx].niche, leads[leadIdx].country, 'sent');
+      updateMemoryVersion(leads[leadIdx].niche, leads[leadIdx].country, version, 'sent');
     }
     writeJSON('leads.json', leads);
   }
@@ -4683,11 +4718,11 @@ async function processOneLead(lead, settings, options = {}) {
   const { services = [], myName = '', agencyName = 'Agency AI' } = settings;
 
   const c = (lead.country || '').toLowerCase().replace(/[^a-z]/g, '');
-  const language = (
-    c === 'nl' || c === 'be' ||
-    c === 'nederland' || c === 'netherlands' || c === 'thenetherlands' ||
-    c === 'belgie' || c === 'belgi' || c === 'belgium' || c === 'belgique'
-  ) ? 'nl' : 'en';
+  const language =
+    ['nl','be','nederland','netherlands','thenetherlands','belgie','belgi','belgium'].includes(c) ? 'nl' :
+    ['de','at','ch','germany','deutschland','austria','osterreich','schweiz','switzerland'].includes(c) ? 'de' :
+    ['fr','lu','france','frankreich','luxembourg','luxemburg'].includes(c) ? 'fr' :
+    ['it','italy','italia','italien'].includes(c) ? 'it' : 'en';
   lead.language = language;
   const companySize = lead.companySize || 'small';
 
@@ -4867,12 +4902,14 @@ Analyseer wat die concurrenten waarschijnlijk beter doen aan online marketing.
 
   _runState.currentAgent = 'Agent 5 — Email schrijver';
   console.log(`  [Agent 5] Email schrijven A+B (${language})...`);
-  const topProblem = opportunity.problems?.[0] || (language === 'nl' ? 'groei online aanwezigheid' : 'growing online presence');
+  const topProblem = opportunity.problems?.[0] || (language === 'nl' ? 'groei online aanwezigheid' : language === 'de' ? 'Online-Präsenz verbessern' : language === 'fr' ? 'améliorer la présence en ligne' : language === 'it' ? 'migliorare la presenza online' : 'growing online presence');
   const topService = opportunity.recommendedServices?.[0]?.name || services[0]?.name || 'AI-marketing';
   const loadSec = website.loadTimeMs ? (website.loadTimeMs / 1000).toFixed(1) : null;
-  const opener  = language === 'nl'
-    ? (social.emailOpener    || `Zag ${lead.companyName} online en merkte ${topProblem.toLowerCase()}`)
-    : (social.emailOpenerEn  || `Came across ${lead.companyName} online and noticed ${topProblem.toLowerCase()}`);
+  const opener  = language === 'nl' ? (social.emailOpener || `Zag ${lead.companyName} online en merkte ${topProblem.toLowerCase()}`) :
+    language === 'de' ? `Ich bin auf ${lead.companyName} gestoßen und habe bemerkt: ${topProblem.toLowerCase()}` :
+    language === 'fr' ? `En découvrant ${lead.companyName}, j'ai remarqué que ${topProblem.toLowerCase()}` :
+    language === 'it' ? `Ho trovato ${lead.companyName} online e ho notato che ${topProblem.toLowerCase()}` :
+    (social.emailOpenerEn || `Came across ${lead.companyName} online and noticed ${topProblem.toLowerCase()}`);
 
   const todayNL   = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
   const seasonal  = getSeasonalContext(language);
@@ -4894,6 +4931,39 @@ Concurrentie in ${lead.location}: ${competitors?.competitorGap || 'niet beschikb
 Afzender: ${myName} van ${agencyName}
 Datum vandaag: ${todayNL}
 Seizoenscontext: ${seasonal.season} — ${seasonal.hook}`
+    : language === 'de'
+    ? `Unternehmen: ${lead.companyName} (${nicheLabel}, ${lead.location})
+Unternehmensgröße: ${companySize}
+Instagram: ${lead.estimatedFollowers ? lead.estimatedFollowers.toLocaleString() + ' Follower' : 'unbekannt'}
+LinkedIn: ${social.linkedinCompanyFollowers ? social.linkedinCompanyFollowers.toLocaleString() + ' Follower' : 'unbekannt'}
+Ladezeit Website: ${loadSec ? loadSec + ' Sekunden' : 'unbekannt'}
+Problem: ${topProblem}
+Dienstleistung: ${topService}
+Wettbewerb in ${lead.location}: ${competitors?.competitorGap || 'nicht verfügbar'}
+Absender: ${myName} von ${agencyName}
+Jahreszeit: ${seasonal.season}`
+    : language === 'fr'
+    ? `Entreprise: ${lead.companyName} (${nicheLabel}, ${lead.location})
+Taille: ${companySize}
+Instagram: ${lead.estimatedFollowers ? lead.estimatedFollowers.toLocaleString() + ' abonnés' : 'inconnu'}
+LinkedIn: ${social.linkedinCompanyFollowers ? social.linkedinCompanyFollowers.toLocaleString() + ' abonnés' : 'inconnu'}
+Temps de chargement: ${loadSec ? loadSec + ' secondes' : 'inconnu'}
+Problème: ${topProblem}
+Service: ${topService}
+Concurrence à ${lead.location}: ${competitors?.competitorGap || 'non disponible'}
+Expéditeur: ${myName} de ${agencyName}
+Saison: ${seasonal.season}`
+    : language === 'it'
+    ? `Azienda: ${lead.companyName} (${nicheLabel}, ${lead.location})
+Dimensione: ${companySize}
+Instagram: ${lead.estimatedFollowers ? lead.estimatedFollowers.toLocaleString() + ' follower' : 'sconosciuto'}
+LinkedIn: ${social.linkedinCompanyFollowers ? social.linkedinCompanyFollowers.toLocaleString() + ' follower' : 'sconosciuto'}
+Tempo caricamento: ${loadSec ? loadSec + ' secondi' : 'sconosciuto'}
+Problema: ${topProblem}
+Servizio: ${topService}
+Concorrenza a ${lead.location}: ${competitors?.competitorGap || 'non disponibile'}
+Mittente: ${myName} di ${agencyName}
+Stagione: ${seasonal.season}`
     : `Company: ${lead.companyName} (${nicheLabel}, ${lead.location})
 Business type: ${lead.subNiche ? `${lead.subNiche} (category: ${lead.niche})` : lead.niche}
 Company size: ${companySize}
@@ -4909,9 +4979,11 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 
   const calendlyUrl = settings.calendlyUrl || '';
   const calendlyCta = calendlyUrl
-    ? (language === 'nl'
-        ? `\nCalendly link: ${calendlyUrl} — sluit de CTA af met deze link als directe uitnodiging om in te plannen`
-        : `\nCalendly link: ${calendlyUrl} — end the CTA with this link as a direct booking invitation`)
+    ? (language === 'nl' ? `\nCalendly link: ${calendlyUrl} — sluit de CTA af met deze link als directe uitnodiging om in te plannen`
+      : language === 'de' ? `\nCalendly-Link: ${calendlyUrl} — beenden Sie den CTA mit diesem Link als direkte Buchungseinladung`
+      : language === 'fr' ? `\nLien Calendly: ${calendlyUrl} — terminez le CTA avec ce lien comme invitation directe à prendre rendez-vous`
+      : language === 'it' ? `\nLink Calendly: ${calendlyUrl} — concludere il CTA con questo link come invito diretto alla prenotazione`
+      : `\nCalendly link: ${calendlyUrl} — end the CTA with this link as a direct booking invitation`)
     : '';
 
   // Append Calendly CTA instruction to shared context
@@ -4924,6 +4996,11 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
   const greetingEN = (companySize === 'large')
     ? `Dear ${lead.companyName} team,`
     : `Dear ${lead.companyName},`;
+  const greetingDE = companySize === 'large'
+    ? `Sehr geehrte Damen und Herren von ${lead.companyName},`
+    : `Sehr geehrte/r ${lead.companyName},`;
+  const greetingFR = `Bonjour ${lead.companyName},`;
+  const greetingIT = `Gentile ${lead.companyName},`;
 
   const sharedRules = language === 'nl'
     ? `- Aanhef: gebruik altijd exact deze aanhef: "${greetingNL}"
@@ -4942,6 +5019,48 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - Als er concurrentie context is: verweef maximaal 1 zin organisch
 - VERBODEN WOORDEN: oplossing, traject, optimaliseren, implementeren, synergie, innovatief, vrijblijvend, passie, data-gedreven, op maat, uniek aanbod, fantastisch, geweldig, absoluut, transformeren, naar een hoger niveau, concurrentievoordeel, bewezen, resultaatgericht
 - SEIZOEN: Het is nu ${seasonal.season}. Verweef optioneel 1 subtiele seizoensreferentie alleen als het écht past bij hun niche (bijv. ${seasonal.event}). Forceer dit NIET.`
+    : language === 'de'
+    ? `- Anrede: immer genau diese Anrede verwenden: "${greetingDE}"
+- Ton: professionell und sachlich — wie ein erfahrener Berater, kein Bot, kein Marketingtext
+- Siezen (formelles "Sie") immer verwenden
+- Den ersten Satz NIE mit "Ich" beginnen
+- Betreff: 4-6 Wörter, konkret, Firmenname oder Stadt erwähnen — KEIN "KI", "Marketing", "Zusammenarbeit"
+- Fließende professionelle Absätze — KEINE Aufzählungszeichen, KEINE Listen
+- 3 Absätze: (1) konkrete Beobachtung mit Datenpunkt, (2) Bedeutung + wie wir helfen, (3) sanfte Einladung zum Gespräch
+- Absätze 1-2: je max. 2-3 Sätze. Absatz 3: max. 2 Sätze
+- Dienstleistung: Ergebnis in 1 Satz beschreiben — nie werbend
+- CTA Absatz 3: sanfte Einladung — z.B. "Wären Sie offen für ein kurzes Gespräch?" ${calendlyLink ? `Schließen Sie dann mit: "Buchen Sie direkt ein kostenloses 20-minütiges Gespräch: ${calendlyLink}"` : 'Abschlusssatz: "Antworten Sie auf diese E-Mail für mehr Informationen."'}
+- Abschluss: "Mit freundlichen Grüßen," neue Zeile, dann "${myName}"
+- Max. 150 Wörter im Haupttext (ohne Anrede und Abschluss)
+- VERBOTENE WÖRTER: Lösung, Synergie, innovativ, Optimierung, Implementierung, datengetrieben, einzigartig, transformieren, Mehrwert, maßgeschneidert`
+    : language === 'fr'
+    ? `- Formule d'appel: toujours exactement: "${greetingFR}"
+- Ton: professionnel et accessible — comme un consultant senior, pas un robot marketing
+- Vouvoiement obligatoire ("vous")
+- Ne jamais commencer la première phrase par "Je"
+- Objet: 4-6 mots, concret, nom d'entreprise ou ville — PAS "IA", "marketing", "collaboration"
+- Paragraphes professionnels fluides — SANS puces ni listes
+- 3 paragraphes: (1) observation concrète avec donnée chiffrée, (2) ce que ça signifie + comment on aide, (3) invitation douce
+- Paragraphes 1-2: max 2-3 phrases chacun. Paragraphe 3: max 2 phrases
+- Service: décrire le résultat en 1 phrase — jamais promotionnel
+- CTA paragraphe 3: invitation douce — ex. "Seriez-vous ouvert(e) à un bref échange?" ${calendlyLink ? `Puis conclure avec: "Réservez directement un rendez-vous de 20 minutes: ${calendlyLink}"` : 'Conclure avec: "Répondez à cet e-mail pour plus d\'informations."'}
+- Formule de clôture: "Cordialement," nouvelle ligne, puis "${myName}"
+- Max 150 mots dans le corps (hors formule d'appel et clôture)
+- MOTS INTERDITS: solution, synergie, innovant, optimiser, implémenter, data-driven, unique, transformer, valeur ajoutée, sur-mesure`
+    : language === 'it'
+    ? `- Apertura: usare sempre esattamente: "${greetingIT}"
+- Tono: professionale e diretto — come un consulente senior, non un bot di marketing
+- Usare il "Lei" formale sempre
+- Non iniziare mai la prima frase con "Io"
+- Oggetto: 4-6 parole, specifico, nome azienda o città — NO "AI", "marketing", "collaborazione"
+- Paragrafi professionali fluidi — NESSUN punto elenco, NESSUNA lista
+- 3 paragrafi: (1) osservazione concreta con dato specifico, (2) significato + come aiutiamo, (3) invito gentile
+- Paragrafi 1-2: max 2-3 frasi ciascuno. Paragrafo 3: max 2 frasi
+- Servizio: descrivere il risultato in 1 frase — mai promozionale
+- CTA paragrafo 3: invito gentile — es. "Sarebbe disponibile per una breve chiamata?" ${calendlyLink ? `Poi concludere con: "Prenoti direttamente una chiamata gratuita di 20 minuti: ${calendlyLink}"` : 'Concludere con: "Risponda a questa email per ulteriori informazioni."'}
+- Chiusura: "Cordiali saluti," nuova riga, poi "${myName}"
+- Max 150 parole nel corpo (esclusi apertura e chiusura)
+- PAROLE VIETATE: soluzione, sinergia, innovativo, ottimizzare, implementare, data-driven, unico, trasformare, valore aggiunto, su misura`
     : `- Greeting: always use exactly this greeting: "${greetingEN}"
 - FORBIDDEN greetings: Hey, Hi, Hello, What's up, Howdy — ONLY "Dear" is allowed
 - Tone: professional but approachable — write like a senior consultant who genuinely noticed something specific about their business
@@ -4959,83 +5078,74 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - SEASONAL: It is currently ${seasonal.season}. Optionally weave in 1 subtle seasonal reference only if it genuinely fits their niche (e.g. ${seasonal.event}). Do NOT force this.`;
 
   const promptA = language === 'nl'
-    ? `Schrijf een koude email â€" VERSIE A: PROBLEEM-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.
-
-CONTEXT:
-${sharedContext}
-
-OPENING ZIN (gebruik deze exact of pas licht aan):
-"${opener}"
-
-AANPAK VERSIE A: Begin met het probleem. Gebruik de opening zin hierboven. Noem het probleem concreet met een getal of vergelijking. Dan de dienst als logische oplossing.
-
-REGELS:
-${sharedRules}
-
-{"subject": "onderwerp", "body": "emailtekst"}`
-    : `Write a cold email â€" VERSION A: PROBLEM-FOCUSED. Reads like a real person typed it, NOT like AI. Return JSON.
-
-CONTEXT:
-${sharedContext}
-
-OPENING LINE (use this exactly or adapt slightly):
-"${opener}"
-
-VERSION A APPROACH: Start with the problem. Use the opening line above. State the problem concretely with a number or comparison. Then offer the service as the logical next step.
-
-RULES:
-${sharedRules}
-
-{"subject": "subject line", "body": "email body"}`;
+    ? `Schrijf een koude email — VERSIE A: PROBLEEM-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.\n\nCONTEXT:\n${sharedContext}\n\nOPENING ZIN (gebruik deze exact of pas licht aan):\n"${opener}"\n\nAANPAK VERSIE A: Begin met het probleem. Gebruik de opening zin hierboven. Noem het probleem concreet met een getal of vergelijking. Dan de dienst als logische oplossing.\n\nREGELS:\n${sharedRules}\n\n{"subject": "onderwerp", "body": "emailtekst"}`
+    : language === 'de'
+    ? `Schreibe eine Kalt-E-Mail — VERSION A: PROBLEM-ORIENTIERT. Klingt wie ein echter Mensch, NICHT wie KI. Schreibe auf DEUTSCH. JSON zurückgeben.\n\nKONTEXT:\n${sharedContext}\n\nERÖFFNUNGSSATZ (exakt verwenden oder leicht anpassen):\n"${opener}"\n\nANSATZ VERSION A: Mit dem Problem beginnen. Den Eröffnungssatz verwenden. Problem konkret mit Zahlen nennen. Dann Dienstleistung als logische Lösung.\n\nREGELN:\n${sharedRules}\n\n{"subject": "Betreff", "body": "E-Mail-Text"}`
+    : language === 'fr'
+    ? `Rédige un e-mail de prospection — VERSION A: CENTRÉ SUR LE PROBLÈME. Sonne comme une vraie personne, PAS comme une IA. Écrire en FRANÇAIS. Retourner JSON.\n\nCONTEXTE:\n${sharedContext}\n\nPHRASE D'OUVERTURE (utiliser exactement ou adapter légèrement):\n"${opener}"\n\nAPPROCHE VERSION A: Commencer par le problème. Utiliser la phrase d'ouverture. Mentionner le problème concrètement avec un chiffre. Puis le service comme solution logique.\n\nRÈGLES:\n${sharedRules}\n\n{"subject": "objet", "body": "corps de l'e-mail"}`
+    : language === 'it'
+    ? `Scrivi una cold email — VERSIONE A: FOCALIZZATA SUL PROBLEMA. Suona come una persona reale, NON come un'IA. Scrivere in ITALIANO. Restituire JSON.\n\nCONTESTO:\n${sharedContext}\n\nFRASE D'APERTURA (usare esattamente o adattare leggermente):\n"${opener}"\n\nAPPROCCIO VERSIONE A: Iniziare con il problema. Usare la frase d'apertura. Menzionare il problema concretamente con un numero. Poi il servizio come soluzione logica.\n\nREGOLE:\n${sharedRules}\n\n{"subject": "oggetto", "body": "corpo email"}`
+    : `Write a cold email — VERSION A: PROBLEM-FOCUSED. Reads like a real person typed it, NOT like AI. Return JSON.\n\nCONTEXT:\n${sharedContext}\n\nOPENING LINE (use this exactly or adapt slightly):\n"${opener}"\n\nVERSION A APPROACH: Start with the problem. Use the opening line above. State the problem concretely with a number or comparison. Then offer the service as the logical next step.\n\nRULES:\n${sharedRules}\n\n{"subject": "subject line", "body": "email body"}`;
 
   const openerB = language === 'nl'
-    ? `${lead.companyName} heeft echt potentieel in ${lead.location} â€" en ik denk dat ${topService.toLowerCase()} precies dat kan versnellen.`
-    : `${lead.companyName} has real potential to grow in ${lead.location} â€" and I think ${topService.toLowerCase()} could accelerate that.`;
+    ? `${lead.companyName} heeft echt potentieel in ${lead.location} — en ik denk dat ${topService.toLowerCase()} precies dat kan versnellen.`
+    : language === 'de'
+    ? `${lead.companyName} hat echtes Potenzial in ${lead.location} — und ${topService.toLowerCase()} könnte genau das beschleunigen.`
+    : language === 'fr'
+    ? `${lead.companyName} a un vrai potentiel à ${lead.location} — et ${topService.toLowerCase()} pourrait exactement accélérer cela.`
+    : language === 'it'
+    ? `${lead.companyName} ha un vero potenziale a ${lead.location} — e ${topService.toLowerCase()} potrebbe accelerare esattamente questo.`
+    : `${lead.companyName} has real potential to grow in ${lead.location} — and I think ${topService.toLowerCase()} could accelerate that.`;
 
   const promptB = language === 'nl'
-    ? `Schrijf een koude email â€" VERSIE B: GROEIKANSEN-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.
+    ? `Schrijf een koude email — VERSIE B: GROEIKANSEN-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.\n\nCONTEXT:\n${sharedContext}\n\nOPENING ZIN VERSIE B (gebruik deze exact of pas licht aan):\n"${openerB}"\n\nAANPAK VERSIE B: Begin positief — met groeipotentieel, niet met problemen. Focus op wat ze KUNNEN bereiken met ${topService}. Enthousiaster toon.\n\nREGELS:\n${sharedRules}\n\n{"subject": "onderwerp", "body": "emailtekst"}`
+    : language === 'de'
+    ? `Schreibe eine Kalt-E-Mail — VERSION B: WACHSTUMSORIENTIERT. Klingt wie ein echter Mensch, NICHT wie KI. Schreibe auf DEUTSCH. JSON zurückgeben.\n\nKONTEXT:\n${sharedContext}\n\nERÖFFNUNGSSATZ VERSION B (exakt verwenden oder leicht anpassen):\n"${openerB}"\n\nANSATZ VERSION B: Positiv beginnen — Wachstumspotenzial betonen, nicht Probleme. Auf das fokussieren, was mit ${topService} erreicht werden kann.\n\nREGELN:\n${sharedRules}\n\n{"subject": "Betreff", "body": "E-Mail-Text"}`
+    : language === 'fr'
+    ? `Rédige un e-mail de prospection — VERSION B: CENTRÉ SUR LA CROISSANCE. Sonne comme une vraie personne, PAS comme une IA. Écrire en FRANÇAIS. Retourner JSON.\n\nCONTEXTE:\n${sharedContext}\n\nPHRASE D'OUVERTURE VERSION B (utiliser exactement ou adapter légèrement):\n"${openerB}"\n\nAPPROCHE VERSION B: Commencer positivement — potentiel de croissance, pas les problèmes. Se concentrer sur ce qui peut être accompli avec ${topService}.\n\nRÈGLES:\n${sharedRules}\n\n{"subject": "objet", "body": "corps de l'e-mail"}`
+    : language === 'it'
+    ? `Scrivi una cold email — VERSIONE B: FOCALIZZATA SULLA CRESCITA. Suona come una persona reale, NON come un'IA. Scrivere in ITALIANO. Restituire JSON.\n\nCONTESTO:\n${sharedContext}\n\nFRASE D'APERTURA VERSIONE B (usare esattamente o adattare leggermente):\n"${openerB}"\n\nAPPROCCIO VERSIONE B: Iniziare positivamente — potenziale di crescita, non problemi. Concentrarsi su cosa si può raggiungere con ${topService}.\n\nREGOLE:\n${sharedRules}\n\n{"subject": "oggetto", "body": "corpo email"}`
+    : `Write a cold email — VERSION B: GROWTH/OPPORTUNITY-FOCUSED. Reads like a real person typed it, NOT like AI. Return JSON.\n\nCONTEXT:\n${sharedContext}\n\nOPENING LINE VERSION B (use this exactly or adapt slightly):\n"${openerB}"\n\nVERSION B APPROACH: Start positively — with growth potential, not problems. Focus on what they CAN achieve with ${topService}. More enthusiastic tone.\n\nRULES:\n${sharedRules}\n\n{"subject": "subject line", "body": "email body"}`;
 
-CONTEXT:
-${sharedContext}
-
-OPENING ZIN VERSIE B (gebruik deze exact of pas licht aan):
-"${openerB}"
-
-AANPAK VERSIE B: Begin positief â€" met groeipotentieel, niet met problemen. Focus op wat ze KUNNEN bereiken met ${topService}. Enthousiaster toon. Probleem mag kort genoemd worden als context, maar niet als hoofdboodschap.
-
-REGELS:
-${sharedRules}
-
-{"subject": "onderwerp", "body": "emailtekst"}`
-    : `Write a cold email â€" VERSION B: GROWTH/OPPORTUNITY-FOCUSED. Reads like a real person typed it, NOT like AI. Return JSON.
-
-CONTEXT:
-${sharedContext}
-
-OPENING LINE VERSION B (use this exactly or adapt slightly):
-"${openerB}"
-
-VERSION B APPROACH: Start positively â€" with growth potential, not problems. Focus on what they CAN achieve with ${topService}. More enthusiastic tone. Problem can be briefly mentioned as context but not as the main message.
-
-RULES:
-${sharedRules}
-
-{"subject": "subject line", "body": "email body"}`;
+  // ITEM 18: use winning A/B version when auto-pick is set for this niche
+  const autoVersion = getAutoPickVersion(lead.niche, lead.country);
 
   let emailA, emailB;
   try {
-    [emailA, emailB] = await Promise.all([aiJSON(promptA), aiJSON(promptB)]);
+    if (autoVersion === 'A') {
+      emailA = await aiJSON(promptA);
+      emailB = emailA;
+    } else if (autoVersion === 'B') {
+      emailB = await aiJSON(promptB);
+      emailA = emailB;
+    } else {
+      [emailA, emailB] = await Promise.all([aiJSON(promptA), aiJSON(promptB)]);
+    }
   } catch {
+    const fbGreeting = language === 'nl' ? greetingNL : language === 'de' ? greetingDE : language === 'fr' ? greetingFR : language === 'it' ? greetingIT : greetingEN;
+    const fbSignoff  = language === 'nl' ? `Met vriendelijke groet,\n${myName}` : language === 'de' ? `Mit freundlichen Grüßen,\n${myName}` : language === 'fr' ? `Cordialement,\n${myName}` : language === 'it' ? `Cordiali saluti,\n${myName}` : `Kind regards,\n${myName}`;
     emailA = language === 'nl'
-      ? { subject: `${lead.companyName} – iets opgevallen`, body: `${greetingNL}\n\nBij het bekijken van ${lead.companyName} viel mij op dat er concrete ruimte is om meer uit ${topService.toLowerCase()} te halen.\n\nZou u openstaan voor een kort kennismakingsgesprek?\n\nMet vriendelijke groet,\n${myName}` }
-      : { subject: `${lead.companyName} – noticed something`, body: `${greetingEN}\n\nLooking at ${lead.companyName}, I noticed there is a clear opportunity to strengthen your ${topService.toLowerCase()}.\n\nWould you be open to a brief introductory call?\n\nKind regards,\n${myName}` };
+      ? { subject: `${lead.companyName} – iets opgevallen`, body: `${fbGreeting}\n\nBij het bekijken van ${lead.companyName} viel mij op dat er concrete ruimte is om meer uit ${topService.toLowerCase()} te halen.\n\nZou u openstaan voor een kort kennismakingsgesprek?\n\n${fbSignoff}` }
+      : language === 'de'
+      ? { subject: `${lead.companyName} – etwas aufgefallen`, body: `${fbGreeting}\n\nBei der Betrachtung von ${lead.companyName} ist mir aufgefallen, dass es konkreten Spielraum gibt, mehr aus ${topService.toLowerCase()} herauszuholen.\n\nWären Sie offen für ein kurzes Gespräch?\n\n${fbSignoff}` }
+      : language === 'fr'
+      ? { subject: `${lead.companyName} – quelque chose remarqué`, body: `${fbGreeting}\n\nEn regardant ${lead.companyName}, j'ai remarqué qu'il y a une opportunité concrète pour améliorer ${topService.toLowerCase()}.\n\nSeriez-vous ouvert(e) à un bref échange ?\n\n${fbSignoff}` }
+      : language === 'it'
+      ? { subject: `${lead.companyName} – qualcosa notato`, body: `${fbGreeting}\n\nGuardando ${lead.companyName}, ho notato che c'è un'opportunità concreta per migliorare ${topService.toLowerCase()}.\n\nSarebbe disponibile per una breve chiamata?\n\n${fbSignoff}` }
+      : { subject: `${lead.companyName} – noticed something`, body: `${fbGreeting}\n\nLooking at ${lead.companyName}, I noticed there is a clear opportunity to strengthen your ${topService.toLowerCase()}.\n\nWould you be open to a brief introductory call?\n\n${fbSignoff}` };
     emailB = language === 'nl'
-      ? { subject: `${lead.companyName} – concrete kans`, body: `${greetingNL}\n\n${lead.companyName} heeft een solide basis. Naar mijn inschatting is er echter nog onbenut potentieel op het gebied van ${topService.toLowerCase()}.\n\nKan ik u laten zien wat dat in de praktijk betekent?\n\nMet vriendelijke groet,\n${myName}` }
-      : { subject: `${lead.companyName} – concrete opportunity`, body: `${greetingEN}\n\n${lead.companyName} has a strong foundation. Based on what I have seen, there is untapped potential in ${topService.toLowerCase()} worth exploring.\n\nWould you be open to a short conversation?\n\nKind regards,\n${myName}` };
+      ? { subject: `${lead.companyName} – concrete kans`, body: `${fbGreeting}\n\n${lead.companyName} heeft een solide basis. Naar mijn inschatting is er echter nog onbenut potentieel op het gebied van ${topService.toLowerCase()}.\n\nKan ik u laten zien wat dat in de praktijk betekent?\n\n${fbSignoff}` }
+      : language === 'de'
+      ? { subject: `${lead.companyName} – konkretes Potenzial`, body: `${fbGreeting}\n\n${lead.companyName} hat eine solide Grundlage. Es gibt jedoch noch ungenutztes Potenzial im Bereich ${topService.toLowerCase()}.\n\nDarf ich Ihnen zeigen, was das in der Praxis bedeutet?\n\n${fbSignoff}` }
+      : language === 'fr'
+      ? { subject: `${lead.companyName} – opportunité concrète`, body: `${fbGreeting}\n\n${lead.companyName} a une base solide. Il y a cependant un potentiel inexploité dans ${topService.toLowerCase()}.\n\nPuis-je vous montrer ce que cela signifie en pratique ?\n\n${fbSignoff}` }
+      : language === 'it'
+      ? { subject: `${lead.companyName} – opportunità concreta`, body: `${fbGreeting}\n\n${lead.companyName} ha una base solida. C'è tuttavia un potenziale non sfruttato in ${topService.toLowerCase()}.\n\nPosso mostrarle cosa significa in pratica?\n\n${fbSignoff}` }
+      : { subject: `${lead.companyName} – concrete opportunity`, body: `${fbGreeting}\n\n${lead.companyName} has a strong foundation. Based on what I have seen, there is untapped potential in ${topService.toLowerCase()} worth exploring.\n\nWould you be open to a short conversation?\n\n${fbSignoff}` };
   }
   // Agent 5b: 3 subject line options — data-driven, specific to each lead
-  const followerLabel = lead.estimatedFollowers ? lead.estimatedFollowers.toLocaleString() + (language === 'nl' ? ' volgers' : ' followers') : null;
-  const speedLabel = loadSec ? loadSec + (language === 'nl' ? 's laadtijd' : 's load time') : null;
+  const followerLabel = lead.estimatedFollowers ? lead.estimatedFollowers.toLocaleString() + (language === 'nl' ? ' volgers' : language === 'de' ? ' Follower' : language === 'fr' ? ' abonnés' : language === 'it' ? ' follower' : ' followers') : null;
+  const speedLabel = loadSec ? loadSec + (language === 'nl' ? 's laadtijd' : language === 'de' ? 's Ladezeit' : language === 'fr' ? 's de chargement' : language === 'it' ? 's di caricamento' : 's load time') : null;
   const subjectPrompt = language === 'nl'
     ? `Bedenk 3 scherpe email-onderwerpregels voor een koude email.
 
@@ -5063,6 +5173,12 @@ Goede voorbeeldpatronen (NIET letterlijk overnemen, alleen als inspiratie):
 "${lead.location} ${lead.niche} — concrete kans"
 
 Geef ALLEEN JSON: { "subjectOptions": ["optie1", "optie2", "optie3"] }`
+    : language === 'de'
+    ? `Erstelle 3 prägnante E-Mail-Betreffzeilen auf DEUTSCH für eine Kalt-E-Mail.\n\nUnternehmen: ${lead.companyName} (${lead.niche}, ${lead.location})\n${followerLabel ? `Instagram: ${followerLabel}` : ''}\n${speedLabel ? `Ladezeit: ${speedLabel}` : ''}\nProblem: ${topProblem}\n\nRegeln:\n- Max. 8 Wörter, KEIN Satzzeichen am Ende\n- Konkreten Datenpunkt einbeziehen wenn vorhanden\n- VERBOTEN: "KI", "Marketing", "Zusammenarbeit"\n- Klingt menschlich, kein Spam\n\nNur JSON zurückgeben: { "subjectOptions": ["option1", "option2", "option3"] }`
+    : language === 'fr'
+    ? `Crée 3 objets d'e-mail percutants en FRANÇAIS pour un e-mail de prospection.\n\nEntreprise: ${lead.companyName} (${lead.niche}, ${lead.location})\n${followerLabel ? `Instagram: ${followerLabel}` : ''}\n${speedLabel ? `Temps de chargement: ${speedLabel}` : ''}\nProblème: ${topProblem}\n\nRègles:\n- Max 8 mots, SANS ponctuation à la fin\n- Inclure un point de données concret si disponible\n- INTERDIT: "IA", "marketing", "collaboration"\n- Sonne humain, pas spam\n\nRetourner uniquement JSON: { "subjectOptions": ["option1", "option2", "option3"] }`
+    : language === 'it'
+    ? `Crea 3 oggetti email incisivi in ITALIANO per una cold email.\n\nAzienda: ${lead.companyName} (${lead.niche}, ${lead.location})\n${followerLabel ? `Instagram: ${followerLabel}` : ''}\n${speedLabel ? `Tempo di caricamento: ${speedLabel}` : ''}\nProblema: ${topProblem}\n\nRegole:\n- Max 8 parole, NESSUNA punteggiatura alla fine\n- Includere un dato concreto se disponibile\n- VIETATO: "AI", "marketing", "collaborazione"\n- Suona umano, non spam\n\nRestituire solo JSON: { "subjectOptions": ["option1", "option2", "option3"] }`
     : `Generate 3 sharp email subject lines for a cold email.
 
 Company: ${lead.companyName} (${lead.niche}, ${lead.location})
@@ -5098,6 +5214,9 @@ Return ONLY JSON: { "subjectOptions": ["option1", "option2", "option3"] }`;
   if (subjectOptions.length < 3) {
     subjectOptions = language === 'nl'
       ? [emailA.subject, `Vraag over ${lead.companyName}`, `${lead.niche} in ${lead.location}`]
+      : language === 'de' ? [emailA.subject, `Frage zu ${lead.companyName}`, `${lead.niche} in ${lead.location}`]
+      : language === 'fr' ? [emailA.subject, `Question pour ${lead.companyName}`, `${lead.niche} à ${lead.location}`]
+      : language === 'it' ? [emailA.subject, `Domanda per ${lead.companyName}`, `${lead.niche} a ${lead.location}`]
       : [emailA.subject, `Question for ${lead.companyName}`, `${lead.niche} in ${lead.location}`];
   }
   subjectOptions = subjectOptions.slice(0, 3).map(s => String(s).trim());
@@ -6119,8 +6238,20 @@ async function checkReplies() {
           addLeadHistory(leads, matched.id, { event: 'referral', label: 'Referral interesse getoond' });
         }
         updateMemory(matched.niche, matched.country, 'replied');
+        updateMemoryVersion(matched.niche, matched.country, matched.sentVersion, 'replied');
         repliesFound++;
         newNames.push(matched.companyName);
+
+        // Auto-blacklist on unsubscribe or aggressive reply
+        const UNSUB_KEYWORDS = ['unsubscribe','uitschrijven','remove me','stop emailing','niet meer mailen','geen mail meer','verwijder me'];
+        const AGGRESSIVE_KEYWORDS = ['spam','reporting you','scam','fuck off','stop contacting','never contact','do not contact','ga weg','rot op','oplichter','aangifte'];
+        const replyLower = (replyText || '').toLowerCase();
+        const replyDomain = (matched.contactEmail || '').split('@')[1];
+        if (replyDomain) {
+          if (UNSUB_KEYWORDS.some(k => replyLower.includes(k))) autoBlacklist(replyDomain, 'Uitschrijfverzoek in antwoord');
+          else if (AGGRESSIVE_KEYWORDS.some(k => replyLower.includes(k))) autoBlacklist(replyDomain, 'Negatieve/agressieve reactie');
+        }
+
         addActivity('reply', 'Reply ontvangen van ' + matched.companyName, { meta: { companyName: matched.companyName, leadId: matched.id } });
         addNotification('reply_received', `Reply: ${matched.companyName}`, `${matched.companyName} heeft gereageerd op jouw email`, matched.id);
         fireWebhooks('lead.replied', { leadId: matched.id, companyName: matched.companyName, niche: matched.niche, score: matched.score, location: matched.location, contactEmail: matched.contactEmail, repliedAt: matched.repliedAt });
@@ -6168,6 +6299,8 @@ async function checkReplies() {
             addLeadHistory(leads, hit.id, { event: 'bounced', label: `Email gebounced — ongeldig adres (${failedEmail})` });
             addActivity('bounce', `Bounce: ${hit.companyName}`, { meta: { companyName: hit.companyName, leadId: hit.id, email: failedEmail } });
             addNotification('email_bounced', `Bounce: ${hit.companyName}`, `Email naar ${failedEmail} is niet aangekomen`, hit.id);
+            const bouncedDomain = failedEmail.split('@')[1];
+            if (bouncedDomain) autoBlacklist(bouncedDomain, 'Email gebounced');
             bouncesFound++;
             console.log(`[Reply] Bounce gedetecteerd voor ${hit.companyName} (${failedEmail})`);
             break;
@@ -6564,6 +6697,17 @@ app.get('/api/extension/data', authMiddleware, (req, res) => {
 
 app.get('/api/memory', (req, res) => {
   res.json(readJSON('memory.json') || {});
+});
+
+app.post('/api/memory/:key/reset-ab', requireAdmin, (req, res) => {
+  const memory = readJSON('memory.json') || {};
+  const key = req.params.key;
+  if (!memory[key]) return res.status(404).json({ error: 'Key niet gevonden' });
+  delete memory[key].vA;
+  delete memory[key].vB;
+  delete memory[key].autoPickVersion;
+  writeJSON('memory.json', memory);
+  res.json({ ok: true });
 });
 
 // ─── Team chat ────────────────────────────────────────────────────────────────
@@ -7361,6 +7505,7 @@ cron.schedule('* * * * *', async () => {
         leads[leadIdx].sentAt = inbox[idx].sentAt;
         addLeadHistory(leads, item.leadId, { event: 'sent', label: `Email verstuurd op ingeplande tijd (versie ${version})` });
         updateMemory(leads[leadIdx].niche, leads[leadIdx].country, 'sent');
+        updateMemoryVersion(leads[leadIdx].niche, leads[leadIdx].country, version, 'sent');
       }
       console.log(`[Scheduled] Email verstuurd voor ${item.companyName}`);
       changed = true;
