@@ -3447,7 +3447,25 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
 .notif-icon-wrap.intake_submitted  { background: var(--accent-light); color: var(--accent); }
 .notif-icon-wrap.high_score_lead   { background: #fffbeb; color: var(--warning); }
 .notif-icon-wrap.payment_overdue   { background: #fef2f2; color: var(--danger); }
+.notif-icon-wrap.payment_received  { background: #f0fdf4; color: var(--success); }
 .notif-icon-wrap.run_complete      { background: #f5f3ff; color: #7c3aed; }
+.notif-icon-wrap.email_bounced     { background: #fef2f2; color: var(--danger); }
+.notif-icon-wrap.calendly_booking  { background: #eff6ff; color: #006bff; }
+.notif-icon-wrap.contact_form      { background: var(--accent-light); color: var(--accent); }
+.notif-icon-wrap.client_question   { background: #f5f3ff; color: #7c3aed; }
+
+.notif-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); flex-shrink: 0; margin-top: 2px;
+}
+.notif-read-btn {
+  background: none; border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text-muted);
+  width: 20px; height: 20px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all var(--transition); flex-shrink: 0;
+}
+.notif-read-btn:hover { background: var(--success-light); border-color: var(--success); color: var(--success); }
 
 .notif-title { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 1px; }
 .notif-body  { font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
@@ -4033,6 +4051,16 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
 [data-theme="dark"] .notif-title { color: var(--text-primary); }
 [data-theme="dark"] .notif-body  { color: var(--text-secondary); }
 [data-theme="dark"] .notif-time  { color: var(--text-muted); }
+[data-theme="dark"] .notif-read-btn { border-color: var(--border); color: var(--text-muted); }
+[data-theme="dark"] .notif-icon-wrap.reply_received   { background: #052e16; }
+[data-theme="dark"] .notif-icon-wrap.payment_received { background: #052e16; }
+[data-theme="dark"] .notif-icon-wrap.payment_overdue  { background: #2d1515; }
+[data-theme="dark"] .notif-icon-wrap.email_bounced    { background: #2d1515; }
+[data-theme="dark"] .notif-icon-wrap.run_complete     { background: #2a1b5e; }
+[data-theme="dark"] .notif-icon-wrap.client_question  { background: #2a1b5e; }
+[data-theme="dark"] .notif-icon-wrap.intake_submitted { background: var(--accent-light); }
+[data-theme="dark"] .notif-icon-wrap.contact_form     { background: var(--accent-light); }
+[data-theme="dark"] .notif-icon-wrap.high_score_lead  { background: #2d1e05; }
 
 /* P&L and AB tables */
 [data-theme="dark"] .pnl-table { background: var(--surface); border-color: var(--border); }

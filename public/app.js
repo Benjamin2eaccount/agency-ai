@@ -100,6 +100,8 @@ function setView(view) {
   }
   // Destroy Chart.js instances when leaving stats view
   if (state.view === 'stats' && view !== 'stats') destroyStatsCharts();
+  // Stop run progress polling when leaving runs view
+  if (state.view === 'runs' && view !== 'runs') stopRunProgressPoll();
   state.view = view;
 
   // Update topbar breadcrumb
@@ -2658,9 +2660,28 @@ function switchProjectTab(tab) {
   document.querySelectorAll('.project-tab-content').forEach(c => {
     c.style.display = c.dataset.tabContent === tab ? '' : 'none';
   });
+  // Fill iframes when tabs become visible
+  const lead = state.leads.find(l => l.id === state.currentLeadId);
+  if (!lead) return;
+  if (tab === 'voorstel') {
+    const f = document.getElementById(`proposalFrame-${lead.id}`);
+    if (f && lead.proposal) f.srcdoc = lead.proposal;
+  }
+  if (tab === 'contract') {
+    const f = document.getElementById(`contractFrame-${lead.id}`);
+    if (f && lead.contract) f.srcdoc = lead.contract;
+  }
 }
 
 async function renderProjectPage() {
+  // Fetch fresh data so the page is always current
+  const [freshLeads, freshUsers] = await Promise.all([
+    apiJSON('/api/leads').catch(() => null),
+    apiJSON('/api/users').catch(() => [])
+  ]);
+  if (freshLeads) state.leads = freshLeads;
+  if (freshUsers) state.users = freshUsers;
+
   const lead = state.leads.find(l => l.id === state.currentLeadId);
   if (!lead) {
     document.getElementById('appView').innerHTML = `<div class="empty-card"><i class="ti ti-alert-circle"></i><h3>Lead niet gevonden</h3><button class="btn btn-primary" onclick="setView('pipeline')">← Pipeline</button></div>`;
@@ -2817,19 +2838,7 @@ async function renderProjectPage() {
         }).join('')
       : '<div style="font-size:13px;color:var(--text-muted);padding:12px 0">Geen problemen gevonden voor deze lead.</div>';
 
-    const taskCards = tasks.length
-      ? tasks.map(t => {
-          const isDone = t.status === 'klaar';
-          const priorityColor = t.priority === 'hoog' ? 'var(--danger)' : t.priority === 'middel' ? 'var(--warning)' : 'var(--text-muted)';
-          return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--surface)">
-            <input type="checkbox" ${isDone ? 'checked' : ''} style="cursor:pointer;width:16px;height:16px;accent-color:var(--accent)"
-              onchange="toggleProjectTask('${esc(lead.id)}','${esc(t.id || t._id || '')}',this.checked)">
-            <span style="flex:1;font-size:13px;${isDone ? 'text-decoration:line-through;color:var(--text-muted)' : ''}">${esc(t.title || t.name || '')}</span>
-            ${t.priority ? `<span style="font-size:11px;font-weight:600;color:${priorityColor};white-space:nowrap">${esc(t.priority)}</span>` : ''}
-            ${t.week ? `<span style="font-size:11px;color:var(--text-muted);white-space:nowrap">W${t.week}</span>` : ''}
-          </div>`;
-        }).join('')
-      : '<div style="font-size:13px;color:var(--text-muted);padding:12px 0">Geen taken. Start eerst het project.</div>';
+    const taskCards = `<div id="tasks-section-${lead.id}">${buildTasksHTML(lead, state.users || [], 1)}</div>`;
 
     // Build initial chat panel for first problem (if any)
     const firstProblem = problems[0];
@@ -2954,6 +2963,167 @@ async function renderProjectPage() {
           <div class="project-section-title" style="margin-top:4px"><i class="ti ti-history" style="color:var(--text-muted);margin-right:6px"></i>Geschiedenis</div>
           ${historyRows}${clientRows}
         ` : ''}
+      </div>`;
+  }
+
+  // ── Tab: Intake ─────────────────────────────────────────────────────────────
+  function buildIntakeTabProject() {
+    if (!lead.intakeToken) return '';
+    const intakeUrl = `${window.location.origin}/intake/${lead.id}/${lead.intakeToken}`;
+    return `
+      <div class="project-tab-content" data-tab-content="intake" style="${activeTab !== 'intake' ? 'display:none' : ''}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div class="project-section-title" style="margin:0"><i class="ti ti-clipboard-list" style="color:var(--accent);margin-right:6px"></i>Intake formulier</div>
+          ${lead.intakeSubmittedAt
+            ? `<span class="badge badge-green"><i class="ti ti-check"></i> Ingevuld ${formatDate(lead.intakeSubmittedAt)}</span>`
+            : `<span class="badge badge-warning">Nog niet ingevuld</span>`}
+        </div>
+        ${lead.intakeAnswers && Object.keys(lead.intakeAnswers).length ? `
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+            ${Object.entries(lead.intakeAnswers).map(([q, a]) => `
+              <div style="padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px">
+                <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:4px">${esc(q)}</div>
+                <div style="font-size:13px;color:var(--text-primary);white-space:pre-line">${esc(a)}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : `
+          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">De klant heeft de intake nog niet ingevuld.</div>
+        `}
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <a href="${intakeUrl}" target="_blank" class="btn btn-ghost btn-sm">
+            <i class="ti ti-external-link"></i> Intake link openen
+          </a>
+          <button class="btn btn-ghost btn-sm" onclick="copyText('${intakeUrl}'); toast('Link gekopieerd!','success')">
+            <i class="ti ti-copy"></i> Link kopiëren
+          </button>
+        </div>
+      </div>`;
+  }
+
+  // ── Tab: Betalingen ─────────────────────────────────────────────────────────
+  function buildBetalingenTabProject() {
+    const payments = lead.payments || [];
+    return `
+      <div class="project-tab-content" data-tab-content="betalingen" style="${activeTab !== 'betalingen' ? 'display:none' : ''}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div class="project-section-title" style="margin:0"><i class="ti ti-coin" style="color:var(--accent);margin-right:6px"></i>Betalingen</div>
+          ${isAdmin() ? `<button class="btn btn-primary btn-sm" onclick="createPayment('${lead.id}')"><i class="ti ti-plus"></i> Nieuwe factuur</button>` : ''}
+        </div>
+        ${payments.length ? `
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${[...payments].reverse().map(p => {
+              const statusColors = { sent: '#d97706', paid: '#16a34a', failed: '#dc2626', cancelled: '#9ca3af' };
+              const statusLabels = { sent: 'Verstuurd', paid: 'Betaald', failed: 'Mislukt', cancelled: 'Geannuleerd' };
+              const isOverdue = p.status === 'sent' && p.dueDate && new Date(p.dueDate) < new Date();
+              return `
+                <div style="border:1px solid ${isOverdue ? '#fecaca' : 'var(--border)'};border-radius:10px;padding:12px 14px;background:${isOverdue ? '#fef2f2' : 'var(--surface)'}">
+                  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+                    <div style="flex:1">
+                      <div style="font-size:14px;font-weight:700">€${(p.amount||0).toLocaleString('nl-NL')}</div>
+                      <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">${esc(p.description||'')}${p.splitIndex ? ` — deel ${p.splitIndex}/${p.splitTotal}` : ''}</div>
+                      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
+                        <span style="font-size:10px;font-weight:700;background:${isOverdue?'#fef2f2':'#f3f4f6'};color:${isOverdue?'#dc2626':statusColors[p.status]||'#6b7280'};border-radius:4px;padding:2px 6px">${isOverdue?'ACHTERSTALLIG':statusLabels[p.status]||p.status}</span>
+                        ${p.billing === 'maandelijks' ? '<span class="badge badge-blue" style="font-size:10px">Maandelijks</span>' : ''}
+                        <span style="font-size:10px;color:#9ca3af">${p.dueDate ? 'Vervalt ' + formatDate(p.dueDate) : ''}</span>
+                        ${p.paidAt ? `<span style="font-size:10px;color:#16a34a">Betaald ${formatDate(p.paidAt)}</span>` : ''}
+                      </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex-shrink:0">
+                      ${p.paymentUrl ? `<a href="${p.paymentUrl}" target="_blank" class="btn btn-ghost btn-sm" style="font-size:11px"><i class="ti ti-external-link"></i> Link</a>` : ''}
+                      ${p.status !== 'paid' ? `<button onclick="markPaymentPaid('${lead.id}','${p.id}')" class="btn btn-ghost btn-sm" style="font-size:11px;color:#16a34a"><i class="ti ti-check"></i> Betaald</button>` : ''}
+                      ${p.status === 'sent' ? `<button onclick="remindPayment('${lead.id}','${p.id}')" class="btn btn-ghost btn-sm" style="font-size:11px"><i class="ti ti-bell"></i> Herinner</button>` : ''}
+                      <button onclick="deletePayment('${lead.id}','${p.id}')" class="btn btn-ghost btn-sm" style="font-size:11px;color:#dc2626"><i class="ti ti-trash"></i></button>
+                    </div>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>
+        ` : `
+          <div style="text-align:center;padding:32px;font-size:13px;color:#9ca3af">
+            <i class="ti ti-coin" style="font-size:28px;display:block;margin-bottom:8px"></i>
+            Nog geen betalingen aangemaakt
+          </div>
+        `}
+      </div>`;
+  }
+
+  // ── Tab: Voorstel ────────────────────────────────────────────────────────────
+  function buildVoorstelTabProject() {
+    return `
+      <div class="project-tab-content" data-tab-content="voorstel" style="${activeTab !== 'voorstel' ? 'display:none' : ''}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div class="project-section-title" style="margin:0"><i class="ti ti-file-text" style="color:var(--accent);margin-right:6px"></i>Offerte / voorstel</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${lead.proposal ? `
+              <button class="btn btn-ghost btn-sm" onclick="downloadProposal('${lead.id}')"><i class="ti ti-download"></i> Download</button>
+              <button class="btn btn-ghost btn-sm" onclick="sendProposalEmail('${lead.id}')"><i class="ti ti-mail"></i> Verstuur</button>
+            ` : ''}
+            ${isAdmin() ? `<button class="btn btn-primary btn-sm" onclick="generateProposal('${lead.id}')" id="propGenBtn-${lead.id}">
+              <i class="ti ti-file-text"></i> ${lead.proposal ? 'Regenereer' : 'Genereer voorstel'}
+            </button>` : ''}
+          </div>
+        </div>
+        ${lead.proposal ? `
+          <div class="proposal-preview">
+            <iframe id="proposalFrame-${lead.id}" sandbox="allow-same-origin" style="width:100%;border:none;min-height:480px"></iframe>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:8px">Gegenereerd op ${new Date(lead.proposalGeneratedAt).toLocaleDateString('nl-NL')}</div>
+        ` : `
+          <div style="text-align:center;padding:32px">
+            <i class="ti ti-file-description" style="font-size:36px;color:var(--text-muted);display:block;margin-bottom:10px"></i>
+            <div style="color:var(--text-secondary);font-size:14px">Nog geen voorstel gegenereerd</div>
+            <div style="color:var(--text-muted);font-size:12px;margin-top:4px">Klik op "Genereer voorstel" om een professionele offerte te maken</div>
+          </div>
+        `}
+        <div id="propProgress-proj-${lead.id}" style="display:none">
+          <div class="proposal-progress">
+            <div id="propStep1-proj-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Lead data analyseren</div>
+            <div id="propStep2-proj-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Voorstel schrijven</div>
+            <div id="propStep3-proj-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Opslaan &amp; weergeven</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ── Tab: Contract ────────────────────────────────────────────────────────────
+  function buildContractTabProject() {
+    return `
+      <div class="project-tab-content" data-tab-content="contract" style="${activeTab !== 'contract' ? 'display:none' : ''}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div class="project-section-title" style="margin:0"><i class="ti ti-file-certificate" style="color:var(--accent);margin-right:6px"></i>Dienstverleningsovereenkomst</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${lead.contract ? `
+              <button class="btn btn-ghost btn-sm" onclick="downloadContract('${lead.id}')"><i class="ti ti-download"></i> Download</button>
+              <button class="btn btn-ghost btn-sm" onclick="sendContractEmail('${lead.id}')"><i class="ti ti-mail"></i> Verstuur</button>
+            ` : ''}
+            ${isAdmin() ? `<button class="btn btn-primary btn-sm" onclick="generateContract('${lead.id}')" id="contractGenBtn-${lead.id}">
+              <i class="ti ti-file-certificate"></i> ${lead.contract ? 'Regenereer' : 'Genereer contract'}
+            </button>` : ''}
+          </div>
+        </div>
+        ${lead.contract ? `
+          <div class="proposal-preview">
+            <iframe id="contractFrame-${lead.id}" sandbox="allow-same-origin" style="width:100%;border:none;min-height:520px"></iframe>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:8px">
+            Gegenereerd op ${new Date(lead.contractGeneratedAt).toLocaleDateString('nl-NL')}
+            ${lead.contractSentAt ? ` · <span style="color:var(--success)"><i class="ti ti-check"></i> Verstuurd op ${new Date(lead.contractSentAt).toLocaleDateString('nl-NL')}</span>` : ''}
+          </div>
+        ` : `
+          <div style="text-align:center;padding:32px">
+            <i class="ti ti-file-certificate" style="font-size:36px;color:var(--text-muted);display:block;margin-bottom:10px"></i>
+            <div style="color:var(--text-secondary);font-size:14px">Nog geen contract gegenereerd</div>
+            <div style="color:var(--text-muted);font-size:12px;margin-top:4px">Klik op "Genereer contract" om een juridisch contract op te stellen</div>
+          </div>
+        `}
+        <div id="contractProgress-proj-${lead.id}" style="display:none">
+          <div class="proposal-progress">
+            <div id="contractStep1-proj-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Contractgegevens ophalen</div>
+            <div id="contractStep2-proj-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Contract opstellen</div>
+            <div id="contractStep3-proj-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Contract opslaan</div>
+          </div>
+        </div>
       </div>`;
   }
 
@@ -3124,15 +3294,21 @@ async function renderProjectPage() {
             </div>
           </div>
           <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap">
-            ${['approved','scheduled','sent','replied'].includes(lead.status) && !lead.projectStartedAt
-              ? `<button class="btn btn-primary btn-sm" onclick="startProject('${esc(lead.id)}')"><i class="ti ti-rocket"></i> Project starten</button>`
-              : ''}
+            ${lead.projectStartedAt
+              ? `<button class="btn btn-ghost btn-sm" onclick="editProjectConfig('${esc(lead.id)}')"><i class="ti ti-settings"></i> Aanpassen</button>`
+              : ['approved','scheduled','sent','replied'].includes(lead.status)
+                ? `<button class="btn btn-primary btn-sm" onclick="startProject('${esc(lead.id)}')"><i class="ti ti-rocket"></i> Project starten</button>`
+                : ''}
           </div>
         </div>
         <div class="project-tabs">
           <button class="project-tab${activeTab==='overzicht'?' active':''}" data-tab="overzicht" onclick="switchProjectTab('overzicht')">Overzicht</button>
           <button class="project-tab${activeTab==='taken'?' active':''}" data-tab="taken" onclick="switchProjectTab('taken')">Problemen &amp; Taken</button>
           <button class="project-tab${activeTab==='emails'?' active':''}" data-tab="emails" onclick="switchProjectTab('emails')">Emails</button>
+          ${lead.intakeToken ? `<button class="project-tab${activeTab==='intake'?' active':''}" data-tab="intake" onclick="switchProjectTab('intake')">${lead.intakeSubmittedAt ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Intake</button>` : ''}
+          <button class="project-tab${activeTab==='betalingen'?' active':''}" data-tab="betalingen" onclick="switchProjectTab('betalingen')">${(lead.payments||[]).filter(p=>p.status==='sent').length > 0 ? `<i class="ti ti-coin" style="color:var(--warning);margin-right:3px"></i>` : ''}Betalingen</button>
+          <button class="project-tab${activeTab==='voorstel'?' active':''}" data-tab="voorstel" onclick="switchProjectTab('voorstel')">${lead.proposal ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Voorstel</button>
+          <button class="project-tab${activeTab==='contract'?' active':''}" data-tab="contract" onclick="switchProjectTab('contract')">${lead.contract ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Contract</button>
           <button class="project-tab${activeTab==='website'?' active':''}" data-tab="website" onclick="switchProjectTab('website')">Website</button>
           <button class="project-tab${activeTab==='afspraken'?' active':''}" data-tab="afspraken" onclick="switchProjectTab('afspraken')">Afspraken</button>
           <button class="project-tab${activeTab==='portaal'?' active':''}" data-tab="portaal" onclick="switchProjectTab('portaal')">Klantportaal</button>
@@ -3144,6 +3320,10 @@ async function renderProjectPage() {
         ${tabOverzicht}
         ${buildProblemsTab()}
         ${buildEmailsTab()}
+        ${buildIntakeTabProject()}
+        ${buildBetalingenTabProject()}
+        ${buildVoorstelTabProject()}
+        ${buildContractTabProject()}
         ${buildWebsiteTabProject()}
         ${tabAfspraken}
         ${tabPortaal}
@@ -4588,73 +4768,153 @@ async function sendUpsellEmail(leadId) {
 
 // ─── Project Engine ───────────────────────────────────────────────────────────
 
-function startProject(leadId) {
+function startProject(leadId) { openProjectConfigModal(leadId, false); }
+function editProjectConfig(leadId) { openProjectConfigModal(leadId, true); }
+
+function openProjectConfigModal(leadId, editMode) {
   const lead = state.leads.find(l => l.id === leadId);
   if (!lead) return;
 
-  const defaultServices = (state.settings?.services || []).map(s => s.name).join(', ');
-  const currentServices = (lead.services || []).map(s => typeof s === 'string' ? s : s.name).join(', ');
-  const servicesList = (state.settings?.services || []);
+  const servicesList = state.settings?.services || [];
+  const today = new Date().toISOString().split('T')[0];
+  const startDate = lead.projectStartDate || today;
 
   const serviceCheckboxes = servicesList.length
     ? servicesList.map(s => {
-        const sName = typeof s === 'string' ? s : s.name;
-        const sPrice = typeof s === 'object' && s.price ? s.price : '';
+        const sName  = typeof s === 'string' ? s : s.name;
+        const sPrice = typeof s === 'object' ? (parseFloat(s.price) || 0) : 0;
         const checked = !lead.services?.length || (lead.services || []).some(ls => (typeof ls === 'string' ? ls : ls.name) === sName);
-        return `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;font-size:13px">
-          <input type="checkbox" name="svc" value="${esc(sName)}" ${checked ? 'checked' : ''} style="width:15px;height:15px;accent-color:var(--accent)">
-          <span style="flex:1">${esc(sName)}</span>
-          ${sPrice ? `<span style="font-size:12px;color:var(--text-muted)">€${sPrice.toLocaleString?.('nl-NL') ?? sPrice}</span>` : ''}
+        return `<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;margin-bottom:6px;background:var(--surface)">
+          <input type="checkbox" name="svc" value="${esc(sName)}" data-price="${sPrice}" ${checked ? 'checked' : ''} onchange="updateProjectTotal()" style="width:15px;height:15px;accent-color:var(--accent);flex-shrink:0">
+          <span style="flex:1;font-size:13px;font-weight:500">${esc(sName)}</span>
+          ${sPrice ? `<span style="font-size:12px;color:var(--text-muted)">€${sPrice.toLocaleString('nl-NL')}</span>` : ''}
         </label>`;
       }).join('')
-    : `<input type="text" id="projServices" class="form-control" value="${esc(currentServices || defaultServices)}" placeholder="bijv. Social Media, Website, SEO" style="width:100%">`;
+    : `<div style="font-size:13px;color:var(--text-muted)">Geen diensten in instellingen. <a onclick="setView('settings')" style="color:var(--accent);cursor:pointer">Voeg toe in Instellingen →</a></div>`;
+
+  const durationOptions = [
+    { value: 1, label: '1 maand' }, { value: 3, label: '3 maanden' },
+    { value: 6, label: '6 maanden' }, { value: 12, label: '12 maanden' },
+    { value: 0, label: 'Onbepaald' },
+  ];
+  const currentDur = lead.projectDuration !== undefined ? lead.projectDuration : 12;
+  const durationSel = durationOptions.map(o =>
+    `<option value="${o.value}" ${currentDur === o.value ? 'selected' : ''}>${o.label}</option>`).join('');
+
+  const billingOptions = [
+    { value: 'maandelijks', label: 'Maandelijks' },
+    { value: 'eenmalig',    label: 'Eenmalig' },
+    { value: 'gesplitst',   label: 'Gesplitst (50/50)' },
+  ];
+  const currentBilling = lead.projectBilling || 'maandelijks';
 
   openModal(`
     <div class="modal-header">
       <strong><i class="ti ti-settings" style="color:var(--accent)"></i> Project configureren — ${esc(lead.companyName)}</strong>
       <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
     </div>
-    <div style="padding:0 0 8px">
-      <div class="form-group" style="margin-bottom:14px">
-        <label>Services</label>
-        <div style="border:1px solid var(--border);border-radius:8px;padding:4px 12px;background:var(--surface);max-height:180px;overflow-y:auto" id="projServicesList">
-          ${serviceCheckboxes}
+    <div style="padding:0 0 8px;max-height:65vh;overflow-y:auto">
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px">Diensten</div>
+      <div id="projServicesList" style="margin-bottom:6px">${serviceCheckboxes}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface-2);border-radius:8px;margin-bottom:16px;font-size:13px">
+        <span style="font-weight:600">Totaal services</span>
+        <span id="projServicesTotal" style="font-weight:700;color:var(--accent)">€0</span>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px">Prijs</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Totaalprijs (€) — laat leeg voor auto</label>
+          <input type="number" id="projPrice" class="form-control" value="${lead.estimatedValue || lead.servicePrice || ''}" placeholder="Auto van diensten" min="0" style="width:100%" oninput="window._projPriceManual=true">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Facturering</label>
+          <select id="projBilling" class="form-control" style="width:100%">
+            ${billingOptions.map(o => `<option value="${o.value}" ${currentBilling === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+          </select>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
-        <div class="form-group">
-          <label>Deal waarde (€)</label>
-          <input type="number" id="projPrice" class="form-control" value="${lead.estimatedValue || lead.servicePrice || ''}" placeholder="0" min="0" style="width:100%">
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px">Looptijd</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Duur</label>
+          <select id="projDuration" class="form-control" style="width:100%" onchange="updateProjectEndDate()">
+            ${durationSel}
+          </select>
         </div>
-        <div class="form-group">
-          <label>Looptijd (maanden)</label>
-          <input type="number" id="projDuration" class="form-control" value="${lead.projectDuration || 12}" placeholder="12" min="1" max="60" style="width:100%">
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Startdatum</label>
+          <input type="date" id="projStartDate" class="form-control" value="${startDate}" style="width:100%" onchange="updateProjectEndDate()">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Einddatum</label>
+          <input type="date" id="projEndDate" class="form-control" value="${lead.projectEndDate || ''}" style="width:100%;background:var(--surface-2)" readonly>
         </div>
       </div>
-      <div class="form-group">
-        <label>Notities voor AI projectplan</label>
-        <textarea id="projNotes" class="form-control" rows="3" placeholder="Speciale wensen, doelen, beperkingen..." style="width:100%;resize:vertical">${esc(lead.projectNotes || '')}</textarea>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px">
+        Notities <span style="font-weight:400;text-transform:none">(intern, niet zichtbaar voor klant)</span>
       </div>
+      <textarea id="projNotes" class="form-control" rows="3" placeholder="Speciale wensen, doelen, beperkingen..." style="width:100%;resize:vertical">${esc(lead.projectNotes || '')}</textarea>
+
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
-      <button class="btn btn-primary" onclick="confirmStartProject('${leadId}')"><i class="ti ti-rocket"></i> Project starten</button>
+      <button class="btn btn-primary" onclick="confirmStartProject('${leadId}',${editMode})">
+        <i class="ti ti-${editMode ? 'check' : 'rocket'}"></i> ${editMode ? 'Opslaan' : 'Sla op en start project'}
+      </button>
     </div>
   `);
+
+  window._projPriceManual = !!(lead.estimatedValue || lead.servicePrice);
+  updateProjectTotal();
+  updateProjectEndDate();
 }
 
-async function confirmStartProject(leadId) {
+function updateProjectTotal() {
+  const checked = [...document.querySelectorAll('#projServicesList input[name="svc"]:checked')];
+  const total = checked.reduce((sum, el) => sum + (parseFloat(el.dataset.price) || 0), 0);
+  const totalEl = document.getElementById('projServicesTotal');
+  if (totalEl) totalEl.textContent = `€${total.toLocaleString('nl-NL')}`;
+  if (!window._projPriceManual && total > 0) {
+    const priceEl = document.getElementById('projPrice');
+    if (priceEl) priceEl.value = total;
+  }
+}
+
+function updateProjectEndDate() {
+  const durEl   = document.getElementById('projDuration');
+  const startEl = document.getElementById('projStartDate');
+  const endEl   = document.getElementById('projEndDate');
+  if (!durEl || !startEl || !endEl) return;
+  const months = parseInt(durEl.value);
+  if (!months || !startEl.value) { endEl.value = ''; return; }
+  const d = new Date(startEl.value);
+  d.setMonth(d.getMonth() + months);
+  endEl.value = d.toISOString().split('T')[0];
+}
+
+async function confirmStartProject(leadId, editMode) {
   const lead = state.leads.find(l => l.id === leadId);
   if (!lead) return;
 
   const checkedBoxes = [...document.querySelectorAll('#projServicesList input[name="svc"]:checked')].map(el => el.value);
-  const manualInput  = document.getElementById('projServices');
-  const services     = checkedBoxes.length ? checkedBoxes : (manualInput?.value?.split(',').map(s => s.trim()).filter(Boolean) || []);
-  const price        = parseFloat(document.getElementById('projPrice')?.value) || lead.estimatedValue || 0;
-  const duration     = parseInt(document.getElementById('projDuration')?.value) || 12;
-  const notes        = document.getElementById('projNotes')?.value?.trim() || '';
+  const services  = checkedBoxes.length ? checkedBoxes : (lead.services || []);
+  const price     = parseFloat(document.getElementById('projPrice')?.value) || 0;
+  const billing   = document.getElementById('projBilling')?.value || 'maandelijks';
+  const duration  = parseInt(document.getElementById('projDuration')?.value) || 0;
+  const startDate = document.getElementById('projStartDate')?.value || new Date().toISOString().split('T')[0];
+  const endDate   = document.getElementById('projEndDate')?.value || '';
+  const notes     = document.getElementById('projNotes')?.value?.trim() || '';
 
-  const patch = { estimatedValue: price, servicePrice: price, projectDuration: duration, projectNotes: notes };
+  const patch = {
+    estimatedValue: price, servicePrice: price,
+    projectBilling: billing, projectDuration: duration,
+    projectStartDate: startDate, projectEndDate: endDate,
+    projectNotes: notes,
+  };
   if (services.length) patch.services = services;
 
   await api(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(patch) });
@@ -4662,7 +4922,12 @@ async function confirmStartProject(leadId) {
   if (idx !== -1) Object.assign(state.leads[idx], patch);
 
   closeModal();
-  _doStartProject(leadId);
+  if (editMode) {
+    toast('Project configuratie bijgewerkt', 'success');
+    renderProjectPage();
+  } else {
+    _doStartProject(leadId);
+  }
 }
 
 function _doStartProject(leadId) {
@@ -6214,6 +6479,9 @@ async function renderRuns() {
       <div id="templateList"><div class="loading-state"><div class="spinner"></div></div></div>
     </div>
 
+    <!-- Live run progress (hidden when idle) -->
+    <div id="liveRunCard" style="display:none;margin-bottom:16px"></div>
+
     <!-- Section 1: Run Configuratie -->
     <div class="card" style="margin-bottom:14px">
       <div class="card-header">
@@ -6381,6 +6649,87 @@ async function renderRuns() {
   loadActivityLog();
   loadTemplates();
   loadSystemHealth();
+  startRunProgressPoll();
+}
+
+let _runProgressPollTimer = null;
+function startRunProgressPoll() {
+  stopRunProgressPoll();
+  pollRunProgress();
+}
+function stopRunProgressPoll() {
+  if (_runProgressPollTimer) { clearTimeout(_runProgressPollTimer); _runProgressPollTimer = null; }
+}
+function updateSidebarRunning(p) {
+  const wrap = document.getElementById('sidebarRunning');
+  const text = document.getElementById('sidebarRunningText');
+  const bar  = document.getElementById('sidebarRunningBar');
+  if (!wrap) return;
+  if (p && p.running) {
+    wrap.style.display = '';
+    if (text) text.textContent = p.currentAgent || 'Outreach run';
+    if (bar)  bar.style.width = (p.target > 0 ? Math.round((p.found / p.target) * 100) : 0) + '%';
+  } else {
+    wrap.style.display = 'none';
+    if (bar) bar.style.width = '0%';
+  }
+}
+
+async function pollRunProgress() {
+  const card = document.getElementById('liveRunCard');
+  if (!card) return;
+  try {
+    const p = await apiJSON('/api/run/progress');
+    updateSidebarRunning(p);
+    if (p && p.running) {
+      const pct = p.target > 0 ? Math.round((p.found / p.target) * 100) : 0;
+      const elapsed = p.startedAt ? Math.round((Date.now() - new Date(p.startedAt).getTime()) / 1000) : 0;
+      const elapsedLabel = elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed/60)}m ${elapsed%60}s`;
+      card.style.display = 'block';
+      card.innerHTML = `
+        <div class="card" style="border:2px solid var(--accent);background:var(--accent-light)">
+          <div class="card-header" style="border-bottom:1px solid var(--accent);padding-bottom:12px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span class="running-dot"></span>
+              <h3 class="card-title" style="color:var(--accent)">Run actief</h3>
+              <span style="font-size:12px;color:var(--text-muted)">${elapsedLabel} bezig</span>
+            </div>
+            <span style="font-size:13px;font-weight:600;color:var(--text-primary)">${p.found}/${p.target} leads</span>
+          </div>
+          <div style="padding:14px 20px">
+            <div style="margin-bottom:10px">
+              <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:4px">
+                <span>${p.currentAgent || 'Bezig...'}</span>
+                <span>${pct}%</span>
+              </div>
+              <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+                <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:3px;transition:width .4s"></div>
+              </div>
+            </div>
+            ${p.currentLead ? `<div style="font-size:12px;color:var(--text-muted)">Huidig bedrijf: <strong style="color:var(--text-primary)">${p.currentLead}</strong></div>` : ''}
+            ${p.skipped > 0 ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px">${p.skipped} overgeslagen (geen email / blacklist)</div>` : ''}
+            ${p.log && p.log.length ? `
+              <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+                <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Log</div>
+                ${p.log.slice(0,5).map(l => `
+                  <div style="font-size:12px;color:var(--text-secondary);line-height:1.6">${l.msg}</div>
+                `).join('')}
+              </div>` : ''}
+          </div>
+        </div>`;
+      _runProgressPollTimer = setTimeout(pollRunProgress, 3000);
+    } else {
+      card.style.display = 'none';
+      updateSidebarRunning(null);
+      if (p && p.finishedAt && !p.running) {
+        const justFinished = (Date.now() - new Date(p.finishedAt).getTime()) < 10000;
+        if (justFinished) loadSystemHealth();
+      }
+    }
+  } catch {
+    card.style.display = 'none';
+    updateSidebarRunning(null);
+  }
 }
 
 async function loadSystemHealth() {
@@ -6866,6 +7215,8 @@ async function startCustomRun() {
   if (barEl)    barEl.style.display = '';
   if (timerEl)  { timerEl.textContent = 'Bezig: 0:00'; timerEl.style.display = ''; }
 
+  if (document.getElementById('liveRunCard')) startRunProgressPoll();
+
   const t0 = Date.now();
   const timer = setInterval(() => {
     if (timerEl) timerEl.textContent = `Bezig: ${_runFmt(Date.now() - t0)}`;
@@ -7277,8 +7628,8 @@ async function loadStatsData(days) {
     </div>
     <div class="stats-grid" style="margin-bottom:20px;grid-template-columns:repeat(4,1fr)">
       ${[
-        { label: 'Omzet (betaald)',  value: '€' + Math.round(pnlData.totalRevenue), icon: 'ti-cash',         color: '#16a34a' },
-        { label: 'AI Kosten',        value: '€' + Math.round(pnlData.totalCosts),   icon: 'ti-brain',        color: '#dc2626' },
+        { label: 'Omzet (betaald + klanten)',  value: '€' + Math.round(pnlData.totalRevenue), icon: 'ti-cash',         color: '#16a34a' },
+        { label: 'Kosten (AI + hosting)',     value: '€' + Math.round(pnlData.totalCosts),   icon: 'ti-brain',        color: '#dc2626' },
         { label: 'Netto Winst',      value: '€' + Math.round(pnlData.totalProfit),  icon: 'ti-trending-up',  color: pnlData.totalProfit >= 0 ? '#16a34a' : '#dc2626' },
         { label: 'Marge',            value: pnlData.margin + '%',                   icon: 'ti-percentage',   color: pnlData.margin >= 0 ? '#7c3aed' : '#dc2626' }
       ].map(k => `
@@ -8678,6 +9029,22 @@ async function renderSettings() {
 
         <div class="stg-section">
           <div class="stg-section-header">
+            <div class="stg-title">Vaste kosten (P&amp;L)</div>
+            <div class="stg-sub">Vaste maandelijkse kosten worden meegenomen in de Winst &amp; Verlies berekening</div>
+          </div>
+          <div class="stg-grid-2">
+            <div class="stg-field">
+              <label class="stg-label">MAANDELIJKSE HOSTING KOSTEN (€)</label>
+              <input type="number" class="stg-input" id="monthlyHostingCost" value="${s.monthlyHostingCost || 0}" min="0" step="0.01" placeholder="Bijv. 25 voor Railway">
+            </div>
+          </div>
+          <button class="btn btn-ghost stg-save-btn" id="savePaymentsAutoBtn2" onclick="document.getElementById('savePaymentsAutoBtn')?.click()"><i class="ti ti-device-floppy"></i> Opslaan</button>
+        </div>
+
+        <div class="stg-divider"></div>
+
+        <div class="stg-section">
+          <div class="stg-section-header">
             <div class="stg-title">Automatische facturering</div>
           </div>
           <div style="margin-bottom:14px">
@@ -9116,6 +9483,7 @@ function attachSettingsHandlers(s) {
       btwEnabled:  document.getElementById('btwEnabled')?.checked ?? false,
       btwRate:     parseInt(document.getElementById('btwRate')?.value || 21),
       btwNumber:   document.getElementById('btwNumber')?.value?.trim() || '',
+      monthlyHostingCost: parseFloat(document.getElementById('monthlyHostingCost')?.value || 0),
       aiRateLimits: {
         maxCallsPerMinute: parseInt(document.getElementById('aiMaxPerMin')?.value  || 10),
         maxCallsPerHour:   parseInt(document.getElementById('aiMaxPerHour')?.value || 100),
@@ -9196,6 +9564,8 @@ async function triggerFindLeads() {
   btns.forEach(btn => { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...'; });
 
   toast('Run gestart', 'info');
+  // Start progress polling so the live card shows up right away
+  if (document.getElementById('liveRunCard')) startRunProgressPoll();
 
   try {
     const res = await api('/api/find-leads', { method: 'POST' });
@@ -9211,6 +9581,9 @@ async function triggerFindLeads() {
   } finally {
     state.runningPipeline = false;
     btns.forEach(btn => { btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> Run nu'; }); // runNowBtn2 restore
+    stopRunProgressPoll();
+    const card = document.getElementById('liveRunCard');
+    if (card) card.style.display = 'none';
   }
 }
 
@@ -9364,25 +9737,30 @@ async function openNotificationPanel() {
     intake_submitted: 'ti-clipboard-check',
     high_score_lead:  'ti-star',
     payment_overdue:  'ti-alert-triangle',
+    payment_received: 'ti-circle-check',
     run_complete:     'ti-check',
     email_bounced:    'ti-mail-off',
     calendly_booking: 'ti-calendar-event',
-    contact_form:     'ti-user-plus'
+    contact_form:     'ti-user-plus',
+    client_question:  'ti-message-circle'
   };
 
   const notifHTML = data.notifications.length === 0
     ? '<div class="notif-empty">Geen meldingen</div>'
     : data.notifications.map(n => `
-        <div class="notif-item ${n.read ? '' : 'unread'}" onclick="handleNotificationClick('${n.id}','${n.leadId || ''}')">
+        <div class="notif-item ${n.read ? '' : 'unread'}" onclick="handleNotificationClick('${n.id}','${encodeURIComponent(n.link || '')}')">
           <div class="notif-icon-wrap ${n.type}">
             <i class="ti ${ICONS[n.type] || 'ti-bell'}"></i>
           </div>
           <div class="notif-content">
-            <div class="notif-title">${n.title}</div>
-            <div class="notif-body">${n.body}</div>
+            <div class="notif-title">${esc(n.title)}</div>
+            <div class="notif-body">${esc(n.body)}</div>
             <div class="notif-time">${relativeTime(n.createdAt)}</div>
           </div>
-          ${!n.read ? '<div class="notif-dot"></div>' : ''}
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+            ${!n.read ? '<div class="notif-dot"></div>' : ''}
+            ${!n.read ? `<button class="notif-read-btn" title="Markeer als gelezen" onclick="event.stopPropagation();markNotificationRead('${n.id}')"><i class="ti ti-check" style="font-size:11px"></i></button>` : ''}
+          </div>
         </div>`).join('');
 
   const pushSubscribed = window._pushSubscription ? '1' : '0';
@@ -9438,15 +9816,27 @@ function closeNotificationPanel() {
   setTimeout(() => { if (panel) panel.style.display = 'none'; }, 200);
 }
 
-async function handleNotificationClick(id, leadId) {
+async function handleNotificationClick(id, encodedLink) {
   await api(`/api/notifications/${id}/read`, { method: 'PATCH' });
   closeNotificationPanel();
   closeModal();
-  if (leadId) {
-    setView('leads');
-    setTimeout(() => openLeadDetail(leadId), 300);
+  const link = decodeURIComponent(encodedLink || '');
+  if (link) {
+    if (link.startsWith('project:')) {
+      const leadId = link.split(':')[1];
+      setView('leads');
+      setTimeout(() => openLeadDetail(leadId), 300);
+    } else {
+      setView(link);
+    }
   }
   fetchNotifications();
+}
+
+async function markNotificationRead(id) {
+  await api(`/api/notifications/${id}/read`, { method: 'PATCH' });
+  fetchNotifications();
+  openNotificationPanel();
 }
 
 async function markAllNotificationsRead() {
@@ -9508,6 +9898,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('notifBtn')?.addEventListener('click', openNotificationPanel);
   document.getElementById('notifBtnMobile')?.addEventListener('click', openNotificationPanel);
   startNotificationPolling();
+
+  // Poll run progress every 10s globally (keeps sidebar "Nu draait" in sync)
+  setInterval(async () => {
+    if (state.view === 'runs') return; // runs page has its own faster poll
+    try {
+      const p = await apiJSON('/api/run/progress');
+      updateSidebarRunning(p);
+    } catch {}
+  }, 10000);
 
   // Service worker + push notifications
   if ('serviceWorker' in navigator) {

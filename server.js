@@ -25,6 +25,16 @@ function logError(type, message, details = null) {
   if (RUN_ERRORS.length > 100) RUN_ERRORS.pop();
 }
 
+// ── Live run progress state ────────────────────────────────────────────────────
+let _runState = {
+  running: false, startedAt: null, target: 0, found: 0,
+  skipped: 0, currentAgent: null, currentLead: null, log: []
+};
+function runLog(msg) {
+  _runState.log.unshift({ msg, at: new Date().toISOString() });
+  if (_runState.log.length > 10) _runState.log.pop();
+}
+
 const DEFAULT_SERVICES = [
   // ── Maandelijkse managed services ────────────────────────────────────────────
   { name: 'Meta advertenties met AI',             price: 850,  billing: 'maandelijks', description: 'Facebook & Instagram ads opgezet en beheerd met AI-optimalisatie' },
@@ -76,6 +86,7 @@ const DATA_DEFAULTS = {
   'stats.json':      { leadsFound: 0, emailsSent: 0, replies: 0, pipelineValue: 0, weeklyData: [], newReplies: [], abStats: { aApproved: 0, bApproved: 0 } },
   'memory.json':     {},
   'blacklist.json':  [],
+  'activity.json':   [],
   'notifications.json':   [],
   'contacts.json':        [],
   'push-subscriptions.json': [],
@@ -207,14 +218,7 @@ app.get('/status',       (_, res) => res.sendFile(path.join(__dirname, 'public',
 
 function addActivity(type, label, opts) {
   opts = opts || {};
-  const logFile = path.join(DATA_DIR, 'activity.json');
-  let log = [];
-  try {
-    if (fs.existsSync(logFile)) {
-      const raw = fs.readFileSync(logFile, 'utf8').replace(/^\uFEFF/, '');
-      log = JSON.parse(raw);
-    }
-  } catch { log = []; }
+  let log = readJSON('activity.json') || [];
   log.unshift({
     id:        Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
     type,
@@ -226,22 +230,24 @@ function addActivity(type, label, opts) {
     meta:      opts.meta      || {}
   });
   if (log.length > 500) log = log.slice(0, 500);
-  fs.writeFileSync(logFile, JSON.stringify(log, null, 2), 'utf8');
+  writeJSON('activity.json', log);
 }
 
-function addNotification(type, title, body, leadId) {
+function addNotification(type, title, body, leadId, link) {
   const notifications = readJSON('notifications.json') || [];
+  const resolvedLink = link || (leadId ? `project:${leadId}` : null);
   notifications.unshift({
     id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
     type, title, body,
     leadId: leadId || null,
+    link: resolvedLink,
     read: false,
     createdAt: new Date().toISOString()
   });
   if (notifications.length > 200) notifications.splice(200);
   writeJSON('notifications.json', notifications);
 
-  const pushTypes = ['reply_received', 'intake_submitted', 'high_score_lead', 'payment_overdue', 'run_complete', 'calendly_booking'];
+  const pushTypes = ['reply_received', 'intake_submitted', 'high_score_lead', 'payment_overdue', 'run_complete', 'calendly_booking', 'payment_received', 'client_question'];
   if (pushTypes.includes(type)) {
     const url = leadId ? `/app#lead-${leadId}` : '/app';
     sendPushToAll(title, body, url).catch(() => {});
@@ -734,7 +740,7 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
   leads[idx].intakeAnswers = req.body.answers || {};
   leads[idx].intakeSubmittedAt = new Date().toISOString();
   addLeadHistory(leads, leads[idx].id, { event: 'intakeSubmitted', label: 'Intake ingevuld door klant' });
-  addNotification('intake_submitted', `Intake ingevuld: ${leads[idx].companyName}`, `De intake is ingevuld door ${leads[idx].contactName || leads[idx].companyName}`, leads[idx].id);
+  addNotification('intake_submitted', `Intake ingevuld: ${leads[idx].companyName}`, `De intake is ingevuld door ${leads[idx].contactName || leads[idx].companyName}`, leads[idx].id, `project:${leads[idx].id}`);
   fireWebhooks('intake.submitted', { leadId: leads[idx].id, companyName: leads[idx].companyName, niche: leads[idx].niche, contactEmail: leads[idx].contactEmail, submittedAt: leads[idx].intakeSubmittedAt });
   writeJSON('leads.json', leads);
 
@@ -1129,6 +1135,7 @@ app.post('/api/portal/:token/message', (req, res) => {
   const preview = message.length > 60 ? message.substring(0, 60) + '...' : message;
   addLeadHistory(leads, lead.id, { event: 'clientMessage', label: `Klant bericht van ${name}: ${preview}` });
   writeJSON('leads.json', leads);
+  addNotification('client_question', `Klant vraag: ${lead.companyName}`, `${name}: ${preview}`, lead.id, `project:${lead.id}`);
   res.json({ ok: true });
 });
 
@@ -1179,7 +1186,7 @@ app.post('/api/contact', async (req, res) => {
     status: 'new'
   });
   writeJSON('contacts.json', contacts);
-  addNotification('contact_form', `Nieuwe aanvraag: ${name}`, `${company ? company + ' — ' : ''}${service || 'Algemene aanvraag'}`);
+  addNotification('contact_form', `Nieuwe aanvraag: ${name}`, `${company ? company + ' — ' : ''}${service || 'Algemene aanvraag'}`, null, 'contacts');
   const settings = readJSON('settings.json') || {};
   if (isGmailReady(settings)) {
     try {
@@ -1672,6 +1679,15 @@ app.patch('/api/leads/:id', (req, res) => {
   }
   if (req.body.status && req.body.status !== prevStatus) {
     addLeadHistory(leads, req.params.id, { event: 'status', label: `Status: ${req.body.status}` });
+  }
+  if (req.body.projectBilling !== undefined || req.body.projectDuration !== undefined || req.body.projectStartDate !== undefined || req.body.estimatedValue !== undefined) {
+    const b = req.body;
+    const parts = [];
+    if (b.projectBilling) parts.push(`facturering: ${b.projectBilling}`);
+    if (b.projectDuration !== undefined) parts.push(`looptijd: ${b.projectDuration ? b.projectDuration + ' mnd' : 'onbepaald'}`);
+    if (b.projectStartDate) parts.push(`start: ${b.projectStartDate}`);
+    if (b.estimatedValue) parts.push(`prijs: €${b.estimatedValue}`);
+    if (parts.length) addLeadHistory(leads, req.params.id, { event: 'projectConfig', label: `Project config bijgewerkt — ${parts.join(', ')}` });
   }
   writeJSON('leads.json', leads);
   res.json(leads[idx]);
@@ -3318,6 +3334,10 @@ app.post('/api/runs', (req, res) => {
   res.json(run);
 });
 
+app.get('/api/run/progress', (req, res) => {
+  res.json(_runState);
+});
+
 // â"€â"€â"€ Settings â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 app.get('/api/settings', (req, res) => {
@@ -3517,8 +3537,9 @@ app.patch('/api/settings/automation', requireAdmin, (req, res) => {
   if (req.body.btwRate !== undefined) settings.btwRate = req.body.btwRate;
   if (req.body.btwNumber !== undefined) settings.btwNumber = req.body.btwNumber;
   if (req.body.aiRateLimits     !== undefined) settings.aiRateLimits     = req.body.aiRateLimits;
-  if (req.body.aiAutoReply     !== undefined) settings.aiAutoReply     = req.body.aiAutoReply;
-  if (req.body.aiAutoReplySend !== undefined) settings.aiAutoReplySend = req.body.aiAutoReplySend;
+  if (req.body.aiAutoReply          !== undefined) settings.aiAutoReply          = req.body.aiAutoReply;
+  if (req.body.aiAutoReplySend      !== undefined) settings.aiAutoReplySend      = req.body.aiAutoReplySend;
+  if (req.body.monthlyHostingCost   !== undefined) settings.monthlyHostingCost   = parseFloat(req.body.monthlyHostingCost) || 0;
   writeJSON('settings.json', settings);
   scheduleCron(); // re-schedule if run time changed
   scheduleBriefingCron(); // re-schedule briefing if time changed
@@ -3844,8 +3865,15 @@ app.patch('/api/leads/:id/payments/:payId', requireAdmin, (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const pIdx = (leads[idx].payments || []).findIndex(p => p.id === req.params.payId);
   if (pIdx === -1) return res.status(404).json({ error: 'Betaling niet gevonden' });
+  const prevPayStatus = leads[idx].payments[pIdx].status;
   leads[idx].payments[pIdx] = { ...leads[idx].payments[pIdx], ...req.body };
   if (req.body.status === 'paid' && !leads[idx].payments[pIdx].paidAt) leads[idx].payments[pIdx].paidAt = new Date().toISOString();
+  if (req.body.status === 'paid' && prevPayStatus !== 'paid') {
+    const pay = leads[idx].payments[pIdx];
+    addNotification('payment_received', `Betaling ontvangen: ${leads[idx].companyName}`,
+      `€${(pay.amount || 0).toLocaleString('nl-NL')}${pay.description ? ' — ' + pay.description : ''}`,
+      leads[idx].id, `project:${leads[idx].id}`);
+  }
   writeJSON('leads.json', leads);
   res.json(leads[idx].payments[pIdx]);
 });
@@ -4297,6 +4325,7 @@ async function processOneLead(lead, settings, options = {}) {
   lead.language = language;
   const companySize = lead.companySize || 'small';
 
+  _runState.currentAgent = 'Agent 2 — Website checker';
   console.log(`  [Agent 2] Website checken: ${lead.websiteUrl}`);
   const website = await checkWebsite(lead.websiteUrl);
   console.log(`  [Agent 2] Bereikbaar: ${website.reachable}, laadtijd: ${website.loadTimeMs || '—'}ms`);
@@ -4365,6 +4394,7 @@ async function processOneLead(lead, settings, options = {}) {
 
   const emailSource = contactEmail ? 'verified' : null;
 
+  _runState.currentAgent = 'Agent 3 — Social analyzer';
   console.log(`  [Agent 3] Social media analyseren...`);
   let social;
   try {
@@ -4393,6 +4423,7 @@ Website problemen: ${website.problems?.join(', ') || 'geen'}
     social = { engagementRate: 2.5, postFrequency: 'wekelijks', runningAds: false, growthPotential: 6, improvements: [], emailOpener: null, emailOpenerEn: null };
   }
 
+  _runState.currentAgent = 'Agent 4 — Scorer';
   console.log(`  [Agent 4] Kansen berekenen...`);
   const servicesList = services.map(s => `- ${s.name}: â‚¬${s.price} â€" ${s.description}`).join('\n');
   let opportunity;
@@ -4446,6 +4477,7 @@ Geef JSON:
     }
   }
 
+  _runState.currentAgent = 'Agent 7 — Concurrent analyzer';
   console.log(`  [Agent 7] Concurrentie analyseren...`);
   let competitors;
   try {
@@ -4467,6 +4499,7 @@ Analyseer wat die concurrenten waarschijnlijk beter doen aan online marketing.
     competitors = { competitorNames: [], competitorAdvantages: [], competitorGap: null };
   }
 
+  _runState.currentAgent = 'Agent 5 — Email schrijver';
   console.log(`  [Agent 5] Email schrijven A+B (${language})...`);
   const topProblem = opportunity.problems?.[0] || (language === 'nl' ? 'groei online aanwezigheid' : 'growing online presence');
   const topService = opportunity.recommendedServices?.[0]?.name || services[0]?.name || 'AI-marketing';
@@ -4705,6 +4738,7 @@ Return ONLY JSON: { "subjectOptions": ["option1", "option2", "option3"] }`;
 
   const email = { ...emailA, subject: subjectOptions[0] };
 
+  _runState.currentAgent = 'Agent 6 — LinkedIn DM schrijver';
   console.log(`  [Agent 6] LinkedIn DM + voicenote schrijven (${language})...`);
   const dmPrompt = language === 'nl'
     ? `Schrijf een LinkedIn DM als een direct, persoonlijk berichtje. Max 280 tekens. Geen hashtags.
@@ -4822,6 +4856,8 @@ Rules:
 async function runFindLeadsJob(overrides = {}) {
   console.log('[Run] Starting runFindLeadsJob...');
   console.log('[Run] Overrides:', JSON.stringify(overrides));
+  _runState = { running: true, startedAt: new Date().toISOString(), target: 0, found: 0, skipped: 0, currentAgent: 'Opstarten', currentLead: null, log: [] };
+  runLog('Run gestart');
 
   const settings0 = readJSON('settings.json') || {};
   const apiKey = getClaudeApiKey(settings0);
@@ -4881,6 +4917,8 @@ async function runFindLeadsJob(overrides = {}) {
   const inboxItems = [];
   const newLeads   = [];
 
+  _runState.target = target;
+  runLog(`Doel: ${target} leads zoeken`);
   console.log(`\n[Agency AI] ─── Lead finder gestart: ${target} leads nodig ───`);
 
   try {
@@ -4971,6 +5009,11 @@ Example format:
     for (const lead of freshBatch) {
       if (found >= target) break;
       console.log(`\n[Lead ${found + 1}/${target}] ${lead.companyName} (${lead.niche})`);
+      _runState.currentLead = lead.companyName;
+      _runState.currentAgent = 'Agent 1 — Finder';
+      _runState.found = found;
+      _runState.skipped = skipped;
+      runLog(`Verwerken: ${lead.companyName}`);
       let result;
       try {
         result = await processOneLead(lead, settings);
@@ -4987,6 +5030,8 @@ Example format:
       inboxItems.push(item);
       newLeads.push(leadRecord);
       found++;
+      _runState.found = found;
+      runLog(`✓ ${lead.companyName} — score ${item.score}`);
       console.log(`  ✓ Klaar — score: ${item.score}, waarde: €${item.estimatedValue} → inbox (wacht op goedkeuring)`);
     }
   }
@@ -4995,9 +5040,17 @@ Example format:
     console.error('[Run] Batch loop crashed:', loopErr.message);
     console.error('[Run] Stack:', loopErr.stack);
     logError('run', `Batch loop gecrasht na ${found} leads`, loopErr.message);
+    runLog(`Fout: ${loopErr.message}`);
     // Don't rethrow — save whatever was found
   }
 
+  _runState.running = false;
+  _runState.found = found;
+  _runState.skipped = skipped;
+  _runState.currentAgent = null;
+  _runState.currentLead = null;
+  _runState.finishedAt = new Date().toISOString();
+  runLog(`Klaar: ${found} leads gevonden`);
   console.log(`\n[Agency AI] Lus klaar: ${found} leads gevonden, ${skipped} overgeslagen zonder email, ${attempts} bedrijven gecontroleerd`);
   // â"€â"€ Save results â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const inbox = readJSON('inbox.json') || [];
@@ -5047,7 +5100,7 @@ Example format:
 
   if (pendingCount > 0) {
     addNotification('run_complete', `Run klaar: ${pendingCount} leads gevonden`,
-      `${pendingCount} wachten op goedkeuring${highScoreCount > 0 ? ` · ${highScoreCount} met score 8+` : ''}`);
+      `${pendingCount} wachten op goedkeuring${highScoreCount > 0 ? ` · ${highScoreCount} met score 8+` : ''}`, null, 'inbox');
     fireWebhooks('run.complete', { leadsFound: pendingCount, pendingCount, highScoreCount, totalValue, completedAt: new Date().toISOString() });
   }
 
@@ -5965,23 +6018,14 @@ app.get('/api/test-scrape', requireAdmin, async (req, res) => {
 });
 
 app.get('/api/activity', requireAdmin, (req, res) => {
-  try {
-    const logFile = path.join(DATA_DIR, 'activity.json');
-    if (!fs.existsSync(logFile)) return res.json({ activity: [] });
-    const raw = fs.readFileSync(logFile, 'utf8').replace(/^\uFEFF/, '');
-    const log = JSON.parse(raw);
-    const limit = parseInt(req.query.limit) || 100;
-    res.json({ activity: log.slice(0, limit) });
-  } catch { res.json({ activity: [] }); }
+  const log = readJSON('activity.json') || [];
+  const limit = parseInt(req.query.limit) || 100;
+  res.json({ activity: log.slice(0, limit) });
 });
 
 app.get('/api/stats/costs', (req, res) => {
-  const stats   = readJSON('stats.json') || {};
-  const logFile = path.join(DATA_DIR, 'activity.json');
-  let log = [];
-  try {
-    if (fs.existsSync(logFile)) log = JSON.parse(fs.readFileSync(logFile, 'utf8').replace(/^\uFEFF/, ''));
-  } catch { log = []; }
+  const stats = readJSON('stats.json') || {};
+  const log   = readJSON('activity.json') || [];
   const today = new Date().toISOString().slice(0, 10);
   const todayCostUsd = log
     .filter(e => e.timestamp && e.timestamp.startsWith(today))
@@ -6052,27 +6096,36 @@ app.get('/api/stats/ab', authMiddleware, (req, res) => {
 });
 
 app.get('/api/stats/pnl', authMiddleware, (req, res) => {
-  const leads = readJSON('leads.json') || [];
-  const logFile = path.join(DATA_DIR, 'activity.json');
-  let activityLog = [];
-  try {
-    if (fs.existsSync(logFile)) activityLog = JSON.parse(fs.readFileSync(logFile, 'utf8').replace(/^﻿/, ''));
-  } catch { activityLog = []; }
+  const leads       = readJSON('leads.json')    || [];
+  const settings    = readJSON('settings.json') || {};
+  const activityLog = readJSON('activity.json') || [];
 
-  const USD_TO_EUR = 0.92;
+  const USD_TO_EUR     = 0.92;
+  const hostingPerMonth = parseFloat(settings.monthlyHostingCost || 0);
   const buckets = {};
   const getM = key => { if (!buckets[key]) buckets[key] = { revenue: 0, costs: 0 }; return buckets[key]; };
 
+  // Revenue: sum of paid payments
   leads.forEach(lead => {
     (lead.payments || []).forEach(pay => {
       if (pay.status === 'paid' && pay.paidAt) {
-        getM(pay.paidAt.slice(0, 7)).revenue += pay.amount || 0;
+        const m = pay.paidAt.slice(0, 7);
+        getM(m).revenue += Number(pay.amount) || 0;
       }
     });
+    // Fallback: clients with estimatedValue but no paid payments → count as MRR from projectStartDate
+    if (lead.status === 'client' && (lead.estimatedValue || 0) > 0) {
+      const hasPaid = (lead.payments || []).some(p => p.status === 'paid');
+      if (!hasPaid) {
+        const start = lead.projectStartDate || lead.projectStartedAt || lead.createdAt;
+        if (start) getM(start.slice(0, 7)).revenue += Number(lead.estimatedValue) || 0;
+      }
+    }
   });
 
+  // AI costs from activity log
   activityLog.forEach(entry => {
-    if (entry.costUsd && entry.timestamp) {
+    if (entry.costUsd > 0 && entry.timestamp) {
       getM(entry.timestamp.slice(0, 7)).costs += (entry.costUsd || 0) * USD_TO_EUR;
     }
   });
@@ -6084,7 +6137,7 @@ app.get('/api/stats/pnl', authMiddleware, (req, res) => {
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const b = buckets[key] || { revenue: 0, costs: 0 };
     const revenue = Math.round(b.revenue * 100) / 100;
-    const costs   = Math.round(b.costs   * 100) / 100;
+    const costs   = Math.round((b.costs + hostingPerMonth) * 100) / 100;
     months.push({ month: key, revenue, costs, profit: Math.round((revenue - costs) * 100) / 100 });
   }
 
@@ -6105,15 +6158,9 @@ app.get('/api/ai/rate-status', authMiddleware, (req, res) => {
   const callsLastHour   = _aiCallLog.filter(e => e.ts >= now - 3600000).length;
   const callsLastDay    = _aiCallLog.length;
 
-  const logFile = path.join(DATA_DIR, 'activity.json');
-  const today   = new Date().toISOString().slice(0, 10);
-  let costLastDay = 0;
-  try {
-    if (fs.existsSync(logFile)) {
-      const log = JSON.parse(fs.readFileSync(logFile, 'utf8').replace(/^﻿/, ''));
-      costLastDay = log.filter(e => e.timestamp?.startsWith(today)).reduce((s, e) => s + (e.costUsd || 0), 0);
-    }
-  } catch {}
+  const today = new Date().toISOString().slice(0, 10);
+  const actLog = readJSON('activity.json') || [];
+  const costLastDay = actLog.filter(e => e.timestamp?.startsWith(today)).reduce((s, e) => s + (e.costUsd || 0), 0);
 
   const limits = {
     maxCallsPerMinute: lim.maxCallsPerMinute || 10,
