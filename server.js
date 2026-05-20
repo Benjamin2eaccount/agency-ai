@@ -4257,6 +4257,42 @@ app.delete('/api/settings/stats', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// Debug endpoint — tests aiCallBuild and returns diagnostic info (admin only)
+app.get('/api/test-build', requireAdmin, async (req, res) => {
+  const prompt = `Build a simple HTML booking page for "Test Bedrijf" in Amsterdam.
+Return ONLY raw HTML starting with <!DOCTYPE html>. No markdown, no backticks.
+Include a header, a form with date/time picker, and a submit button.
+All CSS in <style> tag. All JS in <script> tag.`;
+  try {
+    const s = readJSON('settings.json') || {};
+    const apiKey = getClaudeApiKey(s);
+    if (!apiKey) return res.json({ error: 'Geen API sleutel' });
+    const { default: fetch } = await import('node-fetch');
+    const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 8000, messages: [{ role: 'user', content: prompt }] })
+    });
+    const data = await apiRes.json();
+    const raw = data.content ? data.content.filter(b => b.type === 'text').map(b => b.text).join('') : '';
+    const bodyMatch = raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    const bodyContent = bodyMatch?.[1]?.trim() || '';
+    res.json({
+      ok: !!raw,
+      stop_reason: data.stop_reason,
+      content_blocks: data.content?.length || 0,
+      raw_length: raw.length,
+      raw_start: raw.substring(0, 500),
+      body_length: bodyContent.length,
+      body_start: bodyContent.substring(0, 200),
+      usage: data.usage,
+      error: data.error || null
+    });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
 // â"€â"€â"€ Server-side Claude helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 // In-memory token accumulator — reset per run
@@ -4349,10 +4385,12 @@ async function aiCall(prompt) {
   statsNow.totalApiTokensOut = (statsNow.totalApiTokensOut || 0) + tokOut;
   statsNow.totalApiCostUsd   = Math.round(((statsNow.totalApiCostUsd || 0) + callCost) * 10000) / 10000;
   writeJSON('stats.json', statsNow);
-  return data.content[0].text;
+  // Join ALL text blocks — Claude may split long responses across multiple content blocks
+  return data.content.filter(b => b.type === 'text').map(b => b.text).join('');
 }
 
 // Variant with 8000 max_tokens for HTML generation (pages get cut off at 4000)
+// Joins ALL content blocks — Claude sometimes splits a long response into multiple text blocks.
 async function aiCallBuild(prompt) {
   aiRateCheck();
   const s = readJSON('settings.json') || {};
@@ -4373,6 +4411,7 @@ async function aiCallBuild(prompt) {
     })
   });
   const data = await res.json();
+  console.log('[aiCallBuild] stop_reason:', data.stop_reason, '| content blocks:', data.content?.length, '| usage:', JSON.stringify(data.usage));
   if (!data.content) throw new Error(data.error?.message || 'Claude API fout');
   const usage = data.usage || {};
   const tokIn  = usage.input_tokens  || 0;
@@ -4387,7 +4426,10 @@ async function aiCallBuild(prompt) {
   statsNow.totalApiTokensOut = (statsNow.totalApiTokensOut || 0) + tokOut;
   statsNow.totalApiCostUsd   = Math.round(((statsNow.totalApiCostUsd || 0) + callCost) * 10000) / 10000;
   writeJSON('stats.json', statsNow);
-  return data.content[0].text;
+  // Join ALL text blocks — critical: a single [0].text drops content when Claude splits the response
+  const fullText = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
+  console.log('[aiCallBuild] total text length:', fullText.length, '| first 300:', fullText.substring(0, 300));
+  return fullText;
 }
 
 async function aiJSON(prompt) {
