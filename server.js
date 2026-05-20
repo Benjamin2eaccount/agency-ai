@@ -3009,40 +3009,37 @@ app.post('/api/leads/:id/agent-chat', requireAdmin, async (req, res) => {
     if (action === 'build') {
       const isBooking = (problemType || '').toLowerCase().match(/boek|reserv|afspra|agenda|appointment/);
       const buildPrompt = isBooking
-        ? `Build a complete, beautiful, fully functional HTML booking page for ${lead.companyName}.
+        ? `Build a complete HTML booking page for ${lead.companyName} in ${lead.location || ''}.
 
-CRITICAL: Return ONLY raw HTML starting with <!DOCTYPE html>. No explanation, no markdown, no backticks, no code fences. Just pure HTML.
+Return ONLY raw HTML starting with <!DOCTYPE html>.
+No markdown, no backticks, no explanation.
 
-Requirements:
-- Complete standalone HTML file
-- All CSS inside a <style> tag in <head>
-- All JavaScript inside a <script> tag before </body>
-- No external dependencies except optionally Google Fonts
-- Mobile responsive layout
-- Professional design: white background, clean typography, indigo accent color #6366f1
+MUST include in <body>:
+- Header with company name
+- Step 1: Choose service (cards): ${message}
+- Step 2: Pick date (calendar, Mon-Fri only)
+- Step 3: Pick time (09:00-17:00 slots)
+- Step 4: Name, email, phone fields
+- Submit button
+- Success confirmation screen
 
-The page must include:
-${message}
-
-Company: ${lead.companyName}
-Location: ${lead.location || ''}
-Niche: ${lead.niche || ''}`
+Style: white bg, indigo #6366f1 accent, Plus Jakarta Sans from Google Fonts, mobile responsive.
+All CSS in <style> in <head>. All JS in <script> before </body>.`
         : `Build a complete, fully functional standalone HTML page for ${lead.companyName}.
 
-CRITICAL: Return ONLY raw HTML starting with <!DOCTYPE html>. No explanation, no markdown, no backticks, no code fences. Just pure HTML.
+Return ONLY raw HTML starting with <!DOCTYPE html>.
+No markdown, no backticks, no explanation.
 
 Requirements:
-- Complete standalone HTML file
-- All CSS inside a <style> tag
-- All JS inside a <script> tag
+- Complete standalone HTML with content in <body>
+- All CSS in <style> tag, all JS in <script> tag
 - No external dependencies
-- Mobile responsive
-- Professional design with white background and indigo accent #6366f1
+- Mobile responsive, white background, indigo #6366f1 accent
 
 Task: ${message}
 Company: ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''})`;
 
-      let html = await aiCall(buildPrompt);
+      let html = await aiCallBuild(buildPrompt);
 
       console.log('[Build] HTML length:', html?.length);
       console.log('[Build] HTML start:', html?.substring(0, 300));
@@ -3061,9 +3058,18 @@ Company: ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''})`;
           html = match[0];
         } else {
           console.error('[Build] No valid HTML found in response. Raw response:', html.substring(0, 500));
-          throw new Error('Claude returned no valid HTML. Check API response in logs.');
+          throw new Error('Het genereren is mislukt. Probeer opnieuw.');
         }
       }
+
+      // Validate body has actual content
+      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      const bodyContent = bodyMatch?.[1]?.trim();
+      if (!bodyContent || bodyContent.length < 100) {
+        console.error('[Build] Empty body detected. HTML length:', html.length, 'Body:', bodyContent?.substring(0, 200));
+        throw new Error('Het genereren is mislukt. Probeer opnieuw.');
+      }
+      console.log('[Build] Body length:', bodyContent.length);
 
       const companySlug = lead.companyName
         .toLowerCase()
@@ -3122,6 +3128,25 @@ Schrijf in het Nederlands.`;
     console.error('[AgentChat] Fout:', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── Agent chat persistence ────────────────────────────────────────────────────
+app.get('/api/leads/:id/agent-chats', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+  res.json(lead.agentChats || {});
+});
+
+app.patch('/api/leads/:id/agent-chats', (req, res) => {
+  const { chats } = req.body || {};
+  if (!chats || typeof chats !== 'object') return res.status(400).json({ error: 'Geen chats opgegeven' });
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  leads[idx].agentChats = chats;
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
 });
 
 app.get('/api/leads/:id/client-emails', (req, res) => {
@@ -4171,6 +4196,44 @@ async function aiCall(prompt) {
   const promptLabel = prompt.slice(0, 60).replace(/\n/g, ' ');
   addActivity('ai_call', `Claude: ${promptLabel}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost });
   // Update running stats.json totals
+  const statsNow = readJSON('stats.json') || {};
+  statsNow.totalApiTokensIn  = (statsNow.totalApiTokensIn  || 0) + tokIn;
+  statsNow.totalApiTokensOut = (statsNow.totalApiTokensOut || 0) + tokOut;
+  statsNow.totalApiCostUsd   = Math.round(((statsNow.totalApiCostUsd || 0) + callCost) * 10000) / 10000;
+  writeJSON('stats.json', statsNow);
+  return data.content[0].text;
+}
+
+// Variant with 8000 max_tokens for HTML generation (pages get cut off at 4000)
+async function aiCallBuild(prompt) {
+  aiRateCheck();
+  const s = readJSON('settings.json') || {};
+  const apiKey = getClaudeApiKey(s);
+  if (!apiKey) throw new Error('Claude API sleutel niet ingesteld.');
+  const { default: fetch } = await import('node-fetch');
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8000,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  const data = await res.json();
+  if (!data.content) throw new Error(data.error?.message || 'Claude API fout');
+  const usage = data.usage || {};
+  const tokIn  = usage.input_tokens  || 0;
+  const tokOut = usage.output_tokens || 0;
+  _sessionTokensIn  += tokIn;
+  _sessionTokensOut += tokOut;
+  _aiCallLog.push({ ts: Date.now() });
+  const callCost = calcCostUsd(tokIn, tokOut);
+  addActivity('ai_call', `Claude build: ${prompt.slice(0, 50).replace(/\n/g,' ')}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost });
   const statsNow = readJSON('stats.json') || {};
   statsNow.totalApiTokensIn  = (statsNow.totalApiTokensIn  || 0) + tokIn;
   statsNow.totalApiTokensOut = (statsNow.totalApiTokensOut || 0) + tokOut;

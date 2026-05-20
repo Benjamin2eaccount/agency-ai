@@ -2845,8 +2845,13 @@ async function renderProjectPage() {
     const firstProblemTxt = firstProblem ? (typeof firstProblem === 'string' ? firstProblem : (firstProblem.text || firstProblem.description || '')) : '';
     const chatPanel = problems.length
       ? `<div class="problem-chat-panel" id="agentChatPanel">
-          <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text)" id="chatProblemTitle">
-            ${firstProblemTxt ? '<i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>' + esc(firstProblemTxt.substring(0, 80)) : 'Selecteer een probleem'}
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="font-size:13px;font-weight:600;color:var(--text)" id="chatProblemTitle">
+              ${firstProblemTxt ? '<i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>' + esc(firstProblemTxt.substring(0, 80)) : 'Selecteer een probleem'}
+            </div>
+            <button class="btn btn-ghost btn-sm" style="font-size:11px;color:var(--danger)" onclick="clearAgentChat('${esc(lead.id)}')">
+              <i class="ti ti-trash"></i> Chat wissen
+            </button>
           </div>
           <div class="agent-chat-history" id="agentChatHistory"></div>
           <div class="agent-chat-input">
@@ -3338,15 +3343,57 @@ async function renderProjectPage() {
   }
 }
 
+function renderAgentChatHistory(leadId, idx) {
+  const historyEl = document.getElementById('agentChatHistory');
+  if (!historyEl) return;
+  window._agentChats = window._agentChats || {};
+  const msgs = (window._agentChats[leadId] || {})[idx] || [];
+  historyEl.innerHTML = msgs.map(m => {
+    if (m.builtUrl) {
+      return `<div class="agent-msg ai" style="padding:0;background:none;border:none">
+        <div style="background:var(--success-light);border:1px solid var(--success);border-radius:10px;padding:12px 14px">
+          <div style="font-size:13px;font-weight:700;color:var(--success);margin-bottom:6px"><i class="ti ti-check"></i> Gebouwd!</div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Bekijk op:</div>
+          <a href="${m.builtUrl}" target="_blank" style="font-size:12px;color:var(--accent);word-break:break-all;display:block;margin-bottom:10px">${m.builtUrl}</a>
+          <button class="btn btn-primary btn-sm" style="font-size:12px" onclick="navigator.clipboard.writeText('${m.builtUrl}').then(()=>toast('URL gekopieerd!','success'))">
+            <i class="ti ti-share"></i> Deel met klant
+          </button>
+        </div>
+      </div>`;
+    }
+    return `<div class="agent-msg ${m.role}">${esc(m.text)}</div>`;
+  }).join('');
+  historyEl.scrollTop = historyEl.scrollHeight;
+}
+
+async function saveAgentChats(leadId) {
+  try {
+    await api(`/api/leads/${leadId}/agent-chats`, {
+      method: 'PATCH',
+      body: JSON.stringify({ chats: window._agentChats[leadId] || {} })
+    });
+  } catch (e) { /* non-fatal */ }
+}
+
+window.clearAgentChat = async function(leadId) {
+  const idx = window._selectedProblemIdx ?? 0;
+  if (!confirm('Weet je zeker dat je deze chat wil wissen?')) return;
+  window._agentChats = window._agentChats || {};
+  if (!window._agentChats[leadId]) window._agentChats[leadId] = {};
+  window._agentChats[leadId][idx] = [];
+  await saveAgentChats(leadId);
+  renderAgentChatHistory(leadId, idx);
+  toast('Chat gewist', 'success');
+};
+
 // Called when a problem card is clicked in the project page
-window.selectProblemCard = function(idx, leadId) {
+window.selectProblemCard = async function(idx, leadId) {
   const lead = state.leads.find(l => l.id === leadId);
   if (!lead) return;
 
   document.querySelectorAll('.problem-card').forEach((c, i) => c.classList.toggle('selected', i === idx));
 
   window._agentChats = window._agentChats || {};
-  if (!window._agentChats[leadId]) window._agentChats[leadId] = {};
 
   const problems = lead.problems || [];
   const p = problems[idx];
@@ -3359,27 +3406,17 @@ window.selectProblemCard = function(idx, leadId) {
   const titleEl = document.getElementById('chatProblemTitle');
   if (titleEl) titleEl.innerHTML = `<i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>${esc(txt.substring(0, 80))}`;
 
-  // Restore chat history for this problem
-  const historyEl = document.getElementById('agentChatHistory');
-  if (historyEl) {
-    const msgs = window._agentChats[leadId][idx] || [];
-    historyEl.innerHTML = msgs.map(m => {
-      if (m.builtUrl) {
-        return `<div class="agent-msg ai" style="padding:0;background:none;border:none">
-          <div style="background:var(--success-light);border:1px solid var(--success);border-radius:10px;padding:12px 14px">
-            <div style="font-size:13px;font-weight:700;color:var(--success);margin-bottom:6px"><i class="ti ti-check"></i> Gebouwd!</div>
-            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Bekijk op:</div>
-            <a href="${m.builtUrl}" target="_blank" style="font-size:12px;color:var(--accent);word-break:break-all;display:block;margin-bottom:10px">${m.builtUrl}</a>
-            <button class="btn btn-primary btn-sm" style="font-size:12px" onclick="navigator.clipboard.writeText('${m.builtUrl}').then(()=>toast('URL gekopieerd!','success'))">
-              <i class="ti ti-share"></i> Deel met klant
-            </button>
-          </div>
-        </div>`;
-      }
-      return `<div class="agent-msg ${m.role}">${esc(m.text)}</div>`;
-    }).join('');
-    historyEl.scrollTop = historyEl.scrollHeight;
+  // Load from API if not yet in memory for this lead
+  if (!window._agentChats[leadId]) {
+    try {
+      const saved = await apiJSON(`/api/leads/${leadId}/agent-chats`);
+      window._agentChats[leadId] = saved || {};
+    } catch (e) {
+      window._agentChats[leadId] = {};
+    }
   }
+
+  renderAgentChatHistory(leadId, idx);
 };
 
 async function sendAgentChat(leadId) {
@@ -3395,21 +3432,18 @@ async function sendAgentChat(leadId) {
   if (!window._agentChats[leadId]) window._agentChats[leadId] = {};
   if (!window._agentChats[leadId][idx]) window._agentChats[leadId][idx] = [];
 
-  // Check if this is a build confirmation
   const isBuild = message.toLowerCase().includes('ja bouwen') || message.toLowerCase().includes('bouwen');
   const action = isBuild ? 'build' : 'chat';
 
-  // Add user message to history
-  window._agentChats[leadId][idx].push({ role: 'user', text: message });
+  // Add user message and persist immediately
+  window._agentChats[leadId][idx].push({ role: 'user', text: message, ts: new Date().toISOString() });
   msgEl.value = '';
+  saveAgentChats(leadId);
 
-  // Render history
+  // Show history + thinking indicator
+  renderAgentChatHistory(leadId, idx);
   const historyEl = document.getElementById('agentChatHistory');
   if (historyEl) {
-    historyEl.innerHTML = window._agentChats[leadId][idx].map(m =>
-      `<div class="agent-msg ${m.role}">${esc(m.text)}</div>`
-    ).join('');
-    // Add thinking indicator
     historyEl.innerHTML += `<div class="agent-msg ai" id="agentThinking"><i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Bezig...</div>`;
     historyEl.scrollTop = historyEl.scrollHeight;
   }
@@ -3421,46 +3455,26 @@ async function sendAgentChat(leadId) {
     });
     const data = await res?.json();
 
-    // Remove thinking indicator
     document.getElementById('agentThinking')?.remove();
 
-    if (data?.response) {
-      window._agentChats[leadId][idx].push({ role: 'ai', text: data.response });
-    }
     if (data?.built && data?.url) {
-      const builtHtml = `✓ Gebouwd!\n\nBekijk op: ${data.url}\n\n__BUILT_URL__:${data.url}`;
-      window._agentChats[leadId][idx].push({ role: 'ai', text: builtHtml, builtUrl: data.url });
-      // Refresh lead data
+      window._agentChats[leadId][idx].push({ role: 'ai', builtUrl: data.url, ts: new Date().toISOString() });
       const updatedLeads = await apiJSON('/api/leads');
       if (updatedLeads) state.leads = updatedLeads;
+    } else if (data?.response) {
+      window._agentChats[leadId][idx].push({ role: 'ai', text: data.response, ts: new Date().toISOString() });
     }
     if (data?.error) {
-      window._agentChats[leadId][idx].push({ role: 'ai', text: `Fout: ${data.error}` });
+      window._agentChats[leadId][idx].push({ role: 'ai', text: `Fout: ${data.error}`, ts: new Date().toISOString() });
     }
   } catch (err) {
     document.getElementById('agentThinking')?.remove();
-    window._agentChats[leadId][idx].push({ role: 'ai', text: `Verbindingsfout: ${err.message}` });
+    window._agentChats[leadId][idx].push({ role: 'ai', text: `Verbindingsfout: ${err.message}`, ts: new Date().toISOString() });
   }
 
-  // Re-render history
-  if (historyEl) {
-    historyEl.innerHTML = window._agentChats[leadId][idx].map(m => {
-      if (m.builtUrl) {
-        return `<div class="agent-msg ai" style="padding:0;background:none;border:none">
-          <div style="background:var(--success-light);border:1px solid var(--success);border-radius:10px;padding:12px 14px">
-            <div style="font-size:13px;font-weight:700;color:var(--success);margin-bottom:6px"><i class="ti ti-check"></i> Gebouwd!</div>
-            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Bekijk op:</div>
-            <a href="${m.builtUrl}" target="_blank" style="font-size:12px;color:var(--accent);word-break:break-all;display:block;margin-bottom:10px">${m.builtUrl}</a>
-            <button class="btn btn-primary btn-sm" style="font-size:12px" onclick="navigator.clipboard.writeText('${m.builtUrl}').then(()=>toast('URL gekopieerd!','success'))">
-              <i class="ti ti-share"></i> Deel met klant
-            </button>
-          </div>
-        </div>`;
-      }
-      return `<div class="agent-msg ${m.role}">${esc(m.text)}</div>`;
-    }).join('');
-    historyEl.scrollTop = historyEl.scrollHeight;
-  }
+  // Persist after AI response and re-render
+  saveAgentChats(leadId);
+  renderAgentChatHistory(leadId, idx);
 }
 
 async function toggleProjectTask(leadId, taskId, checked) {
