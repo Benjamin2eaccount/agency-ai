@@ -3249,10 +3249,13 @@ All CSS in <style> in <head>. All JS in <script> before </body>.`;
           const url = `${BASE}/sites/${companySlug}/${filename}`;
 
           // Auto-generate todo list for client
-          const todoText = await aiCall(`Voor het volgende project, maak een korte stap-voor-stap lijst voor de klant wat ze zelf moeten doen om dit te activeren.
+          const embedCode = `<iframe src="${url}" width="100%" height="600" frameborder="0" allowfullscreen></iframe>`;
+          const todoText = await aiCall(`Voor het volgende project, maak een stap-voor-stap lijst voor de klant wat ze zelf moeten doen om dit te activeren op hun website.
 Gebouwde pagina: ${svc.name} voor ${lead.companyName}.
-URL: ${url}
-Geef max 5 stappen in het Nederlands. Geef ALLEEN de stappen, geen uitleg eromheen.`).catch(() => '');
+Live URL: ${url}
+Embed code: ${embedCode}
+
+Geef max 5 stappen in het Nederlands. Verwerk de embed code als letterlijk codeblok in de stappen waar relevant. Begin elke stap met een nummer. Geef ALLEEN de stappen, geen intro of uitleg eromheen.`).catch(() => '');
 
           deliverables.push({
             id: Date.now().toString(36) + i,

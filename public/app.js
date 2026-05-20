@@ -3182,10 +3182,10 @@ async function renderProjectPage() {
             <a href="${esc(d.url)}" target="_blank" class="btn btn-ghost btn-sm"><i class="ti ti-external-link"></i> Live link</a>
             <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText('${esc(d.url)}').then(()=>toast('URL gekopieerd!','success'))"><i class="ti ti-copy"></i> Deel met klant</button>
           </div>
-          ${d.todoText ? `<div style="padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;margin-bottom:10px">
+          <div style="padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;margin-bottom:10px">
             <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">WAT DE KLANT NOG MOET DOEN</div>
-            <div style="font-size:13px;white-space:pre-line;color:var(--text)">${esc(d.todoText)}</div>
-          </div>` : ''}`
+            <div style="font-size:13px;white-space:pre-line;color:var(--text)">${esc(d.todoText) || `1. Ga naar jullie website builder (bijv. WordPress, Wix, Squarespace)\n2. Maak een nieuwe pagina aan of open de gewenste pagina\n3. Voeg een HTML-blok of embed-sectie toe\n4. Plak deze embed code:\n\n<iframe src="${esc(d.url)}" width="100%" height="600" frameborder="0" allowfullscreen></iframe>\n\n5. Sla op en publiceer de pagina`}</div>
+          </div>`
         : d.type === 'manual' && d.instructions
           ? `<div style="padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;margin:10px 0">
               <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">INSTRUCTIES VOOR ADMIN</div>
