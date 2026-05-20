@@ -3197,7 +3197,10 @@ async function renderProjectPage() {
 
       const actions = d.status !== 'approved' && d.status !== 'error' ? `
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${isAdmin() ? `<button class="btn btn-primary btn-sm" onclick="approveDeliverable('${esc(lead.id)}',${i})"><i class="ti ti-check"></i> Goedkeuren &amp; versturen naar klant</button>` : ''}
+          ${isAdmin() ? (d.type === 'manual'
+            ? `<button class="btn btn-primary btn-sm" id="manualApproveBtn-${esc(lead.id)}-${i}" onclick="approveManualDeliverable('${esc(lead.id)}',${i})"><i class="ti ti-send"></i> Klaar — stuur naar klant</button>`
+            : `<button class="btn btn-primary btn-sm" onclick="approveDeliverable('${esc(lead.id)}',${i})"><i class="ti ti-check"></i> Goedkeuren &amp; versturen naar klant</button>`)
+          : ''}
         </div>` : '';
 
       return `<div style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px;background:var(--surface)">
@@ -3659,6 +3662,55 @@ window.approveDeliverable = async function(leadId, dIdx) {
   } else {
     const d = await res?.json();
     toast(d?.error || 'Goedkeuren mislukt', 'error');
+  }
+};
+
+window.approveManualDeliverable = async function(leadId, dIdx) {
+  const btn = document.getElementById(`manualApproveBtn-${leadId}-${dIdx}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2"></i> Email genereren…'; }
+
+  const preview = await apiJSON(`/api/leads/${leadId}/deliverables/${dIdx}/preview-email`, { method: 'POST' });
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-send"></i> Klaar — stuur naar klant'; }
+
+  if (!preview) { toast('Kon email niet genereren', 'error'); return; }
+
+  openModal(`
+    <div class="modal-header">
+      <strong>Leveringsemail — preview &amp; verzenden</strong>
+      <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div style="padding:0 0 16px">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">Onderwerp</div>
+      <input id="delivEmailSubject" class="form-input" style="margin-bottom:14px" value="${esc(preview.subject)}">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">Bericht (bewerkbaar)</div>
+      <textarea id="delivEmailBody" class="form-input" rows="10" style="resize:vertical;font-size:13px;line-height:1.6">${esc(preview.body)}</textarea>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">Annuleren</button>
+      <button class="btn btn-primary btn-sm" onclick="sendManualDeliverable('${esc(leadId)}',${dIdx})"><i class="ti ti-send"></i> Verstuur naar klant</button>
+    </div>
+  `);
+};
+
+window.sendManualDeliverable = async function(leadId, dIdx) {
+  const subject = document.getElementById('delivEmailSubject')?.value?.trim();
+  const body = document.getElementById('delivEmailBody')?.value?.trim();
+  if (!subject || !body) { toast('Vul onderwerp en bericht in', 'error'); return; }
+
+  closeModal();
+  const res = await api(`/api/leads/${leadId}/deliverables/${dIdx}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ emailSubject: subject, emailBody: body })
+  });
+  if (res?.ok) {
+    toast('Email verstuurd en levering goedgekeurd!', 'success');
+    const freshLeads = await apiJSON('/api/leads');
+    if (freshLeads) state.leads = freshLeads;
+    renderProjectPage().then(() => switchProjectTab('agents'));
+  } else {
+    const d = await res?.json();
+    toast(d?.error || 'Versturen mislukt', 'error');
   }
 };
 

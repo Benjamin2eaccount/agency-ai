@@ -3310,6 +3310,45 @@ Wees concreet: welke tools, welke stappen, welke instellingen.`);
   res.end();
 });
 
+// Generate delivery email preview for manual deliverables
+app.post('/api/leads/:id/deliverables/:dIdx/preview-email', requireAdmin, async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const settings = readJSON('settings.json') || {};
+  const li = leads.findIndex(l => l.id === req.params.id);
+  if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const dIdx = parseInt(req.params.dIdx);
+  const d = (leads[li].agentDeliverables || [])[dIdx];
+  if (!d) return res.status(404).json({ error: 'Levering niet gevonden' });
+
+  const lead = leads[li];
+  const agencyName = settings.agencyName || 'Agency AI';
+  const myName = settings.myName || 'Het team';
+  const myTitle = settings.myTitle || '';
+
+  try {
+    const emailBody = await aiCall(`Schrijf een professionele leveringsemail voor een klant.
+Dienst: ${d.service}
+Klant: ${lead.companyName} (${lead.location || ''})
+Wat gedaan (instructies samenvatting): ${(d.instructions || '').substring(0, 600)}
+Agency: ${agencyName} — ${myName}${myTitle ? `, ${myTitle}` : ''}
+
+De email moet bevatten:
+1. Begroeting met bedrijfsnaam
+2. "Uw [dienst] is nu live / klaar!"
+3. Korte samenvatting van wat gedaan is (2-3 zinnen)
+4. Hoe de klant het gebruikt / waar te vinden (praktisch)
+5. Wat de volgende stap is
+6. Afsluiting met contactinfo
+
+Schrijf in het Nederlands, professioneel maar warm. Max 250 woorden. Geef ALLEEN de emailtekst, geen onderwerp.`);
+
+    const subject = `Uw ${d.service} is klaar! — ${agencyName}`;
+    res.json({ subject, body: emailBody.trim() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/leads/:id/deliverables/:dIdx/approve', requireAdmin, async (req, res) => {
   const leads = readJSON('leads.json') || [];
   const settings = readJSON('settings.json') || {};
@@ -3322,11 +3361,11 @@ app.post('/api/leads/:id/deliverables/:dIdx/approve', requireAdmin, async (req, 
   leads[li].agentDeliverables[dIdx].status = 'approved';
   leads[li].agentDeliverables[dIdx].approvedAt = new Date().toISOString();
 
-  // Email client
+  // Email client — use custom subject/body if provided (manual deliverable flow), else generic
   const lead = leads[li];
   if (isGmailReady(settings) && lead.contactEmail) {
-    const subject = `Uw ${d.service} is klaar!`;
-    const body = `Beste ${lead.companyName},\n\nGoed nieuws! Uw ${d.service} is klaar.\n\n${d.url ? `Bekijk hier: ${d.url}\n\n` : ''}Log in op uw klantportaal voor alle details.\n\nMet vriendelijke groet,\n${settings.myName || 'Het team'} — ${settings.agencyName || 'Agency AI'}`;
+    const subject = req.body?.emailSubject || `Uw ${d.service} is klaar!`;
+    const body = req.body?.emailBody || `Beste ${lead.companyName},\n\nGoed nieuws! Uw ${d.service} is klaar.\n\n${d.url ? `Bekijk hier: ${d.url}\n\n` : ''}Log in op uw klantportaal voor alle details.\n\nMet vriendelijke groet,\n${settings.myName || 'Het team'} — ${settings.agencyName || 'Agency AI'}`;
     await sendEmail({ to: lead.contactEmail, subject, body, settings }).catch(e => console.warn('[Approve] Email fout:', e.message));
   }
 
