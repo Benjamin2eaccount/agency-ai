@@ -965,7 +965,7 @@ function buildInboxCard(item) {
             ${item.services.map(s => `
               <li>
                 <span>${s.name}</span>
-                <span class="service-price">€${s.price}/mnd</span>
+                <span class="service-price">€${s.price}${s.billing === 'eenmalig' ? ' eenmalig' : '/mnd'}</span>
               </li>
             `).join('')}
           </ul>
@@ -2848,7 +2848,7 @@ async function renderProjectPage() {
             ${lead.services.map(s => `
               <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface)">
                 <span style="font-size:13px;font-weight:500">${esc(s.name)}</span>
-                <span style="font-size:13px;color:var(--accent);font-weight:600">€${s.price}/mnd</span>
+                <span style="font-size:13px;color:var(--accent);font-weight:600">€${s.price}${s.billing === 'eenmalig' ? ' eenmalig' : '/mnd'}</span>
               </div>
             `).join('')}
           </div>
@@ -4133,7 +4133,7 @@ function openLeadDetail(id) {
         <div class="detail-section">
           <div class="detail-section-title">Aanbevolen diensten</div>
           <ul class="opportunity-list">
-            ${lead.services.map(s => `<li><span>${s.name}</span><span class="service-price">€${s.price}/mnd</span></li>`).join('')}
+            ${lead.services.map(s => `<li><span>${s.name}</span><span class="service-price">€${s.price}${s.billing === 'eenmalig' ? ' eenmalig' : '/mnd'}</span></li>`).join('')}
           </ul>
         </div>
       ` : ''}
@@ -5335,13 +5335,15 @@ function openProjectConfigModal(leadId, editMode) {
 
   const serviceCheckboxes = servicesList.length
     ? servicesList.map(s => {
-        const sName  = typeof s === 'string' ? s : s.name;
-        const sPrice = typeof s === 'object' ? (parseFloat(s.price) || 0) : 0;
-        const checked = !lead.services?.length || (lead.services || []).some(ls => (typeof ls === 'string' ? ls : ls.name) === sName);
+        const sName    = typeof s === 'string' ? s : s.name;
+        const sPrice   = typeof s === 'object' ? (parseFloat(s.price) || 0) : 0;
+        const sBilling = typeof s === 'object' ? (s.billing || 'maandelijks') : 'maandelijks';
+        const checked  = !lead.services?.length || (lead.services || []).some(ls => (typeof ls === 'string' ? ls : ls.name) === sName);
+        const priceLabel = sPrice ? `€${sPrice.toLocaleString('nl-NL')}${sBilling === 'eenmalig' ? ' eenm.' : '/mnd'}` : '';
         return `<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;margin-bottom:6px;background:var(--surface)">
-          <input type="checkbox" name="svc" value="${esc(sName)}" data-price="${sPrice}" ${checked ? 'checked' : ''} onchange="updateProjectTotal()" style="width:15px;height:15px;accent-color:var(--accent);flex-shrink:0">
+          <input type="checkbox" name="svc" value="${esc(sName)}" data-price="${sPrice}" data-billing="${sBilling}" ${checked ? 'checked' : ''} onchange="updateProjectTotal()" style="width:15px;height:15px;accent-color:var(--accent);flex-shrink:0">
           <span style="flex:1;font-size:13px;font-weight:500">${esc(sName)}</span>
-          ${sPrice ? `<span style="font-size:12px;color:var(--text-muted)">€${sPrice.toLocaleString('nl-NL')}</span>` : ''}
+          ${priceLabel ? `<span style="font-size:12px;color:var(--text-muted)">${priceLabel}</span>` : ''}
         </label>`;
       }).join('')
     : `<div style="font-size:13px;color:var(--text-muted)">Geen diensten in instellingen. <a onclick="setView('settings')" style="color:var(--accent);cursor:pointer">Voeg toe in Instellingen →</a></div>`;
@@ -5429,12 +5431,20 @@ function openProjectConfigModal(leadId, editMode) {
 
 function updateProjectTotal() {
   const checked = [...document.querySelectorAll('#projServicesList input[name="svc"]:checked')];
-  const total = checked.reduce((sum, el) => sum + (parseFloat(el.dataset.price) || 0), 0);
+  const monthly = checked.filter(el => el.dataset.billing !== 'eenmalig').reduce((sum, el) => sum + (parseFloat(el.dataset.price) || 0), 0);
+  const oneTime = checked.filter(el => el.dataset.billing === 'eenmalig').reduce((sum, el) => sum + (parseFloat(el.dataset.price) || 0), 0);
   const totalEl = document.getElementById('projServicesTotal');
-  if (totalEl) totalEl.textContent = `€${total.toLocaleString('nl-NL')}`;
-  if (!window._projPriceManual && total > 0) {
+  if (totalEl) {
+    let label = '';
+    if (monthly > 0 && oneTime > 0) label = `€${monthly.toLocaleString('nl-NL')}/mnd + €${oneTime.toLocaleString('nl-NL')} eenm.`;
+    else if (monthly > 0) label = `€${monthly.toLocaleString('nl-NL')}/mnd`;
+    else if (oneTime > 0) label = `€${oneTime.toLocaleString('nl-NL')} eenmalig`;
+    else label = '€0';
+    totalEl.textContent = label;
+  }
+  if (!window._projPriceManual && (monthly + oneTime) > 0) {
     const priceEl = document.getElementById('projPrice');
-    if (priceEl) priceEl.value = total;
+    if (priceEl) priceEl.value = monthly > 0 ? monthly : oneTime;
   }
 }
 
@@ -9550,7 +9560,11 @@ async function renderSettings() {
             ${(s.services || []).map((svc, i) => `
               <div class="service-row" data-idx="${i}">
                 <input type="text" class="svc-name" value="${esc(svc.name)}" placeholder="Dienst naam">
-                <input type="number" class="svc-price" value="${svc.price}" placeholder="Prijs/mnd" style="width:120px">
+                <input type="number" class="svc-price" value="${svc.price}" placeholder="Prijs" style="width:100px">
+                <select class="svc-billing" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">
+                  <option value="maandelijks" ${(svc.billing||'maandelijks')==='maandelijks'?'selected':''}>Maandelijks</option>
+                  <option value="eenmalig" ${svc.billing==='eenmalig'?'selected':''}>Eenmalig</option>
+                </select>
                 <input type="text" class="svc-desc" value="${esc(svc.description)}" placeholder="Beschrijving">
                 <button class="btn btn-ghost btn-sm btn-icon" onclick="this.closest('.service-row').remove()"><i class="ti ti-trash"></i></button>
               </div>`).join('')}
@@ -10191,7 +10205,11 @@ function attachSettingsHandlers(s) {
     row.dataset.idx = idx;
     row.innerHTML = `
       <input type="text" class="svc-name" placeholder="Dienst naam">
-      <input type="number" class="svc-price" placeholder="Prijs/mnd" style="width:120px">
+      <input type="number" class="svc-price" placeholder="Prijs" style="width:100px">
+      <select class="svc-billing" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">
+        <option value="maandelijks">Maandelijks</option>
+        <option value="eenmalig">Eenmalig</option>
+      </select>
       <input type="text" class="svc-desc" placeholder="Beschrijving">
       <button class="btn btn-ghost btn-sm btn-icon" onclick="this.closest('.service-row').remove()"><i class="ti ti-trash"></i></button>
     `;
@@ -10199,19 +10217,23 @@ function attachSettingsHandlers(s) {
   });
 
   document.getElementById('loadDefaultServicesBtn').addEventListener('click', async () => {
-    if (!confirm('Huidige diensten vervangen door de standaard lijst van 16 diensten?')) return;
+    if (!confirm('Huidige diensten vervangen door de standaard lijst van 60 diensten?')) return;
     const defaults = await apiJSON('/api/settings/services/defaults');
     if (!defaults) return toast('Laden mislukt', 'error');
     const table = document.getElementById('servicesTable');
     table.innerHTML = defaults.map((svc, i) => `
       <div class="service-row" data-idx="${i}">
         <input type="text" class="svc-name" value="${esc(svc.name)}" placeholder="Dienst naam">
-        <input type="number" class="svc-price" value="${svc.price}" placeholder="Prijs/mnd" style="width:120px">
+        <input type="number" class="svc-price" value="${svc.price}" placeholder="Prijs" style="width:100px">
+        <select class="svc-billing" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">
+          <option value="maandelijks" ${(svc.billing||'maandelijks')==='maandelijks'?'selected':''}>Maandelijks</option>
+          <option value="eenmalig" ${svc.billing==='eenmalig'?'selected':''}>Eenmalig</option>
+        </select>
         <input type="text" class="svc-desc" value="${esc(svc.description)}" placeholder="Beschrijving">
         <button class="btn btn-ghost btn-sm btn-icon" onclick="this.closest('.service-row').remove()"><i class="ti ti-trash"></i></button>
       </div>
     `).join('');
-    toast('16 standaard diensten geladen — klik Opslaan om te bewaren', 'info');
+    toast('60 standaard diensten geladen — klik Opslaan om te bewaren', 'info');
   });
 
   document.getElementById('saveServicesBtn').addEventListener('click', async () => {
@@ -10219,6 +10241,7 @@ function attachSettingsHandlers(s) {
     const services = Array.from(rows).map(r => ({
       name: r.querySelector('.svc-name').value,
       price: parseInt(r.querySelector('.svc-price').value) || 0,
+      billing: r.querySelector('.svc-billing')?.value || 'maandelijks',
       description: r.querySelector('.svc-desc').value
     }));
     const res = await api('/api/settings/services', { method: 'PATCH', body: JSON.stringify({ services }) });

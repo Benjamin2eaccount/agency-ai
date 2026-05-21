@@ -36,43 +36,68 @@ function runLog(msg) {
 }
 
 const DEFAULT_SERVICES = [
-  // ── Maandelijkse managed services ────────────────────────────────────────────
-  { name: 'Meta advertenties met AI',             price: 850,  billing: 'maandelijks', description: 'Facebook & Instagram ads opgezet en beheerd met AI-optimalisatie' },
-  { name: 'Google Ads met AI',                    price: 750,  billing: 'maandelijks', description: 'Google Search en Display campagnes met wekelijkse AI-optimalisatie' },
-  { name: 'AI content voor social media',         price: 495,  billing: 'maandelijks', description: 'Dagelijkse posts, captions en hashtags gegenereerd door AI' },
-  { name: 'AI chatbot voor website',              price: 595,  billing: 'maandelijks', description: '24/7 klantenservice chatbot die vragen beantwoordt en leads vangt' },
-  { name: 'Automatisch lead outreach systeem',    price: 1195, billing: 'maandelijks', description: 'Volledig automatisch koude emails en follow-ups naar prospects' },
-  { name: 'Lokale SEO optimalisatie',             price: 550,  billing: 'maandelijks', description: 'Google ranking verbeteren voor lokale zoekopdrachten en Google Maps' },
-  { name: 'Google Bedrijfsprofiel optimalisatie', price: 350,  billing: 'maandelijks', description: 'Google Maps profiel optimaliseren voor maximale lokale zichtbaarheid' },
-  { name: 'Email marketing automatisering',       price: 495,  billing: 'maandelijks', description: 'Gepersonaliseerde email flows voor leads, klanten en winback' },
-  { name: 'WhatsApp Business automatisering',     price: 395,  billing: 'maandelijks', description: 'Geautomatiseerde WhatsApp berichten voor leads en klantenservice' },
-  { name: 'AI video content creatie',             price: 695,  billing: 'maandelijks', description: 'Reels, TikToks en Shorts scripts en productie met AI' },
-  { name: 'Reputatie management (reviews)',       price: 350,  billing: 'maandelijks', description: 'Automatisch reageren op Google en Facebook reviews met AI' },
-  { name: 'Maandelijkse content kalender',        price: 395,  billing: 'maandelijks', description: '20 posts + captions + hashtags per maand, AI gegenereerd op maat' },
-  { name: 'Instagram Reels scripts',              price: 295,  billing: 'maandelijks', description: '8 Reels scripts per maand met hooks, tekst en CTA' },
-  { name: 'Blog artikelen schrijven',             price: 395,  billing: 'maandelijks', description: '4 SEO geoptimaliseerde blog artikelen per maand' },
-  { name: 'Email nieuwsbrief reeks',              price: 295,  billing: 'maandelijks', description: '4 nieuwsbrieven per maand, geschreven en klaar om te versturen' },
-  // ── Eenmalige projecten ───────────────────────────────────────────────────────
-  { name: 'Professionele website bouwen',         price: 1995, billing: 'eenmalig',    description: 'Complete website op maat gebouwd, geoptimaliseerd en gelanceerd' },
-  { name: 'Website snelheid & SEO technisch',     price: 595,  billing: 'eenmalig',    description: 'Website technisch versnellen en optimaliseren voor betere rankings' },
-  { name: 'Online boekingssysteem integreren',    price: 695,  billing: 'eenmalig',    description: 'Boekingssoftware koppelen aan de website voor directe afspraken' },
-  { name: 'Analytics & rapportage dashboard',     price: 595,  billing: 'eenmalig',    description: 'Volledig KPI-rapportage dashboard op maat opgezet en geconfigureerd' },
-  { name: 'Website teksten schrijven',            price: 495,  billing: 'eenmalig',    description: 'Volledige website teksten: home, over ons, diensten, contact' },
-  { name: 'SEO teksten optimaliseren',            price: 445,  billing: 'eenmalig',    description: 'Alle pagina teksten SEO geoptimaliseerd met meta titles en descriptions' },
-  { name: 'Chatbot script voor website',          price: 295,  billing: 'eenmalig',    description: 'Volledig chatbot script met 15+ Q&A paren en lead capture flow' },
-  { name: 'Concurrentieanalyse rapport',          price: 295,  billing: 'eenmalig',    description: 'Uitgebreide analyse van 3 concurrenten met verbeterpunten' },
-  { name: 'Social media audit',                   price: 245,  billing: 'eenmalig',    description: 'Volledig audit rapport van Instagram/Facebook met actieplan' },
-  { name: 'Google Ads teksten',                   price: 295,  billing: 'eenmalig',    description: '10 advertentievarianten met headlines, descriptions en CTA' },
-  { name: 'Facebook Ad copy',                     price: 295,  billing: 'eenmalig',    description: '5 complete Facebook/Instagram advertentie teksten' },
-  { name: 'Email autoresponder reeks',            price: 445,  billing: 'eenmalig',    description: '7-delige welkomst email reeks voor nieuwe klanten of leads' },
-  { name: 'Product beschrijvingen',               price: 345,  billing: 'eenmalig',    description: '20 SEO geoptimaliseerde product beschrijvingen voor webshop' },
-  { name: 'Pitch deck teksten',                   price: 295,  billing: 'eenmalig',    description: 'Volledige presentatie teksten voor investor of klant pitch' },
-  { name: 'Privacy policy + algemene voorwaarden', price: 245, billing: 'eenmalig',    description: 'GDPR-compliant privacy policy en algemene voorwaarden op maat' },
-  { name: 'Google Bedrijfsprofiel content',       price: 195,  billing: 'eenmalig',    description: 'Volledige optimalisatie teksten voor Google Maps profiel' },
-  { name: 'Verlaten winkelwagen emails',          price: 295,  billing: 'eenmalig',    description: '3-delige email reeks voor verlaten winkelwagens' },
-  { name: 'Over ons pagina schrijven',            price: 245,  billing: 'eenmalig',    description: 'Professionele over ons pagina die vertrouwen wekt' },
-  { name: 'FAQ pagina schrijven',                 price: 195,  billing: 'eenmalig',    description: '20 veelgestelde vragen met uitgebreide antwoorden' },
-  { name: 'Nieuwsbrief template ontwerpen',       price: 245,  billing: 'eenmalig',    description: 'HTML email template op maat voor nieuwsbrieven' }
+  // ── Maandelijkse managed services (34) ───────────────────────────────────────
+  { name: 'Meta advertenties met AI',             price: 495,  billing: 'maandelijks', description: 'Facebook & Instagram ads opgezet en beheerd met AI-optimalisatie' },
+  { name: 'Google Ads met AI',                    price: 450,  billing: 'maandelijks', description: 'Google Search en Display campagnes met wekelijkse AI-optimalisatie' },
+  { name: 'AI content voor social media',         price: 295,  billing: 'maandelijks', description: 'Dagelijkse posts, captions en hashtags gegenereerd door AI' },
+  { name: 'AI chatbot voor website',              price: 195,  billing: 'maandelijks', description: '24/7 klantenservice chatbot die vragen beantwoordt en leads vangt' },
+  { name: 'Automatisch lead outreach systeem',    price: 595,  billing: 'maandelijks', description: 'Volledig automatisch koude emails en follow-ups naar prospects' },
+  { name: 'Lokale SEO optimalisatie',             price: 350,  billing: 'maandelijks', description: 'Google ranking verbeteren voor lokale zoekopdrachten en Google Maps' },
+  { name: 'Google Bedrijfsprofiel optimalisatie', price: 195,  billing: 'maandelijks', description: 'Google Maps profiel optimaliseren voor maximale lokale zichtbaarheid' },
+  { name: 'Email marketing automatisering',       price: 295,  billing: 'maandelijks', description: 'Gepersonaliseerde email flows voor leads, klanten en winback' },
+  { name: 'WhatsApp Business automatisering',     price: 195,  billing: 'maandelijks', description: 'Geautomatiseerde WhatsApp berichten voor leads en klantenservice' },
+  { name: 'AI video content creatie',             price: 395,  billing: 'maandelijks', description: 'Reels, TikToks en Shorts scripts en productie met AI' },
+  { name: 'Reputatie management (reviews)',       price: 195,  billing: 'maandelijks', description: 'Automatisch reageren op Google en Facebook reviews met AI' },
+  { name: 'Maandelijkse content kalender',        price: 295,  billing: 'maandelijks', description: '20 posts + captions + hashtags per maand, AI gegenereerd op maat' },
+  { name: 'Instagram Reels scripts',              price: 195,  billing: 'maandelijks', description: '8 Reels scripts per maand met hooks, tekst en CTA' },
+  { name: 'Blog artikelen schrijven',             price: 295,  billing: 'maandelijks', description: '4 SEO geoptimaliseerde blog artikelen per maand' },
+  { name: 'Email nieuwsbrief reeks',              price: 195,  billing: 'maandelijks', description: '4 nieuwsbrieven per maand, geschreven en klaar om te versturen' },
+  { name: 'TikTok content creatie',               price: 295,  billing: 'maandelijks', description: '8 TikTok video scripts + captions per maand met trending hooks' },
+  { name: 'LinkedIn content management',          price: 295,  billing: 'maandelijks', description: '12 LinkedIn posts per maand gericht op thought leadership' },
+  { name: 'Pinterest content strategie',          price: 195,  billing: 'maandelijks', description: '20 Pinterest pins met beschrijvingen en bord optimalisatie' },
+  { name: 'YouTube Shorts scripts',               price: 195,  billing: 'maandelijks', description: '4 YouTube Shorts scripts per maand met hook en CTA' },
+  { name: 'AI thumbnail design',                  price: 95,   billing: 'maandelijks', description: '8 YouTube/blog thumbnails per maand gegenereerd met AI' },
+  { name: 'Google Shopping advertenties',         price: 395,  billing: 'maandelijks', description: 'Product feed optimalisatie en Shopping campagne beheer' },
+  { name: 'Retargeting advertenties',             price: 295,  billing: 'maandelijks', description: 'Retargeting campagnes op Meta en Google voor websitebezoekers' },
+  { name: 'SMS marketing automatisering',         price: 195,  billing: 'maandelijks', description: 'Geautomatiseerde SMS campagnes voor aanbiedingen en herinneringen' },
+  { name: 'Review generatie campagne',            price: 195,  billing: 'maandelijks', description: 'Automatisch reviews verzamelen via email en WhatsApp na aankoop' },
+  { name: 'Klantretentie email flows',            price: 295,  billing: 'maandelijks', description: 'Win-back en upsell email sequenties voor bestaande klanten' },
+  { name: 'Social media analytics rapport',       price: 195,  billing: 'maandelijks', description: 'Maandelijks prestatierapport met inzichten en actiepunten' },
+  { name: 'Influencer outreach beheer',           price: 395,  billing: 'maandelijks', description: 'Micro-influencer identificatie, outreach en campagne coordinatie' },
+  { name: 'Seizoenskampagnes',                    price: 295,  billing: 'maandelijks', description: 'Campagne content en advertenties voor feestdagen en seizoenen' },
+  { name: 'Evenement promotie content',           price: 195,  billing: 'maandelijks', description: 'Social media content en advertenties voor evenementen en openingen' },
+  { name: 'Loyalty programma emails',             price: 195,  billing: 'maandelijks', description: 'Geautomatiseerde emails voor loyaliteitsprogramma en beloningen' },
+  { name: 'Competitor monitoring',                price: 195,  billing: 'maandelijks', description: 'Maandelijks overzicht van concurrenten activiteiten en kansen' },
+  { name: 'AI persberichten',                     price: 195,  billing: 'maandelijks', description: '2 professionele persberichten per maand voor media outreach' },
+  { name: 'Google Ads remarketing',               price: 295,  billing: 'maandelijks', description: 'Display remarketing campagnes voor websitebezoekers op Google' },
+  { name: 'Facebook Pixel & conversies',          price: 295,  billing: 'maandelijks', description: 'Pixel optimalisatie, custom conversies en CAPI instellen' },
+  // ── Eenmalige projecten (26) ──────────────────────────────────────────────────
+  { name: 'Professionele website bouwen',         price: 995,  billing: 'eenmalig',    description: 'Complete website op maat gebouwd, geoptimaliseerd en gelanceerd' },
+  { name: 'Webshop opzetten',                     price: 795,  billing: 'eenmalig',    description: 'Complete webshop met betaling, producten en mobile-first design' },
+  { name: 'Landingspagina bouwen',                price: 495,  billing: 'eenmalig',    description: 'Conversie-geoptimaliseerde landingspagina voor campagnes' },
+  { name: 'Online boekingssysteem integreren',    price: 495,  billing: 'eenmalig',    description: 'Boekingssoftware koppelen aan de website voor directe afspraken' },
+  { name: 'Logo ontwerp',                         price: 395,  billing: 'eenmalig',    description: 'Professioneel logo met 3 varianten en volledig brandpakket' },
+  { name: 'Website snelheid & SEO technisch',     price: 395,  billing: 'eenmalig',    description: 'Website technisch versnellen en optimaliseren voor betere rankings' },
+  { name: 'Analytics & rapportage dashboard',     price: 395,  billing: 'eenmalig',    description: 'Volledig KPI-rapportage dashboard op maat opgezet en geconfigureerd' },
+  { name: 'Huisstijl handleiding',                price: 295,  billing: 'eenmalig',    description: 'Complete brand guide: kleuren, fonts, logo gebruik en tone of voice' },
+  { name: 'Website teksten schrijven',            price: 295,  billing: 'eenmalig',    description: 'Volledige website teksten: home, over ons, diensten, contact' },
+  { name: 'SEO teksten optimaliseren',            price: 295,  billing: 'eenmalig',    description: 'Alle pagina teksten SEO geoptimaliseerd met meta titles en descriptions' },
+  { name: 'Email autoresponder reeks',            price: 295,  billing: 'eenmalig',    description: '7-delige welkomst email reeks voor nieuwe klanten of leads' },
+  { name: 'Google Ads teksten',                   price: 195,  billing: 'eenmalig',    description: '10 advertentievarianten met headlines, descriptions en CTA' },
+  { name: 'Facebook Ad copy',                     price: 195,  billing: 'eenmalig',    description: '5 complete Facebook/Instagram advertentie teksten' },
+  { name: 'Chatbot script voor website',          price: 195,  billing: 'eenmalig',    description: 'Volledig chatbot script met 15+ Q&A paren en lead capture flow' },
+  { name: 'Concurrentieanalyse rapport',          price: 195,  billing: 'eenmalig',    description: 'Uitgebreide analyse van 3 concurrenten met verbeterpunten' },
+  { name: 'Product beschrijvingen',               price: 195,  billing: 'eenmalig',    description: '20 SEO geoptimaliseerde product beschrijvingen voor webshop' },
+  { name: 'Pitch deck teksten',                   price: 195,  billing: 'eenmalig',    description: 'Volledige presentatie teksten voor investor of klant pitch' },
+  { name: 'Verlaten winkelwagen emails',          price: 195,  billing: 'eenmalig',    description: '3-delige email reeks voor verlaten winkelwagens' },
+  { name: 'Keyword research rapport',             price: 145,  billing: 'eenmalig',    description: 'Uitgebreid zoekwoordenonderzoek met volume, concurrentie en gaps' },
+  { name: 'Privacy policy + algemene voorwaarden', price: 145, billing: 'eenmalig',    description: 'GDPR-compliant privacy policy en algemene voorwaarden op maat' },
+  { name: 'Over ons pagina schrijven',            price: 145,  billing: 'eenmalig',    description: 'Professionele over ons pagina die vertrouwen wekt' },
+  { name: 'Nieuwsbrief template ontwerpen',       price: 145,  billing: 'eenmalig',    description: 'HTML email template op maat voor nieuwsbrieven' },
+  { name: 'Social media audit',                   price: 95,   billing: 'eenmalig',    description: 'Volledig audit rapport van Instagram/Facebook met actieplan' },
+  { name: 'Google Bedrijfsprofiel content',       price: 95,   billing: 'eenmalig',    description: 'Volledige optimalisatie teksten voor Google Maps profiel' },
+  { name: 'Social media profiel optimalisatie',   price: 95,   billing: 'eenmalig',    description: 'Bio, links, highlights en visuele uitstraling optimaliseren' },
+  { name: 'FAQ pagina schrijven',                 price: 95,   billing: 'eenmalig',    description: '20 veelgestelde vragen met uitgebreide antwoorden' },
 ];
 
 // Auto-create data directory (database.js handles SQLite init)
@@ -3501,9 +3526,19 @@ CRITICAL RULES:
 - No external dependencies except Google Fonts
 
 `;
-      const isBooking = (problemType || '').toLowerCase().match(/boek|reserv|afspra|agenda|appointment/);
-      const buildPrompt = isBooking
-        ? `${PREAMBLE}Build a complete HTML booking page for ${lead.companyName} in ${lead.location || ''}.
+      const msgLower = (message || '').toLowerCase();
+      const typeLower = (problemType || '').toLowerCase();
+      const combined = msgLower + ' ' + typeLower;
+
+      // Detect which of 4 build categories applies
+      const isBooking  = /boek|reserv|afspra|agenda|appointment|calendar/.test(combined);
+      const isDocument = /rapport|audit|analyse|report|seo rapport|concurrentie|keyword|onderzoek|strateg/.test(combined) && !isBooking;
+      const isStrategy = /crm|automatiser|lead scoring|a\/b|funnel|stappenplan|roadmap/.test(combined) && !isBooking;
+      const isHtml     = !isDocument && !isStrategy; // website, chatbot, booking, dashboard, landing → full HTML
+
+      let buildPrompt;
+      if (isBooking) {
+        buildPrompt = `${PREAMBLE}Build a complete HTML booking page for ${lead.companyName} in ${lead.location || ''}.
 
 MUST include in <body>:
 - Header with company name and tagline
@@ -3514,8 +3549,38 @@ MUST include in <body>:
 - Submit button with loading state
 - Success confirmation screen with booking summary
 
-Style: white bg, indigo #6366f1 accent, Plus Jakarta Sans from Google Fonts, mobile responsive.`
-        : `${PREAMBLE}Build a complete, fully functional standalone HTML page for ${lead.companyName}.
+Style: white bg, indigo #6366f1 accent, Plus Jakarta Sans from Google Fonts, mobile responsive.`;
+      } else if (isDocument) {
+        buildPrompt = `${PREAMBLE}Build a complete HTML report/document for ${lead.companyName}.
+
+Task: ${message}
+Company: ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''})
+
+MUST include in <body>:
+- Professional report header with title, company name, date
+- Executive summary section (3-5 key findings)
+- Main content sections with headings, data tables, bullet lists
+- Recommendations section with numbered action items
+- Footer with agency branding
+
+Style: clean report layout, white bg, dark headers, Inter font from Google Fonts, print-friendly.`;
+      } else if (isStrategy) {
+        buildPrompt = `${PREAMBLE}Build a complete HTML strategy document for ${lead.companyName}.
+
+Task: ${message}
+Company: ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''})
+
+MUST include in <body>:
+- Strategy title and company context
+- Situation analysis (current state vs desired state)
+- Step-by-step implementation plan with phases
+- Timeline / roadmap section
+- KPIs and success metrics
+- Next steps and quick wins
+
+Style: modern strategy doc layout, indigo #6366f1 accent, structured sections, Inter font.`;
+      } else {
+        buildPrompt = `${PREAMBLE}Build a complete, fully functional standalone HTML page for ${lead.companyName}.
 
 Task: ${message}
 Company: ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''})
@@ -3524,6 +3589,7 @@ Requirements:
 - Rich content in <body> — headings, paragraphs, sections, interactive elements
 - White background, indigo #6366f1 accent colour
 - Mobile responsive layout`;
+      }
 
       // aiCallBuild() now handles markdown stripping + body validation internally
       const html = await aiCallBuild(buildPrompt);
@@ -5300,7 +5366,7 @@ Website problemen: ${website.problems?.join(', ') || 'geen'}
 
   _runState.currentAgent = 'Agent 4 — Scorer';
   console.log(`  [Agent 4] Kansen berekenen...`);
-  const servicesList = services.map(s => `- ${s.name}: â‚¬${s.price} â€" ${s.description}`).join('\n');
+  const servicesList = services.map(s => `- ${s.name} (${s.billing}): €${s.price} — ${s.description}`).join('\n');
   let opportunity;
   try {
     opportunity = await aiJSON(`Analyseer dit bedrijf en geef een opportunity score. Geef JSON terug:
@@ -5312,15 +5378,18 @@ Website: ${website.reachable ? `bereikbaar in ${website.loadTimeMs}ms` : 'niet b
 Website problemen: ${[...(website.problems||[])].join(', ') || 'geen'}
 Betaalde ads: ${social.runningAds ? 'ja' : 'nee'}
 
-Onze diensten:
+Beschikbare diensten (kies de 2-3 meest relevante voor dit specifieke bedrijf):
 ${servicesList}
+
+Kies ALLEEN diensten die echt passen bij de problemen van dit bedrijf (niche, locatie, sociale media situatie).
+Kies 1-2 maandelijkse + eventueel 1 eenmalige dienst als logisch startpunt.
 
 Geef JSON:
 {
   "score": getal 1-10,
   "problems": ["top probleem 1 met specifieke data", "probleem 2", "probleem 3"],
-  "recommendedServices": [{"name": "dienstnaam", "price": getal}],
-  "estimatedValue": totaal maandelijks bedrag in euros,
+  "recommendedServices": [{"name": "exacte dienstnaam uit lijst", "price": getal, "billing": "maandelijks of eenmalig"}],
+  "estimatedValue": totaal maandelijks equivalent in euros,
   "urgency": "low" of "medium" of "high" of "critical",
   "reason": "korte uitleg score in 1 zin"
 }`);
