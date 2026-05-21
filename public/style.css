@@ -3653,6 +3653,7 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
   .project-content { padding: 16px; }
   .project-header { padding: 14px 16px 0; }
   .project-company-name { font-size: 18px; }
+  [data-tab-content="taken"] > div { grid-template-columns: 1fr !important; }
 }
 .reply-rate-row { margin-bottom: 10px; }
 .reply-rate-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }

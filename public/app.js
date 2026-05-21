@@ -2885,6 +2885,19 @@ async function renderProjectPage() {
   function buildProblemsTab() {
     const problems = lead.problems || [];
     const tasks    = lead.tasks    || [];
+    const deliverables = lead.agentDeliverables || [];
+    const selIdx = window._selectedProblemIdx ?? 0;
+    const activeSub = (window._activeProblemSubTab && window._activeProblemSubTab[lead.id]) || 'chat';
+    const checkedSet = (window._checkedProblems && window._checkedProblems[lead.id]) || new Set();
+
+    // Progress
+    const totalItems = deliverables.length + tasks.length;
+    const doneItems = deliverables.filter(d => d.status === 'approved').length + tasks.filter(t => t.status === 'klaar').length;
+    const pct = totalItems > 0 ? Math.round(doneItems / totalItems * 100) : 0;
+
+    // ─ LEFT: Problem cards ─
+    const selProblem = problems[selIdx];
+    const selTxt = selProblem ? (typeof selProblem === 'string' ? selProblem : (selProblem.text || selProblem.description || '')) : '';
 
     const problemCards = problems.length
       ? problems.map((p, i) => {
@@ -2892,27 +2905,33 @@ async function renderProjectPage() {
           const low = txt.toLowerCase();
           const isCritical = low.includes('geen') || low.includes('niet') || low.includes('slecht') || low.includes('0');
           const solved = p._solved || false;
-          return `<div class="problem-card${solved ? ' solved' : ''}" data-problem-idx="${i}" onclick="selectProblemCard(${i},'${esc(lead.id)}')">
-            <span style="font-size:16px">${solved ? '✅' : (isCritical ? '🔴' : '🟡')}</span>
-            <span style="flex:1;font-size:13px">${esc(txt)}</span>
-            ${solved ? '<span style="font-size:11px;color:var(--success);font-weight:600;white-space:nowrap">Opgelost ✓</span>' : ''}
+          const isSelected = i === selIdx;
+          const icon = solved ? '✅' : isCritical ? '🔴' : '🟡';
+          const severityLabel = solved ? 'Opgelost' : isCritical ? 'Kritiek' : 'Medium';
+          const severityColor = solved ? 'var(--success)' : isCritical ? 'var(--danger)' : '#d97706';
+          return `<div class="problem-card${isSelected ? ' selected' : ''}${solved ? ' solved' : ''}" data-problem-idx="${i}" onclick="selectProblemCard(${i},'${esc(lead.id)}')">
+            <input type="checkbox" onclick="event.stopPropagation();toggleProblemCheck('${esc(lead.id)}',${i})" ${checkedSet.has(i) ? 'checked' : ''} style="flex-shrink:0;width:15px;height:15px;cursor:pointer;accent-color:var(--accent)">
+            <span style="font-size:15px">${icon}</span>
+            <span style="flex:1;font-size:13px;line-height:1.4">${esc(txt)}</span>
+            <span style="font-size:10px;padding:1px 7px;border-radius:3px;background:${severityColor}22;color:${severityColor};font-weight:600;white-space:nowrap">${severityLabel}</span>
           </div>`;
         }).join('')
-      : '<div style="font-size:13px;color:var(--text-muted);padding:12px 0">Geen problemen gevonden voor deze lead.</div>';
+      : `<div style="text-align:center;padding:24px 0;color:var(--text-muted)">
+          <i class="ti ti-check" style="font-size:28px;display:block;margin-bottom:6px;color:var(--success)"></i>
+          <div style="font-size:13px">Geen problemen gevonden voor deze lead.</div>
+        </div>`;
 
-    const taskCards = `<div id="tasks-section-${lead.id}">${buildTasksHTML(lead, state.users || [], 1)}</div>`;
-
-    // Build initial chat panel for first problem (if any)
-    const firstProblem = problems[0];
-    const firstProblemTxt = firstProblem ? (typeof firstProblem === 'string' ? firstProblem : (firstProblem.text || firstProblem.description || '')) : '';
-    const chatPanel = problems.length
-      ? `<div class="problem-chat-panel" id="agentChatPanel">
+    // Sub-tab panel
+    // Chat
+    const chatSubPanel = `
+      <div id="probSubPanel-${lead.id}-chat" style="${activeSub !== 'chat' ? 'display:none' : ''}">
+        <div id="agentChatPanel" class="problem-chat-panel" style="border:none;padding:0">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-            <div style="font-size:13px;font-weight:600;color:var(--text)" id="chatProblemTitle">
-              ${firstProblemTxt ? '<i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>' + esc(firstProblemTxt.substring(0, 80)) : 'Selecteer een probleem'}
+            <div style="font-size:12px;font-weight:600;color:var(--text-secondary)" id="chatProblemTitle">
+              ${selTxt ? `<i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>${esc(selTxt.substring(0, 80))}` : '<i class="ti ti-robot" style="margin-right:6px"></i>Selecteer een probleem'}
             </div>
             <button class="btn btn-ghost btn-sm" style="font-size:11px;color:var(--danger)" onclick="clearAgentChat('${esc(lead.id)}')">
-              <i class="ti ti-trash"></i> Chat wissen
+              <i class="ti ti-trash"></i> Wissen
             </button>
           </div>
           <div class="agent-chat-history" id="agentChatHistory"></div>
@@ -2920,26 +2939,130 @@ async function renderProjectPage() {
             <textarea id="agentChatMsg" placeholder="Beschrijf wat je wilt bouwen of vraag een actieplan..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAgentChat('${esc(lead.id)}');}"></textarea>
             <button class="btn btn-primary btn-sm" onclick="sendAgentChat('${esc(lead.id)}')"><i class="ti ti-send"></i></button>
           </div>
-        </div>`
-      : `<div class="problem-chat-panel" style="display:flex;align-items:center;justify-content:center;min-height:120px;color:var(--text-muted);font-size:13px">
-          <i class="ti ti-robot" style="margin-right:8px"></i> Selecteer een probleem om te bespreken
-        </div>`;
+        </div>
+      </div>`;
+
+    // Taken (all project tasks)
+    const takenSubPanel = `
+      <div id="probSubPanel-${lead.id}-taken" style="${activeSub !== 'taken' ? 'display:none' : ''}">
+        <div id="tasks-section-${lead.id}">${buildTasksHTML(lead, state.users || [], 1)}</div>
+      </div>`;
+
+    // Bestanden (all deliverables compact)
+    const bestandenSubPanel = `
+      <div id="probSubPanel-${lead.id}-bestanden" style="${activeSub !== 'bestanden' ? 'display:none' : ''}">
+        ${deliverables.length
+          ? deliverables.map((d, dIdx) => {
+              const dot = d.status === 'approved' ? 'var(--success)' : d.status === 'error' ? 'var(--danger)' : 'var(--warning)';
+              const typeIcon = d.type === 'code' ? '💻' : d.deliverableType === 'strategy' ? '📊' : '📄';
+              const statusLabel = d.status === 'approved' ? 'Goedgekeurd' : d.status === 'error' ? 'Fout' : 'Wacht';
+              return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+                <span style="width:8px;height:8px;border-radius:50%;background:${dot};flex-shrink:0"></span>
+                <span style="font-size:13px;flex:1">${typeIcon} ${esc(d.service)}</span>
+                <span style="font-size:11px;color:${dot}">${statusLabel}</span>
+                ${d.url ? `<a href="${esc(d.url)}" target="_blank" style="font-size:11px;color:var(--accent)"><i class="ti ti-external-link"></i></a>` : ''}
+              </div>`;
+            }).join('')
+          : `<div style="text-align:center;padding:24px 0;color:var(--text-muted);font-size:13px">
+              <i class="ti ti-files" style="font-size:24px;display:block;margin-bottom:6px"></i>
+              ${lead.intakeSubmittedAt && isAdmin()
+                ? `Nog geen leveringen. <button class="btn btn-ghost btn-sm" onclick="buildAllServicesForLead('${esc(lead.id)}')"><i class="ti ti-robot"></i> Agents starten</button>`
+                : 'Nog geen leveringen gebouwd.'}
+            </div>`}
+      </div>`;
+
+    const subTabSection = problems.length ? `
+      <div style="margin-top:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface)">
+        <div style="display:flex;border-bottom:1px solid var(--border);padding:0 4px">
+          <button class="prob-subtab-btn" data-lead="${lead.id}" data-tab="chat" onclick="switchProblemSubTab('${esc(lead.id)}','chat')" style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid ${activeSub==='chat'?'var(--accent)':'transparent'};color:${activeSub==='chat'?'var(--accent)':'var(--text-secondary)'}">
+            <i class="ti ti-robot"></i> Chat
+          </button>
+          <button class="prob-subtab-btn" data-lead="${lead.id}" data-tab="taken" onclick="switchProblemSubTab('${esc(lead.id)}','taken')" style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid ${activeSub==='taken'?'var(--accent)':'transparent'};color:${activeSub==='taken'?'var(--accent)':'var(--text-secondary)'}">
+            <i class="ti ti-checklist"></i> Taken
+          </button>
+          <button class="prob-subtab-btn" data-lead="${lead.id}" data-tab="bestanden" onclick="switchProblemSubTab('${esc(lead.id)}','bestanden')" style="padding:10px 16px;font-size:12px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid ${activeSub==='bestanden'?'var(--accent)':'transparent'};color:${activeSub==='bestanden'?'var(--accent)':'var(--text-secondary)'}">
+            <i class="ti ti-files"></i> Bestanden
+          </button>
+        </div>
+        <div style="padding:14px 16px">
+          ${chatSubPanel}
+          ${takenSubPanel}
+          ${bestandenSubPanel}
+        </div>
+      </div>` : `<div id="tasks-section-${lead.id}" style="margin-top:16px">${buildTasksHTML(lead, state.users || [], 1)}</div>`;
+
+    const leftPanel = `
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div class="project-section-title" style="margin:0">
+            <i class="ti ti-alert-circle" style="color:var(--danger);margin-right:6px"></i>Gevonden problemen
+            ${problems.length ? `<span style="font-size:11px;background:var(--danger-light,#fef2f2);color:var(--danger);border-radius:4px;padding:1px 8px;margin-left:6px">${problems.length}</span>` : ''}
+          </div>
+        </div>
+        ${problemCards}
+        <button id="startCheckedBtn-${lead.id}" onclick="startCheckedProblems('${esc(lead.id)}')" style="display:${checkedSet.size>0?'flex':'none'};width:100%;margin-top:10px;align-items:center;justify-content:center;gap:6px" class="btn btn-dark btn-sm">
+          <i class="ti ti-rocket"></i> Start met ${checkedSet.size} aangevinkte probleem${checkedSet.size===1?'':'en'}
+        </button>
+        ${subTabSection}
+      </div>`;
+
+    // ─ RIGHT: Overview panel ─
+    const progressBlock = `
+      <div style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;background:var(--surface);margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Algehele voortgang</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <div style="font-size:26px;font-weight:800;color:${pct>=100?'var(--success)':pct>=50?'var(--accent)':'var(--text)'}">${pct}%</div>
+          <div style="flex:1">
+            <div style="height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden">
+              <div style="height:100%;background:${pct>=100?'var(--success)':'var(--accent)'};border-radius:3px;width:${pct}%;transition:width .4s"></div>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:3px">${doneItems} van ${totalItems} items</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;font-size:12px;color:var(--text-secondary)">
+          <span><i class="ti ti-check" style="color:var(--success)"></i> ${deliverables.filter(d=>d.status==='approved').length}/${deliverables.length} leveringen</span>
+          <span><i class="ti ti-checklist" style="color:var(--accent)"></i> ${tasks.filter(t=>t.status==='klaar').length}/${tasks.length} taken</span>
+        </div>
+      </div>`;
+
+    const delivOverview = deliverables.length ? `
+      <div style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;background:var(--surface);margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Leveringen</div>
+        ${deliverables.map(d => {
+          const dot = d.status === 'approved' ? '#10b981' : d.status === 'error' ? '#ef4444' : '#f59e0b';
+          const typeIcon = d.type === 'code' ? '💻' : d.deliverableType === 'strategy' ? '📊' : '📄';
+          return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+            <span style="width:7px;height:7px;border-radius:50%;background:${dot};flex-shrink:0"></span>
+            <span style="font-size:12px;flex:1">${typeIcon} ${esc(d.service)}</span>
+            ${d.url ? `<a href="${esc(d.url)}" target="_blank" style="color:var(--accent);font-size:11px"><i class="ti ti-external-link"></i></a>` : ''}
+          </div>`;
+        }).join('')}
+      </div>` : '';
+
+    const checklistTasks = tasks.filter(t => !t.week || t.week <= 2).slice(0, 8);
+    const masterChecklist = `
+      <div style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;background:var(--surface)">
+        <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Handmatige checklist</div>
+        ${checklistTasks.length
+          ? checklistTasks.map(t => {
+              const tid = t.id || t._id;
+              const done = t.status === 'klaar';
+              return `<label style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);cursor:pointer">
+                <input type="checkbox" ${done?'checked':''} onchange="toggleProjectTask('${esc(lead.id)}','${esc(tid)}',this.checked)" style="width:14px;height:14px;accent-color:var(--accent);flex-shrink:0">
+                <span style="font-size:12px;${done?'text-decoration:line-through;color:var(--text-muted)':''}">${esc(t.title||t.text||'Taak')}</span>
+              </label>`;
+            }).join('')
+          : `<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:10px 0">Geen taken aangemaakt</div>`}
+        ${lead.agentsRanAt && isAdmin() ? `<div style="margin-top:10px;font-size:11px;color:var(--text-muted)"><i class="ti ti-robot"></i> Laatste run: ${formatDate(lead.agentsRanAt)}</div>` : ''}
+      </div>`;
+
+    const rightPanel = `<div>${progressBlock}${delivOverview}${masterChecklist}</div>`;
 
     return `
       <div class="project-tab-content" data-tab-content="taken" style="${activeTab !== 'taken' ? 'display:none' : ''}">
-        <div class="project-two-col">
-          <div>
-            <div class="project-section-title"><i class="ti ti-alert-circle" style="color:var(--danger);margin-right:6px"></i>Problemen gevonden</div>
-            ${problemCards}
-          </div>
-          <div>
-            <div class="project-section-title"><i class="ti ti-checklist" style="color:var(--accent);margin-right:6px"></i>Taken</div>
-            ${taskCards}
-          </div>
-        </div>
-        <div style="margin-top:20px">
-          <div class="project-section-title"><i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>AI Agent Chat</div>
-          ${chatPanel}
+        <div style="display:grid;grid-template-columns:3fr 2fr;gap:20px;align-items:start">
+          ${leftPanel}
+          ${rightPanel}
         </div>
       </div>`;
   }
@@ -3761,6 +3884,65 @@ window.selectProblemCard = async function(idx, leadId) {
   }
 
   renderAgentChatHistory(leadId, idx);
+};
+
+window.switchProblemSubTab = function(leadId, tab) {
+  window._activeProblemSubTab = window._activeProblemSubTab || {};
+  window._activeProblemSubTab[leadId] = tab;
+
+  ['chat', 'taken', 'bestanden'].forEach(t => {
+    const panel = document.getElementById(`probSubPanel-${leadId}-${t}`);
+    if (panel) panel.style.display = t === tab ? '' : 'none';
+  });
+
+  document.querySelectorAll(`.prob-subtab-btn[data-lead="${leadId}"]`).forEach(btn => {
+    const active = btn.dataset.tab === tab;
+    btn.style.borderBottom = `2px solid ${active ? 'var(--accent)' : 'transparent'}`;
+    btn.style.color = active ? 'var(--accent)' : 'var(--text-secondary)';
+  });
+};
+
+window.toggleProblemCheck = function(leadId, idx) {
+  window._checkedProblems = window._checkedProblems || {};
+  if (!window._checkedProblems[leadId]) window._checkedProblems[leadId] = new Set();
+  const set = window._checkedProblems[leadId];
+  if (set.has(idx)) set.delete(idx); else set.add(idx);
+
+  const btn = document.getElementById(`startCheckedBtn-${leadId}`);
+  if (btn) {
+    btn.style.display = set.size > 0 ? 'flex' : 'none';
+    btn.querySelector('i').nextSibling.textContent = ` Start met ${set.size} aangevinkte probleem${set.size === 1 ? '' : 'en'}`;
+  }
+};
+
+window.startCheckedProblems = async function(leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead) return;
+  const checked = (window._checkedProblems && window._checkedProblems[leadId]) || new Set();
+  if (!checked.size) return;
+
+  const problems = lead.problems || [];
+  const selectedTexts = [...checked].sort().map(i => {
+    const p = problems[i];
+    return typeof p === 'string' ? p : (p?.text || p?.description || '');
+  }).filter(Boolean);
+
+  // Switch to Chat sub-tab and select the first checked problem
+  window._activeProblemSubTab = window._activeProblemSubTab || {};
+  window._activeProblemSubTab[leadId] = 'chat';
+  window._selectedProblemIdx = [...checked][0];
+  window._selectedProblemLead = leadId;
+
+  await renderProjectPage();
+  switchProjectTab('taken');
+
+  const msgEl = document.getElementById('agentChatMsg');
+  if (msgEl && selectedTexts.length) {
+    msgEl.value = selectedTexts.length === 1
+      ? `Analyseer dit probleem en maak een concreet actieplan: ${selectedTexts[0]}`
+      : `Analyseer deze problemen en maak een actieplan:\n${selectedTexts.map((t, i) => `${i+1}. ${t}`).join('\n')}\n\nBegin met het meest kritische.`;
+    msgEl.focus();
+  }
 };
 
 async function sendAgentChat(leadId) {
