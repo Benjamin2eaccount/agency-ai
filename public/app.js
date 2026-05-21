@@ -2719,17 +2719,23 @@ async function renderProjectPage() {
     <div class="project-tab-content" data-tab-content="overzicht" style="${activeTab !== 'overzicht' ? 'display:none' : ''}">
 
       ${lead.intakeSubmittedAt ? `
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border:1px solid var(--accent);border-radius:10px;background:#eff6ff;margin-bottom:18px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:10px">
-          <i class="ti ti-clipboard-check" style="font-size:20px;color:var(--accent);flex-shrink:0"></i>
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--accent)">Intake ingevuld door ${esc(lead.companyName)}</div>
-            <div style="font-size:11px;color:var(--text-secondary)">${lead.agentsRanAt ? `Agents liepen op ${formatDate(lead.agentsRanAt)}` : 'Agents hebben de intake nog niet verwerkt'}</div>
+      <div style="border:2px solid var(--accent);border-radius:14px;background:linear-gradient(135deg,#eff6ff 0%,#f8faff 100%);padding:20px 22px;margin-bottom:20px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap">
+          <div style="display:flex;align-items:flex-start;gap:12px">
+            <span style="font-size:22px;flex-shrink:0;margin-top:1px">📋</span>
+            <div>
+              <div style="font-size:15px;font-weight:800;color:var(--accent);margin-bottom:3px">Intake ontvangen van ${esc(lead.companyName)}</div>
+              <div style="font-size:13px;color:var(--text-secondary);margin-bottom:6px">De agents kunnen nu automatisch aan de slag met de bestelde diensten.</div>
+              ${lead.agentsRanAt ? `<div style="font-size:11px;color:var(--text-muted)"><i class="ti ti-check" style="color:var(--success)"></i> Agents liepen op ${formatDate(lead.agentsRanAt)} — ${(lead.agentDeliverables||[]).length} leveringen gebouwd</div>` : ''}
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap">
+            ${lead.agentsRanAt ? `<button class="btn btn-ghost btn-sm" onclick="buildAllServicesForLead('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Opnieuw bouwen</button>` : ''}
+            <button class="btn btn-dark" onclick="buildAllServicesForLead('${esc(lead.id)}')">
+              <i class="ti ti-robot"></i> ${lead.agentsRanAt ? 'Alles herbouwen' : 'Laat agents aan het werk →'}
+            </button>
           </div>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="runAgentsForLead('${esc(lead.id)}')">
-          <i class="ti ti-robot"></i> ${lead.agentsRanAt ? 'Agents opnieuw laten bouwen' : 'Laat agents het lezen en bouwen →'}
-        </button>
       </div>
       ` : ''}
 
@@ -3202,80 +3208,126 @@ async function renderProjectPage() {
   // ── Tab: Agents aan het werk ─────────────────────────────────────────────────
   function buildAgentsTab() {
     const deliverables = lead.agentDeliverables || [];
-    const running = window._agentsRunning && window._agentsRunning[lead.id];
+    const running = !!(window._buildAllRunning && window._buildAllRunning[lead.id]);
+    const progress = (window._buildAllProgress && window._buildAllProgress[lead.id]) || [];
 
-    const emptyState = !deliverables.length && !running ? `
-      <div style="text-align:center;padding:40px 20px">
-        <i class="ti ti-robot" style="font-size:40px;color:var(--text-muted);display:block;margin-bottom:12px"></i>
-        <div style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">Agents nog niet gestart</div>
-        <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px">${lead.intakeSubmittedAt ? 'Klik op "Laat agents het lezen en bouwen" in het Overzicht.' : 'Wacht tot de klant de intake heeft ingevuld.'}</div>
-        ${lead.intakeSubmittedAt ? `<button class="btn btn-primary" onclick="runAgentsForLead('${esc(lead.id)}')"><i class="ti ti-robot"></i> Agents starten</button>` : ''}
-      </div>` : '';
+    // Empty state
+    if (!deliverables.length && !running) {
+      return `
+        <div class="project-tab-content" data-tab-content="agents" style="${activeTab !== 'agents' ? 'display:none' : ''}">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+            <div class="project-section-title" style="margin:0"><i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>Agents aan het werk</div>
+          </div>
+          <div style="text-align:center;padding:40px 20px">
+            <i class="ti ti-robot" style="font-size:40px;color:var(--text-muted);display:block;margin-bottom:12px"></i>
+            <div style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">Agents nog niet gestart</div>
+            <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px">${lead.intakeSubmittedAt ? 'Klik op "Laat agents aan het werk" in het Overzicht.' : 'Wacht tot de klant de intake heeft ingevuld.'}</div>
+            ${lead.intakeSubmittedAt && isAdmin() ? `<button class="btn btn-primary" onclick="buildAllServicesForLead('${esc(lead.id)}')"><i class="ti ti-robot"></i> Agents starten</button>` : ''}
+          </div>
+        </div>`;
+    }
 
-    const progressSection = running ? `
-      <div id="agentsProgressCard-${lead.id}" style="border:1px solid var(--accent);border-radius:10px;padding:16px;margin-bottom:16px;background:#eff6ff">
-        <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:10px"><i class="ti ti-loader-2 spin"></i> Agents aan het werk...</div>
-        <div id="agentsProgressList-${lead.id}"></div>
-      </div>` : '';
+    // Live progress cards (during build)
+    const liveCards = running && progress.length ? progress.map(p => {
+      const slug = p.service.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      const borderColor = p.status === 'building' ? 'var(--accent)' : p.status === 'done' ? 'var(--success)' : p.status === 'error' ? 'var(--danger)' : 'var(--border)';
+      const statusHtml = p.status === 'waiting'
+        ? `<span style="font-size:12px;color:var(--text-muted)"><i class="ti ti-clock"></i> Wachten...</span>`
+        : p.status === 'building'
+          ? `<span style="font-size:12px;color:var(--accent)"><i class="ti ti-loader-2 spin"></i> Bezig...</span>`
+          : p.status === 'done'
+            ? `<span style="font-size:12px;color:var(--success)"><i class="ti ti-check"></i> Klaar ✓</span>`
+            : `<span style="font-size:12px;color:var(--danger)"><i class="ti ti-x"></i> Mislukt ✗</span>`;
+      return `
+        <div id="build-card-${lead.id}-${slug}" style="border:1px solid ${borderColor};border-radius:10px;padding:12px 16px;margin-bottom:10px;background:var(--surface);transition:border-color .3s">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${p.status==='building'?'8':'0'}px">
+            <div style="font-size:13px;font-weight:600">${esc(p.service)}</div>
+            <div class="build-status">${statusHtml}</div>
+          </div>
+          <div class="build-progress-wrap" style="${p.status!=='building'?'display:none':''}">
+            <div style="height:4px;background:var(--surface-2);border-radius:2px;overflow:hidden">
+              <div class="build-progress-bar" style="height:100%;background:var(--accent);border-radius:2px;width:${p.percent}%;transition:width .4s"></div>
+            </div>
+          </div>
+        </div>`;
+    }).join('') : '';
 
+    // Deliverable cards (post-build)
     const deliverableCards = deliverables.map((d, i) => {
+      const isHtml = d.type === 'code';
+      const typeIcon = isHtml ? '💻' : (d.deliverableType === 'strategy' ? '📊' : '📄');
+      const typeLabel = isHtml ? 'HTML build' : (d.deliverableType === 'strategy' ? 'Strategie' : 'Document');
+
       const statusBadge = d.status === 'approved'
         ? `<span class="badge badge-green"><i class="ti ti-check"></i> Goedgekeurd</span>`
         : d.status === 'error'
           ? `<span class="badge badge-red"><i class="ti ti-x"></i> Fout</span>`
           : `<span class="badge badge-warning"><i class="ti ti-clock"></i> Wacht op goedkeuring</span>`;
 
-      const preview = d.type === 'code' && d.html
+      const preview = isHtml && d.html
         ? `<div style="margin:12px 0">
-            <iframe srcdoc="${esc(d.html)}" sandbox="allow-scripts allow-same-origin" style="width:100%;height:360px;border:1px solid var(--border);border-radius:8px"></iframe>
+            <iframe srcdoc="${esc(d.html)}" sandbox="allow-scripts allow-same-origin" style="width:100%;height:300px;border:1px solid var(--border);border-radius:8px"></iframe>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-            <a href="${esc(d.url)}" target="_blank" class="btn btn-ghost btn-sm"><i class="ti ti-external-link"></i> Live link</a>
-            <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText('${esc(d.url)}').then(()=>toast('URL gekopieerd!','success'))"><i class="ti ti-copy"></i> Deel met klant</button>
+            ${d.url ? `<a href="${esc(d.url)}" target="_blank" class="btn btn-ghost btn-sm"><i class="ti ti-external-link"></i> Bekijken</a>` : ''}
+            ${d.url ? `<button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText('${esc(d.url)}').then(()=>toast('URL gekopieerd!','success'))"><i class="ti ti-copy"></i> Kopieer link</button>` : ''}
           </div>
           <div style="padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;margin-bottom:10px">
             <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">WAT DE KLANT NOG MOET DOEN</div>
-            <div style="font-size:13px;white-space:pre-line;color:var(--text)">${esc(d.todoText) || `1. Ga naar jullie website builder (bijv. WordPress, Wix, Squarespace)\n2. Maak een nieuwe pagina aan of open de gewenste pagina\n3. Voeg een HTML-blok of embed-sectie toe\n4. Plak deze embed code:\n\n<iframe src="${esc(d.url)}" width="100%" height="600" frameborder="0" allowfullscreen></iframe>\n\n5. Sla op en publiceer de pagina`}</div>
+            <div style="font-size:13px;white-space:pre-line;color:var(--text)">${esc(d.todoText) || `1. Ga naar jullie website builder\n2. Maak een nieuwe pagina aan\n3. Voeg een HTML-blok of embed-sectie toe\n4. Plak deze code:\n\n<iframe src="${esc(d.url||'')}" width="100%" height="600" frameborder="0"></iframe>\n\n5. Sla op en publiceer de pagina`}</div>
           </div>`
-        : d.type === 'manual' && d.instructions
-          ? `<div style="padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;margin:10px 0">
-              <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">INSTRUCTIES VOOR ADMIN</div>
-              <div style="font-size:13px;white-space:pre-line;line-height:1.6;color:var(--text)">${esc(d.instructions)}</div>
+        : (d.html || d.instructions || d.content)
+          ? `<div style="padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;margin:10px 0;max-height:220px;overflow-y:auto">
+              <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">${typeLabel.toUpperCase()}</div>
+              <div style="font-size:13px;white-space:pre-line;line-height:1.6;color:var(--text)">${esc(((d.html||d.instructions||d.content)||'').slice(0,800))}${((d.html||d.instructions||d.content)||'').length>800?'…':''}</div>
             </div>`
           : d.status === 'error'
             ? `<div style="padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin:8px 0;font-size:13px;color:#dc2626">${esc(d.error||'Onbekende fout')}</div>`
             : '';
 
-      const actions = d.status !== 'approved' && d.status !== 'error' ? `
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${isAdmin() ? (d.type === 'manual'
-            ? `<button class="btn btn-primary btn-sm" id="manualApproveBtn-${esc(lead.id)}-${i}" onclick="approveManualDeliverable('${esc(lead.id)}',${i})"><i class="ti ti-send"></i> Klaar — stuur naar klant</button>`
-            : `<button class="btn btn-primary btn-sm" onclick="approveDeliverable('${esc(lead.id)}',${i})"><i class="ti ti-check"></i> Goedkeuren &amp; versturen naar klant</button>`)
-          : ''}
+      const actions = d.status !== 'approved' && d.status !== 'error' && isAdmin() ? `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+          ${isHtml
+            ? `<button class="btn btn-primary btn-sm" onclick="approveDeliverable('${esc(lead.id)}',${i})"><i class="ti ti-check"></i> Goedkeuren &amp; naar klant</button>`
+            : `<button class="btn btn-primary btn-sm" id="manualApproveBtn-${esc(lead.id)}-${i}" onclick="approveManualDeliverable('${esc(lead.id)}',${i})"><i class="ti ti-send"></i> Goedkeuren &amp; naar klant</button>`}
+          <button class="btn btn-ghost btn-sm" onclick="toggleDeliverableChat('${esc(lead.id)}',${i})"><i class="ti ti-message"></i> Aanpassen</button>
+        </div>` : '';
+
+      const chatPanel = isAdmin() ? `
+        <div id="delivChat-${lead.id}-${i}" style="display:none;margin-top:12px;padding:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px">
+          <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px"><i class="ti ti-robot" style="margin-right:4px"></i>Aanpassen via AI</div>
+          <textarea id="delivChatInput-${lead.id}-${i}" class="form-input" rows="2" placeholder="Beschrijf wat er anders moet..." style="resize:vertical;font-size:13px;margin-bottom:8px"></textarea>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn btn-ghost btn-sm" onclick="toggleDeliverableChat('${esc(lead.id)}',${i})">Sluiten</button>
+            <button class="btn btn-primary btn-sm" onclick="sendDeliverableAdjust('${esc(lead.id)}',${i})"><i class="ti ti-send"></i> Aanpassing sturen</button>
+          </div>
         </div>` : '';
 
       return `<div style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px;background:var(--surface)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;flex-wrap:wrap">
           <div style="font-size:14px;font-weight:700">${esc(d.service)}</div>
           <div style="display:flex;align-items:center;gap:6px">
-            <span style="font-size:11px;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:1px 7px">${d.type === 'code' ? '💻 Code' : '📋 Handmatig'}</span>
+            <span style="font-size:11px;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:1px 7px">${typeIcon} ${typeLabel}</span>
             ${statusBadge}
           </div>
         </div>
         ${preview}
         ${actions}
-        ${d.approvedAt ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">Goedgekeurd op ${formatDate(d.approvedAt)}</div>` : ''}
+        ${chatPanel}
+        ${d.approvedAt ? `<div style="font-size:11px;color:var(--text-muted);margin-top:8px">Goedgekeurd op ${formatDate(d.approvedAt)}</div>` : ''}
       </div>`;
     }).join('');
+
+    const doneCount = progress.filter(p => p.status === 'done').length;
 
     return `
       <div class="project-tab-content" data-tab-content="agents" style="${activeTab !== 'agents' ? 'display:none' : ''}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
           <div class="project-section-title" style="margin:0"><i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>Agents aan het werk</div>
-          ${lead.intakeSubmittedAt && isAdmin() ? `<button class="btn btn-ghost btn-sm" onclick="runAgentsForLead('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Opnieuw uitvoeren</button>` : ''}
+          ${!running && lead.intakeSubmittedAt && isAdmin() ? `<button class="btn btn-ghost btn-sm" onclick="buildAllServicesForLead('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Opnieuw bouwen</button>` : ''}
         </div>
-        ${emptyState}
-        ${progressSection}
+        ${running && progress.length ? `<div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:12px"><i class="ti ti-loader-2 spin"></i> Bezig... ${doneCount}/${progress.length} leveringen klaar</div>` : ''}
+        ${liveCards}
         ${deliverableCards}
       </div>`;
   }
@@ -3922,6 +3974,182 @@ window.sendManualDeliverable = async function(leadId, dIdx) {
   } else {
     const d = await res?.json();
     toast(d?.error || 'Versturen mislukt', 'error');
+  }
+};
+
+window.toggleDeliverableChat = function(leadId, dIdx) {
+  const panel = document.getElementById(`delivChat-${leadId}-${dIdx}`);
+  if (!panel) return;
+  const open = panel.style.display === 'none' || !panel.style.display;
+  panel.style.display = open ? 'block' : 'none';
+  if (open) panel.querySelector('textarea')?.focus();
+};
+
+window.sendDeliverableAdjust = async function(leadId, dIdx) {
+  const input = document.getElementById(`delivChatInput-${leadId}-${dIdx}`);
+  const msg = input?.value?.trim();
+  if (!msg) { toast('Beschrijf wat er anders moet', 'error'); return; }
+
+  const btn = document.querySelector(`#delivChat-${leadId}-${dIdx} .btn-primary`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...'; }
+
+  const lead = state.leads.find(l => l.id === leadId);
+  const deliverable = lead?.agentDeliverables?.[dIdx];
+  if (!deliverable) { toast('Levering niet gevonden', 'error'); return; }
+
+  // Use the existing agent-chat endpoint for adjustments
+  const res = await apiJSON(`/api/leads/${leadId}/agent-chat`, {
+    method: 'POST',
+    body: JSON.stringify({
+      message: `Pas de levering voor "${deliverable.service}" aan: ${msg}`,
+      action: deliverable.type === 'code' ? 'build' : 'adjust',
+      service: deliverable.service,
+      deliverableIdx: dIdx
+    })
+  });
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-send"></i> Aanpassing sturen'; }
+
+  if (res?.reply) {
+    toast('Aanpassing ontvangen — herlaad de pagina om het resultaat te zien', 'success');
+    if (input) input.value = '';
+    const freshLeads = await apiJSON('/api/leads');
+    if (freshLeads) state.leads = freshLeads;
+    renderProjectPage().then(() => switchProjectTab('agents'));
+  } else {
+    toast(res?.error || 'Aanpassing mislukt', 'error');
+  }
+};
+
+window.buildAllServicesForLead = async function(leadId) {
+  window._buildAllRunning = window._buildAllRunning || {};
+  window._buildAllProgress = window._buildAllProgress || {};
+
+  if (window._buildAllRunning[leadId]) return;
+  window._buildAllRunning[leadId] = true;
+
+  const lead = state.leads.find(l => l.id === leadId);
+  const services = (lead?.services || []).map(s => typeof s === 'string' ? s : (s.name || s));
+
+  // Init per-service progress tracking
+  window._buildAllProgress[leadId] = services.length
+    ? services.map(name => ({ service: name, status: 'waiting', percent: 0 }))
+    : [{ service: 'Diensten laden...', status: 'waiting', percent: 0 }];
+
+  await renderProjectPage();
+  switchProjectTab('agents');
+
+  const updateCard = (serviceName, updates) => {
+    const prog = window._buildAllProgress[leadId];
+    if (!prog) return;
+    const item = prog.find(p => p.service === serviceName);
+    if (item) Object.assign(item, updates);
+
+    const slug = serviceName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const card = document.getElementById(`build-card-${leadId}-${slug}`);
+    if (!card) return;
+
+    const statusEl = card.querySelector('.build-status');
+    const progressBar = card.querySelector('.build-progress-bar');
+    const progressWrap = card.querySelector('.build-progress-wrap');
+
+    if (statusEl) {
+      if (updates.status === 'building') {
+        statusEl.innerHTML = `<span style="font-size:12px;color:var(--accent)"><i class="ti ti-loader-2 spin"></i> Bezig...</span>`;
+        card.style.borderColor = 'var(--accent)';
+      } else if (updates.status === 'done') {
+        statusEl.innerHTML = `<span style="font-size:12px;color:var(--success)"><i class="ti ti-check"></i> Klaar ✓</span>`;
+        card.style.borderColor = 'var(--success)';
+        if (progressWrap) progressWrap.style.display = 'none';
+      } else if (updates.status === 'error') {
+        statusEl.innerHTML = `<span style="font-size:12px;color:var(--danger)"><i class="ti ti-x"></i> Mislukt ✗</span>`;
+        card.style.borderColor = 'var(--danger)';
+        if (progressWrap) progressWrap.style.display = 'none';
+      }
+    }
+    if (progressBar && typeof updates.percent === 'number') {
+      progressBar.style.width = updates.percent + '%';
+      if (progressWrap && updates.status === 'building') progressWrap.style.display = '';
+    }
+
+    // Update counter in header
+    const prog2 = window._buildAllProgress[leadId] || [];
+    const doneCount = prog2.filter(p => p.status === 'done').length;
+    const hdr = document.querySelector(`[data-tab-content="agents"] .build-counter`);
+    if (hdr) hdr.textContent = `Bezig... ${doneCount}/${prog2.length} leveringen klaar`;
+  };
+
+  try {
+    const res = await fetch(`/api/leads/${leadId}/build-all-services`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('agencyToken')}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `HTTP ${res.status}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    const pump = () => reader.read().then(({ done, value }) => {
+      if (done) {
+        window._buildAllRunning[leadId] = false;
+        delete window._buildAllProgress[leadId];
+        renderProjectPage().then(() => switchProjectTab('agents'));
+        return;
+      }
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+
+      parts.forEach(part => {
+        const line = part.trim();
+        if (!line.startsWith('data: ')) return;
+        try {
+          const d = JSON.parse(line.slice(6));
+
+          if (d.type === 'start') {
+            updateCard(d.service, { status: 'building', percent: 10 });
+          } else if (d.type === 'progress') {
+            updateCard(d.service, { percent: d.percent });
+          } else if (d.type === 'done') {
+            updateCard(d.service, { status: 'done', percent: 100, url: d.url, deliverableType: d.deliverableType });
+          } else if (d.type === 'error' && d.service) {
+            updateCard(d.service, { status: 'error' });
+          } else if (d.type === 'all_done') {
+            window._buildAllRunning[leadId] = false;
+            delete window._buildAllProgress[leadId];
+            const l = state.leads.find(x => x.id === leadId);
+            if (l) l.agentDeliverables = d.deliverables || [];
+            toast(`${d.count} leveringen klaar!`, 'success');
+            renderProjectPage().then(() => switchProjectTab('agents'));
+          } else if (d.type === 'error' && !d.service) {
+            window._buildAllRunning[leadId] = false;
+            delete window._buildAllProgress[leadId];
+            toast(d.message || 'Fout bij bouwen', 'error');
+            renderProjectPage().then(() => switchProjectTab('agents'));
+          }
+        } catch {}
+      });
+      pump();
+    }).catch(err => {
+      window._buildAllRunning[leadId] = false;
+      delete window._buildAllProgress[leadId];
+      toast('Verbindingsfout: ' + err.message, 'error');
+    });
+
+    pump();
+  } catch (err) {
+    window._buildAllRunning[leadId] = false;
+    delete window._buildAllProgress[leadId];
+    toast('Fout: ' + err.message, 'error');
+    renderProjectPage().then(() => switchProjectTab('agents'));
   }
 };
 

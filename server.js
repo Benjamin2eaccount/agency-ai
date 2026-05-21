@@ -3853,6 +3853,187 @@ Wees concreet: welke tools, welke stappen, welke instellingen.`);
   res.end();
 });
 
+// ── Website style extraction helper ──────────────────────────────────────────
+async function extractWebsiteStyle(websiteUrl) {
+  if (!websiteUrl) return { color: '#6366f1', font: 'Plus Jakarta Sans' };
+  try {
+    const r = await fetch(websiteUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(5000) });
+    const html = await r.text();
+    const colorMatch =
+      html.match(/name=["']theme-color["'][^>]+content=["']([#][0-9a-fA-F]{3,6})["']/i) ||
+      html.match(/content=["']([#][0-9a-fA-F]{3,6})["'][^>]+name=["']theme-color["']/i) ||
+      html.match(/background(?:-color)?:\s*(#[0-9a-fA-F]{6})/i);
+    const fontMatch = html.match(/font-family:\s*['"]?([A-Za-z][A-Za-z\s]+?)['"]?\s*[,;]/);
+    return {
+      color: colorMatch?.[1] || '#6366f1',
+      font: fontMatch?.[1]?.trim() || 'Plus Jakarta Sans',
+    };
+  } catch {
+    return { color: '#6366f1', font: 'Plus Jakarta Sans' };
+  }
+}
+
+// ── Build all services for a lead (SSE) ──────────────────────────────────────
+app.post('/api/leads/:id/build-all-services', requireAdmin, async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const sse = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+
+  try {
+    const leads    = readJSON('leads.json') || [];
+    const settings = readJSON('settings.json') || {};
+    const li       = leads.findIndex(l => l.id === req.params.id);
+    if (li === -1) { sse({ type: 'error', service: '', message: 'Lead niet gevonden' }); res.end(); return; }
+    const lead     = leads[li];
+    const services = (req.body?.services?.length ? req.body.services : lead.services) || [];
+    if (!services.length) { sse({ type: 'error', service: '', message: 'Geen diensten ingesteld op dit project' }); res.end(); return; }
+
+    const BASE = process.env.BASE_URL || 'http://localhost:3000';
+    const companySlug = (lead.companyName || 'bedrijf')
+      .toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+
+    // Build intake context from all available intake fields
+    const intakeRaw = { ...(lead.intakeAnswers || {}), ...(lead.intakeData || {}) };
+    const intakeContext = Object.keys(intakeRaw).length
+      ? `\n\nClient intake information:\nCompany: ${lead.companyName}\nLocation: ${lead.location || ''}\n${Object.entries(intakeRaw).map(([k, v]) => `${k}: ${v}`).join('\n')}`
+      : `\n\nClient: ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''})`;
+
+    // Extract website style for brand-matching
+    const style = await extractWebsiteStyle(lead.websiteUrl);
+
+    // Service classification
+    const HTML_KEYWORDS   = /website|booking|chatbot|dashboard|landingspagina|landing.*page|faq.*assistent|kennisbank|offerte.*generator|onboarding/i;
+    const STRAT_KEYWORDS  = /seo.*rapport|concurrentie|audit|crm|lead.*scoring|branding|heatmap|trend|keyword.*research/i;
+    // everything else → TEXT_DOCUMENT
+
+    const deliverables = [];
+
+    for (let i = 0; i < services.length; i++) {
+      const svc = services[i];
+      sse({ type: 'start', service: svc.name, index: i, total: services.length });
+
+      try {
+        const nameL = svc.name.toLowerCase();
+        const typeSlug = nameL.replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'levering';
+
+        const styleLine = `\nMatch the visual style of ${lead.websiteUrl || lead.companyName}. Primary color: ${style.color}. Font: ${style.font}.`;
+
+        let deliverable;
+
+        if (HTML_KEYWORDS.test(svc.name)) {
+          // ── HTML build ──────────────────────────────────────────────────────
+          sse({ type: 'progress', service: svc.name, percent: 20 });
+
+          const isBooking = /booking|reserv|afspra|agenda/i.test(svc.name);
+          let prompt;
+          if (isBooking) {
+            prompt = `Build a complete HTML booking page for ${lead.companyName} in ${lead.location || ''}.
+${intakeContext}${styleLine}
+
+MUST include: header with company name, service selection cards, Mon-Fri calendar (past days disabled), time slot picker (09:00-17:00), contact form (naam/email/tel), submit with loading state, success screen.
+Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile responsive.`;
+          } else if (/chatbot|faq.*assistent|kennisbank/i.test(svc.name)) {
+            prompt = `Build a complete HTML chatbot / FAQ assistant page for ${lead.companyName}.
+${intakeContext}${styleLine}
+
+MUST include: clean chat interface, 15+ pre-programmed Q&A pairs relevant to their niche (${lead.niche || ''}), floating chat widget with open/close, message bubbles, typing indicator, lead capture form when user asks to contact.
+Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile responsive.`;
+          } else if (/dashboard/i.test(svc.name)) {
+            prompt = `Build a complete HTML analytics dashboard for ${lead.companyName}.
+${intakeContext}${styleLine}
+
+MUST include: KPI cards (revenue, visitors, conversions, engagement), chart placeholders with realistic demo data, sidebar nav, date filter, data table, responsive grid layout.
+Style: white bg, ${style.color} accent, ${style.font}, mobile responsive.`;
+          } else {
+            prompt = `Build a complete HTML ${svc.name} page for ${lead.companyName}.
+${intakeContext}${styleLine}
+
+MUST include: professional header, rich body content relevant to ${svc.name}, interactive elements, clear CTA section, footer.
+Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile responsive. Minimum 500 words visible content.`;
+          }
+
+          sse({ type: 'progress', service: svc.name, percent: 50 });
+          const html = await aiCallBuild(prompt);
+          sse({ type: 'progress', service: svc.name, percent: 80 });
+
+          const sitesDir = path.join(__dirname, 'public', 'sites', companySlug);
+          fs.mkdirSync(sitesDir, { recursive: true });
+          const filename = `${typeSlug}.html`;
+          fs.writeFileSync(path.join(sitesDir, filename), html, 'utf8');
+          const url = `${BASE}/sites/${companySlug}/${filename}`;
+
+          const todoText = await aiCall(`Schrijf max 5 concrete stappen voor de klant om "${svc.name}" te activeren op hun website. Live URL: ${url}. Embed code: <iframe src="${url}" width="100%" height="600" frameborder="0"></iframe>. Stap-voor-stap, in het Nederlands.`).catch(() => '');
+
+          const id = Date.now().toString(36) + i;
+          deliverable = { id, service: svc.name, type: 'code', status: 'wacht_op_goedkeuring', html, url, todoText, builtAt: new Date().toISOString() };
+          sse({ type: 'done', service: svc.name, index: i, total: services.length, deliverableType: 'code', url, deliverableId: id });
+
+        } else if (STRAT_KEYWORDS.test(svc.name)) {
+          // ── Strategy / report document ────────────────────────────────────
+          sse({ type: 'progress', service: svc.name, percent: 30 });
+          const content = await aiCall(`Schrijf een professioneel "${svc.name}" rapport voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).
+${intakeContext}
+
+Structuur:
+1. Managementsamenvatting (3-5 bevindingen)
+2. Huidige situatie analyse
+3. Verbeterpunten (genummerd, concreet)
+4. Stappenplan per kwartaal
+5. KPI's en succesmetrics
+6. Aanbevolen volgende stap
+
+Schrijf in professioneel Nederlands, maximaal 600 woorden. Wees concreet en specifiek voor hun niche/locatie.`);
+          sse({ type: 'progress', service: svc.name, percent: 80 });
+
+          const id = Date.now().toString(36) + i;
+          deliverable = { id, service: svc.name, type: 'strategy', status: 'wacht_op_goedkeuring', content, builtAt: new Date().toISOString() };
+          sse({ type: 'done', service: svc.name, index: i, total: services.length, deliverableType: 'strategy', deliverableId: id });
+
+        } else {
+          // ── Text document (content, copy, scripts) ────────────────────────
+          sse({ type: 'progress', service: svc.name, percent: 30 });
+          const content = await aiCall(`Lever de dienst "${svc.name}" voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).
+${intakeContext}
+
+Schrijf complete, direct bruikbare inhoud in professioneel Nederlands:
+- Specifiek voor hun niche en locatie
+- Klaar om te gebruiken (geen placeholders zoals [naam] of [bedrijf])
+- Minimum 300 woorden aan bruikbare content
+
+Dienst: ${svc.description || svc.name}`);
+          sse({ type: 'progress', service: svc.name, percent: 80 });
+
+          const id = Date.now().toString(36) + i;
+          deliverable = { id, service: svc.name, type: 'document', status: 'wacht_op_goedkeuring', content, builtAt: new Date().toISOString() };
+          sse({ type: 'done', service: svc.name, index: i, total: services.length, deliverableType: 'document', deliverableId: id });
+        }
+
+        deliverables.push(deliverable);
+      } catch (err) {
+        const id = Date.now().toString(36) + i;
+        deliverables.push({ id, service: svc.name, type: 'unknown', status: 'error', error: err.message, builtAt: new Date().toISOString() });
+        sse({ type: 'error', service: svc.name, index: i, total: services.length, message: err.message });
+      }
+    }
+
+    // Merge with any existing deliverables (keep approved ones)
+    const existing = (leads[li].agentDeliverables || []).filter(d => d.status === 'approved');
+    leads[li].agentDeliverables = [...existing, ...deliverables];
+    leads[li].agentsRanAt = new Date().toISOString();
+    writeJSON('leads.json', leads);
+    addLeadHistory(leads, req.params.id, { event: 'buildAllServices', label: `Agents bouwden ${deliverables.length} leveringen automatisch` });
+    addActivity('agent_build', `${lead.companyName}: ${deliverables.length} leveringen gebouwd`);
+
+    sse({ type: 'all_done', count: deliverables.length, deliverables });
+  } catch (err) {
+    sse({ type: 'error', service: '', message: err.message });
+  }
+  res.end();
+});
+
 // Generate delivery email preview for manual deliverables
 app.post('/api/leads/:id/deliverables/:dIdx/preview-email', requireAdmin, async (req, res) => {
   const leads = readJSON('leads.json') || [];
