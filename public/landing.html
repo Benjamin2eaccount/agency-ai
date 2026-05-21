@@ -172,19 +172,67 @@
     .stat-num { font-size: 2.6rem; font-weight: 900; color: var(--black); line-height: 1; margin-bottom: 6px; }
     .stat-lbl { font-size: 14px; font-weight: 600; color: var(--t2); }
 
-    /* Services */
-    .cat-section { margin-bottom: 52px; }
-    .cat-section:last-child { margin-bottom: 0; }
-    .cat-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; color: var(--t2); margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
-    .cat-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-    .cat-title .ti { font-size: 16px; color: var(--indigo); flex-shrink: 0; }
-    .service-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
-    .service-card { background: #fff; border: 1px solid var(--border); border-left: 3px solid transparent; border-radius: var(--r); padding: 20px 18px; transition: transform .2s, box-shadow .2s, border-left-color .2s; }
-    .service-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.08); border-left-color: var(--indigo); }
-    .svc-icon { font-size: 1.5rem; margin-bottom: 10px; color: var(--indigo); display: block; }
-    .svc-name { font-size: 14px; font-weight: 700; margin-bottom: 5px; }
-    .svc-desc { font-size: 13px; color: var(--t2); line-height: 1.5; }
-    .svc-price { font-size: 12px; font-weight: 700; color: var(--indigo); margin-top: 8px; }
+    /* Services — new tabbed layout */
+    .svc-block { }
+    .svc-block-header { margin-bottom: 28px; }
+    .svc-block-title { font-size: 1.35rem; font-weight: 800; display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .svc-block-sub { font-size: 14px; color: var(--t2); }
+    .svc-block-tag { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; padding: 3px 10px; border-radius: 20px; flex-shrink: 0; }
+    .svc-tag-monthly { background: #eef2ff; color: var(--indigo); }
+    .svc-tag-once    { background: #f0fdf4; color: #16a34a; }
+
+    /* Filter tabs */
+    .svc-filter-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px; }
+    .svc-filter { font-family: inherit; font-size: 13px; font-weight: 600; padding: 7px 16px; border-radius: 30px; border: 1.5px solid var(--border); background: #fff; color: var(--t2); cursor: pointer; transition: all .15s; white-space: nowrap; }
+    .svc-filter:hover { border-color: #aaa; color: #111; }
+    .svc-filter.active { background: #111; border-color: #111; color: #fff; }
+
+    /* Compact service cards grid */
+    .svc-compact-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    @media (max-width: 1024px) { .svc-compact-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 720px)  { .svc-compact-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 420px)  { .svc-compact-grid { grid-template-columns: 1fr; } }
+
+    .svc-card {
+      background: #fff; border: 1px solid #e8e8e5; border-radius: 8px;
+      padding: 16px; cursor: default;
+      transition: transform .18s, box-shadow .18s, border-color .18s;
+    }
+    .svc-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.09); border-color: var(--indigo); }
+    .svc-card-icon { font-size: 20px; margin-bottom: 8px; line-height: 1; }
+    .svc-card-name { font-size: 13px; font-weight: 700; margin-bottom: 4px; line-height: 1.35; }
+    .svc-card-desc { font-size: 11.5px; color: var(--t2); line-height: 1.45; margin-bottom: 8px; }
+    .svc-card-price { font-size: 13px; font-weight: 800; color: var(--indigo); }
+
+    /* Filter animation */
+    .svc-card.hidden { display: none; }
+    .svc-card.visible { animation: svcFadeIn .2s ease forwards; }
+    @keyframes svcFadeIn { from { opacity:0; transform: scale(.97) translateY(4px); } to { opacity:1; transform: scale(1) translateY(0); } }
+
+    /* Once grid groups */
+    .once-group { margin-bottom: 36px; }
+    .once-group:last-child { margin-bottom: 0; }
+    .once-group-title {
+      font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em;
+      color: var(--t2); margin-bottom: 14px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .once-group-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .once-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    @media (max-width: 1024px) { .once-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 720px)  { .once-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 420px)  { .once-grid { grid-template-columns: 1fr; } }
+
+    /* Custom banner */
+    .svc-custom-banner {
+      margin-top: 56px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r-lg); padding: 28px 32px;
+      display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap;
+    }
+    .svc-custom-text { display: flex; flex-direction: column; gap: 4px; }
+    .svc-custom-text strong { font-size: 16px; font-weight: 800; }
+    .svc-custom-text span { font-size: 14px; color: var(--t2); }
+    @media (max-width: 600px) { .svc-custom-banner { flex-direction: column; align-items: flex-start; } }
 
     /* Werkwijze */
     .werkwijze { background: var(--surface); }
@@ -383,166 +431,52 @@
 <!-- Diensten -->
 <section class="section" id="diensten">
   <div class="container">
-    <div class="center fade-in" style="margin-bottom:60px">
-      <div class="badge" data-i18n="services.badge">✦ Onze diensten</div>
-      <h2 class="section-title" data-i18n="services.title">Alles wat jouw bedrijf nodig heeft</h2>
-      <p class="section-sub" data-i18n="services.sub">Één partner voor elk digitaal vraagstuk.</p>
+    <div class="center fade-in" style="margin-bottom:56px">
+      <div class="badge">✦ Onze diensten</div>
+      <h2 class="section-title">Alles wat uw bedrijf nodig heeft</h2>
+      <p class="section-sub">Van eenmalige projecten tot volledige AI-automatisering — wij regelen het.</p>
     </div>
 
-    <div class="cat-section fade-in">
-      <div class="cat-title"><i class="ti ti-world"></i><span data-i18n="cat.web">Web &amp; Design</span></div>
-      <div class="service-grid">
-        <div class="service-card">
-          <i class="ti ti-device-desktop svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.website.name">Website laten bouwen</div>
-          <div class="svc-desc" data-i18n="svc.website.desc">Snelle, moderne websites die bezoekers omzetten in klanten.</div>
-          <div class="svc-price">vanaf €795</div>
-        </div>
-        <div class="service-card">
-          <i class="ti ti-shopping-cart svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.webshop.name">Webshop bouwen</div>
-          <div class="svc-desc" data-i18n="svc.webshop.desc">Professionele webshops met volledige betaalintegratie en voorraadbeheer.</div>
-          <div class="svc-price">vanaf €1.495</div>
-        </div>
-        <div class="service-card">
-          <i class="ti ti-target svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.landing.name">Landing page ontwerp</div>
-          <div class="svc-desc" data-i18n="svc.landing.desc">Conversiegerichte pagina's voor campagnes en advertenties.</div>
-          <div class="svc-price">vanaf €495</div>
-        </div>
+    <!-- ── Maandelijkse diensten ─────────────────────────────────────────── -->
+    <div class="svc-block fade-in">
+      <div class="svc-block-header">
+        <h3 class="svc-block-title"><span class="svc-block-tag svc-tag-monthly">Maandelijks</span> Beheerde diensten</h3>
+        <p class="svc-block-sub">Wij runnen het, u groeit. Opzegbaar per maand.</p>
+      </div>
+
+      <div class="svc-filter-row" id="monthlyFilters">
+        <button class="svc-filter active" data-filter="all">Alle</button>
+        <button class="svc-filter" data-filter="marketing">📣 Marketing</button>
+        <button class="svc-filter" data-filter="content">✍️ Content</button>
+        <button class="svc-filter" data-filter="aitools">🤖 AI Tools</button>
+        <button class="svc-filter" data-filter="seo">🔍 SEO</button>
+        <button class="svc-filter" data-filter="automatisering">⚡ Automatisering</button>
+      </div>
+
+      <div class="svc-compact-grid" id="monthlyGrid">
+        <!-- rendered by JS -->
       </div>
     </div>
 
-    <div class="cat-section fade-in">
-      <div class="cat-title"><i class="ti ti-speakerphone"></i><span data-i18n="cat.marketing">Marketing &amp; Advertenties</span></div>
-      <div class="service-grid">
-        <div class="service-card">
-          <i class="ti ti-brand-meta svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.meta.name">Meta advertenties (Facebook &amp; Instagram)</div>
-          <div class="svc-desc" data-i18n="svc.meta.desc">AI-gestuurde campagnes die meer opleveren voor minder budget.</div>
-          <div class="svc-price">vanaf €375/mo</div>
-        </div>
-        <div class="service-card">
-          <i class="ti ti-brand-google svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.google.name">Google Ads</div>
-          <div class="svc-desc" data-i18n="svc.google.desc">Bovenaan in Google verschijnen precies wanneer klanten zoeken.</div>
-          <div class="svc-price">vanaf €375/mo</div>
-        </div>
-        <div class="service-card">
-          <i class="ti ti-mail svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.email.name">Email marketing</div>
-          <div class="svc-desc" data-i18n="svc.email.desc">Geautomatiseerde email campagnes die leads omzetten in betalende klanten.</div>
-          <div class="svc-price">vanaf €295/mo</div>
-        </div>
-        <div class="service-card">
-          <i class="ti ti-camera svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.social.name">Content &amp; Social media</div>
-          <div class="svc-desc" data-i18n="svc.social.desc">Dagelijkse posts, Reels en Stories — afgestemd op jouw merk en doelgroep.</div>
-          <div class="svc-price">vanaf €495/mo</div>
-        </div>
+    <!-- ── Eenmalige projecten ───────────────────────────────────────────── -->
+    <div class="svc-block fade-in" style="margin-top:72px">
+      <div class="svc-block-header">
+        <h3 class="svc-block-title"><span class="svc-block-tag svc-tag-once">Eenmalig</span> Projecten</h3>
+        <p class="svc-block-sub">Vast tarief, geen verrassingen. Klaar in afgesproken tijd.</p>
+      </div>
+
+      <div id="onceGrid">
+        <!-- rendered by JS as grouped sections -->
       </div>
     </div>
 
-    <div class="cat-section fade-in">
-      <div class="cat-title"><i class="ti ti-robot"></i><span data-i18n="cat.ai">AI &amp; Automatisering</span></div>
-      <div class="service-grid">
-        <div class="service-card">
-          <i class="ti ti-robot svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.leadgen.name">AI Leadgeneratie systeem</div>
-          <div class="svc-desc" data-i18n="svc.leadgen.desc">Volledig automatisch nieuwe klanten vinden en benaderen — 24/7.</div>
-          <div class="svc-price">vanaf €795/mo</div>
-        </div>
-        <div class="service-card">
-          <i class="ti ti-message-chatbot svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.chatbot.name">AI Chatbot voor website</div>
-          <div class="svc-desc" data-i18n="svc.chatbot.desc">Beantwoordt vragen, vangt leads en plant afspraken in — zonder menselijke tussenkomst.</div>
-          <div class="svc-price">vanaf €695</div>
-        </div>
-        <div class="service-card">
-          <i class="ti ti-settings-automation svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.workflow.name">Workflow automatisering</div>
-          <div class="svc-desc" data-i18n="svc.workflow.desc">Herhaalbare taken automatiseren zodat jij je focust op wat echt telt.</div>
-          <div class="svc-price">vanaf €995</div>
-        </div>
-        <div class="service-card">
-          <i class="ti ti-sparkles svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.aicontent.name">AI content creatie</div>
-          <div class="svc-desc" data-i18n="svc.aicontent.desc">Teksten, afbeeldingen en video's gegenereerd door AI op schaal.</div>
-          <div class="svc-price">vanaf €395/mo</div>
-        </div>
+    <!-- ── Custom banner ─────────────────────────────────────────────────── -->
+    <div class="svc-custom-banner fade-in">
+      <div class="svc-custom-text">
+        <strong>Niet gevonden wat u zoekt?</strong>
+        <span>Heeft u een specifieke wens die u hier niet ziet? Wij bouwen ook op maat.</span>
       </div>
-    </div>
-
-    <div class="cat-section fade-in">
-      <div class="cat-title"><i class="ti ti-shield-lock"></i><span data-i18n="cat.security">Security &amp; Beveiliging</span></div>
-      <div class="service-grid">
-        <div class="service-card">
-          <i class="ti ti-shield svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.websec.name">Website beveiliging</div>
-          <div class="svc-desc" data-i18n="svc.websec.desc">SSL, firewalls, malware scanning en continue monitoring van jouw website.</div>
-          <div class="svc-price">vanaf €295/mo</div>
-        </div>
-        <div class="service-card">
-          <i class="ti ti-scale svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.gdpr.name">GDPR &amp; privacybeheer</div>
-          <div class="svc-desc" data-i18n="svc.gdpr.desc">Volledig compliant met Europese wetgeving — cookies, privacy policy en meer.</div>
-          <div class="svc-price">vanaf €395</div>
-        </div>
-        <div class="service-card">
-          <i class="ti ti-database svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.backup.name">Backup &amp; herstel</div>
-          <div class="svc-desc" data-i18n="svc.backup.desc">Automatische dagelijkse backups en snel herstel bij problemen.</div>
-          <div class="svc-price">vanaf €95/mo</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="cat-section fade-in">
-      <div class="cat-title"><i class="ti ti-trending-up"></i><span data-i18n="cat.seo">SEO &amp; Vindbaarheid</span></div>
-      <div class="service-grid">
-        <div class="service-card">
-          <i class="ti ti-map-pin svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.localseo.name">Lokale SEO</div>
-          <div class="svc-desc" data-i18n="svc.localseo.desc">Gevonden worden in Google door klanten in jouw stad of regio.</div>
-          <div class="svc-price">vanaf €395/mo</div>
-        </div>
-        <div class="service-card">
-          <i class="ti ti-building-store svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.gmb.name">Google Bedrijfsprofiel</div>
-          <div class="svc-desc" data-i18n="svc.gmb.desc">Optimalisatie van je Google Maps aanwezigheid en reviews.</div>
-          <div class="svc-price">vanaf €295/mo</div>
-        </div>
-        <div class="service-card">
-          <i class="ti ti-bolt svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.techseo.name">Technische SEO</div>
-          <div class="svc-desc" data-i18n="svc.techseo.desc">Snelheid, structuur en code geoptimaliseerd voor maximale Google ranking.</div>
-          <div class="svc-price">vanaf €495/mo</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="cat-section fade-in">
-      <div class="cat-title"><i class="ti ti-chart-bar"></i><span data-i18n="cat.strategy">Advies &amp; Strategie</span></div>
-      <div class="service-grid">
-        <div class="service-card">
-          <i class="ti ti-compass svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.strategy.name">Digitale strategie</div>
-          <div class="svc-desc" data-i18n="svc.strategy.desc">Een helder plan welke kanalen en tools het meest opleveren voor jouw business.</div>
-          <div class="svc-price">vanaf €795</div>
-        </div>
-        <div class="service-card">
-          <i class="ti ti-chart-dots svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.competitor.name">Concurrentieanalyse</div>
-          <div class="svc-desc" data-i18n="svc.competitor.desc">Wij analyseren wat jouw concurrenten doen en hoe jij ze voorbij gaat.</div>
-          <div class="svc-price">vanaf €395</div>
-        </div>
-        <div class="service-card">
-          <i class="ti ti-chart-bar svc-icon"></i>
-          <div class="svc-name" data-i18n="svc.analytics.name">Analytics &amp; rapportage</div>
-          <div class="svc-desc" data-i18n="svc.analytics.desc">Inzicht in wat werkt via duidelijke dashboards en maandelijkse rapporten.</div>
-          <div class="svc-price">vanaf €295/mo</div>
-        </div>
-      </div>
+      <a href="#contact" class="btn-dark" style="white-space:nowrap">Neem contact op →</a>
     </div>
   </div>
 </section>
@@ -1227,6 +1161,175 @@ async function submitContact(e) {
     // Expose gtag globally so setLanguage can fire events
     window._gaReady = true;
   } catch {}
+})();
+
+// ── Services section renderer ─────────────────────────────────────────────────
+(async function renderServices() {
+  try {
+    const services = await fetch('/api/services').then(r => r.json());
+
+    // Icon map — service name keywords → emoji
+    const icons = [
+      [/meta|facebook|instagram/i,    '📣'],
+      [/google ads/i,                 '🎯'],
+      [/content.*social|social.*cont/i,'📲'],
+      [/chatbot|chat.*bot/i,          '🤖'],
+      [/lead outreach|outreach/i,     '📨'],
+      [/lokale seo|seo/i,             '🔍'],
+      [/bedrijfsprofiel|google maps/i,'📍'],
+      [/email marketing|nieuwsbrief/i,'📧'],
+      [/whatsapp/i,                   '💬'],
+      [/video/i,                      '🎬'],
+      [/reputatie|reviews/i,          '⭐'],
+      [/content kalen/i,              '📅'],
+      [/reels|tiktok/i,               '🎵'],
+      [/blog/i,                       '✍️'],
+      [/linkedin/i,                   '💼'],
+      [/pinterest/i,                  '📌'],
+      [/youtube|shorts/i,             '▶️'],
+      [/thumbnail/i,                  '🖼️'],
+      [/shopping/i,                   '🛒'],
+      [/retarget/i,                   '🎪'],
+      [/sms/i,                        '📱'],
+      [/review generatie/i,           '✅'],
+      [/retentie/i,                   '🔁'],
+      [/analytics.*rapport|rapport/i, '📊'],
+      [/influencer/i,                 '🌟'],
+      [/seizoen/i,                    '🎄'],
+      [/evenement/i,                  '🎉'],
+      [/loyalty/i,                    '🏆'],
+      [/competitor|monitoring/i,      '🔭'],
+      [/persbericht/i,                '📰'],
+      [/remarketing/i,                '🔄'],
+      [/pixel|conversies/i,           '📐'],
+      [/website bouwen|website/i,     '🌐'],
+      [/webshop/i,                    '🛍️'],
+      [/landingspagina/i,             '🎯'],
+      [/boekingssysteem/i,            '📆'],
+      [/logo/i,                       '🎨'],
+      [/snelheid|technisch/i,         '⚡'],
+      [/dashboard/i,                  '📊'],
+      [/huisstijl/i,                  '🎨'],
+      [/teksten schrijven/i,          '📝'],
+      [/teksten optimalis/i,          '🔤'],
+      [/autoresponder/i,              '📬'],
+      [/google ads tekst/i,           '📢'],
+      [/facebook ad/i,                '📣'],
+      [/chatbot script/i,             '🤖'],
+      [/concurrentie/i,               '🔭'],
+      [/product beschrijv/i,          '🏷️'],
+      [/pitch deck/i,                 '📊'],
+      [/winkelwagen/i,                '🛒'],
+      [/keyword/i,                    '🔑'],
+      [/privacy|voorwaarden/i,        '🔒'],
+      [/over ons/i,                   '👥'],
+      [/nieuwsbrief template/i,       '📧'],
+      [/social media audit/i,         '📋'],
+      [/profiel optimalis/i,          '✨'],
+      [/faq/i,                        '❓'],
+      [/google bedrijfsprofiel content/i, '📍'],
+    ];
+
+    function getIcon(name) {
+      for (const [rx, emoji] of icons) {
+        if (rx.test(name)) return emoji;
+      }
+      return '✦';
+    }
+
+    // Category map for monthly services
+    const catMap = {
+      marketing:      /meta|google ads|reputatie|advertentie|a\/b testing/i,
+      content:        /content.*social|social.*cont|kalender|reels|blog|nieuwsbrief|video|tiktok|youtube|thumbnail|linkedin|pinterest/i,
+      seo:            /seo|bedrijfsprofiel optimalis/i,
+      aitools:        /chatbot|lead scoring|sales opvolg|offerte generator|crm|voice.over|webshop aanbevel|telefonisch|klantenservice inbox|review generator/i,
+      automatisering: /outreach systeem|email marketing|whatsapp|retarget|sms|retentie|pixel|conversies|remarketing|review generatie|monitoring|influencer|seizoen|evenement|loyalty|persbericht/i,
+    };
+
+    function getCategory(name) {
+      for (const [cat, rx] of Object.entries(catMap)) {
+        if (rx.test(name)) return cat;
+      }
+      return 'marketing'; // default bucket
+    }
+
+    const monthly = services.filter(s => (s.billing || 'maandelijks') === 'maandelijks');
+    const once    = services.filter(s => s.billing === 'eenmalig');
+
+    // ── Render monthly grid ──────────────────────────────────────────────────
+    const monthlyGrid = document.getElementById('monthlyGrid');
+    if (monthlyGrid) {
+      monthlyGrid.innerHTML = monthly.map(s => {
+        const cat = getCategory(s.name);
+        return `<div class="svc-card visible" data-cat="${cat}">
+          <div class="svc-card-icon">${getIcon(s.name)}</div>
+          <div class="svc-card-name">${s.name}</div>
+          <div class="svc-card-desc">${s.description || ''}</div>
+          <div class="svc-card-price">€${s.price}/mnd</div>
+        </div>`;
+      }).join('');
+    }
+
+    // ── Filter tabs ──────────────────────────────────────────────────────────
+    document.querySelectorAll('#monthlyFilters .svc-filter').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#monthlyFilters .svc-filter').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const filter = btn.dataset.filter;
+        document.querySelectorAll('#monthlyGrid .svc-card').forEach(card => {
+          const show = filter === 'all' || card.dataset.cat === filter;
+          card.classList.toggle('hidden', !show);
+          if (show) {
+            card.classList.remove('visible');
+            void card.offsetWidth; // reflow
+            card.classList.add('visible');
+          }
+        });
+      });
+    });
+
+    // ── Render once groups ───────────────────────────────────────────────────
+    const onceGroups = {
+      'Website & Design':      /website bouwen|webshop|landingspagina|boekingssysteem|logo|huisstijl|snelheid|dashboard/i,
+      'Teksten & Content':     /teksten|blog|nieuwsbrief template|autoresponder|google ads tekst|facebook ad|product beschrijv|pitch deck|winkelwagen|over ons|faq/i,
+      'Analyse & Strategie':   /concurrentie|audit|keyword|profiel optimalis/i,
+      'AI Systemen':           /chatbot script|privacy|google bedrijfsprofiel content/i,
+    };
+
+    const onceGrid = document.getElementById('onceGrid');
+    if (onceGrid) {
+      let html = '';
+      const assigned = new Set();
+
+      for (const [groupName, rx] of Object.entries(onceGroups)) {
+        const groupItems = once.filter(s => rx.test(s.name) && !assigned.has(s.name));
+        groupItems.forEach(s => assigned.add(s.name));
+
+        // leftover items go in last group
+        if (groupName === 'AI Systemen') {
+          once.filter(s => !assigned.has(s.name)).forEach(s => { groupItems.push(s); assigned.add(s.name); });
+        }
+
+        if (!groupItems.length) continue;
+
+        html += `<div class="once-group">
+          <div class="once-group-title">${groupName}</div>
+          <div class="once-grid">
+            ${groupItems.map(s => `
+              <div class="svc-card">
+                <div class="svc-card-icon">${getIcon(s.name)}</div>
+                <div class="svc-card-name">${s.name}</div>
+                <div class="svc-card-desc">${s.description || ''}</div>
+                <div class="svc-card-price" style="color:#16a34a">€${s.price} eenmalig</div>
+              </div>`).join('')}
+          </div>
+        </div>`;
+      }
+      onceGrid.innerHTML = html;
+    }
+  } catch(e) {
+    console.warn('Services load failed:', e);
+  }
 })();
 </script>
 </body>

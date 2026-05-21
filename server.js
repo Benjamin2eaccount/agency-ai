@@ -4344,6 +4344,12 @@ app.get('/api/settings/services/defaults', (req, res) => {
   res.json(DEFAULT_SERVICES);
 });
 
+// Public endpoint — returns live services list for landing page (no auth)
+app.get('/api/services', (req, res) => {
+  const settings = readJSON('settings.json') || {};
+  res.json(settings.services || DEFAULT_SERVICES);
+});
+
 app.patch('/api/settings/automation', requireAdmin, (req, res) => {
   const settings = readJSON('settings.json');
   const { dailyRunTime, leadsPerDay, autoApproveScore, automationPaused, linkedinUrl, dailyBriefingEnabled, dailyBriefingTime, smartAutoApprove, monthlyReports, backupEnabled, backupTime, backupEmail, targetCompanySizes } = req.body;
