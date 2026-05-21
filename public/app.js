@@ -3810,9 +3810,9 @@ function renderAgentChatHistory(leadId, idx) {
     }
     if (m.buildError) {
       return `<div class="agent-msg ai" style="padding:0;background:none;border:none">
-        <div style="background:var(--danger-light);border:1px solid var(--danger);border-radius:10px;padding:12px 14px">
-          <div style="font-size:13px;font-weight:700;color:var(--danger);margin-bottom:6px"><i class="ti ti-alert-triangle"></i> Genereren mislukt — HTML body was leeg.</div>
-          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">${esc(m.text)}</div>
+        <div style="background:var(--danger-light,#fef2f2);border:1px solid var(--danger);border-radius:10px;padding:12px 14px">
+          <div style="font-size:13px;font-weight:700;color:var(--danger);margin-bottom:4px"><i class="ti ti-alert-triangle"></i> Genereren mislukt</div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">${esc(m.text || 'Onbekende fout — probeer opnieuw.')}</div>
           <button class="btn btn-sm" style="background:var(--danger);color:#fff;font-size:12px" onclick="retryAgentBuild('${leadId}')">
             <i class="ti ti-refresh"></i> Probeer opnieuw
           </button>
@@ -3958,7 +3958,8 @@ async function sendAgentChat(leadId) {
   if (!window._agentChats[leadId]) window._agentChats[leadId] = {};
   if (!window._agentChats[leadId][idx]) window._agentChats[leadId][idx] = [];
 
-  const isBuild = message.toLowerCase().includes('ja bouwen') || message.toLowerCase().includes('bouwen');
+  const isBuild = /\b(bouw|bouwen|maak|genereer|build|generate|cre[eë]er|aanmaken|schrijf.*pagina|maak.*pagina|bouw.*pagina)\b/i.test(message)
+    || /\b(booking.*pagina|landingspagina|website|chatbot|dashboard|content.*kalender|rapport|strateg)\b/i.test(message);
   const action = isBuild ? 'build' : 'chat';
 
   // Remember last build message for retry

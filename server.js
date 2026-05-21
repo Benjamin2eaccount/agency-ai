@@ -3925,6 +3925,7 @@ app.post('/api/leads/:id/build-all-services', requireAdmin, async (req, res) => 
 
         if (HTML_KEYWORDS.test(svc.name)) {
           // ── HTML build ──────────────────────────────────────────────────────
+          console.log(`[Build] Type: HTML_BUILD | Service: ${svc.name}`);
           sse({ type: 'progress', service: svc.name, percent: 20 });
 
           const isBooking = /booking|reserv|afspra|agenda/i.test(svc.name);
@@ -3958,6 +3959,7 @@ Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile 
           sse({ type: 'progress', service: svc.name, percent: 50 });
           const html = await aiCallBuild(prompt);
           sse({ type: 'progress', service: svc.name, percent: 80 });
+          { const bm = html.match(/<body[^>]*>([\s\S]*)<\/body>/i); console.log(`[Build] Body length: ${(bm?.[1]?.trim()||'').length} | Success: true`); }
 
           const sitesDir = path.join(__dirname, 'public', 'sites', companySlug);
           fs.mkdirSync(sitesDir, { recursive: true });
@@ -3973,6 +3975,7 @@ Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile 
 
         } else if (STRAT_KEYWORDS.test(svc.name)) {
           // ── Strategy / report document ────────────────────────────────────
+          console.log(`[Build] Type: STRATEGY_DOCUMENT | Service: ${svc.name}`);
           sse({ type: 'progress', service: svc.name, percent: 30 });
           const content = await aiCall(`Schrijf een professioneel "${svc.name}" rapport voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).
 ${intakeContext}
@@ -3994,6 +3997,7 @@ Schrijf in professioneel Nederlands, maximaal 600 woorden. Wees concreet en spec
 
         } else {
           // ── Text document (content, copy, scripts) ────────────────────────
+          console.log(`[Build] Type: TEXT_DOCUMENT | Service: ${svc.name}`);
           sse({ type: 'progress', service: svc.name, percent: 30 });
           const content = await aiCall(`Lever de dienst "${svc.name}" voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).
 ${intakeContext}
@@ -5036,10 +5040,9 @@ app.delete('/api/settings/stats', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-// Debug endpoint — tests aiCallBuild pipeline end-to-end (admin only)
+// Debug endpoint — tests all 3 aiCallBuild types end-to-end (admin only)
 app.get('/api/test-build', requireAdmin, async (req, res) => {
-  const prompt = `You are an expert HTML developer.
-Build a complete, fully functional HTML page.
+  const BASE_RULES = `You are an expert HTML developer.
 
 CRITICAL RULES:
 - Return ONLY raw HTML
@@ -5052,23 +5055,61 @@ CRITICAL RULES:
 - All JS in <script> tag before </body>
 - No external dependencies except Google Fonts
 
-Build a booking page for Test Company in Amsterdam.
-Include: header, service cards, date picker, time slots, contact form, success screen.
-Style: white bg, indigo #6366f1 accent, mobile responsive.`;
+`;
 
-  try {
-    const html = await aiCallBuild(prompt);
-    const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-    const bodyContent = bodyMatch?.[1]?.trim() || '';
-    res.json({
-      success: true,
-      htmlLength: html.length,
-      bodyLength: bodyContent.length,
-      firstBodyChars: bodyContent.substring(0, 200)
-    });
-  } catch (err) {
-    res.json({ success: false, error: err.message });
+  const tests = [
+    {
+      type: 'HTML_BUILD',
+      prompt: BASE_RULES + 'Build a complete booking page for Test Company in Amsterdam. Include: header, service cards, Mon–Fri calendar (past days disabled), time slot picker (09:00–17:00), contact form (naam/email/tel), submit with loading state, success screen. Style: white bg, indigo #6366f1 accent, mobile responsive. Minimum 600 words of visible body content.'
+    },
+    {
+      type: 'TEXT_DOCUMENT',
+      prompt: BASE_RULES + 'Build a complete HTML content calendar document for Restaurant De Gouden Leeuw in Rotterdam. Include: monthly overview table with 20 post ideas, each with date/platform/topic/caption/hashtags, posting schedule per weekday, tips section. Style: white bg, clean typography, printable layout. Minimum 600 words of visible body content.'
+    },
+    {
+      type: 'STRATEGY_DOCUMENT',
+      prompt: BASE_RULES + 'Build a complete HTML SEO rapport for Kapsalon Haar & Zo in Utrecht. Include: executive summary, keyword analysis table (15+ keywords with volume/difficulty), competitor overview, 12-week action plan with milestones, KPI dashboard section, recommendations list. Style: white bg, professional report layout, data tables. Minimum 600 words of visible body content.'
+    }
+  ];
+
+  const results = [];
+
+  for (const test of tests) {
+    console.log(`[Build] Type: ${test.type}`);
+    try {
+      const html = await aiCallBuild(test.prompt);
+      const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+      const bodyContent = bodyMatch?.[1]?.trim() || '';
+      console.log(`[Build] Body length: ${bodyContent.length}`);
+      console.log(`[Build] Success: true`);
+      results.push({
+        type: test.type,
+        success: true,
+        htmlLength: html.length,
+        bodyLength: bodyContent.length,
+        firstBodyChars: bodyContent.substring(0, 200)
+      });
+    } catch (err) {
+      console.log(`[Build] Body length: 0`);
+      console.log(`[Build] Success: false — ${err.message}`);
+      results.push({ type: test.type, success: false, error: err.message, htmlLength: 0, bodyLength: 0, firstBodyChars: '' });
+    }
   }
+
+  const allPassed = results.every(r => r.success);
+  res.json({
+    success: allPassed,
+    results,
+    summary: {
+      total: results.length,
+      passed: results.filter(r => r.success).length,
+      failed: results.filter(r => !r.success).length
+    },
+    // Backwards-compat fields from first result (HTML_BUILD)
+    htmlLength: results[0]?.htmlLength ?? 0,
+    bodyLength: results[0]?.bodyLength ?? 0,
+    firstBodyChars: results[0]?.firstBodyChars ?? ''
+  });
 });
 
 // â"€â"€â"€ Server-side Claude helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
