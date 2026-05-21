@@ -3486,69 +3486,47 @@ app.post('/api/leads/:id/agent-chat', requireAdmin, async (req, res) => {
 
   try {
     if (action === 'build') {
+      const PREAMBLE = `You are an expert HTML developer.
+Build a complete, fully functional HTML page.
+
+CRITICAL RULES:
+- Return ONLY raw HTML
+- Start response with: <!DOCTYPE html>
+- End response with: </html>
+- NEVER use markdown or backticks
+- The <body> MUST contain all visible content
+- Minimum 500 words of visible content in <body>
+- All CSS in <style> tag in <head>
+- All JS in <script> tag before </body>
+- No external dependencies except Google Fonts
+
+`;
       const isBooking = (problemType || '').toLowerCase().match(/boek|reserv|afspra|agenda|appointment/);
       const buildPrompt = isBooking
-        ? `Build a complete HTML booking page for ${lead.companyName} in ${lead.location || ''}.
-
-Return ONLY raw HTML starting with <!DOCTYPE html>.
-No markdown, no backticks, no explanation.
+        ? `${PREAMBLE}Build a complete HTML booking page for ${lead.companyName} in ${lead.location || ''}.
 
 MUST include in <body>:
-- Header with company name
-- Step 1: Choose service (cards): ${message}
-- Step 2: Pick date (calendar, Mon-Fri only)
-- Step 3: Pick time (09:00-17:00 slots)
-- Step 4: Name, email, phone fields
-- Submit button
-- Success confirmation screen
+- Header with company name and tagline
+- Step 1: Choose service (clickable cards): ${message}
+- Step 2: Pick date (Mon-Fri only calendar, past dates disabled)
+- Step 3: Pick time (09:00-17:00 slots, 1-hour intervals)
+- Step 4: Contact form (naam, bedrijf, email, telefoon)
+- Submit button with loading state
+- Success confirmation screen with booking summary
 
-Style: white bg, indigo #6366f1 accent, Plus Jakarta Sans from Google Fonts, mobile responsive.
-All CSS in <style> in <head>. All JS in <script> before </body>.`
-        : `Build a complete, fully functional standalone HTML page for ${lead.companyName}.
-
-Return ONLY raw HTML starting with <!DOCTYPE html>.
-No markdown, no backticks, no explanation.
-
-Requirements:
-- Complete standalone HTML with content in <body>
-- All CSS in <style> tag, all JS in <script> tag
-- No external dependencies
-- Mobile responsive, white background, indigo #6366f1 accent
+Style: white bg, indigo #6366f1 accent, Plus Jakarta Sans from Google Fonts, mobile responsive.`
+        : `${PREAMBLE}Build a complete, fully functional standalone HTML page for ${lead.companyName}.
 
 Task: ${message}
-Company: ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''})`;
+Company: ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''})
 
-      let html = await aiCallBuild(buildPrompt);
+Requirements:
+- Rich content in <body> — headings, paragraphs, sections, interactive elements
+- White background, indigo #6366f1 accent colour
+- Mobile responsive layout`;
 
-      console.log('[Build] HTML length:', html?.length);
-      console.log('[Build] HTML start:', html?.substring(0, 300));
-
-      // Strip markdown code fences if Claude wrapped the response
-      html = (html || '')
-        .replace(/^```html\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/```\s*$/i, '')
-        .trim();
-
-      // If still not valid HTML, try extracting it from the response
-      if (!html.startsWith('<!DOCTYPE') && !html.startsWith('<html') && !html.startsWith('<HTML')) {
-        const match = html.match(/<!DOCTYPE[\s\S]*<\/html>/i);
-        if (match) {
-          html = match[0];
-        } else {
-          console.error('[Build] No valid HTML found in response. Raw response:', html.substring(0, 500));
-          throw new Error('Het genereren is mislukt. Probeer opnieuw.');
-        }
-      }
-
-      // Validate body has actual content
-      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-      const bodyContent = bodyMatch?.[1]?.trim();
-      if (!bodyContent || bodyContent.length < 100) {
-        console.error('[Build] Empty body detected. HTML length:', html.length, 'Body:', bodyContent?.substring(0, 200));
-        throw new Error('Het genereren is mislukt. Probeer opnieuw.');
-      }
-      console.log('[Build] Body length:', bodyContent.length);
+      // aiCallBuild() now handles markdown stripping + body validation internally
+      const html = await aiCallBuild(buildPrompt);
 
       const companySlug = lead.companyName
         .toLowerCase()
@@ -3737,12 +3715,8 @@ Includes all features for: ${svc.name}.${intakeContext}
 Style: white bg, indigo #6366f1 accent, Plus Jakarta Sans from Google Fonts, mobile responsive.
 All CSS in <style> in <head>. All JS in <script> before </body>.`;
 
-          let html = await aiCallBuild(prompt);
-          html = html.replace(/^```html\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/i,'').trim();
-          if (!html.startsWith('<!DOCTYPE') && !html.startsWith('<html')) {
-            const m = html.match(/<!DOCTYPE[\s\S]*<\/html>/i);
-            if (m) html = m[0]; else throw new Error('Geen geldige HTML gegenereerd');
-          }
+          // aiCallBuild() handles markdown stripping + body validation internally
+          const html = await aiCallBuild(prompt);
 
           // Save file
           const sitesDir = path.join(__dirname, 'public', 'sites', companySlug);
@@ -4809,39 +4783,38 @@ app.delete('/api/settings/stats', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-// Debug endpoint — tests aiCallBuild and returns diagnostic info (admin only)
+// Debug endpoint — tests aiCallBuild pipeline end-to-end (admin only)
 app.get('/api/test-build', requireAdmin, async (req, res) => {
-  const prompt = `Build a simple HTML booking page for "Test Bedrijf" in Amsterdam.
-Return ONLY raw HTML starting with <!DOCTYPE html>. No markdown, no backticks.
-Include a header, a form with date/time picker, and a submit button.
-All CSS in <style> tag. All JS in <script> tag.`;
+  const prompt = `You are an expert HTML developer.
+Build a complete, fully functional HTML page.
+
+CRITICAL RULES:
+- Return ONLY raw HTML
+- Start response with: <!DOCTYPE html>
+- End response with: </html>
+- NEVER use markdown or backticks
+- The <body> MUST contain all visible content
+- Minimum 500 words of visible content in <body>
+- All CSS in <style> tag in <head>
+- All JS in <script> tag before </body>
+- No external dependencies except Google Fonts
+
+Build a booking page for Test Company in Amsterdam.
+Include: header, service cards, date picker, time slots, contact form, success screen.
+Style: white bg, indigo #6366f1 accent, mobile responsive.`;
+
   try {
-    const s = readJSON('settings.json') || {};
-    const apiKey = getClaudeApiKey(s);
-    if (!apiKey) return res.json({ error: 'Geen API sleutel' });
-    const { default: fetch } = await import('node-fetch');
-    const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 8000, messages: [{ role: 'user', content: prompt }] })
-    });
-    const data = await apiRes.json();
-    const raw = data.content ? data.content.filter(b => b.type === 'text').map(b => b.text).join('') : '';
-    const bodyMatch = raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    const html = await aiCallBuild(prompt);
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
     const bodyContent = bodyMatch?.[1]?.trim() || '';
     res.json({
-      ok: !!raw,
-      stop_reason: data.stop_reason,
-      content_blocks: data.content?.length || 0,
-      raw_length: raw.length,
-      raw_start: raw.substring(0, 500),
-      body_length: bodyContent.length,
-      body_start: bodyContent.substring(0, 200),
-      usage: data.usage,
-      error: data.error || null
+      success: true,
+      htmlLength: html.length,
+      bodyLength: bodyContent.length,
+      firstBodyChars: bodyContent.substring(0, 200)
     });
   } catch (err) {
-    res.json({ ok: false, error: err.message });
+    res.json({ success: false, error: err.message });
   }
 });
 
@@ -4979,8 +4952,36 @@ async function aiCallBuild(prompt) {
   statsNow.totalApiCostUsd   = Math.round(((statsNow.totalApiCostUsd || 0) + callCost) * 10000) / 10000;
   writeJSON('stats.json', statsNow);
   // Join ALL text blocks — critical: a single [0].text drops content when Claude splits the response
-  const fullText = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
-  console.log('[aiCallBuild] total text length:', fullText.length, '| first 300:', fullText.substring(0, 300));
+  let fullText = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
+  console.log('[aiCallBuild] raw length:', fullText.length, '| first 300:', fullText.substring(0, 300));
+
+  // FIX 2 — Strip markdown code fences
+  fullText = fullText
+    .replace(/^```html\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+
+  // Extract valid HTML block if prefixed with explanation text
+  if (!fullText.startsWith('<!DOCTYPE') && !fullText.startsWith('<html') && !fullText.startsWith('<HTML')) {
+    const match = fullText.match(/<!DOCTYPE[\s\S]*<\/html>/i);
+    if (match) {
+      fullText = match[0];
+    } else {
+      console.error('[aiCallBuild] No valid HTML found. Raw (500):', fullText.substring(0, 500));
+      throw new Error('Geen geldige HTML in response');
+    }
+  }
+
+  // FIX 3 — Validate body has real content
+  const bodyMatch = fullText.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  const bodyContent = bodyMatch?.[1]?.trim() || '';
+  console.log('[aiCallBuild] body length:', bodyContent.length);
+  if (bodyContent.length < 200) {
+    console.error('[aiCallBuild] Empty/thin body. Body (200):', bodyContent.substring(0, 200));
+    throw new Error('Gegenereerde HTML heeft lege body — probeer opnieuw');
+  }
+
   return fullText;
 }
 

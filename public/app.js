@@ -3633,9 +3633,29 @@ function renderAgentChatHistory(leadId, idx) {
         </div>
       </div>`;
     }
+    if (m.buildError) {
+      return `<div class="agent-msg ai" style="padding:0;background:none;border:none">
+        <div style="background:var(--danger-light);border:1px solid var(--danger);border-radius:10px;padding:12px 14px">
+          <div style="font-size:13px;font-weight:700;color:var(--danger);margin-bottom:6px"><i class="ti ti-alert-triangle"></i> Genereren mislukt — HTML body was leeg.</div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">${esc(m.text)}</div>
+          <button class="btn btn-sm" style="background:var(--danger);color:#fff;font-size:12px" onclick="retryAgentBuild('${leadId}')">
+            <i class="ti ti-refresh"></i> Probeer opnieuw
+          </button>
+        </div>
+      </div>`;
+    }
     return `<div class="agent-msg ${m.role}">${esc(m.text)}</div>`;
   }).join('');
   historyEl.scrollTop = historyEl.scrollHeight;
+}
+
+function retryAgentBuild(leadId) {
+  const msgEl = document.getElementById('agentChatMsg');
+  if (!msgEl) return;
+  const lastMsg = window._lastAgentBuildMessage?.[leadId];
+  if (!lastMsg) { toast('Geen vorig bericht gevonden', 'error'); return; }
+  msgEl.value = lastMsg;
+  sendAgentChat(leadId);
 }
 
 async function saveAgentChats(leadId) {
@@ -3707,6 +3727,12 @@ async function sendAgentChat(leadId) {
   const isBuild = message.toLowerCase().includes('ja bouwen') || message.toLowerCase().includes('bouwen');
   const action = isBuild ? 'build' : 'chat';
 
+  // Remember last build message for retry
+  if (isBuild) {
+    window._lastAgentBuildMessage = window._lastAgentBuildMessage || {};
+    window._lastAgentBuildMessage[leadId] = message;
+  }
+
   // Add user message and persist immediately
   window._agentChats[leadId][idx].push({ role: 'user', text: message, ts: new Date().toISOString() });
   msgEl.value = '';
@@ -3737,11 +3763,23 @@ async function sendAgentChat(leadId) {
       window._agentChats[leadId][idx].push({ role: 'ai', text: data.response, ts: new Date().toISOString() });
     }
     if (data?.error) {
-      window._agentChats[leadId][idx].push({ role: 'ai', text: `Fout: ${data.error}`, ts: new Date().toISOString() });
+      const isBuildErr = action === 'build' || /lege body|probeer opnieuw|geen geldige html/i.test(data.error);
+      window._agentChats[leadId][idx].push({
+        role: 'ai',
+        text: data.error,
+        buildError: isBuildErr,
+        ts: new Date().toISOString()
+      });
     }
   } catch (err) {
     document.getElementById('agentThinking')?.remove();
-    window._agentChats[leadId][idx].push({ role: 'ai', text: `Verbindingsfout: ${err.message}`, ts: new Date().toISOString() });
+    const isBuildErr = action === 'build';
+    window._agentChats[leadId][idx].push({
+      role: 'ai',
+      text: `Verbindingsfout: ${err.message}`,
+      buildError: isBuildErr,
+      ts: new Date().toISOString()
+    });
   }
 
   // Persist after AI response and re-render
