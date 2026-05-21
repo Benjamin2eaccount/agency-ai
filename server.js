@@ -442,6 +442,63 @@ function getAutoPickVersion(niche, country) {
   return (readJSON('memory.json') || {})[getMemoryKey(niche, country)]?.autoPickVersion || null;
 }
 
+// ITEM 8: Conversion tracking + ML score boost
+function _followerBucket(followers) {
+  const f = followers || 0;
+  if (f < 1000)   return 'micro';
+  if (f < 5000)   return '1k-5k';
+  if (f < 20000)  return '5k-20k';
+  if (f < 50000)  return '20k-50k';
+  if (f < 200000) return '50k-200k';
+  return '200k+';
+}
+
+function _websiteBucket(speedScore) {
+  if (!speedScore) return 'unknown';
+  if (speedScore < 40) return 'low';
+  if (speedScore < 70) return 'medium';
+  return 'high';
+}
+
+function updateMemoryConversion(niche, country, type, followers, websiteScore) {
+  if (!niche && !country) return;
+  const memory = readJSON('memory.json') || {};
+  const key = getMemoryKey(niche, country);
+  if (!memory[key]) memory[key] = { niche: niche||'unknown', country: (country||'unknown').toUpperCase(), sent: 0, replied: 0, replyRate: 0 };
+  const entry = memory[key];
+  if (type === 'converted') {
+    entry.converted = (entry.converted || 0) + 1;
+    const fb = _followerBucket(followers);
+    const wb = _websiteBucket(websiteScore);
+    if (!entry.convertedProfiles) entry.convertedProfiles = {};
+    entry.convertedProfiles[fb] = (entry.convertedProfiles[fb] || 0) + 1;
+    if (!entry.convertedWebsiteScores) entry.convertedWebsiteScores = {};
+    entry.convertedWebsiteScores[wb] = (entry.convertedWebsiteScores[wb] || 0) + 1;
+  } else if (type === 'lost') {
+    entry.lost = (entry.lost || 0) + 1;
+  }
+  const total = (entry.converted || 0) + (entry.lost || 0);
+  entry.conversionRate = total > 0 ? Math.round(((entry.converted || 0) / total) * 1000) / 10 : 0;
+  if (entry.convertedProfiles) entry.bestFollowerRange = Object.entries(entry.convertedProfiles).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+  if (entry.convertedWebsiteScores) entry.bestWebsiteScore = Object.entries(entry.convertedWebsiteScores).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+  writeJSON('memory.json', memory);
+}
+
+function getConversionBoost(niche, country, followers, websiteScore) {
+  const entry = (readJSON('memory.json') || {})[getMemoryKey(niche, country)];
+  if (!entry) return 0;
+  const total = (entry.converted || 0) + (entry.lost || 0);
+  if (total < 3) return 0;
+  let boost = 0;
+  const rate = entry.conversionRate || 0;
+  if (rate > 15) boost += 1.0;
+  else if (rate > 8) boost += 0.5;
+  else if (rate < 3 && total >= 5) boost -= 0.5;
+  if (entry.bestFollowerRange && _followerBucket(followers) === entry.bestFollowerRange) boost += 0.3;
+  if (entry.bestWebsiteScore && entry.bestWebsiteScore !== 'unknown' && _websiteBucket(websiteScore) === entry.bestWebsiteScore) boost += 0.2;
+  return Math.round(boost * 10) / 10;
+}
+
 // â"€â"€â"€ Email helper â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken, opts) {
@@ -465,7 +522,7 @@ function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken, opts) 
     .map(function(b){ return '<p style="margin:0 0 18px;font-size:15px;line-height:1.75;color:#1a1a1a;font-family:Georgia,serif">' + b + '</p>'; })
     .join('');
 
-  const ctaText = calendlyLink ? 'Plan een gratis kennismakingsgesprek &rarr;' : 'Beantwoord deze email voor meer informatie';
+  const ctaText = calendlyLink ? 'Plan een gratis gesprek &rarr;' : 'Beantwoord deze email voor meer informatie';
   const ctaHref = calendlyLink || (myEmail ? 'mailto:' + e(myEmail) : '#');
   const pixel = trackingToken ? '<img src="' + baseUrl + '/track/open/' + trackingToken + '" width="1" height="1" style="display:block;width:1px;height:1px;opacity:0;border:0" alt="">' : '';
 
@@ -1139,7 +1196,11 @@ app.get('/api/portal/:token', (req, res) => {
                            paymentUrl: p.paymentUrl, type: p.type, billing: p.billing
                          })),
     messages:            (lead.clientMessages || []),
-    timeline:            (lead.history || []).slice(-40).reverse()
+    timeline:            (lead.history || []).slice(-40).reverse(),
+    onboardingScript:    lead.onboardingScript || null,
+    analytics:           lead.analytics || null,
+    portalChat:          lead.portalChat || [],
+    documents:           (lead.documents || []).filter(d => d.visible !== false)
   });
 });
 
@@ -1166,11 +1227,20 @@ app.post('/api/portal/:token/message', (req, res) => {
   if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
   if (!lead.clientMessages) lead.clientMessages = [];
   lead.clientMessages.push({ name, message, time: new Date().toISOString(), read: false });
+  if (!lead.portalChat) lead.portalChat = [];
+  lead.portalChat.push({ id: 'pc-' + Date.now(), from: 'client', name, message, time: new Date().toISOString() });
   const preview = message.length > 60 ? message.substring(0, 60) + '...' : message;
   addLeadHistory(leads, lead.id, { event: 'clientMessage', label: `Klant bericht van ${name}: ${preview}` });
   writeJSON('leads.json', leads);
   addNotification('client_question', `Klant vraag: ${lead.companyName}`, `${name}: ${preview}`, lead.id, `project:${lead.id}`);
   res.json({ ok: true });
+});
+
+app.get('/api/portal/:token/chat', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead  = leads.find(l => l.portalToken === req.params.token);
+  if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+  res.json({ chat: lead.portalChat || [], companyName: lead.companyName });
 });
 
 // â"€â"€â"€ Apply auth middleware to all /api/ routes below this line â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -1233,6 +1303,82 @@ app.post('/api/contact', async (req, res) => {
     } catch (_) { /* email is optional */ }
   }
   res.json({ ok: true });
+});
+
+// ── /bestellen page (public) ──────────────────────────────────────────────────
+app.get('/bestellen', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'bestellen.html'));
+});
+
+// Public order form — must be BEFORE app.use('/api', authMiddleware)
+app.post('/api/order', async (req, res) => {
+  const { name, company, email, phone, service, message } = req.body;
+  if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
+
+  // Save to contacts with type "order"
+  const contacts = readJSON('contacts.json') || [];
+  const contactId = Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
+  contacts.unshift({
+    id: contactId, name, company: company || '', email, phone: phone || '',
+    service: service || '', message: message || '',
+    type: 'order', createdAt: new Date().toISOString(), status: 'new'
+  });
+  writeJSON('contacts.json', contacts);
+
+  // Create lead in pipeline with status "besteld"
+  const settings   = readJSON('settings.json') || {};
+  const allLeads   = readJSON('leads.json')    || [];
+  const allServices = settings.services || DEFAULT_SERVICES;
+  const matchedSvc = allServices.find(s => s.name === service);
+  const leadId = 'ord-' + Date.now().toString(36);
+  const newLead = {
+    id: leadId,
+    companyName:   company || name,
+    contactName:   name,
+    contactEmail:  email,
+    phone:         phone || '',
+    niche:         matchedSvc ? 'bestelling' : 'bestelling',
+    location:      '',
+    status:        'besteld',
+    source:        'bestellen',
+    services:      matchedSvc ? [{ name: matchedSvc.name, price: matchedSvc.price, billing: matchedSvc.billing }] : (service ? [{ name: service, price: 0, billing: 'eenmalig' }] : []),
+    estimatedValue: matchedSvc ? matchedSvc.price : 0,
+    notes:         message || '',
+    history:       [{ event: 'ordered', label: `Bestelling geplaatst via website: ${service || '—'}`, createdAt: new Date().toISOString() }],
+    createdAt:     new Date().toISOString()
+  };
+  allLeads.unshift(newLead);
+  writeJSON('leads.json', allLeads);
+
+  // Notify admin
+  addNotification('contact_form', `Nieuwe bestelling: ${name}`, `${company ? company + ' — ' : ''}${service || 'Dienst onbekend'}`, leadId, `project:${leadId}`);
+
+  // Confirmation email to customer
+  if (isGmailReady(settings) || (settings.resendApiKey || process.env.RESEND_API_KEY)) {
+    try {
+      const calendlyCta = settings.calendlyUrl ? `\n\nWil je alvast een gesprek inplannen om de details door te nemen?\n${settings.calendlyUrl}` : '';
+      await sendEmail({
+        to: email,
+        subject: `Bestelling ontvangen — ${settings.agencyName || 'Agency AI'}`,
+        body: `Hoi ${name},\n\nBedankt voor je bestelling! We hebben je aanvraag voor "${service || 'onze dienst'}" ontvangen.\n\nWe nemen binnen 1 werkdag contact met je op om alles door te nemen.${calendlyCta}\n\nMet vriendelijke groet,\n${settings.myName || 'Het team'}\n${settings.agencyName || 'Agency AI'}`,
+        settings
+      });
+    } catch (_) { /* non-critical */ }
+  }
+
+  // Notification email to admin
+  if (isGmailReady(settings)) {
+    try {
+      await sendEmail({
+        to: settings.gmailAddress,
+        subject: `Nieuwe bestelling: ${name}${company ? ' — ' + company : ''} — ${service}`,
+        body: `Nieuwe bestelling via de website:\n\nNaam: ${name}\nBedrijf: ${company || '—'}\nEmail: ${email}\nTelefoon: ${phone || '—'}\nDienst: ${service || '—'}\n\nBericht:\n${message || '—'}\n\nLead aangemaakt in pipeline: ${leadId}`,
+        settings
+      });
+    } catch (_) { /* non-critical */ }
+  }
+
+  res.json({ ok: true, leadId });
 });
 
 app.use('/api', authMiddleware);
@@ -1713,6 +1859,12 @@ app.patch('/api/leads/:id', (req, res) => {
   }
   if (req.body.status && req.body.status !== prevStatus) {
     addLeadHistory(leads, req.params.id, { event: 'status', label: `Status: ${req.body.status}` });
+    const lead = leads[idx];
+    if (req.body.status === 'client') {
+      updateMemoryConversion(lead.niche, lead.country, 'converted', lead.estimatedFollowers, lead.website?.speedScore);
+    } else if (req.body.status === 'dead' || req.body.status === 'disapproved') {
+      updateMemoryConversion(lead.niche, lead.country, 'lost', lead.estimatedFollowers, lead.website?.speedScore);
+    }
   }
   if (req.body.projectBilling !== undefined || req.body.projectDuration !== undefined || req.body.projectStartDate !== undefined || req.body.estimatedValue !== undefined) {
     const b = req.body;
@@ -1874,7 +2026,8 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
     let emailSent = false;
     if (clientEmail && isGmailReady(settings)) {
       try {
-        const welcomeBody = `Beste ${lead.contactName || lead.companyName},\n\nWelkom! We zijn verheugd om samen te werken.\n\nVia de onderstaande link kun je jouw intake-vragenlijst invullen, zodat we zo snel mogelijk kunnen starten:\n${intakeUrl}\n\nHeb je vragen? Stuur dan gerust een bericht via je klantportaal:\n${portalUrl}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.myTitle || ''}\n${settings.agencyName}`;
+        const calendlyCta = settings.calendlyUrl ? `\n\nWil je alvast een gesprek inplannen? Dat kan direct via:\n${settings.calendlyUrl}` : '';
+        const welcomeBody = `Beste ${lead.contactName || lead.companyName},\n\nWelkom! We zijn verheugd om samen te werken.\n\nVia de onderstaande link kun je jouw intake-vragenlijst invullen, zodat we zo snel mogelijk kunnen starten:\n${intakeUrl}\n\nHeb je vragen? Stuur dan gerust een bericht via je klantportaal:\n${portalUrl}${calendlyCta}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.myTitle || ''}\n${settings.agencyName}`;
         await sendEmail({ to: clientEmail, subject: `Welkom bij ${settings.agencyName} — volgende stappen`, body: welcomeBody, settings });
         emailSent = true;
       } catch (emailErr) {
@@ -1895,46 +2048,62 @@ Antwoord ALLEEN als JSON: { "title": "string", "overview": "string (2-3 zinnen)"
     } catch { projectPlan = { title: `Project ${lead.companyName}`, overview: 'Automatisch projectplan wordt later aangevuld.', weeks: [{ week: 1, focus: 'Onboarding & intake', deliverables: ['Intake gesprek plannen', 'Strategie document opstellen'] }] }; }
     send(4, 'Projectplan genereren (AI)', 'done');
 
-    // Step 5 — AI content calendar
-    send(5, 'Content kalender genereren (AI)', 'running');
+    // Step 5 — AI onboarding video script
+    send(5, 'Video onboarding script genereren (AI)', 'running');
+    let onboardingScript = null;
+    try {
+      const serviceNames5 = (lead.services || []).map(s => s.name).join(', ') || 'AI-marketingdiensten';
+      onboardingScript = await aiCall(`Je bent een vriendelijke projectmanager bij ${settings.agencyName || 'Agency AI'}.
+Schrijf een persoonlijk 60-seconden welkomstscript (gesproken tekst) voor een korte onboarding video voor nieuwe klant ${lead.companyName || 'de klant'} (${lead.niche || 'ondernemer'}, ${lead.location || ''}).
+Diensten die wij leveren: ${serviceNames5}.
+Schrijfstijl: warm, professioneel, concreet. Gebruik "u" of "jullie" consequent.
+Structuur: (1) korte begroeting + felicitatie, (2) wat we samen gaan doen (diensten), (3) de 3 stappen voor vandaag (intake invullen, portaal bookmarken, afspraak inplannen), (4) slotwoord.
+Maximaal 150 woorden. Schrijf ALLEEN de gesproken tekst, geen regieaanwijzingen of timestamps.`);
+    } catch { onboardingScript = null; }
+    send(5, 'Video onboarding script genereren (AI)', onboardingScript ? 'done' : 'skipped');
+
+    // Step 6 — AI content calendar
+    send(6, 'Content kalender genereren (AI)', 'running');
     let contentCalendar = null;
     try {
       contentCalendar = await aiJSON(`Maak een content kalender voor maand 1 voor ${lead.companyName} (${lead.niche}).
 Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "platform": "Instagram/Facebook/LinkedIn", "type": "Reel/Post/Story", "topic": "string", "caption": "string (kort)" }, ...8 items total] }`);
     } catch { contentCalendar = { items: [] }; }
-    send(5, 'Content kalender genereren (AI)', 'done');
+    send(6, 'Content kalender genereren (AI)', 'done');
 
-    // Step 6 — AI week-1 tasks
-    send(6, 'Week 1 takenlijst aanmaken (AI)', 'running');
+    // Step 7 — AI week-1 tasks
+    send(7, 'Week 1 takenlijst aanmaken (AI)', 'running');
     let tasks = null;
     try {
       tasks = await aiJSON(`Maak een takenlijst voor week 1 van het project voor ${lead.companyName}.
 Antwoord ALLEEN als JSON: { "tasks": [{ "title": "string", "description": "string", "priority": "hoog/middel/laag", "day": "ma/di/wo/do/vr" }, ...6-8 items] }`);
     } catch { tasks = { tasks: [] }; }
-    send(6, 'Week 1 takenlijst aanmaken (AI)', 'done');
+    send(7, 'Week 1 takenlijst aanmaken (AI)', 'done');
 
-    // Step 7 — Team briefing email
-    send(7, 'Team briefing versturen', 'running');
+    // Step 8 — Team briefing email (includes onboarding script)
+    send(8, 'Team briefing versturen', 'running');
     let briefingSent = false;
     if (isGmailReady(settings)) {
       try {
-        const briefBody = `Nieuw project gestart: ${lead.companyName}\n\nNiche: ${lead.niche} | Locatie: ${lead.location}\nDiensten: ${(lead.services || []).map(s => s.name).join(', ')}\nGeschat maandbedrag: €${lead.estimatedValue || 0}\n\nProjectplan: ${projectPlan?.title || ''}\n${projectPlan?.overview || ''}\n\nIntake link (voor klant): ${intakeUrl}\nKlantportaal: ${portalUrl}\n\nWeek 1 focus: ${projectPlan?.weeks?.[0]?.focus || 'Onboarding'}`;
+        const scriptSection = onboardingScript ? `\n\n--- ONBOARDING VIDEO SCRIPT ---\n${onboardingScript}\n--- EINDE SCRIPT ---` : '';
+        const briefBody = `Nieuw project gestart: ${lead.companyName}\n\nNiche: ${lead.niche} | Locatie: ${lead.location}\nDiensten: ${(lead.services || []).map(s => s.name).join(', ')}\nGeschat maandbedrag: €${lead.estimatedValue || 0}\n\nProjectplan: ${projectPlan?.title || ''}\n${projectPlan?.overview || ''}\n\nIntake link (voor klant): ${intakeUrl}\nKlantportaal: ${portalUrl}\n\nWeek 1 focus: ${projectPlan?.weeks?.[0]?.focus || 'Onboarding'}${scriptSection}`;
         await sendEmail({ to: settings.gmailAddress, subject: `[Project gestart] ${lead.companyName}`, body: briefBody, settings });
         briefingSent = true;
       } catch { /* optional */ }
     }
-    send(7, 'Team briefing versturen', briefingSent ? 'done' : 'skipped');
+    send(8, 'Team briefing versturen', briefingSent ? 'done' : 'skipped');
 
-    // Step 8 — Status update
-    send(8, 'Status bijwerken naar klant', 'running');
+    // Step 9 — Status update
+    send(9, 'Status bijwerken naar klant', 'running');
     lead.status = 'client';
     lead.projectStartedAt = new Date().toISOString();
     lead.projectPlan = projectPlan;
     lead.contentCalendar = contentCalendar;
+    lead.onboardingScript = onboardingScript || null;
     lead.tasks = tasks?.tasks || [];
     addLeadHistory(leads, lead.id, { event: 'projectStarted', label: 'Project gestart via Project Engine' });
     writeJSON('leads.json', leads);
-    send(8, 'Status bijwerken naar klant', 'done');
+    send(9, 'Status bijwerken naar klant', 'done');
 
     send(0, 'Project engine voltooid', 'complete', { intakeUrl, portalUrl });
   } catch (err) {
@@ -2575,6 +2744,120 @@ function getColorScheme(niche) {
   return schemes[key] || { primary: '#4f46e5', accent: '#6366f1' };
 }
 
+// ─── Client Dashboard Analytics ──────────────────────────────────────────────
+
+app.post('/api/leads/:id/generate-analytics', requireAdmin, async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx   = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const lead     = leads[idx];
+  const services = (lead.services || []).map(s => s.name).join(', ') || 'Marketingdiensten';
+  const now      = new Date();
+  const month    = now.toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' });
+
+  try {
+    const analytics = await aiJSON(`Je bent een marketing analytics expert.
+Genereer realistische maar iets rooskleurige prestatiemetrics voor de afgelopen maand (${month}) voor klant "${lead.companyName || 'de klant'}" (${lead.niche || 'ondernemer'}, ${lead.location || ''}).
+Diensten geleverd: ${services}.
+Regels: cijfers moeten realistisch zijn voor een kleine/middelgrote lokale ondernemer met professionele marketing. Trends altijd positief (5-35% groei). Gebruik Nederlandse labels.
+
+Antwoord ALLEEN als JSON:
+{
+  "month": "${month}",
+  "summary": "1-2 zinnen positieve samenvatting van de resultaten",
+  "metrics": [
+    {
+      "service": "naam van de dienst",
+      "color": "green|blue|purple|orange",
+      "stats": [
+        { "label": "Bereik", "value": "12.400", "unit": "", "trend": "+18%", "trendUp": true },
+        { "label": "Engagements", "value": "847", "unit": "", "trend": "+24%", "trendUp": true },
+        { "label": "Nieuwe volgers", "value": "156", "unit": "", "trend": "+12%", "trendUp": true }
+      ]
+    }
+  ]
+}
+Voeg metrics toe die passen bij elke dienst (social media → bereik/engagements/volgers, SEO → organisch verkeer/posities/klikken, ads → vertoningen/klikken/conversies, email → opens/clicks/bezorgd, website → bezoekers/sessies/laadtijd, chatbot → chats/opgeloste vragen/tevredenheid).`);
+
+    leads[idx].analytics = { ...analytics, generatedAt: now.toISOString() };
+    writeJSON('leads.json', leads);
+    res.json({ ok: true, analytics: leads[idx].analytics });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/leads/:id/analytics', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx   = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const { metricIdx, statIdx, value } = req.body;
+  if (!leads[idx].analytics?.metrics) return res.status(400).json({ error: 'Geen analytics' });
+  if (leads[idx].analytics.metrics[metricIdx]?.stats[statIdx] !== undefined) {
+    leads[idx].analytics.metrics[metricIdx].stats[statIdx].value = String(value);
+  }
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+// ─── Document Vault ───────────────────────────────────────────────────────────
+
+app.get('/api/leads/:id/documents', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead  = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+  res.json({ documents: lead.documents || [] });
+});
+
+app.post('/api/leads/:id/documents', requireAdmin, (req, res) => {
+  const { type, title, content, description, username, visible } = req.body;
+  if (!title?.trim() || !type) return res.status(400).json({ error: 'Titel en type zijn verplicht' });
+  const leads = readJSON('leads.json') || [];
+  const users = readJSON('users.json') || [];
+  const idx   = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const user = users.find(u => u.id === req.user?.id);
+  if (!leads[idx].documents) leads[idx].documents = [];
+  const doc = {
+    id: 'doc-' + Date.now(),
+    type: type || 'link',
+    title: title.trim(),
+    content: (content || '').trim(),
+    description: (description || '').trim(),
+    username: (username || '').trim(),
+    visible: visible !== false,
+    addedAt: new Date().toISOString(),
+    addedBy: user?.name || req.user?.username || 'admin'
+  };
+  leads[idx].documents.push(doc);
+  addLeadHistory(leads, leads[idx].id, { event: 'documentAdded', label: `Document toegevoegd: ${doc.title}` });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true, document: doc });
+});
+
+app.patch('/api/leads/:id/documents/:docId', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx   = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const docIdx = (leads[idx].documents || []).findIndex(d => d.id === req.params.docId);
+  if (docIdx === -1) return res.status(404).json({ error: 'Document niet gevonden' });
+  const allowed = ['title', 'content', 'description', 'username', 'visible'];
+  allowed.forEach(k => { if (req.body[k] !== undefined) leads[idx].documents[docIdx][k] = req.body[k]; });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+app.delete('/api/leads/:id/documents/:docId', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx   = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const before = (leads[idx].documents || []).length;
+  leads[idx].documents = (leads[idx].documents || []).filter(d => d.id !== req.params.docId);
+  if (leads[idx].documents.length === before) return res.status(404).json({ error: 'Document niet gevonden' });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
 app.post('/api/leads/:id/generate-site', requireAdmin, async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -2927,6 +3210,15 @@ Klant: ${lead.companyName}. Project loopt nu ${extra.weeksRunning || 4} weken.
 Bureau: ${settings.agencyName}, ${settings.myName}.
 Max 130 woorden. Informeel, vraag naar ervaringen, bied aan om te bellen.
 Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`,
+
+    weeklyUpdate: `Schrijf een professionele maar warme wekelijkse update email (vrijdagmiddag) voor klant ${lead.companyName} (${lead.niche}, ${lead.location}).
+Bureau: ${settings.agencyName}, contactpersoon: ${settings.myName} (${settings.myTitle || ''}).
+Actieve diensten: ${(lead.services || []).map(s => s.name).join(', ') || 'AI-marketingdiensten'}.
+${intakeCtx}
+${portalUrl ? `Portaallink: ${portalUrl}` : ''}
+Week van: ${new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' })}.
+Structuur: (1) korte positieve opening over de week, (2) 2-3 concrete dingen die deze week gedaan zijn per dienst (wees specifiek en opbouwend), (3) focus voor volgende week, (4) vriendelijke afsluiting. Max 200 woorden. Geen bullet lijsten, vloeiende tekst.
+Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`,
   };
 
   const prompt = prompts[trigger];
@@ -3015,7 +3307,8 @@ app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
   try {
     const portalUrl = lead.portalToken ? `${BASE_URL}/portal/${lead.portalToken}` : BASE_URL;
     const intakeUrl = lead.intakeToken ? `${BASE_URL}/intake/${lead.id}/${lead.intakeToken}` : '';
-    const welcomeBody = `Beste ${lead.contactName || lead.companyName},\n\nWelkom! We zijn verheugd om samen te werken.\n\n${intakeUrl ? `Via de onderstaande link kun je jouw intake-vragenlijst invullen:\n${intakeUrl}\n\n` : ''}Heb je vragen? Stuur dan gerust een bericht via je klantportaal:\n${portalUrl}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.myTitle || ''}\n${settings.agencyName}`;
+    const _welCalendly = settings.calendlyUrl ? `\n\nWil je alvast een gesprek inplannen? Dat kan direct via:\n${settings.calendlyUrl}` : '';
+    const welcomeBody = `Beste ${lead.contactName || lead.companyName},\n\nWelkom! We zijn verheugd om samen te werken.\n\n${intakeUrl ? `Via de onderstaande link kun je jouw intake-vragenlijst invullen:\n${intakeUrl}\n\n` : ''}Heb je vragen? Stuur dan gerust een bericht via je klantportaal:\n${portalUrl}${_welCalendly}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.myTitle || ''}\n${settings.agencyName}`;
     await sendEmail({ to, subject: `Welkom bij ${settings.agencyName} — volgende stappen`, body: welcomeBody, settings });
     addLeadHistory(leads, lead.id, { event: 'welcomeEmailSent', label: `Welkomstmail (opnieuw) verstuurd naar ${to}` });
     writeJSON('leads.json', leads);
@@ -3215,8 +3508,32 @@ app.post('/api/leads/:id/portal/read', (req, res) => {
   const lead = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
   if (lead.clientMessages) lead.clientMessages.forEach(m => { m.read = true; });
+  if (lead.portalChat) lead.portalChat.filter(m => m.from === 'client').forEach(m => { m.readAt = m.readAt || new Date().toISOString(); });
   writeJSON('leads.json', leads);
   res.json({ ok: true });
+});
+
+app.post('/api/leads/:id/portal-reply', requireAdmin, async (req, res) => {
+  const { message } = req.body;
+  if (!message?.trim()) return res.status(400).json({ error: 'Bericht verplicht' });
+  const leads    = readJSON('leads.json') || [];
+  const settings = readJSON('settings.json') || {};
+  const lead     = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+  if (!lead.portalChat) lead.portalChat = [];
+  const entry = { id: 'pa-' + Date.now(), from: 'admin', name: settings.myName || settings.agencyName || 'Agency', message: message.trim(), time: new Date().toISOString() };
+  lead.portalChat.push(entry);
+  addLeadHistory(leads, lead.id, { event: 'adminPortalReply', label: `Portaalreactie verstuurd: ${message.trim().substring(0, 60)}` });
+  writeJSON('leads.json', leads);
+  // Optionally email the client
+  const clientEmail = (lead.contactEmail || '').trim();
+  if (clientEmail && isGmailReady(settings) && lead.portalToken) {
+    const portalUrl = `${BASE_URL}/portal/${lead.portalToken}`;
+    try {
+      await sendEmail({ to: clientEmail, subject: `Reactie van ${settings.agencyName || 'uw bureau'}`, body: `Beste ${lead.contactName || lead.companyName},\n\nU heeft een nieuw bericht ontvangen via uw klantportaal:\n\n"${message.trim()}"\n\nBekijk het portaal: ${portalUrl}\n\nMet vriendelijke groet,\n${settings.myName || settings.agencyName}`, settings });
+    } catch { /* non-fatal */ }
+  }
+  res.json({ ok: true, entry });
 });
 
 // ── Agent deliverables builder ────────────────────────────────────────────────
@@ -3600,6 +3917,7 @@ app.patch('/api/inbox/:id/disapprove', (req, res) => {
   if (leadIdx !== -1) {
     leads[leadIdx].status = 'disapproved';
     addLeadHistory(leads, inbox[idx].leadId, { event: 'disapproved', label: 'Afgewezen' });
+    updateMemoryConversion(leads[leadIdx].niche, leads[leadIdx].country, 'lost', leads[leadIdx].estimatedFollowers, leads[leadIdx].website?.speedScore);
     writeJSON('leads.json', leads);
   }
 
@@ -3861,6 +4179,9 @@ app.patch('/api/settings/automation', requireAdmin, (req, res) => {
   if (req.body.aiAutoReply          !== undefined) settings.aiAutoReply          = req.body.aiAutoReply;
   if (req.body.aiAutoReplySend      !== undefined) settings.aiAutoReplySend      = req.body.aiAutoReplySend;
   if (req.body.monthlyHostingCost   !== undefined) settings.monthlyHostingCost   = parseFloat(req.body.monthlyHostingCost) || 0;
+  if (req.body.instagramTargeting   !== undefined) settings.instagramTargeting   = req.body.instagramTargeting;
+  if (req.body.googleMapsTargeting  !== undefined) settings.googleMapsTargeting  = req.body.googleMapsTargeting;
+  if (req.body.weeklyUpdatesEnabled !== undefined) settings.weeklyUpdatesEnabled = req.body.weeklyUpdatesEnabled;
   writeJSON('settings.json', settings);
   scheduleCron(); // re-schedule if run time changed
   scheduleBriefingCron(); // re-schedule briefing if time changed
@@ -4866,6 +5187,13 @@ Geef JSON:
     }
   }
 
+  // ITEM 8: Apply conversion-based ML score boost
+  const convBoost = getConversionBoost(lead.niche, lead.country, lead.estimatedFollowers, website.speedScore);
+  if (convBoost !== 0) {
+    opportunity.score = Math.min(10, Math.max(1, (opportunity.score || 6.5) + convBoost));
+    console.log(`  [ML] Conversie boost ${convBoost > 0 ? '+' : ''}${convBoost} voor ${lead.niche}/${lead.country}`);
+  }
+
   // Company size score boost/penalty based on target sizes
   const targetSizes = settings.targetCompanySizes || ['small', 'medium'];
   if (companySize && targetSizes.length > 0) {
@@ -5303,6 +5631,9 @@ Rules:
     language, companySize, emailOpener: opener,
     niche: lead.niche, subNiche: lead.subNiche || null, instagramHandle: lead.instagramHandle,
     estimatedFollowers: lead.estimatedFollowers, websiteUrl: lead.websiteUrl,
+    leadSource: lead.leadSource || 'web', instagramBio: lead.instagramBio || null,
+    mapsRating: lead.mapsRating || null, reviewCount: lead.reviewCount || null,
+    address: lead.address || null, phone: lead.phone || null,
     linkedinCompanyUrl: lead.linkedinCompanyUrl || null,
     linkedinCompanyFollowers: social.linkedinCompanyFollowers || null,
     linkedinActive: social.linkedinActive !== false,
@@ -5319,7 +5650,9 @@ Rules:
     id, companyName: lead.companyName, niche: lead.niche, subNiche: lead.subNiche || null, location: lead.location,
     country: lead.country, language, companySize,
     instagramHandle: lead.instagramHandle, estimatedFollowers: lead.estimatedFollowers,
-    websiteUrl: lead.websiteUrl,
+    websiteUrl: lead.websiteUrl, leadSource: lead.leadSource || 'web', instagramBio: lead.instagramBio || null,
+    mapsRating: lead.mapsRating || null, reviewCount: lead.reviewCount || null,
+    address: lead.address || null, phone: lead.phone || null,
     linkedinCompanyUrl: lead.linkedinCompanyUrl || null,
     linkedinCompanyFollowers: social.linkedinCompanyFollowers || null,
     linkedinActive: social.linkedinActive !== false,
@@ -5401,6 +5734,8 @@ async function runFindLeadsJob(overrides = {}) {
   const seenNames  = new Set();
   const inboxItems = [];
   const newLeads   = [];
+  const instagramTargeting  = settings.instagramTargeting  === true;
+  const googleMapsTargeting = settings.googleMapsTargeting === true;
 
   _runState.target = target;
   runLog(`Doel: ${target} leads zoeken`);
@@ -5491,14 +5826,125 @@ Example format:
       throw new Error(errMsg);
     }
 
-    for (const lead of freshBatch) {
+    // ── Instagram targeting (optional extra batch) ────────────────────────
+    let instaBatch = [];
+    if (instagramTargeting && found < target) {
+      try {
+        console.log(`[Agent 1-IG] Zoeken naar Instagram accounts: ${randomNiche} in ${randomCity}...`);
+        _runState.currentAgent = 'Agent 1 — Instagram Finder';
+        const igPrompt = `Search Instagram and the web for ${batchSize} real small local businesses in ${randomCity} in the niche: ${randomNiche}, that have an Instagram account with between 2,000 and 200,000 followers, a low engagement rate (under 2%), no booking system link in their bio, and an active profile (post within last 30 days).
+
+For EACH account you MUST find:
+1. Real company/business name
+2. Instagram handle (@handle)
+3. Estimated follower count (2000–200000)
+4. Bio text (what they write in their profile)
+5. Website URL from bio (or null)
+6. Approximate date of last post (e.g. "2025-05-10")
+7. Real contact email (from website, Google Maps, or bio) — only include if found
+
+Search queries to use: "${randomNiche} ${randomCity} instagram followers site:instagram.com" and "${randomNiche} ${randomCity} instagram account"
+
+Return ONLY a JSON array:
+[{
+  "companyName": "Business name",
+  "instagramHandle": "@handle",
+  "estimatedFollowers": 15000,
+  "instagramBio": "Bio text here",
+  "websiteUrl": "https://their-website.com or null",
+  "lastPostDate": "2025-05-10",
+  "email": "info@business.com or null",
+  "location": "${randomCity}, Country",
+  "country": "2-letter country code",
+  "niche": "beauty or food or fitness or retail or restaurant or horeca or health or automotive",
+  "subNiche": "${randomNiche}",
+  "leadSource": "instagram"
+}]
+
+CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
+        await new Promise(r => setTimeout(r, 7000));
+        const igRaw = await aiWebSearchJSON(igPrompt);
+        instaBatch = (Array.isArray(igRaw) ? igRaw : []).filter(b => b && b.companyName && b.instagramHandle).slice(0, batchSize);
+        instaBatch = instaBatch.filter(b => {
+          const key = b.companyName.toLowerCase().trim();
+          if (seenNames.has(key)) return false;
+          seenNames.add(key);
+          return true;
+        }).map(b => ({ ...b, leadSource: 'instagram' }));
+        console.log(`[Agent 1-IG] ${instaBatch.length} Instagram accounts gevonden`);
+        runLog(`Instagram: ${instaBatch.length} accounts gevonden`);
+      } catch (igErr) {
+        console.warn(`[Agent 1-IG] Instagram batch mislukt:`, igErr.message);
+      }
+    }
+
+    // ── Google Maps targeting (optional extra batch) ──────────────────────
+    let mapsBatch = [];
+    if (googleMapsTargeting && found < target) {
+      try {
+        console.log(`[Agent 1-Maps] Zoeken op Google Maps: ${randomNiche} in ${randomCity}...`);
+        _runState.currentAgent = 'Agent 1 — Google Maps Finder';
+        const mapsPrompt = `Search Google Maps and the web for ${batchSize} real small local businesses in ${randomCity} in the niche: ${randomNiche}. Look specifically for businesses that have:
+- Between 3 and 4 star reviews (room for improvement — not perfect, not bad)
+- Fewer than 50 Google reviews (small/new business)
+- A website listed on Google Maps
+- Active in the last 6 months
+
+Search queries to use: "${randomNiche} ${randomCity} google maps 3 star reviews website" and "site:maps.google.com OR site:google.com/maps ${randomNiche} ${randomCity}"
+
+For EACH business you MUST find:
+1. Real business name
+2. Full address
+3. Google Maps rating (3.0–4.0)
+4. Number of Google reviews (under 50)
+5. Website URL (listed on Maps)
+6. Phone number (if visible)
+7. Real contact email (from website or Google Maps listing) — only include if found
+
+Return ONLY a JSON array:
+[{
+  "companyName": "Business name",
+  "address": "Full street address",
+  "mapsRating": 3.8,
+  "reviewCount": 24,
+  "websiteUrl": "https://their-website.com",
+  "phone": "+31 20 123 4567 or null",
+  "email": "info@business.com or null",
+  "location": "${randomCity}, Country",
+  "country": "2-letter country code",
+  "niche": "beauty or food or fitness or retail or restaurant or horeca or health or automotive",
+  "subNiche": "${randomNiche}",
+  "leadSource": "maps"
+}]
+
+CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
+        await new Promise(r => setTimeout(r, 7000));
+        const mapsRaw = await aiWebSearchJSON(mapsPrompt);
+        mapsBatch = (Array.isArray(mapsRaw) ? mapsRaw : []).filter(b => b && b.companyName && b.websiteUrl).slice(0, batchSize);
+        mapsBatch = mapsBatch.filter(b => {
+          const key = b.companyName.toLowerCase().trim();
+          if (seenNames.has(key)) return false;
+          seenNames.add(key);
+          return true;
+        }).map(b => ({ ...b, leadSource: 'maps' }));
+        console.log(`[Agent 1-Maps] ${mapsBatch.length} Google Maps bedrijven gevonden`);
+        runLog(`Google Maps: ${mapsBatch.length} bedrijven gevonden`);
+      } catch (mapsErr) {
+        console.warn(`[Agent 1-Maps] Google Maps batch mislukt:`, mapsErr.message);
+      }
+    }
+
+    const allBatch = [...freshBatch, ...instaBatch, ...mapsBatch];
+
+    for (const lead of allBatch) {
       if (found >= target) break;
-      console.log(`\n[Lead ${found + 1}/${target}] ${lead.companyName} (${lead.niche})`);
+      const src = lead.leadSource === 'instagram' ? ' [Instagram]' : lead.leadSource === 'maps' ? ' [Maps]' : '';
+      console.log(`\n[Lead ${found + 1}/${target}] ${lead.companyName} (${lead.niche})${src}`);
       _runState.currentLead = lead.companyName;
-      _runState.currentAgent = 'Agent 1 — Finder';
+      _runState.currentAgent = lead.leadSource === 'instagram' ? 'Agent 1 — Instagram Finder' : lead.leadSource === 'maps' ? 'Agent 1 — Google Maps Finder' : 'Agent 1 — Finder';
       _runState.found = found;
       _runState.skipped = skipped;
-      runLog(`Verwerken: ${lead.companyName}`);
+      runLog(`Verwerken: ${lead.companyName}${src}`);
       let result;
       try {
         result = await processOneLead(lead, settings);
@@ -5516,7 +5962,7 @@ Example format:
       newLeads.push(leadRecord);
       found++;
       _runState.found = found;
-      runLog(`✓ ${lead.companyName} — score ${item.score}`);
+      runLog(`✓ ${lead.companyName} — score ${item.score}${src}`);
       console.log(`  ✓ Klaar — score: ${item.score}, waarde: €${item.estimatedValue} → inbox (wacht op goedkeuring)`);
     }
   }
@@ -5700,8 +6146,10 @@ async function runFollowUpJob() {
   const settings  = readJSON('settings.json');
   if (settings.automationPaused) return;
 
-  const myName     = settings.myName     || 'Ekow';
-  const agencyName = settings.agencyName || 'Agency AI';
+  const myName      = settings.myName     || 'Ekow';
+  const agencyName  = settings.agencyName || 'Agency AI';
+  const _fuCalendly = settings.calendlyUrl ? `\nCalendly: ${settings.calendlyUrl} — je kunt dit in de email verwerken als uitnodiging` : '';
+  const _fuCalendlyEN = settings.calendlyUrl ? `\nCalendly: ${settings.calendlyUrl} — you may include this as a booking invitation` : '';
 
   const inbox = readJSON('inbox.json') || [];
   const leads = readJSON('leads.json') || [];
@@ -5740,7 +6188,7 @@ async function runFollowUpJob() {
 
 Context: Stuurden ${lead.companyName} (${nicheCtx}, ${lead.location}) 2 dagen geleden een koude email. Origineel onderwerp: "${origSubj}". Nog geen reactie. Eerste opvolging.
 Afzender: ${myName} van ${agencyName}
-Seizoen: ${getSeasonalContext('nl').season}
+Seizoen: ${getSeasonalContext('nl').season}${_fuCalendly}
 
 Regels:
 - Start exact met: "Wilde dit even naar boven halen -"
@@ -5756,7 +6204,7 @@ Regels:
 
 Context: Sent ${lead.companyName} (${nicheCtx}, ${lead.location}) a cold email 2 days ago. Original subject: "${origSubj}". No reply yet. First follow-up.
 Sender: ${myName} from ${agencyName}
-Season: ${getSeasonalContext('en').season}
+Season: ${getSeasonalContext('en').season}${_fuCalendlyEN}
 
 Rules:
 - Start exactly with: "Just bumping this up -"
@@ -5807,7 +6255,7 @@ Rules:
 
 Context: ${lead.companyName} (${nicheCtx}, ${lead.location}) heeft niet gereageerd op 2 eerdere emails. Dit is de laatste poging.
 Afzender: ${myName} van ${agencyName}
-Seizoen: ${getSeasonalContext('nl').season}
+Seizoen: ${getSeasonalContext('nl').season}${_fuCalendly}
 
 Regels:
 - Start exact met: "Laatste berichtje -"
@@ -5822,7 +6270,7 @@ Regels:
 
 Context: ${lead.companyName} (${nicheCtx}, ${lead.location}) hasn't responded to 2 previous emails. This is the last attempt.
 Sender: ${myName} from ${agencyName}
-Season: ${getSeasonalContext('en').season}
+Season: ${getSeasonalContext('en').season}${_fuCalendlyEN}
 
 Rules:
 - Start exactly with: "Last message -"
@@ -6253,7 +6701,7 @@ async function checkReplies() {
         }
 
         addActivity('reply', 'Reply ontvangen van ' + matched.companyName, { meta: { companyName: matched.companyName, leadId: matched.id } });
-        addNotification('reply_received', `Reply: ${matched.companyName}`, `${matched.companyName} heeft gereageerd op jouw email`, matched.id);
+        addNotification('reply_received', `Reply: ${matched.companyName}`, `${matched.companyName} heeft gereageerd op jouw email`, matched.id, `project:${matched.id}`);
         fireWebhooks('lead.replied', { leadId: matched.id, companyName: matched.companyName, niche: matched.niche, score: matched.score, location: matched.location, contactEmail: matched.contactEmail, repliedAt: matched.repliedAt });
         console.log(`[Reply] Reply gedetecteerd: ${matched.companyName} (${msgId})`);
 
@@ -7193,6 +7641,60 @@ async function runReferralCheck() {
 
 // ── Daily Backup ────────────────────────────────────────────────────────────
 
+// ─── Weekly client updates ────────────────────────────────────────────────────
+
+async function runWeeklyUpdates() {
+  const settings = readJSON('settings.json') || {};
+  if (!settings.weeklyUpdatesEnabled) return;
+  if (!isGmailReady(settings)) {
+    console.warn('[WeeklyUpdate] Gmail niet ingesteld — overgeslagen');
+    return;
+  }
+  const leads = readJSON('leads.json') || [];
+  const clients = leads.filter(l => l.status === 'client' && (l.contactEmail || '').trim());
+  console.log(`[WeeklyUpdate] ${clients.length} klanten gevonden`);
+  let sent = 0;
+  for (const lead of clients) {
+    const idx = leads.findIndex(l => l.id === lead.id);
+    try {
+      const email = await generateClientEmail(lead, 'weeklyUpdate', settings);
+      await sendEmail({ to: (lead.contactEmail || '').trim(), subject: email.subject, body: email.body, settings });
+      if (!leads[idx].clientEmailLog) leads[idx].clientEmailLog = [];
+      leads[idx].clientEmailLog.push({ id: Date.now().toString(36) + '_' + idx, trigger: 'weeklyUpdate', subject: email.subject, body: email.body, to: lead.contactEmail, sentAt: new Date().toISOString(), sentBy: 'systeem' });
+      addLeadHistory(leads, lead.id, { event: 'weeklyUpdateSent', label: `Automatische weekupdate verstuurd: ${email.subject}` });
+      addActivity('email', `[Weekupdate] ${lead.companyName}`, { cost: 0 });
+      sent++;
+      console.log(`[WeeklyUpdate] Verstuurd naar ${lead.companyName} (${lead.contactEmail})`);
+    } catch (err) {
+      console.warn(`[WeeklyUpdate] Fout voor ${lead.companyName}:`, err.message);
+    }
+  }
+  writeJSON('leads.json', leads);
+  console.log(`[WeeklyUpdate] Klaar — ${sent}/${clients.length} emails verstuurd`);
+}
+
+// Manual trigger: send weekly update to a single client
+app.post('/api/leads/:id/send-weekly-update', requireAdmin, async (req, res) => {
+  const leads    = readJSON('leads.json') || [];
+  const settings = readJSON('settings.json') || {};
+  const idx      = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const lead = leads[idx];
+  if (!(lead.contactEmail || '').trim()) return res.status(400).json({ error: 'Geen email adres voor deze klant' });
+  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld' });
+  try {
+    const email = await generateClientEmail(lead, 'weeklyUpdate', settings);
+    await sendEmail({ to: (lead.contactEmail || '').trim(), subject: email.subject, body: email.body, settings });
+    if (!leads[idx].clientEmailLog) leads[idx].clientEmailLog = [];
+    leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'weeklyUpdate', subject: email.subject, body: email.body, to: lead.contactEmail, sentAt: new Date().toISOString(), sentBy: 'admin' });
+    addLeadHistory(leads, lead.id, { event: 'weeklyUpdateSent', label: `Weekupdate handmatig verstuurd: ${email.subject}` });
+    writeJSON('leads.json', leads);
+    res.json({ ok: true, subject: email.subject });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 
 async function runDailyBackup(manual = false) {
@@ -7444,6 +7946,12 @@ cron.schedule('0 11 * * *', () => {
 cron.schedule('0 9 1 * *', () => {
   console.log('[Cron] Maandrapport generatie gestart');
   runMonthlyReports().catch(err => console.error('[Cron Maandrapport] Fout:', err.message));
+});
+
+// Weekly client updates: every Friday at 16:00
+cron.schedule('0 16 * * 5', () => {
+  console.log('[Cron] Weekupdates voor klanten gestart');
+  runWeeklyUpdates().catch(err => console.error('[Cron WeeklyUpdate] Fout:', err.message));
 });
 
 // Referral check cron: daily at 12:00

@@ -513,7 +513,8 @@ input, select, textarea { font-family: inherit; }
 .bottom-nav::-webkit-scrollbar { display: none; }
 
 .bottom-nav-item {
-  flex: 0 0 60px;
+  flex: 1 1 0;
+  min-width: 56px;
   display: flex;
   flex-direction: column;
   align-items: center;

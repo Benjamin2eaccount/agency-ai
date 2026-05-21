@@ -2,7 +2,7 @@
   "name": "Agency AI",
   "short_name": "Agency",
   "description": "Autonome AI outreach machine",
-  "start_url": "/",
+  "start_url": "/app",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#ffffff",

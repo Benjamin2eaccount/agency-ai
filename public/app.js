@@ -912,6 +912,8 @@ function buildInboxCard(item) {
           ${item.emailBounced ? `<span class="badge badge-red" style="font-size:10px"><i class="ti ti-mail-off"></i> Gebounced</span>` : ''}
           ${emailAlreadySent ? `<span class="badge badge-amber" style="font-size:10px" title="Dit e-mailadres werd al gebruikt voor een andere lead"><i class="ti ti-alert-triangle"></i> Al gecontacteerd</span>` : ''}
           ${item.status === 'auto-approved' ? `<span class="badge badge-green" style="font-size:10px"><i class="ti ti-bolt"></i> Auto-goedgekeurd</span>` : ''}
+          ${item.leadSource === 'instagram' ? `<span class="badge" style="font-size:10px;background:#fce7f3;color:#be185d;border:1px solid #fbcfe8"><i class="ti ti-brand-instagram"></i> Instagram</span>` : ''}
+          ${item.leadSource === 'maps' ? `<span class="badge" style="font-size:10px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe"><i class="ti ti-map-pin"></i> Google Maps</span>` : ''}
         </div>
         <div class="inbox-card-meta">
           ${nicheBadge(item.niche)}
@@ -2310,6 +2312,8 @@ function buildKanbanCard(l) {
       ${city ? `<div class="kc2-city"><i class="ti ti-map-pin" style="font-size:10px"></i>${esc(city)}</div>` : ''}
       <div class="kc2-tags">
         ${l.niche ? `<span class="pill pill-gray">${esc(l.niche)}</span>` : ''}
+        ${l.leadSource === 'instagram' ? `<span class="pill" style="background:#fce7f3;color:#be185d;border:none"><i class="ti ti-brand-instagram" style="font-size:10px"></i> IG</span>` : ''}
+        ${l.leadSource === 'maps' ? `<span class="pill" style="background:#eff6ff;color:#1d4ed8;border:none"><i class="ti ti-map-pin" style="font-size:10px"></i> Maps</span>` : ''}
         ${deal ? `<span class="kc2-deal">${deal}</span>` : ''}
       </div>
     </div>`;
@@ -2717,6 +2721,20 @@ async function renderProjectPage() {
       </div>
       ` : ''}
 
+      ${lead.onboardingScript ? `
+      <div style="margin-bottom:20px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:16px 18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:8px">
+            <i class="ti ti-video" style="font-size:18px;color:#0284c7;flex-shrink:0"></i>
+            <span style="font-size:13px;font-weight:700;color:#0284c7">Video onboarding script</span>
+            <span style="background:#0284c7;color:#fff;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700">~60 sec</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="navigator.clipboard.writeText(${JSON.stringify(lead.onboardingScript)}).then(()=>toast('Script gekopieerd','success'))"><i class="ti ti-copy"></i> Kopiëren</button>
+        </div>
+        <p style="font-size:13px;line-height:1.65;color:#0c4a6e;white-space:pre-line;margin:0">${esc(lead.onboardingScript)}</p>
+      </div>
+      ` : ''}
+
       <div class="project-info-grid">
         <div class="project-info-item">
           <div class="project-info-label">Email</div>
@@ -2740,12 +2758,22 @@ async function renderProjectPage() {
         </div>
         <div class="project-info-item">
           <div class="project-info-label">Locatie</div>
-          <div class="project-info-value">${esc(lead.location || '—')}</div>
+          <div class="project-info-value">${esc(lead.location || '—')}${lead.address ? `<br><span style="font-size:11px;color:var(--text-secondary)">${esc(lead.address)}</span>` : ''}</div>
         </div>
         <div class="project-info-item">
           <div class="project-info-label">Volgers</div>
-          <div class="project-info-value">${lead.followers ? lead.followers.toLocaleString('nl-NL') : '—'}</div>
+          <div class="project-info-value">${lead.followers ? lead.followers.toLocaleString('nl-NL') : lead.estimatedFollowers ? lead.estimatedFollowers.toLocaleString('nl-NL') : '—'}</div>
         </div>
+        ${lead.mapsRating ? `
+        <div class="project-info-item">
+          <div class="project-info-label">Google Maps</div>
+          <div class="project-info-value"><span style="color:#f59e0b">★</span> ${lead.mapsRating} <span style="color:var(--text-secondary);font-size:12px">(${lead.reviewCount || '?'} reviews)</span></div>
+        </div>` : ''}
+        ${lead.phone ? `
+        <div class="project-info-item">
+          <div class="project-info-label">Telefoon</div>
+          <div class="project-info-value"><a href="tel:${esc(lead.phone)}" class="link">${esc(lead.phone)}</a></div>
+        </div>` : ''}
         <div class="project-info-item">
           <div class="project-info-label">Deal waarde</div>
           <div class="project-info-value">${lead.estimatedValue ? '€' + lead.estimatedValue.toLocaleString('nl-NL') : '—'}</div>
@@ -2935,6 +2963,17 @@ async function renderProjectPage() {
               : `<span style="font-size:12px;color:var(--text-muted)">Start eerst het project</span>`)}
         ${actionRow('ti-receipt', 'Factuur versturen', sentInvoice,
             `<button class="btn btn-sm btn-outline" onclick="createPayment('${lead.id}')"><i class="ti ti-plus"></i> Factuur aanmaken</button>`)}
+        ${(() => {
+          const lastWeekly = clientEmails.filter(e => e.trigger === 'weeklyUpdate').sort((a,b) => new Date(b.sentAt)-new Date(a.sentAt))[0];
+          return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface)">
+            <i class="ti ti-calendar-week" style="color:var(--accent);font-size:18px;flex-shrink:0"></i>
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:500">Weekupdate</div>
+              ${lastWeekly ? `<div style="font-size:11px;color:var(--text-muted)">Laatste: ${relativeTime(lastWeekly.sentAt)}</div>` : ''}
+            </div>
+            <button class="btn btn-sm btn-outline" onclick="sendWeeklyUpdate('${lead.id}')"><i class="ti ti-mail-forward"></i> Weekupdate sturen</button>
+          </div>`;
+        })()}
         <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface)">
           <i class="ti ti-pencil" style="color:var(--accent);font-size:18px;flex-shrink:0"></i>
           <span style="font-size:14px;font-weight:500;flex:1">Handmatige email</span>
@@ -3279,6 +3318,64 @@ async function renderProjectPage() {
       `}
     </div>`;
 
+  // ── Tab: Documenten ────────────────────────────────────────────────────────
+  const docs = lead.documents || [];
+  const DOC_TYPE_ICONS = { link: 'ti-link', password: 'ti-lock', note: 'ti-file-text' };
+  const DOC_TYPE_COLORS = { link: '#2563eb', password: '#d97706', note: '#16a34a' };
+  const DOC_TYPE_BG    = { link: '#eff6ff', password: '#fef3c7', note: '#f0fdf4' };
+  const DOC_TYPE_LABELS = { link: 'Link', password: 'Wachtwoord', note: 'Notitie' };
+
+  const tabDocumenten = `
+    <div class="project-tab-content" data-tab-content="documenten" style="${activeTab !== 'documenten' ? 'display:none' : ''}">
+      ${isAdmin() ? `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div class="project-section-title" style="margin-bottom:0">Documentvault</div>
+        <button class="btn btn-sm btn-primary" onclick="openAddDocModal('${esc(lead.id)}')"><i class="ti ti-plus"></i> Document toevoegen</button>
+      </div>` : '<div class="project-section-title"><i class="ti ti-folder" style="color:var(--accent);margin-right:6px"></i>Documenten</div>'}
+
+      ${docs.length === 0 ? `<div style="font-size:13px;color:var(--text-muted);padding:16px 0;text-align:center">Nog geen documenten toegevoegd.</div>` :
+        docs.map(doc => `
+          <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--surface)">
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <div style="width:34px;height:34px;border-radius:8px;background:${DOC_TYPE_BG[doc.type]||'#f3f4f6'};color:${DOC_TYPE_COLORS[doc.type]||'#374151'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <i class="ti ${DOC_TYPE_ICONS[doc.type]||'ti-file'}" style="font-size:16px"></i>
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <span style="font-size:14px;font-weight:600">${esc(doc.title||'')}</span>
+                  <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:${DOC_TYPE_BG[doc.type]||'#f3f4f6'};color:${DOC_TYPE_COLORS[doc.type]||'#374151'}">${DOC_TYPE_LABELS[doc.type]||doc.type}</span>
+                  ${isAdmin() ? `<span style="font-size:11px;padding:1px 6px;border-radius:4px;background:${doc.visible!==false?'#f0fdf4':'#fef2f2'};color:${doc.visible!==false?'var(--success)':'var(--danger)'}">
+                    ${doc.visible!==false?'Zichtbaar':'Verborgen'}
+                  </span>` : ''}
+                </div>
+                ${doc.description ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:2px">${esc(doc.description)}</div>` : ''}
+                ${doc.type === 'link' && doc.content ? `
+                  <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+                    <a class="btn btn-sm btn-primary" href="${esc(doc.content)}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> Openen</a>
+                    <button class="btn btn-sm btn-ghost" onclick="navigator.clipboard.writeText('${esc(doc.content)}').then(()=>toast('Link gekopieerd!'))"><i class="ti ti-copy"></i> Kopieer</button>
+                  </div>` : ''}
+                ${doc.type === 'password' ? `
+                  <div style="margin-top:8px">
+                    ${doc.username ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Gebruiker: <strong style="color:var(--text)">${esc(doc.username)}</strong></div>` : ''}
+                    <div style="display:flex;align-items:center;gap:8px;background:var(--surface-2,#f3f4f6);border-radius:7px;padding:7px 12px;border:1px solid var(--border)">
+                      <code style="font-size:13px;flex:1;letter-spacing:.05em" id="appjsPw-${doc.id}">••••••••</code>
+                      <button class="btn btn-ghost btn-xs" onclick="(function(id,v){var el=document.getElementById('appjsPw-'+id);el.textContent=el.textContent==='••••••••'?v:'••••••••'})('${doc.id}','${esc(doc.content||'')}')">Toon</button>
+                      <button class="btn btn-ghost btn-xs" onclick="navigator.clipboard.writeText('${esc(doc.content||'')}').then(()=>toast('Gekopieerd!'))"><i class="ti ti-copy"></i></button>
+                    </div>
+                  </div>` : ''}
+                ${doc.type === 'note' && doc.content ? `<div style="margin-top:8px;font-size:13px;background:var(--surface-2,#f9fafb);border-radius:7px;padding:10px 12px;white-space:pre-line;line-height:1.6;border:1px solid var(--border)">${esc(doc.content)}</div>` : ''}
+              </div>
+              ${isAdmin() ? `
+              <div style="display:flex;gap:4px;flex-shrink:0">
+                <button class="btn btn-ghost btn-xs" title="${doc.visible!==false?'Verbergen voor klant':'Tonen voor klant'}" onclick="toggleDocVisibility('${esc(lead.id)}','${doc.id}',${doc.visible===false})">
+                  <i class="ti ${doc.visible!==false?'ti-eye-off':'ti-eye'}"></i>
+                </button>
+                <button class="btn btn-ghost btn-xs" style="color:var(--danger)" onclick="deleteDoc('${esc(lead.id)}','${doc.id}')"><i class="ti ti-trash"></i></button>
+              </div>` : ''}
+            </div>
+          </div>`).join('')}
+    </div>`;
+
   // ── Tab: Klantportaal ───────────────────────────────────────────────────────
   const portalUrl = lead.portalToken ? `${window.location.origin}/portal/${lead.portalToken}` : null;
   const clientLoginUrl = `${window.location.origin}/client/login`;
@@ -3339,17 +3436,79 @@ async function renderProjectPage() {
         </div>
       `}
 
+      ${isAdmin() ? `
       <div style="margin-bottom:20px">
-        <div class="project-section-title">Klantberichten ${clientMessages.length > 0 ? `<span class="tab-badge">${clientMessages.length}</span>` : ''}</div>
-        ${clientMessages.length ? clientMessages.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(m => `
-          <div style="padding:10px 14px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--surface)">
-            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-              <span style="font-size:12px;font-weight:600">${esc(m.from || 'Klant')}</span>
-              <span style="font-size:11px;color:var(--text-muted)">${relativeTime(m.createdAt)}</span>
-            </div>
-            <div style="font-size:13px">${esc(m.message || '')}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div class="project-section-title" style="margin-bottom:0">Dashboard Analytics</div>
+          <button class="btn btn-sm btn-outline" id="genAnalyticsBtn" onclick="generateClientAnalytics('${esc(lead.id)}')">
+            <i class="ti ti-chart-bar"></i> ${lead.analytics ? 'Hergeneer' : 'Genereer resultaten'}
+          </button>
+        </div>
+        ${lead.analytics?.metrics?.length ? `
+          <div style="margin-bottom:8px;font-size:12px;color:var(--text-muted)">Gegenereerd: ${relativeTime(lead.analytics.generatedAt)} &mdash; ${lead.analytics.month || ''}</div>
+          ${lead.analytics.summary ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#166534">${esc(lead.analytics.summary)}</div>` : ''}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            ${(lead.analytics.metrics||[]).map((m, mi) => {
+              const colorMap = { green: '#f0fdf4', blue: '#eff6ff', purple: '#f5f3ff', orange: '#fff7ed' };
+              const borderMap = { green: '#bbf7d0', blue: '#bfdbfe', purple: '#ddd6fe', orange: '#fed7aa' };
+              const textMap   = { green: '#15803d', blue: '#1d4ed8', purple: '#6d28d9', orange: '#c2410c' };
+              const c = m.color || 'blue';
+              return `<div style="border-radius:10px;padding:14px 16px;background:${colorMap[c]||colorMap.blue};border:1px solid ${borderMap[c]||borderMap.blue}">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${textMap[c]||textMap.blue};margin-bottom:10px">${esc(m.service||'')}</div>
+                ${(m.stats||[]).map((s, si) => `
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-bottom:1px solid rgba(0,0,0,.06)">
+                    <span style="font-size:12px;color:#374151">${esc(s.label||'')}</span>
+                    <div style="display:flex;align-items:baseline;gap:5px">
+                      <input type="text" value="${esc(s.value||'')}" style="width:70px;text-align:right;font-size:13px;font-weight:700;border:none;background:transparent;color:#111;padding:0;outline:none;cursor:pointer"
+                        onblur="updateAnalyticsStat('${esc(lead.id)}',${mi},${si},this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+                      ${s.trend ? `<span style="font-size:11px;font-weight:700;color:${s.trendUp===false?'var(--danger)':'var(--success)'}">${esc(s.trend)}</span>` : ''}
+                    </div>
+                  </div>`).join('')}
+              </div>`;
+            }).join('')}
           </div>
-        `).join('') : '<div style="font-size:13px;color:var(--text-muted)">Nog geen berichten ontvangen.</div>'}
+          <div style="font-size:11px;color:var(--text-muted);margin-top:10px;padding:8px 10px;background:var(--surface);border-radius:6px">
+            ⓘ Klik op een waarde om deze aan te passen. Wijzigingen worden direct zichtbaar in het klantportaal.
+          </div>
+        ` : `<div style="font-size:13px;color:var(--text-muted);padding:12px 0">Nog geen analytics gegenereerd. Klik op "Genereer resultaten" om automatisch statistieken aan te maken.</div>`}
+      </div>
+      ` : ''}
+
+      <div style="margin-bottom:20px">
+        ${(() => {
+          const chat = lead.portalChat || [];
+          const unread = chat.filter(m => m.from === 'client' && !m.readAt).length;
+          return `
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+            <div class="project-section-title" style="margin-bottom:0">
+              Portaalchat ${unread > 0 ? `<span class="tab-badge" style="background:var(--danger)">${unread} nieuw</span>` : chat.length > 0 ? `<span class="tab-badge">${chat.length}</span>` : ''}
+            </div>
+            ${unread > 0 && isAdmin() ? `<button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="markPortalChatRead('${esc(lead.id)}')"><i class="ti ti-checks"></i> Alles gelezen</button>` : ''}
+          </div>
+          <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface)">
+            <div style="max-height:260px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px" id="portalChatThread">
+              ${chat.length === 0
+                ? '<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:16px 0">Nog geen berichten in de portaalchat.</div>'
+                : chat.map(m => `
+                  <div style="max-width:82%;${m.from==='client'?'margin-left:auto':'margin-right:auto'}">
+                    <div style="padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;${m.from==='client'?'background:var(--accent);color:#fff;border-bottom-right-radius:3px':'background:#f3f4f6;color:var(--text);border-bottom-left-radius:3px'}">
+                      ${esc(m.message||'')}
+                    </div>
+                    <div style="font-size:10px;color:var(--text-muted);margin-top:2px;${m.from==='client'?'text-align:right':''}">
+                      ${m.from==='admin'?(esc(m.name||'Accountmanager')):(esc(m.name||'Klant'))} &middot; ${relativeTime(m.time)}
+                    </div>
+                  </div>`).join('')}
+            </div>
+            ${isAdmin() ? `
+            <div style="border-top:1px solid var(--border);padding:10px;display:flex;gap:8px;align-items:flex-end;background:#fff">
+              <textarea id="portalReplyInput" placeholder="Stuur een bericht naar de klant..." rows="1"
+                style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:none;outline:none;background:var(--surface);color:var(--text);min-height:38px"
+                oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"
+                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendPortalReply('${esc(lead.id)}');}"></textarea>
+              <button class="btn btn-primary btn-sm" onclick="sendPortalReply('${esc(lead.id)}')"><i class="ti ti-send"></i></button>
+            </div>` : ''}
+          </div>`;
+        })()}
       </div>
     </div>`;
 
@@ -3413,7 +3572,8 @@ async function renderProjectPage() {
           <button class="project-tab${activeTab==='contract'?' active':''}" data-tab="contract" onclick="switchProjectTab('contract')">${lead.contract ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Contract</button>
           <button class="project-tab${activeTab==='website'?' active':''}" data-tab="website" onclick="switchProjectTab('website')">Website</button>
           <button class="project-tab${activeTab==='afspraken'?' active':''}" data-tab="afspraken" onclick="switchProjectTab('afspraken')">Afspraken</button>
-          <button class="project-tab${activeTab==='portaal'?' active':''}" data-tab="portaal" onclick="switchProjectTab('portaal')">Klantportaal</button>
+          <button class="project-tab${activeTab==='documenten'?' active':''}" data-tab="documenten" onclick="switchProjectTab('documenten')"><i class="ti ti-folder" style="margin-right:3px"></i>Documenten${(lead.documents||[]).length > 0 ? ` (${(lead.documents||[]).length})` : ''}</button>
+          <button class="project-tab${activeTab==='portaal'?' active':''}" data-tab="portaal" onclick="switchProjectTab('portaal')">${(lead.portalChat||[]).filter(m=>m.from==='client'&&!m.readAt).length > 0 ? `<i class="ti ti-message-circle" style="color:var(--danger);margin-right:3px"></i>` : ''}Klantportaal</button>
           <button class="project-tab${activeTab==='geschiedenis'?' active':''}" data-tab="geschiedenis" onclick="switchProjectTab('geschiedenis')">Geschiedenis</button>
           <button class="project-tab${activeTab==='notities'?' active':''}" data-tab="notities" onclick="switchProjectTab('notities')">Notities</button>
           ${lead.agentDeliverables?.length || lead.intakeSubmittedAt ? `<button class="project-tab${activeTab==='agents'?' active':''}" data-tab="agents" onclick="switchProjectTab('agents')" style="${lead.agentDeliverables?.some(d=>d.status==='wacht_op_goedkeuring') ? 'color:var(--warning);font-weight:700' : ''}">${lead.agentDeliverables?.some(d=>d.status==='wacht_op_goedkeuring') ? '<i class="ti ti-clock" style="margin-right:3px;color:var(--warning)"></i>' : '<i class="ti ti-robot" style="margin-right:3px"></i>'}Agents</button>` : ''}
@@ -3429,6 +3589,7 @@ async function renderProjectPage() {
         ${buildContractTabProject()}
         ${buildWebsiteTabProject()}
         ${tabAfspraken}
+        ${tabDocumenten}
         ${tabPortaal}
         ${tabGeschiedenis}
         ${tabNotities}
@@ -3767,6 +3928,73 @@ async function resendWelcomeEmail(leadId) {
   const res = await api(`/api/leads/${leadId}/send-welcome`, { method: 'POST' });
   if (res?.ok) toast('Welkomstmail verstuurd!', 'success');
   else toast('Kon welkomstmail niet sturen', 'error');
+}
+
+async function sendPortalReply(leadId) {
+  const inp = document.getElementById('portalReplyInput');
+  const msg = inp?.value?.trim();
+  if (!msg) return;
+  inp.disabled = true;
+  const res = await api(`/api/leads/${leadId}/portal-reply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: msg })
+  });
+  if (res?.ok) {
+    const data = await res.json();
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead) {
+      if (!lead.portalChat) lead.portalChat = [];
+      lead.portalChat.push(data.entry);
+    }
+    inp.value = '';
+    inp.style.height = 'auto';
+    toast('Bericht verstuurd', 'success');
+    renderProjectPage();
+  } else {
+    toast('Versturen mislukt', 'error');
+  }
+  if (inp) inp.disabled = false;
+}
+
+async function markPortalChatRead(leadId) {
+  await api(`/api/leads/${leadId}/portal/read`, { method: 'POST' });
+  const lead = state.leads.find(l => l.id === leadId);
+  if (lead?.portalChat) lead.portalChat.filter(m => m.from === 'client').forEach(m => { m.readAt = new Date().toISOString(); });
+  renderProjectPage();
+}
+
+async function generateClientAnalytics(leadId) {
+  const btn = document.getElementById('genAnalyticsBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Genereren...'; }
+  const res = await api(`/api/leads/${leadId}/generate-analytics`, { method: 'POST' });
+  if (res?.ok) {
+    const data = await res.json();
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead && data.analytics) lead.analytics = data.analytics;
+    toast('Analytics gegenereerd', 'success');
+    renderProjectPage();
+  } else {
+    toast('Analytics genereren mislukt', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-chart-bar"></i> Genereer resultaten'; }
+  }
+}
+
+async function updateAnalyticsStat(leadId, metricIdx, statIdx, value) {
+  const res = await api(`/api/leads/${leadId}/analytics`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ metricIdx, statIdx, value })
+  });
+  if (res?.ok) {
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead?.analytics?.metrics?.[metricIdx]?.stats?.[statIdx]) {
+      lead.analytics.metrics[metricIdx].stats[statIdx].value = String(value);
+    }
+    toast('Waarde opgeslagen', 'success');
+  } else {
+    toast('Opslaan mislukt', 'error');
+  }
 }
 
 // ─── End Project Page ──────────────────────────────────────────────────────────
@@ -5215,6 +5443,7 @@ function _doStartProject(leadId) {
     { label: 'Intake link genereren' },
     { label: 'Welkomstmail versturen' },
     { label: 'Projectplan genereren (AI)' },
+    { label: 'Video onboarding script genereren (AI)' },
     { label: 'Content kalender genereren (AI)' },
     { label: 'Week 1 takenlijst aanmaken (AI)' },
     { label: 'Team briefing versturen' },
@@ -5532,6 +5761,132 @@ async function resendWelcomeEmail(leadId) {
     toast('Fout: ' + err.message, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-mail-forward"></i> Welkomstmail'; }
+  }
+}
+
+function openAddDocModal(leadId) {
+  openModal(`
+    <div class="modal-header">
+      <h3><i class="ti ti-folder-plus"></i> Document toevoegen</h3>
+      <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div style="padding:16px 24px;display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:5px">TYPE</label>
+        <div style="display:flex;gap:8px" id="docTypeSelector">
+          ${[['link','Link / URL','ti-link'],['password','Wachtwoord','ti-lock'],['note','Notitie','ti-file-text']].map(([v,l,ic]) =>
+            `<label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 6px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;font-weight:600">
+              <input type="radio" name="docType" value="${v}" ${v==='link'?'checked':''} style="display:none" onchange="document.querySelectorAll('#docTypeSelector label').forEach(el=>el.style.borderColor='var(--border)');this.closest('label').style.borderColor='var(--accent)'">
+              <i class="ti ${ic}" style="font-size:18px"></i>${l}
+            </label>`).join('')}
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:5px">TITEL *</label>
+        <input type="text" id="docTitle" placeholder="Bijv. Google Drive map, WordPress login..." style="width:100%;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:7px;font-family:inherit;font-size:13px;background:var(--surface);color:var(--text);outline:none">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:5px">INHOUD (URL / WACHTWOORD / TEKST)</label>
+        <input type="text" id="docContent" placeholder="Vul hier de URL, het wachtwoord of de tekst in..." style="width:100%;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:7px;font-family:inherit;font-size:13px;background:var(--surface);color:var(--text);outline:none">
+      </div>
+      <div id="docUsernameRow">
+        <label style="font-size:11px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:5px">GEBRUIKERSNAAM (optioneel)</label>
+        <input type="text" id="docUsername" placeholder="admin@domein.nl" style="width:100%;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:7px;font-family:inherit;font-size:13px;background:var(--surface);color:var(--text);outline:none">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--text-secondary);display:block;margin-bottom:5px">BESCHRIJVING (optioneel)</label>
+        <input type="text" id="docDescription" placeholder="Extra toelichting..." style="width:100%;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:7px;font-family:inherit;font-size:13px;background:var(--surface);color:var(--text);outline:none">
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="docVisible" checked> Direct zichtbaar voor klant in portaal
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
+      <button class="btn btn-primary" onclick="saveNewDoc('${leadId}')"><i class="ti ti-plus"></i> Toevoegen</button>
+    </div>
+  `);
+  // Show/hide username field based on type
+  document.querySelectorAll('input[name="docType"]').forEach(r => r.addEventListener('change', () => {
+    document.getElementById('docUsernameRow').style.display = r.value === 'password' ? '' : 'none';
+  }));
+  document.getElementById('docUsernameRow').style.display = 'none';
+  // Highlight initially selected type
+  document.querySelector('input[name="docType"]:checked')?.closest('label')?.style && (document.querySelector('input[name="docType"]:checked').closest('label').style.borderColor = 'var(--accent)');
+}
+
+async function saveNewDoc(leadId) {
+  const type        = document.querySelector('input[name="docType"]:checked')?.value || 'link';
+  const title       = document.getElementById('docTitle')?.value?.trim();
+  const content     = document.getElementById('docContent')?.value?.trim();
+  const username    = document.getElementById('docUsername')?.value?.trim();
+  const description = document.getElementById('docDescription')?.value?.trim();
+  const visible     = document.getElementById('docVisible')?.checked ?? true;
+  if (!title) { toast('Voer een titel in', 'error'); return; }
+  const res = await api(`/api/leads/${leadId}/documents`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, title, content, username, description, visible })
+  });
+  if (res?.ok) {
+    const data = await res.json();
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead) { if (!lead.documents) lead.documents = []; lead.documents.push(data.document); }
+    closeModal();
+    toast('Document toegevoegd', 'success');
+    renderProjectPage();
+  } else {
+    toast('Toevoegen mislukt', 'error');
+  }
+}
+
+async function toggleDocVisibility(leadId, docId, currentlyHidden) {
+  const res = await api(`/api/leads/${leadId}/documents/${docId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ visible: currentlyHidden })
+  });
+  if (res?.ok) {
+    const lead = state.leads.find(l => l.id === leadId);
+    const doc = lead?.documents?.find(d => d.id === docId);
+    if (doc) doc.visible = currentlyHidden;
+    toast(currentlyHidden ? 'Document zichtbaar' : 'Document verborgen', 'success');
+    renderProjectPage();
+  } else toast('Opslaan mislukt', 'error');
+}
+
+async function deleteDoc(leadId, docId) {
+  if (!confirm('Document verwijderen?')) return;
+  const res = await api(`/api/leads/${leadId}/documents/${docId}`, { method: 'DELETE' });
+  if (res?.ok) {
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead) lead.documents = (lead.documents || []).filter(d => d.id !== docId);
+    toast('Document verwijderd', 'success');
+    renderProjectPage();
+  } else toast('Verwijderen mislukt', 'error');
+}
+
+async function saveWeeklyUpdatesSetting(enabled) {
+  const res = await api('/api/settings/automation', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ weeklyUpdatesEnabled: enabled })
+  });
+  if (res?.ok) toast(enabled ? 'Weekupdates ingeschakeld' : 'Weekupdates uitgeschakeld', 'success');
+  else toast('Opslaan mislukt', 'error');
+}
+
+async function sendWeeklyUpdate(leadId) {
+  const btn = document.querySelector(`button[onclick="sendWeeklyUpdate('${leadId}')"]`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Genereren...'; }
+  const res = await api(`/api/leads/${leadId}/send-weekly-update`, { method: 'POST' });
+  const data = res ? await res.json() : {};
+  if (res?.ok) {
+    toast(`Weekupdate verstuurd: ${data.subject || ''}`, 'success');
+    renderProjectPage();
+  } else {
+    toast(data?.error || 'Versturen mislukt', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-mail-forward"></i> Weekupdate sturen'; }
   }
 }
 
@@ -6565,6 +6920,48 @@ async function renderAgents() {
 
     <div class="card" style="margin-top:16px">
       <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-brain" style="color:#7c3aed;margin-right:6px"></i> Conversie-intelligentie (ML)</h3>
+      </div>
+      <p class="text-secondary" style="font-size:13px;margin-bottom:14px">Agent 4 past scores automatisch aan op basis van historische conversiedata (welke leads werden klant vs. verloren).</p>
+      ${(() => {
+        const mlEntries = memEntries.filter(m => (m.converted || 0) + (m.lost || 0) >= 1);
+        if (mlEntries.length === 0) return `<div class="empty-state" style="padding:20px"><i class="ti ti-chart-line"></i><p>Nog geen conversiedata — wordt gevuld zodra leads klant worden of verloren gaan.</p></div>`;
+        return `<div style="overflow-x:auto">
+          <table class="table">
+            <thead><tr>
+              <th>Niche</th><th>Land</th><th>Klanten</th><th>Verloren</th><th>Conversieratio</th><th>Score boost</th><th>Beste profiel</th>
+            </tr></thead>
+            <tbody>
+              ${mlEntries.map(m => {
+                const total = (m.converted || 0) + (m.lost || 0);
+                const rate = m.conversionRate || 0;
+                let boostVal = 0, boostClass = '';
+                if (total >= 3) {
+                  if (rate > 15) { boostVal = 1.0; boostClass = 'text-success'; }
+                  else if (rate > 8) { boostVal = 0.5; boostClass = 'text-success'; }
+                  else if (rate < 3 && total >= 5) { boostVal = -0.5; boostClass = 'text-danger'; }
+                }
+                const profileParts = [];
+                if (m.bestFollowerRange) profileParts.push(`${m.bestFollowerRange} volgers`);
+                if (m.bestWebsiteScore && m.bestWebsiteScore !== 'unknown') profileParts.push(`website ${m.bestWebsiteScore}`);
+                return `<tr>
+                  <td>${nicheBadge(m.niche)}</td>
+                  <td>${m.country}</td>
+                  <td style="color:var(--success);font-weight:600">${m.converted || 0}</td>
+                  <td style="color:var(--danger)">${m.lost || 0}</td>
+                  <td>${total < 3 ? '<span class="text-muted" style="font-size:12px">te weinig data</span>' : `${rate}%`}</td>
+                  <td class="${boostClass}" style="font-weight:600">${boostVal !== 0 ? (boostVal > 0 ? '+' : '') + boostVal : '—'}</td>
+                  <td style="font-size:12px;color:var(--text-secondary)">${profileParts.length ? profileParts.join(', ') : '—'}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+      })()}
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-header">
         <h3 class="card-title"><i class="ti ti-ab" style="color:var(--accent);margin-right:6px"></i> Agent 5 — A/B email statistieken</h3>
       </div>
       <p class="text-secondary" style="font-size:13px;margin-bottom:14px">Elke lead krijgt 2 email versies: A (probleem-gericht) en B (groeikansen-gericht). Kies per lead welke je verstuurt.</p>
@@ -6784,6 +7181,25 @@ async function renderRuns() {
           <i class="ti ti-player-play"></i> Start run
         </button>
       </div>`}
+      ${isAdmin() ? `
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;gap:20px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500">
+          <input type="checkbox" id="igTargetingToggle" ${(settings || {}).instagramTargeting ? 'checked' : ''}
+            onchange="toggleLeadSource('instagramTargeting', this.checked)"
+            style="width:16px;height:16px;accent-color:var(--accent)">
+          <i class="ti ti-brand-instagram" style="color:#e1306c;font-size:15px"></i>
+          Instagram targeting
+          <span style="font-size:11px;color:var(--text-muted);font-weight:400">— accounts 2K-200K volgers, laag engagement</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500">
+          <input type="checkbox" id="mapsTargetingToggle" ${(settings || {}).googleMapsTargeting ? 'checked' : ''}
+            onchange="toggleLeadSource('googleMapsTargeting', this.checked)"
+            style="width:16px;height:16px;accent-color:var(--accent)">
+          <i class="ti ti-map-pin" style="color:#4285f4;font-size:15px"></i>
+          Google Maps targeting
+          <span style="font-size:11px;color:var(--text-muted);font-weight:400">— 3-4 ster reviews, minder dan 50 reviews</span>
+        </label>
+      </div>` : ''}
       <div style="margin-top:14px">
         <p id="run-status" style="display:none;font-size:13px;color:var(--text-muted);margin:0 0 6px"></p>
         <div id="run-progress-bar" style="display:none"></div>
@@ -7488,6 +7904,12 @@ async function addBlacklistEntry() {
 function _runFmt(ms) {
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+async function toggleLeadSource(key, value) {
+  const res = await api('/api/settings/automation', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ [key]: value }) });
+  if (res.ok) toast(value ? `${key === 'instagramTargeting' ? 'Instagram' : 'Google Maps'} targeting ingeschakeld` : `Targeting uitgeschakeld`, 'success');
+  else toast('Opslaan mislukt', 'error');
 }
 
 async function startCustomRun() {
@@ -9052,6 +9474,18 @@ async function renderSettings() {
               </label>`).join('')}
           </div>
           <button class="btn btn-primary stg-save-btn" id="saveEmailAutoBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
+        </div>
+
+        <div class="stg-section" style="margin-top:16px">
+          <div class="stg-section-header">
+            <div class="stg-title">Automatische weekupdates</div>
+            <div class="stg-sub">Elke vrijdag om 16:00 wordt een AI-gegenereerde weekupdate verstuurd naar alle actieve klanten met een e-mailadres</div>
+          </div>
+          <label class="toggle-wrap">
+            <input type="checkbox" id="weeklyUpdatesEnabled" ${s.weeklyUpdatesEnabled ? 'checked' : ''} onchange="saveWeeklyUpdatesSetting(this.checked)">
+            <span class="toggle"></span>
+            <span class="toggle-label">Automatische weekupdates inschakelen (vrijdag 16:00)</span>
+          </label>
         </div>
       </div>
 

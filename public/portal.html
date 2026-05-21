@@ -215,6 +215,102 @@
       display: flex; align-items: center; gap: 10px;
     }
 
+    /* Analytics */
+    .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+    @media (max-width: 400px) { .analytics-grid { grid-template-columns: 1fr; } }
+    .analytics-card { border-radius: 10px; padding: 14px 16px; border: 1px solid; }
+    .analytics-card.green  { background: #f0fdf4; border-color: #bbf7d0; }
+    .analytics-card.blue   { background: #eff6ff; border-color: #bfdbfe; }
+    .analytics-card.purple { background: #f5f3ff; border-color: #ddd6fe; }
+    .analytics-card.orange { background: #fff7ed; border-color: #fed7aa; }
+    .analytics-card-title  { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
+    .analytics-card.green  .analytics-card-title { color: #15803d; }
+    .analytics-card.blue   .analytics-card-title { color: #1d4ed8; }
+    .analytics-card.purple .analytics-card-title { color: #6d28d9; }
+    .analytics-card.orange .analytics-card-title { color: #c2410c; }
+    .analytics-stat { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid rgba(0,0,0,.05); }
+    .analytics-stat:last-child { border-bottom: none; }
+    .analytics-stat-label { font-size: 12px; color: #374151; }
+    .analytics-stat-right  { display: flex; align-items: baseline; gap: 6px; }
+    .analytics-stat-value  { font-size: 14px; font-weight: 700; color: #111; }
+    .analytics-trend-up   { font-size: 11px; font-weight: 700; color: #16a34a; }
+    .analytics-trend-down { font-size: 11px; font-weight: 700; color: #dc2626; }
+    .analytics-disclaimer { font-size: 11px; color: var(--muted); background: var(--surface); border-radius: 8px; padding: 10px 12px; margin-top: 16px; line-height: 1.5; }
+
+    /* Document vault */
+    .doc-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; background: #fff; }
+    .doc-card:last-child { margin-bottom: 0; }
+    .doc-card-header { display: flex; align-items: flex-start; gap: 10px; }
+    .doc-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .doc-icon.link     { background: #eff6ff; color: #2563eb; }
+    .doc-icon.password { background: #fef3c7; color: #d97706; }
+    .doc-icon.note     { background: #f0fdf4; color: #16a34a; }
+    .doc-title { font-size: 14px; font-weight: 600; color: #111; margin-bottom: 2px; }
+    .doc-desc  { font-size: 12px; color: var(--muted); }
+    .doc-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+    .doc-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 6px 12px; border-radius: 7px; font-size: 12px; font-weight: 600;
+      text-decoration: none; cursor: pointer; border: 1.5px solid var(--border);
+      background: #fff; color: #111; font-family: inherit;
+    }
+    .doc-btn:hover { background: var(--surface); }
+    .doc-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .doc-btn.primary:hover { opacity: .9; }
+    .doc-password-field { display: flex; align-items: center; gap: 8px; margin-top: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 7px 12px; }
+    .doc-password-value { font-family: monospace; font-size: 13px; flex: 1; color: #111; letter-spacing: .05em; }
+
+    /* Live chat widget */
+    .chat-fab {
+      position: fixed; bottom: 24px; right: 20px; z-index: 1000;
+      width: 52px; height: 52px; border-radius: 50%; background: var(--accent);
+      border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 16px rgba(99,102,241,.45); transition: transform 0.2s;
+    }
+    .chat-fab:hover { transform: scale(1.08); }
+    .chat-fab svg { width: 24px; height: 24px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .chat-fab-badge {
+      position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px;
+      background: #ef4444; color: #fff; border-radius: 99px; font-size: 10px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; padding: 0 4px; display: none;
+    }
+    .chat-panel {
+      position: fixed; bottom: 88px; right: 16px; width: 320px; max-height: 480px;
+      background: #fff; border: 1px solid var(--border); border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.14); display: flex; flex-direction: column;
+      z-index: 999; overflow: hidden; display: none;
+    }
+    @media (max-width: 400px) { .chat-panel { width: calc(100vw - 32px); right: 16px; } }
+    .chat-panel-header {
+      padding: 14px 16px; background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .chat-panel-title { font-size: 14px; font-weight: 700; }
+    .chat-panel-close { background: none; border: none; color: rgba(255,255,255,.8); cursor: pointer; font-size: 18px; line-height: 1; padding: 0; }
+    .chat-panel-close:hover { color: #fff; }
+    .chat-messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .chat-msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; font-size: 13px; line-height: 1.5; word-break: break-word; }
+    .chat-msg.client { background: var(--accent); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+    .chat-msg.admin  { background: #f3f4f6; color: #111; align-self: flex-start; border-bottom-left-radius: 4px; }
+    .chat-msg-meta   { font-size: 10px; margin-top: 3px; opacity: .65; }
+    .chat-input-area { padding: 10px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-end; }
+    .chat-input-area textarea {
+      flex: 1; min-height: 38px; max-height: 100px; padding: 8px 10px; border: 1.5px solid var(--border);
+      border-radius: 8px; font-family: inherit; font-size: 13px; resize: none; outline: none;
+    }
+    .chat-input-area textarea:focus { border-color: var(--accent); }
+    .chat-send-btn {
+      width: 36px; height: 36px; border-radius: 8px; background: var(--accent); border: none;
+      color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .chat-send-btn:hover { opacity: .85; }
+    .chat-name-row { padding: 8px 10px 0; display: flex; gap: 8px; }
+    .chat-name-row input {
+      flex: 1; height: 34px; padding: 0 10px; border: 1.5px solid var(--border); border-radius: 7px;
+      font-family: inherit; font-size: 12px; outline: none;
+    }
+    .chat-name-row input:focus { border-color: var(--accent); }
+
     /* Loader */
     .center-page { text-align: center; padding: 80px 20px; color: var(--muted); }
     .center-page h2 { font-size: 18px; color: #111; margin: 12px 0 6px; }
@@ -260,7 +356,10 @@
       try {
         const res = await fetch('/api/portal/' + token);
         if (!res.ok) { renderError('Portaal niet gevonden. Controleer de link.'); return; }
-        renderPortal(await res.json(), token);
+        const data = await res.json();
+        renderPortal(data, token);
+        initChatWidget(token, data.portalChat || []);
+        pollChat(token);
       } catch {
         renderError('Kan de pagina niet laden. Probeer het later opnieuw.');
       }
@@ -364,6 +463,18 @@
           <a href="${data.calendlyUrl}" target="_blank" rel="noopener" class="calendly-btn">
             ${CAL_SVG} Gesprek inplannen
           </a>
+        </div>` : '';
+
+      const onboardingHtml = data.onboardingScript ? `
+        <div class="inner-section">
+          <div class="inner-label">Welkomst onboarding</div>
+          <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:16px 18px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+              <span style="background:#0284c7;color:#fff;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700">VIDEO SCRIPT</span>
+              <span style="font-size:12px;color:#0369a1;font-weight:500">~60 seconden</span>
+            </div>
+            <p style="font-size:13px;line-height:1.65;color:#0c4a6e;white-space:pre-line">${(data.onboardingScript||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>
+          </div>
         </div>` : '';
 
       /* ── Facturen tab ── */
@@ -512,6 +623,76 @@
              <p>Nog geen leveringen beschikbaar</p>
            </div>`;
 
+      /* ── Documenten tab ── */
+      const docs = data.documents || [];
+      const LOCK_SVG  = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+      const LINK_SVG  = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
+      const NOTE_SVG  = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`;
+
+      const docIcon = type => ({ link: LINK_SVG, password: LOCK_SVG, note: NOTE_SVG }[type] || NOTE_SVG);
+
+      const documentsHtml = docs.length > 0 ? docs.map(doc => {
+        const isLink = doc.type === 'link';
+        const isPw   = doc.type === 'password';
+        const isNote = doc.type === 'note';
+        return `
+          <div class="doc-card">
+            <div class="doc-card-header">
+              <div class="doc-icon ${doc.type || 'note'}">${docIcon(doc.type)}</div>
+              <div style="flex:1;min-width:0">
+                <div class="doc-title">${(doc.title||'').replace(/</g,'&lt;')}</div>
+                ${doc.description ? `<div class="doc-desc">${(doc.description||'').replace(/</g,'&lt;')}</div>` : ''}
+              </div>
+            </div>
+            ${isLink && doc.content ? `
+              <div class="doc-actions">
+                <a class="doc-btn primary" href="${(doc.content||'').replace(/"/g,'&quot;')}" target="_blank" rel="noopener">${LINK_SVG} Openen</a>
+                <button class="doc-btn" onclick="navigator.clipboard.writeText(${JSON.stringify(doc.content||'')}).then(()=>this.textContent='Gekopieerd!')">Kopieer link</button>
+              </div>` : ''}
+            ${isPw ? `
+              <div style="margin-top:10px">
+                ${doc.username ? `<div style="font-size:12px;color:var(--muted);margin-bottom:4px">Gebruikersnaam: <strong style="color:#111">${(doc.username||'').replace(/</g,'&lt;')}</strong></div>` : ''}
+                <div class="doc-password-field">
+                  <span class="doc-password-value" id="pw-${doc.id}">••••••••</span>
+                  <button class="doc-btn" style="border:none;padding:4px 8px" onclick="togglePw('${doc.id}',${JSON.stringify(doc.content||'')})">Toon</button>
+                  <button class="doc-btn" style="border:none;padding:4px 8px" onclick="navigator.clipboard.writeText(${JSON.stringify(doc.content||'')}).then(()=>this.textContent='✓')">Kopieer</button>
+                </div>
+              </div>` : ''}
+            ${isNote && doc.content ? `<div style="margin-top:10px;font-size:13px;color:#374151;background:var(--surface);border-radius:7px;padding:10px 12px;white-space:pre-line;line-height:1.6">${(doc.content||'').replace(/</g,'&lt;')}</div>` : ''}
+          </div>`;
+      }).join('') : `
+        <div class="empty-state">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <p>Nog geen documenten beschikbaar. Uw accountmanager zal hier binnenkort bestanden en links plaatsen.</p>
+        </div>`;
+
+      /* ── Resultaten tab ── */
+      const an = data.analytics;
+      const analyticsHtml = an && an.metrics?.length > 0 ? `
+        ${an.summary ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#166534;line-height:1.55">${(an.summary||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>` : ''}
+        <div class="inner-label">${an.month || 'Afgelopen maand'} — Overzicht per dienst</div>
+        <div class="analytics-grid">
+          ${an.metrics.map(m => `
+            <div class="analytics-card ${m.color || 'blue'}">
+              <div class="analytics-card-title">${(m.service||'').replace(/</g,'&lt;')}</div>
+              ${(m.stats||[]).map(s => `
+                <div class="analytics-stat">
+                  <span class="analytics-stat-label">${(s.label||'').replace(/</g,'&lt;')}</span>
+                  <div class="analytics-stat-right">
+                    <span class="analytics-stat-value">${(s.value||'').replace(/</g,'&lt;')}${s.unit ? ' '+s.unit : ''}</span>
+                    ${s.trend ? `<span class="${s.trendUp === false ? 'analytics-trend-down' : 'analytics-trend-up'}">${s.trend}</span>` : ''}
+                  </div>
+                </div>`).join('')}
+            </div>`).join('')}
+        </div>
+        <div class="analytics-disclaimer">
+          ⓘ Cijfers zijn indicatief en gebaseerd op gemiddelde resultaten voor uw sector. Definitieve rapportages worden maandelijks verstrekt.
+        </div>` : `
+        <div class="empty-state">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <p>Resultaten worden binnenkort beschikbaar gesteld door uw accountmanager.</p>
+        </div>`;
+
       /* ── Tab badge for open invoices ── */
       const payTabLabel = openCount > 0
         ? `Facturen <span style="background:#ef4444;color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;font-weight:700;margin-left:3px">${openCount}</span>`
@@ -542,13 +723,16 @@
             <button class="tab-btn"         data-tab="leveringen" onclick="showTab('leveringen')">Leveringen</button>
             <button class="tab-btn"         data-tab="facturen"   onclick="showTab('facturen')">${payTabLabel}</button>
             <button class="tab-btn"         data-tab="timeline"   onclick="showTab('timeline')">Timeline</button>
+            <button class="tab-btn"         data-tab="documenten" onclick="showTab('documenten')">${docs.length > 0 ? `Documenten <span style="background:var(--accent);color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;font-weight:700;margin-left:3px">${docs.length}</span>` : 'Documenten'}</button>
+            <button class="tab-btn"         data-tab="resultaten" onclick="showTab('resultaten')">Resultaten</button>
             <button class="tab-btn"         data-tab="berichten"  onclick="showTab('berichten')">Berichten</button>
           </nav>
 
           <div class="tab-pane active" data-pane="overview">
+            ${onboardingHtml}
             ${svcsHtml}
             ${calendlyHtml}
-            ${!svcsHtml && !calendlyHtml ? '<div class="empty-state"><p>Nog geen projectinformatie beschikbaar.</p></div>' : ''}
+            ${!onboardingHtml && !svcsHtml && !calendlyHtml ? '<div class="empty-state"><p>Nog geen projectinformatie beschikbaar.</p></div>' : ''}
           </div>
 
           <div class="tab-pane" data-pane="leveringen">
@@ -563,16 +747,33 @@
             ${timelineHtml}
           </div>
 
+          <div class="tab-pane" data-pane="documenten">
+            ${documentsHtml}
+          </div>
+
+          <div class="tab-pane" data-pane="resultaten">
+            ${analyticsHtml}
+          </div>
+
           <div class="tab-pane" data-pane="berichten">
-            ${msgHtml}
-            <div id="msgForm">
+            <div class="inner-label">Gesprek met uw accountmanager</div>
+            <div id="tabChatThread" style="display:flex;flex-direction:column;gap:8px;min-height:80px;margin-bottom:14px">
+              ${(data.portalChat||[]).length === 0
+                ? `<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0">Nog geen berichten. Stuur ons een bericht!</div>`
+                : (data.portalChat||[]).map(m => `
+                    <div style="max-width:85%;padding:8px 12px;border-radius:12px;font-size:13px;line-height:1.5;${m.from==='client'?'background:var(--accent);color:#fff;align-self:flex-end;border-bottom-right-radius:4px;margin-left:auto':'background:#f3f4f6;color:#111;align-self:flex-start;border-bottom-left-radius:4px'}">
+                      ${(m.message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+                      <div style="font-size:10px;margin-top:3px;opacity:.65">${m.from==='admin'?(m.name||'Accountmanager'):(m.name||'U')} · ${fmtS(m.time)}</div>
+                    </div>`).join('')}
+            </div>
+            <div style="border-top:1px solid var(--border);padding-top:14px">
               <div class="form-group">
-                <label>Jouw naam</label>
-                <input type="text" id="msgName" placeholder="Je naam">
+                <label>Uw naam</label>
+                <input type="text" id="msgName" placeholder="Uw naam">
               </div>
               <div class="form-group">
                 <label>Bericht</label>
-                <textarea id="msgText" placeholder="Schrijf hier je vraag of opmerking..."></textarea>
+                <textarea id="msgText" placeholder="Schrijf hier uw vraag of opmerking..."></textarea>
               </div>
               <button class="btn-send" id="sendBtn" onclick="sendMsg('${token}')">Verstuur bericht</button>
             </div>
@@ -624,6 +825,118 @@
         btn.textContent = 'Verstuur bericht';
         alert('Verbindingsfout. Probeer het opnieuw.');
       }
+    }
+
+    // ── Document vault helpers ───────────────────────────────────────────────
+    function togglePw(id, value) {
+      const el  = document.getElementById('pw-' + id);
+      const btn = el?.nextElementSibling;
+      if (!el) return;
+      if (el.dataset.shown === '1') { el.textContent = '••••••••'; el.dataset.shown = ''; if (btn) btn.textContent = 'Toon'; }
+      else { el.textContent = value; el.dataset.shown = '1'; if (btn) btn.textContent = 'Verberg'; }
+    }
+
+    // ── Floating chat widget ─────────────────────────────────────────────────
+    let _chatOpen = false;
+    let _chatPollTimer = null;
+    let _chatName = localStorage.getItem('portalChatName') || '';
+    let _lastMsgCount = 0;
+
+    function initChatWidget(token, initialChat) {
+      _lastMsgCount = initialChat.length;
+      // Inject floating elements
+      document.body.insertAdjacentHTML('beforeend', `
+        <button class="chat-fab" id="chatFab" onclick="toggleChatPanel()" title="Chat met ons">
+          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="chat-fab-badge" id="chatFabBadge"></span>
+        </button>
+        <div class="chat-panel" id="chatPanel">
+          <div class="chat-panel-header">
+            <span class="chat-panel-title">💬 Chat met ons</span>
+            <button class="chat-panel-close" onclick="toggleChatPanel()">✕</button>
+          </div>
+          <div class="chat-messages" id="chatMessages"></div>
+          <div class="chat-name-row" id="chatNameRow">
+            <input type="text" id="chatNameInput" placeholder="Uw naam" value="${_chatName.replace(/"/g,'&quot;')}"
+              oninput="localStorage.setItem('portalChatName',this.value);_chatName=this.value">
+          </div>
+          <div class="chat-input-area">
+            <textarea id="chatInput" placeholder="Schrijf een bericht..." rows="1"
+              oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg('${token}');}"></textarea>
+            <button class="chat-send-btn" onclick="sendChatMsg('${token}')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+        </div>
+      `);
+      renderChatMessages(initialChat);
+    }
+
+    function renderChatMessages(chat) {
+      const el = document.getElementById('chatMessages');
+      if (!el) return;
+      if (chat.length === 0) {
+        el.innerHTML = '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:20px 0">Stuur een bericht om het gesprek te starten.</div>';
+        return;
+      }
+      el.innerHTML = chat.map(m => `
+        <div>
+          <div class="chat-msg ${m.from === 'client' ? 'client' : 'admin'}">
+            ${(m.message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+          </div>
+          <div class="chat-msg-meta" style="text-align:${m.from==='client'?'right':'left'};font-size:10px;color:#9ca3af;margin:2px 4px">
+            ${m.from==='admin'?(m.name||'Accountmanager'):(m.name||'U')} · ${fmtS(m.time)}
+          </div>
+        </div>`).join('');
+      el.scrollTop = el.scrollHeight;
+    }
+
+    async function pollChat(token) {
+      try {
+        const res = await fetch('/api/portal/' + token + '/chat');
+        if (!res.ok) return;
+        const data = await res.json();
+        const chat = data.chat || [];
+        const adminMsgs = chat.filter(m => m.from === 'admin');
+        const newAdminCount = adminMsgs.length;
+        if (!_chatOpen && newAdminCount > 0) {
+          const badge = document.getElementById('chatFabBadge');
+          if (badge) { badge.textContent = newAdminCount; badge.style.display = 'flex'; }
+        }
+        renderChatMessages(chat);
+        _lastMsgCount = chat.length;
+      } catch { /* ignore */ }
+      _chatPollTimer = setTimeout(() => pollChat(token), 30000);
+    }
+
+    function toggleChatPanel() {
+      _chatOpen = !_chatOpen;
+      const panel = document.getElementById('chatPanel');
+      if (panel) panel.style.display = _chatOpen ? 'flex' : 'none';
+      if (_chatOpen) {
+        const badge = document.getElementById('chatFabBadge');
+        if (badge) badge.style.display = 'none';
+        setTimeout(() => {
+          const el = document.getElementById('chatMessages');
+          if (el) el.scrollTop = el.scrollHeight;
+        }, 50);
+      }
+    }
+
+    async function sendChatMsg(token) {
+      const msg  = document.getElementById('chatInput')?.value?.trim();
+      const name = document.getElementById('chatNameInput')?.value?.trim() || 'Klant';
+      if (!msg) return;
+      const inp = document.getElementById('chatInput');
+      if (inp) { inp.value = ''; inp.style.height = 'auto'; }
+      try {
+        await fetch('/api/portal/' + token + '/message', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, message: msg })
+        });
+        await pollChat(token);
+      } catch { alert('Versturen mislukt.'); }
     }
 
     load();
