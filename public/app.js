@@ -1593,19 +1593,21 @@ function copyText(text, msg) {
 
 // ─── Proposal generator ───────────────────────────────────────────────────────
 async function generateProposal(leadId) {
+  const onProjectPage = !!document.getElementById(`propProgress-proj-${leadId}`);
+  const progId = onProjectPage ? `propProgress-proj-${leadId}` : `propProgress-${leadId}`;
+  const stepSuffix = onProjectPage ? `-proj-${leadId}` : `-${leadId}`;
+
   const btn = document.getElementById(`propGenBtn-${leadId}`);
-  const prog = document.getElementById(`propProgress-${leadId}`);
+  const prog = document.getElementById(progId);
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Genereren...'; }
   if (prog) prog.style.display = '';
 
-  const steps = ['propStep1', 'propStep2', 'propStep3'];
   function setStep(i, done) {
-    const el = document.getElementById(`${steps[i]}-${leadId}`);
+    const el = document.getElementById(`propStep${i + 1}${stepSuffix}`);
     if (!el) return;
     el.className = `proposal-step ${done ? 'done' : 'active'}`;
     el.querySelector('i').className = done ? 'ti ti-circle-check' : 'ti ti-loader-2';
-    if (!done) el.querySelector('i').style.animation = 'spin 1s linear infinite';
-    else el.querySelector('i').style.animation = '';
+    el.querySelector('i').style.animation = done ? '' : 'spin 1s linear infinite';
   }
 
   try {
@@ -1631,13 +1633,17 @@ async function generateProposal(leadId) {
           const ev = JSON.parse(line.slice(6));
           if (ev.step !== undefined) setStep(ev.step - 1, false);
           if (ev.done) {
-            steps.forEach((_, i) => setStep(i, true));
+            [0, 1, 2].forEach(i => setStep(i, true));
             const lead = state.leads.find(l => l.id === leadId);
             if (lead && ev.proposal) {
               lead.proposal = ev.proposal;
               lead.proposalGeneratedAt = ev.generatedAt;
             }
-            setTimeout(() => openLeadDetail(leadId), 300);
+            if (onProjectPage) {
+              setTimeout(() => renderProjectPage().then(() => switchProjectTab('voorstel')), 300);
+            } else {
+              setTimeout(() => openLeadDetail(leadId), 300);
+            }
           }
         } catch {}
       }
@@ -1671,19 +1677,21 @@ async function sendProposalEmail(leadId) {
 }
 
 async function generateContract(leadId) {
+  const onProjectPage = !!document.getElementById(`contractProgress-proj-${leadId}`);
+  const progId = onProjectPage ? `contractProgress-proj-${leadId}` : `contractProgress-${leadId}`;
+  const stepSuffix = onProjectPage ? `-proj-${leadId}` : `-${leadId}`;
+
   const btn  = document.getElementById(`contractGenBtn-${leadId}`);
-  const prog = document.getElementById(`contractProgress-${leadId}`);
+  const prog = document.getElementById(progId);
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Genereren...'; }
   if (prog) prog.style.display = '';
 
-  const steps = ['contractStep1', 'contractStep2', 'contractStep3'];
   function setStep(i, done) {
-    const el = document.getElementById(`${steps[i]}-${leadId}`);
+    const el = document.getElementById(`contractStep${i + 1}${stepSuffix}`);
     if (!el) return;
     el.className = `proposal-step ${done ? 'done' : 'active'}`;
     el.querySelector('i').className = done ? 'ti ti-circle-check' : 'ti ti-loader-2';
-    if (!done) el.querySelector('i').style.animation = 'spin 1s linear infinite';
-    else el.querySelector('i').style.animation = '';
+    el.querySelector('i').style.animation = done ? '' : 'spin 1s linear infinite';
   }
 
   try {
@@ -1709,13 +1717,17 @@ async function generateContract(leadId) {
           const ev = JSON.parse(line.slice(6));
           if (ev.step !== undefined) setStep(ev.step - 1, false);
           if (ev.done) {
-            steps.forEach((_, i) => setStep(i, true));
+            [0, 1, 2].forEach(i => setStep(i, true));
             const lead = state.leads.find(l => l.id === leadId);
             if (lead && ev.contract) {
               lead.contract = ev.contract;
               lead.contractGeneratedAt = ev.generatedAt;
             }
-            setTimeout(() => { openLeadDetail(leadId); switchDetailTab('contract'); }, 300);
+            if (onProjectPage) {
+              setTimeout(() => renderProjectPage().then(() => switchProjectTab('contract')), 300);
+            } else {
+              setTimeout(() => { openLeadDetail(leadId); switchDetailTab('contract'); }, 300);
+            }
           }
           if (ev.error) throw new Error(ev.error);
         } catch {}
@@ -9870,6 +9882,7 @@ async function renderSettings() {
             <input type="text" class="stg-input" id="gaId" placeholder="G-XXXXXXXXXX" value="${esc(s.gaId || '')}">
           </div>
           <button class="btn btn-primary btn-sm" id="saveGaBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
+          ${s.gaId && /^G-[A-Z0-9]+$/i.test(s.gaId || '') ? '<div style="margin-top:8px;font-size:12px;color:#16a34a;font-weight:600"><i class="ti ti-circle-check"></i> Google Analytics actief</div>' : ''}
         </div>
 
         <div class="stg-divider"></div>

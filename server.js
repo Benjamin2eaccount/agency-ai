@@ -202,8 +202,18 @@ app.get('/api/public-config', (req, res) => {
   res.json({
     agencyName:  s.agencyName  || 'Agency AI',
     calendlyUrl: s.calendlyUrl || null,
-    gaId:        s.gaId        || null
+    gaId:        s.gaId        || null,
+    agencyLogo:  s.agencyLogo  || null
   });
+});
+
+app.get('/api/logo', (req, res) => {
+  const s = readJSON('settings.json') || {};
+  if (!s.agencyLogo) return res.status(404).send('No logo');
+  const match = s.agencyLogo.match(/^data:(image\/[a-z+]+);base64,(.+)$/);
+  if (!match) return res.status(404).send('No logo');
+  const buf = Buffer.from(match[2], 'base64');
+  res.set('Content-Type', match[1]).set('Cache-Control', 'public, max-age=86400').send(buf);
 });
 
 // ─── Clean URL routes (must come after static so files still work) ───────────
@@ -505,6 +515,7 @@ function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken, opts) 
   opts = opts || {};
   const myEmail = opts.myEmail || '';
   const calendlyLink = opts.calendlyLink || '';
+  const logoUrl = opts.logoUrl || '';
   const baseUrl = BASE_URL;
 
   const e = function(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
@@ -540,7 +551,7 @@ function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken, opts) 
   <tr><td align="center" valign="top" style="padding:32px 16px">
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:8px;overflow:hidden">
       <tr><td style="padding:22px 32px;background:#ffffff;border-bottom:2px solid #e8e8e5">
-        <span style="font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:700;color:#111111">${e(agencyName || 'Agency AI')}</span>
+        ${logoUrl ? `<img src="${logoUrl}" alt="${e(agencyName || 'Agency AI')}" style="height:32px;max-width:160px;object-fit:contain;display:block">` : `<span style="font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:700;color:#111111">${e(agencyName || 'Agency AI')}</span>`}
       </td></tr>
       <tr><td style="padding:32px 32px 10px;background:#ffffff">${paragraphs}</td></tr>
       <tr><td align="center" style="padding:6px 32px 32px;background:#ffffff">
@@ -623,6 +634,7 @@ async function sendEmail({ to, subject, body, html, settings: _settings = {}, tr
   const htmlBody    = html || buildEmailHTML(body, agencyName, myName, myTitle, trackingToken, {
     myEmail:      s.gmailAddress || s.resendFromAddress || process.env.RESEND_FROM_ADDRESS || '',
     calendlyLink: s.calendlyUrl  || '',
+    logoUrl:      s.agencyLogo ? `${BASE_URL}/api/logo` : '',
   });
   const resendKey   = s.resendApiKey || process.env.RESEND_API_KEY;
   const fromAddress = s.resendFromAddress || process.env.RESEND_FROM_ADDRESS || 'noreply@agencyai.info';
@@ -816,7 +828,7 @@ Antwoord ALLEEN als JSON: { "questions": [{ "id": "q1", "label": "vraag tekst", 
     submitted: false,
     companyName: lead.companyName,
     agencyName: settings.agencyName || 'Agency AI',
-    agencyLogo: settings.agencyName || 'Agency AI',
+    agencyLogo: settings.agencyLogo || null,
     services: (lead.services || []).map(s => s.name),
     questions: lead.intakeQuestions,
   });
@@ -1182,6 +1194,7 @@ app.get('/api/portal/:token', (req, res) => {
   res.json({
     companyName:         lead.companyName,
     agencyName:          settings.agencyName || 'Agency AI',
+    agencyLogo:          settings.agencyLogo || null,
     myName:              settings.myName || '',
     currentPhase:        lead.currentPhase || 1,
     estimatedCompletion: lead.estimatedCompletion || null,
@@ -1379,6 +1392,39 @@ app.post('/api/order', async (req, res) => {
   }
 
   res.json({ ok: true, leadId });
+});
+
+// Public booking form — MexyDigital (and any future client sites)
+app.post('/api/booking/:client', async (req, res) => {
+  const { service, price, duration, date, time, naam, bedrijf, email, tel, website, notities } = req.body;
+  if (!naam || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
+
+  const client = req.params.client;
+  const contacts = readJSON('contacts.json') || [];
+  contacts.unshift({
+    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+    name: naam, company: bedrijf || '', email, phone: tel || '',
+    website: website || '', service, message: notities || '',
+    bookingDate: date, bookingTime: time, bookingDuration: duration, bookingPrice: price,
+    type: 'booking', client, createdAt: new Date().toISOString(), status: 'new'
+  });
+  writeJSON('contacts.json', contacts);
+
+  addNotification('contact_form', `Nieuwe boeking: ${naam}`, `${bedrijf ? bedrijf + ' — ' : ''}${service} op ${date} ${time}`, null, 'contacts');
+
+  const settings = readJSON('settings.json') || {};
+  if (settings.resendApiKey || process.env.RESEND_API_KEY) {
+    try {
+      await sendEmail({
+        to: email,
+        subject: `Afspraak bevestigd: ${service} op ${date} om ${time}`,
+        body: `Hoi ${naam},\n\nJe afspraak is bevestigd!\n\nDienst: ${service} (${price})\nDatum: ${date}\nTijd: ${time}\nDuur: ${duration}\n${bedrijf ? 'Bedrijf: ' + bedrijf + '\n' : ''}${website ? 'Website: ' + website + '\n' : ''}\n${notities ? 'Notities: ' + notities + '\n\n' : '\n'}We kijken ernaar uit!\n\nMet vriendelijke groet,\nHet MexyDigital team`,
+        settings
+      });
+    } catch (_) { /* non-critical */ }
+  }
+
+  res.json({ ok: true });
 });
 
 app.use('/api', authMiddleware);
@@ -3296,23 +3342,129 @@ app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
 
-  console.log(`[WelcomeEmail] Lead: "${lead.companyName}"`);
-  console.log(`[WelcomeEmail] contactEmail raw: ${JSON.stringify(lead.contactEmail)}`);
-  console.log(`[WelcomeEmail] Char codes: ${[...(lead.contactEmail || '')].map(c => c.charCodeAt(0)).join(',')}`);
-
   const to = (lead.contactEmail || '').trim();
-  if (!to) return res.status(400).json({ error: 'Geen contactEmail op deze lead — stel het handmatig in.' });
-  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Email niet geconfigureerd' });
+  if (!to) return res.status(400).json({ error: 'Geen contactEmail op deze lead — stel het handmatig in via Overzicht → potlood-knop.' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ error: `Ongeldig emailadres: "${to}" — pas het aan via Overzicht.` });
+  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Email niet geconfigureerd — stel Gmail in via Instellingen → Email.' });
 
   try {
-    const portalUrl = lead.portalToken ? `${BASE_URL}/portal/${lead.portalToken}` : BASE_URL;
-    const intakeUrl = lead.intakeToken ? `${BASE_URL}/intake/${lead.id}/${lead.intakeToken}` : '';
-    const _welCalendly = settings.calendlyUrl ? `\n\nWil je alvast een gesprek inplannen? Dat kan direct via:\n${settings.calendlyUrl}` : '';
-    const welcomeBody = `Beste ${lead.contactName || lead.companyName},\n\nWelkom! We zijn verheugd om samen te werken.\n\n${intakeUrl ? `Via de onderstaande link kun je jouw intake-vragenlijst invullen:\n${intakeUrl}\n\n` : ''}Heb je vragen? Stuur dan gerust een bericht via je klantportaal:\n${portalUrl}${_welCalendly}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.myTitle || ''}\n${settings.agencyName}`;
-    await sendEmail({ to, subject: `Welkom bij ${settings.agencyName} — volgende stappen`, body: welcomeBody, settings });
-    addLeadHistory(leads, lead.id, { event: 'welcomeEmailSent', label: `Welkomstmail (opnieuw) verstuurd naar ${to}` });
+    // Ensure intake token exists
+    if (!leads[idx].intakeToken) {
+      leads[idx].intakeToken = Math.random().toString(36).substr(2, 10) + Date.now().toString(36);
+      lead.intakeToken = leads[idx].intakeToken;
+    }
+
+    const portalUrl  = lead.portalToken ? `${BASE_URL}/portal/${lead.portalToken}` : BASE_URL;
+    const intakeUrl  = lead.intakeToken ? `${BASE_URL}/intake/${lead.id}/${lead.intakeToken}` : '';
+    const logoUrl    = settings.agencyLogo ? `${BASE_URL}/api/logo` : '';
+    const agencyName = settings.agencyName || 'Agency AI';
+    const myName     = settings.myName || agencyName;
+    const myTitle    = settings.myTitle || 'AI Growth Specialist';
+    const serviceList = (lead.services || []).map(s => s.name).filter(Boolean);
+    const e = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+    const html = `<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Welkom bij ${e(agencyName)}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f2">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f2">
+  <tr><td align="center" style="padding:32px 16px">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#fff;border-radius:10px;overflow:hidden">
+
+      <!-- Header -->
+      <tr><td style="padding:24px 32px;background:#111;border-bottom:3px solid #2563eb">
+        ${logoUrl
+          ? `<img src="${logoUrl}" alt="${e(agencyName)}" style="height:34px;max-width:160px;object-fit:contain;display:block">`
+          : `<span style="font-family:Arial,sans-serif;font-size:20px;font-weight:800;color:#fff;letter-spacing:-0.5px">${e(agencyName)}</span>`}
+      </td></tr>
+
+      <!-- Hero -->
+      <tr><td style="padding:36px 32px 20px;background:#fff">
+        <h1 style="margin:0 0 10px;font-family:Arial,sans-serif;font-size:24px;font-weight:800;color:#111">Welkom, ${e(lead.contactName || lead.companyName)}!</h1>
+        <p style="margin:0;font-family:Arial,sans-serif;font-size:15px;line-height:1.7;color:#374151">
+          Fijn dat je voor ${e(agencyName)} hebt gekozen. We gaan samen de volgende stap zetten — hieronder vind je alles wat je nodig hebt om van start te gaan.
+        </p>
+      </td></tr>
+
+      <!-- Services chip list -->
+      ${serviceList.length ? `<tr><td style="padding:0 32px 24px">
+        <p style="margin:0 0 10px;font-family:Arial,sans-serif;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px">Jouw pakket</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">${serviceList.map(s => `<span style="display:inline-block;padding:5px 12px;background:#eff6ff;color:#1d4ed8;font-family:Arial,sans-serif;font-size:13px;font-weight:600;border-radius:99px">${e(s)}</span>`).join('')}</div>
+      </td></tr>` : ''}
+
+      <!-- Divider -->
+      <tr><td style="padding:0 32px"><div style="height:1px;background:#e5e7eb"></div></td></tr>
+
+      <!-- Step 1: Intake -->
+      ${intakeUrl ? `<tr><td style="padding:24px 32px 0">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="top" style="width:40px">
+              <div style="width:32px;height:32px;background:#2563eb;border-radius:50%;text-align:center;line-height:32px;font-family:Arial,sans-serif;font-size:14px;font-weight:800;color:#fff">1</div>
+            </td>
+            <td valign="top" style="padding-left:14px">
+              <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:15px;font-weight:700;color:#111">Vul de intake in <span style="font-size:12px;font-weight:600;color:#dc2626;background:#fef2f2;padding:2px 8px;border-radius:99px;margin-left:6px">Vereist</span></p>
+              <p style="margin:0 0 14px;font-family:Arial,sans-serif;font-size:14px;color:#6b7280;line-height:1.6">Zodat we precies weten wat je nodig hebt. Duurt ca. 5 minuten.</p>
+              <a href="${e(intakeUrl)}" style="display:inline-block;padding:12px 22px;background:#2563eb;color:#fff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;text-decoration:none;border-radius:8px">Intake invullen →</a>
+            </td>
+          </tr>
+        </table>
+      </td></tr>` : ''}
+
+      <!-- Step 2: Portal -->
+      <tr><td style="padding:24px 32px 0">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="top" style="width:40px">
+              <div style="width:32px;height:32px;background:#2563eb;border-radius:50%;text-align:center;line-height:32px;font-family:Arial,sans-serif;font-size:14px;font-weight:800;color:#fff">${intakeUrl ? '2' : '1'}</div>
+            </td>
+            <td valign="top" style="padding-left:14px">
+              <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:15px;font-weight:700;color:#111">Jouw persoonlijke klantportaal</p>
+              <p style="margin:0 0 14px;font-family:Arial,sans-serif;font-size:14px;color:#6b7280;line-height:1.6">Volg de voortgang van jouw project, bekijk leveringen en stel vragen — 24/7 beschikbaar.</p>
+              <a href="${e(portalUrl)}" style="display:inline-block;padding:12px 22px;background:#111;color:#fff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;text-decoration:none;border-radius:8px">Portaal openen →</a>
+              <p style="margin:8px 0 0;font-family:Arial,sans-serif;font-size:12px;color:#9ca3af">Bewaar deze link — je hebt hem altijd nodig.</p>
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <!-- Step 3: Calendly (optional) -->
+      ${settings.calendlyUrl ? `<tr><td style="padding:24px 32px 0">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="top" style="width:40px">
+              <div style="width:32px;height:32px;background:#2563eb;border-radius:50%;text-align:center;line-height:32px;font-family:Arial,sans-serif;font-size:14px;font-weight:800;color:#fff">${intakeUrl ? '3' : '2'}</div>
+            </td>
+            <td valign="top" style="padding-left:14px">
+              <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:15px;font-weight:700;color:#111">Plan een kennismakingsgesprek</p>
+              <p style="margin:0 0 14px;font-family:Arial,sans-serif;font-size:14px;color:#6b7280;line-height:1.6">Optioneel — even kennismaken kan altijd. Kies zelf een moment dat uitkomt.</p>
+              <a href="${e(settings.calendlyUrl)}" style="display:inline-block;padding:12px 22px;background:#006bff;color:#fff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;text-decoration:none;border-radius:8px">Plan een gratis gesprek →</a>
+            </td>
+          </tr>
+        </table>
+      </td></tr>` : ''}
+
+      <!-- Footer -->
+      <tr><td style="padding:32px 32px 28px">
+        <div style="height:1px;background:#e5e7eb;margin-bottom:24px"></div>
+        <p style="margin:0 0 2px;font-family:Arial,sans-serif;font-size:15px;font-weight:700;color:#111">${e(myName)}</p>
+        <p style="margin:0 0 10px;font-family:Arial,sans-serif;font-size:13px;color:#6b7280">${e(myTitle)} &middot; ${e(agencyName)}</p>
+        <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#9ca3af">Heb je vragen? Reageer op deze email of stuur een bericht via je portaal.</p>
+      </td></tr>
+
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>`;
+
+    await sendEmail({ to, subject: `Welkom bij ${agencyName} — jouw toegangslinks`, html, settings });
+    addLeadHistory(leads, lead.id, { event: 'welcomeEmailSent', label: `Welkomstmail verstuurd naar ${to}` });
     writeJSON('leads.json', leads);
-    console.log(`[WelcomeEmail] Verstuurd naar: "${to}" ✓`);
     res.json({ ok: true, to });
   } catch (err) {
     console.error('[WelcomeEmail] Fout:', err.message);
@@ -6186,36 +6338,101 @@ async function runFollowUpJob() {
         const fu1Prompt = lang === 'nl'
           ? `Schrijf een korte follow-up email. Geef JSON terug.
 
-Context: Stuurden ${lead.companyName} (${nicheCtx}, ${lead.location}) 2 dagen geleden een koude email. Origineel onderwerp: "${origSubj}". Nog geen reactie. Eerste opvolging.
-Afzender: ${myName} van ${agencyName}
-Seizoen: ${getSeasonalContext('nl').season}${_fuCalendly}
+Context: Stuurden ${lead.companyName} (${nicheCtx}, ${lead.location}) 2 dagen geleden een email. Origineel onderwerp: "${origSubj}". Nog geen reactie.
+Afzender: ${myName} van ${agencyName}${_fuCalendly}
+
+Structuur (volg dit exact):
+1. Open met: "Wilde dit even naar boven halen —"
+2. Dan: "en ik had nog iets gevonden over [specifiek probleem dat relevant is voor een ${nicheCtx} in ${lead.location}]."
+3. Voeg 1 zin concrete waarde toe: wat dit betekent voor hun bedrijf.
+4. Eindig met: "Zou u hier even 20 minuten voor hebben?"
 
 Regels:
-- Start exact met: "Wilde dit even naar boven halen -"
-- Noem in 1 zin iets specifieks over hun ${nicheCtx} in ${lead.location}
-- Max 50 woorden totaal
-- Eindig met 1 simpele vraag zoals "Past het komende week even?" of "Heb je 10 minuten?"
-- GEEN uitleg over je dienst, GEEN excuses voor de follow-up
-- Toon: snel getypt op telefoon, niet vanachter bureau
-- VERBODEN: "vrijblijvend", "innovatief", "ik hoop", "niet verplicht"
+- Max 80 woorden totaal
+- Persoonlijk en direct, geen salespitch
+- Verwijs NIET naar de vorige email
+- VERBODEN: "vrijblijvend", "innovatief", "ik hoop", "niet verplicht", "u leest dit misschien al"
 
-{"subject": "Re: ${origSubj || lead.companyName}", "body": "volledige email"}`
+{"subject": "Re: ${origSubj || lead.companyName}", "body": "volledige email tekst"}`
+
+          : lang === 'de'
+          ? `Schreibe eine kurze Follow-up-E-Mail. Gib JSON zurück.
+
+Kontext: Habe ${lead.companyName} (${nicheCtx}, ${lead.location}) vor 2 Tagen eine E-Mail gesendet. Betreff: "${origSubj}". Noch keine Antwort.
+Absender: ${myName} von ${agencyName}${_fuCalendly}
+
+Struktur (genau einhalten):
+1. Beginnen mit: "Ich wollte kurz nachfassen —"
+2. Dann: "und habe noch etwas Interessantes entdeckt bezüglich [spezifisches Problem für ${nicheCtx} in ${lead.location}]."
+3. Eine Zeile konkreter Mehrwert: was das für ihr Unternehmen bedeutet.
+4. Abschluss: "Hätten Sie kurz 20 Minuten dafür?"
+
+Regeln:
+- Max. 80 Wörter insgesamt
+- Persönlich und direkt, kein Verkaufsgespräch
+- NICHT auf die vorherige E-Mail verweisen
+- VERBOTEN: "unverbindlich", "innovativ", "ich hoffe", "kein Druck"
+
+{"subject": "Re: ${origSubj || lead.companyName}", "body": "vollständiger E-Mail-Text"}`
+
+          : lang === 'fr'
+          ? `Écris un court email de suivi. Retourne du JSON.
+
+Contexte: J'ai envoyé un email à ${lead.companyName} (${nicheCtx}, ${lead.location}) il y a 2 jours. Objet: "${origSubj}". Pas de réponse.
+Expéditeur: ${myName} de ${agencyName}${_fuCalendly}
+
+Structure (à suivre exactement):
+1. Commencer par: "Je voulais juste faire remonter ce message —"
+2. Puis: "et j'ai trouvé quelque chose d'intéressant concernant [problème spécifique pour un ${nicheCtx} à ${lead.location}]."
+3. Une phrase de valeur concrète: ce que cela représente pour leur activité.
+4. Terminer par: "Auriez-vous 20 minutes pour en discuter?"
+
+Règles:
+- Maximum 80 mots au total
+- Personnel et direct, pas de discours commercial
+- NE PAS faire référence à l'email précédent
+- INTERDIT: "sans engagement", "innovant", "j'espère", "sans pression"
+
+{"subject": "Re: ${origSubj || lead.companyName}", "body": "texte complet de l'email"}`
+
+          : lang === 'it'
+          ? `Scrivi una breve email di follow-up. Restituisci JSON.
+
+Contesto: Ho inviato un'email a ${lead.companyName} (${nicheCtx}, ${lead.location}) 2 giorni fa. Oggetto: "${origSubj}". Nessuna risposta.
+Mittente: ${myName} di ${agencyName}${_fuCalendly}
+
+Struttura (seguire esattamente):
+1. Iniziare con: "Volevo solo riprendere il discorso —"
+2. Poi: "e ho trovato qualcosa di interessante riguardo a [problema specifico per ${nicheCtx} a ${lead.location}]."
+3. Una frase di valore concreto: cosa significa per la loro attività.
+4. Terminare con: "Avrebbe 20 minuti per parlarne?"
+
+Regole:
+- Max 80 parole in totale
+- Personale e diretto, nessun discorso commerciale
+- NON fare riferimento all'email precedente
+- VIETATO: "senza impegno", "innovativo", "spero", "nessuna pressione"
+
+{"subject": "Re: ${origSubj || lead.companyName}", "body": "testo completo dell'email"}`
+
           : `Write a short follow-up email. Return JSON.
 
-Context: Sent ${lead.companyName} (${nicheCtx}, ${lead.location}) a cold email 2 days ago. Original subject: "${origSubj}". No reply yet. First follow-up.
-Sender: ${myName} from ${agencyName}
-Season: ${getSeasonalContext('en').season}${_fuCalendlyEN}
+Context: Sent ${lead.companyName} (${nicheCtx}, ${lead.location}) an email 2 days ago. Subject: "${origSubj}". No reply yet.
+Sender: ${myName} from ${agencyName}${_fuCalendlyEN}
+
+Structure (follow exactly):
+1. Open with: "Just following up on my email —"
+2. Then: "I found one more thing worth mentioning about [specific issue relevant to a ${nicheCtx} in ${lead.location}]."
+3. One line of concrete value: what this means for their business.
+4. Close with: "Worth a quick 20-minute call?"
 
 Rules:
-- Start exactly with: "Just bumping this up -"
-- Mention 1 specific thing about their ${nicheCtx} in ${lead.location}
-- Max 50 words total
-- End with 1 simple question like "Worth a quick chat this week?" or "Got 10 minutes?"
-- NO explanation of your service, NO apology for following up
-- Tone: typed quickly on a phone, not from behind a desk
-- BANNED: "no obligation", "innovative", "I hope", "just checking in"
+- Max 80 words total
+- Personal and direct, no sales pitch
+- Do NOT reference "the previous email" or apologise
+- BANNED: "no obligation", "innovative", "I hope", "just checking in", "at your convenience"
 
-{"subject": "Re: ${origSubj || lead.companyName}", "body": "full email"}`;
+{"subject": "Re: ${origSubj || lead.companyName}", "body": "full email text"}`;
 
         const email = await aiJSON(fu1Prompt);
         const item = {
@@ -6253,34 +6470,96 @@ Rules:
         const fu2Prompt = lang === 'nl'
           ? `Schrijf een heel korte laatste follow-up email. Geef JSON terug.
 
-Context: ${lead.companyName} (${nicheCtx}, ${lead.location}) heeft niet gereageerd op 2 eerdere emails. Dit is de laatste poging.
-Afzender: ${myName} van ${agencyName}
-Seizoen: ${getSeasonalContext('nl').season}${_fuCalendly}
+Context: ${lead.companyName} (${nicheCtx}, ${lead.location}) heeft niet gereageerd. Dit is het laatste bericht.
+Afzender: ${myName} van ${agencyName}${_fuCalendly}
+
+Structuur (volg dit exact):
+1. Open met: "Laatste berichtje van mijn kant —"
+2. Dan: "als de timing niet goed is helemaal geen probleem."
+3. Eindig met: "Mocht u ooit willen kijken wat er mogelijk is, ik sta klaar."
 
 Regels:
-- Start exact met: "Laatste berichtje -"
-- Max 40 woorden
-- Toon: luchtig, geen druk, deur openlaten
-- 1 specifieke referentie aan hun niche (${nicheCtx}) of locatie (${lead.location})
-- Sluit af met: "Succes in ieder geval — en mocht timing later beter uitkomen, weet je me te vinden."
-- VERBODEN: salesy taal, excuses, "vrijblijvend", "ik hoop"
+- Max 50 woorden totaal
+- Geen druk, geen salespitch, geen excuses
+- Persoonlijk en warm
+- VERBODEN: "vrijblijvend", "ik hoop", "laatste kans", "jammer"
 
-{"subject": "Laatste berichtje — ${lead.companyName}", "body": "volledige email"}`
+{"subject": "Re: ${origSubj || lead.companyName}", "body": "volledige email tekst"}`
+
+          : lang === 'de'
+          ? `Schreibe eine sehr kurze letzte Follow-up-E-Mail. Gib JSON zurück.
+
+Kontext: ${lead.companyName} (${nicheCtx}, ${lead.location}) hat nicht geantwortet. Dies ist die letzte Nachricht.
+Absender: ${myName} von ${agencyName}${_fuCalendly}
+
+Struktur (genau einhalten):
+1. Beginnen mit: "Meine letzte Nachricht —"
+2. Dann: "kein Problem, wenn der Zeitpunkt nicht passt."
+3. Abschluss: "Falls Sie sich irgendwann fragen, was möglich ist, bin ich hier."
+
+Regeln:
+- Max. 50 Wörter insgesamt
+- Kein Druck, keine Entschuldigung
+- Persönlich und warm
+- VERBOTEN: "unverbindlich", "letzte Chance", "ich hoffe"
+
+{"subject": "Re: ${origSubj || lead.companyName}", "body": "vollständiger E-Mail-Text"}`
+
+          : lang === 'fr'
+          ? `Écris un très court dernier email de suivi. Retourne du JSON.
+
+Contexte: ${lead.companyName} (${nicheCtx}, ${lead.location}) n'a pas répondu. C'est le dernier message.
+Expéditeur: ${myName} de ${agencyName}${_fuCalendly}
+
+Structure (à suivre exactement):
+1. Commencer par: "Mon dernier message —"
+2. Puis: "pas de problème si le moment n'est pas opportun."
+3. Terminer par: "Si jamais vous souhaitez explorer les possibilités, je suis là."
+
+Règles:
+- Maximum 50 mots au total
+- Aucune pression, aucune excuse
+- Personnel et chaleureux
+- INTERDIT: "sans engagement", "dernière chance", "j'espère"
+
+{"subject": "Re: ${origSubj || lead.companyName}", "body": "texte complet de l'email"}`
+
+          : lang === 'it'
+          ? `Scrivi un brevissimo ultimo email di follow-up. Restituisci JSON.
+
+Contesto: ${lead.companyName} (${nicheCtx}, ${lead.location}) non ha risposto. Questo è l'ultimo messaggio.
+Mittente: ${myName} di ${agencyName}${_fuCalendly}
+
+Struttura (seguire esattamente):
+1. Iniziare con: "Il mio ultimo messaggio —"
+2. Poi: "nessun problema se i tempi non sono giusti."
+3. Terminare con: "Se mai volesse esplorare le possibilità, sono qui."
+
+Regole:
+- Max 50 parole in totale
+- Nessuna pressione, nessuna scusa
+- Personale e caldo
+- VIETATO: "senza impegno", "ultima possibilità", "spero"
+
+{"subject": "Re: ${origSubj || lead.companyName}", "body": "testo completo dell'email"}`
+
           : `Write a very short final follow-up email. Return JSON.
 
-Context: ${lead.companyName} (${nicheCtx}, ${lead.location}) hasn't responded to 2 previous emails. This is the last attempt.
-Sender: ${myName} from ${agencyName}
-Season: ${getSeasonalContext('en').season}${_fuCalendlyEN}
+Context: ${lead.companyName} (${nicheCtx}, ${lead.location}) hasn't responded. This is the last message.
+Sender: ${myName} from ${agencyName}${_fuCalendlyEN}
+
+Structure (follow exactly):
+1. Open with: "Last message from me —"
+2. Then: "completely understand if the timing isn't right."
+3. Close with: "If you ever want to explore what's possible, I'm here."
 
 Rules:
-- Start exactly with: "Last message -"
-- Max 40 words
-- Tone: light, zero pressure, leave the door open
-- 1 specific reference to their niche (${nicheCtx}) or location (${lead.location})
-- Close with: "Good luck either way — and if timing ever works out, you know where to find me."
-- BANNED: salesy language, apologies, "no obligation", "I hope"
+- Max 50 words total
+- Zero pressure, no apology, no sales pitch
+- Personal and warm
+- BANNED: "no obligation", "last chance", "I hope", "just checking in"
 
-{"subject": "Last message — ${lead.companyName}", "body": "full email"}`;
+{"subject": "Re: ${origSubj || lead.companyName}", "body": "full email text"}`;
 
         const email = await aiJSON(fu2Prompt);
         const item = {
