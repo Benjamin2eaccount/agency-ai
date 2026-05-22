@@ -276,6 +276,8 @@
     }
 
     function renderForm(data) {
+      window._intakeQuestions = data.questions || [];
+
       const servicesHTML = data.services.length
         ? data.services.map(s => `<span class="service-badge">${s}</span>`).join('')
         : '';
@@ -320,14 +322,14 @@
           </form>
         </div>
 
-        <button class="submit-btn" id="submitBtn" onclick="submitIntake('${JSON.stringify(data.questions).replace(/'/g, "\\'")}')">
+        <button class="submit-btn" id="submitBtn" onclick="submitIntake()">
           <span id="submitText">Intake versturen</span>
           <div class="spinner" id="submitSpinner" style="display:none"></div>
         </button>`;
     }
 
-    async function submitIntake(questionsJSON) {
-      const questions = JSON.parse(questionsJSON);
+    async function submitIntake() {
+      const questions = window._intakeQuestions || [];
       const btn  = document.getElementById('submitBtn');
       const text = document.getElementById('submitText');
       const spin = document.getElementById('submitSpinner');
@@ -387,10 +389,10 @@
           <div class="success-icon">
             <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
-          <div class="success-title">Intake ontvangen!</div>
+          <div class="success-title">Bedankt!</div>
           <div class="success-sub">
-            Bedankt${company ? ' namens ' + company : ''}! We hebben je antwoorden ontvangen en gaan ermee aan de slag.<br><br>
-            Je hoort snel van ons.
+            We gaan direct aan de slag${company ? ' voor ' + company : ''}.<br><br>
+            U hoort binnen 24 uur van ons.
           </div>
         </div>`;
     }

@@ -195,7 +195,7 @@
 
     .svc-card {
       background: #fff; border: 1px solid #e8e8e5; border-radius: 8px;
-      padding: 16px; cursor: default;
+      padding: 16px; cursor: pointer;
       transition: transform .18s, box-shadow .18s, border-color .18s;
     }
     .svc-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.09); border-color: var(--indigo); }
@@ -630,12 +630,12 @@
           <label for="cService" data-i18n="form.service">Waar ben je naar op zoek?</label>
           <select id="cService">
             <option value="" data-i18n="form.svc0">Kies een optie...</option>
-            <option data-i18n="form.svc1">Website / Webshop</option>
-            <option data-i18n="form.svc2">Marketing &amp; Advertenties</option>
-            <option data-i18n="form.svc3">AI &amp; Automatisering</option>
-            <option data-i18n="form.svc4">Beveiliging</option>
-            <option data-i18n="form.svc5">SEO &amp; Vindbaarheid</option>
-            <option data-i18n="form.svc6">Meerdere diensten / Weet ik nog niet</option>
+            <option value="website" data-i18n="form.svc1">Website / Webshop</option>
+            <option value="marketing" data-i18n="form.svc2">Marketing &amp; Advertenties</option>
+            <option value="ai" data-i18n="form.svc3">AI &amp; Automatisering</option>
+            <option value="security" data-i18n="form.svc4">Beveiliging</option>
+            <option value="seo" data-i18n="form.svc5">SEO &amp; Vindbaarheid</option>
+            <option value="other" data-i18n="form.svc6">Meerdere diensten / Weet ik nog niet</option>
           </select>
         </div>
         <div class="form-group">
@@ -1253,6 +1253,25 @@ async function submitContact(e) {
       return 'marketing'; // default bucket
     }
 
+    // Map card category → contact select value
+    const catToSelectVal = {
+      marketing: 'marketing', content: 'marketing',
+      aitools: 'ai', automatisering: 'ai',
+      seo: 'seo'
+    };
+
+    function scrollToContactWithService(selectVal) {
+      const select = document.getElementById('cService');
+      if (select && selectVal) select.value = selectVal;
+      document.getElementById('contact').scrollIntoView({ behavior: 'smooth' });
+      // Briefly highlight the select
+      if (select) {
+        select.style.borderColor = 'var(--indigo)';
+        select.style.boxShadow = '0 0 0 3px rgba(99,102,241,.15)';
+        setTimeout(() => { select.style.borderColor = ''; select.style.boxShadow = ''; }, 1800);
+      }
+    }
+
     const monthly = services.filter(s => (s.billing || 'maandelijks') === 'maandelijks');
     const once    = services.filter(s => s.billing === 'eenmalig');
 
@@ -1261,7 +1280,8 @@ async function submitContact(e) {
     if (monthlyGrid) {
       monthlyGrid.innerHTML = monthly.map(s => {
         const cat = getCategory(s.name);
-        return `<div class="svc-card visible" data-cat="${cat}">
+        const selectVal = catToSelectVal[cat] || 'marketing';
+        return `<div class="svc-card visible" data-cat="${cat}" data-selectval="${selectVal}" onclick="scrollToContactWithService(this.dataset.selectval)">
           <div class="svc-card-icon">${getIcon(s.name)}</div>
           <div class="svc-card-name">${s.name}</div>
           <div class="svc-card-desc">${s.description || ''}</div>
@@ -1316,7 +1336,7 @@ async function submitContact(e) {
           <div class="once-group-title">${groupName}</div>
           <div class="once-grid">
             ${groupItems.map(s => `
-              <div class="svc-card">
+              <div class="svc-card" onclick="scrollToContactWithService('website')">
                 <div class="svc-card-icon">${getIcon(s.name)}</div>
                 <div class="svc-card-name">${s.name}</div>
                 <div class="svc-card-desc">${s.description || ''}</div>

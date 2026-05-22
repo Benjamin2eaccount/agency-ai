@@ -3532,18 +3532,21 @@ app.post('/api/leads/:id/agent-chat', requireAdmin, async (req, res) => {
   try {
     if (action === 'build') {
       const PREAMBLE = `You are an expert HTML developer.
-Build a complete, fully functional HTML page.
 
-CRITICAL RULES:
-- Return ONLY raw HTML
-- Start response with: <!DOCTYPE html>
-- End response with: </html>
-- NEVER use markdown or backticks
-- The <body> MUST contain all visible content
-- Minimum 500 words of visible content in <body>
-- All CSS in <style> tag in <head>
-- All JS in <script> tag before </body>
+TASK: Build a complete, fully working HTML page.
+
+CRITICAL:
+- Your ENTIRE response must be raw HTML
+- Start with: <!DOCTYPE html>
+- End with: </html>
+- Do NOT use markdown or backticks
+- The <body> tag MUST contain ALL visible content
+- Minimum 50 lines of content in <body>
+- All CSS in <style> tag inside <head>
+- All JavaScript in <script> tag before </body>
 - No external dependencies except Google Fonts
+
+Remember: Start your response with <!DOCTYPE html> and fill the body with complete, working content.
 
 `;
       const msgLower = (message || '').toLowerCase();
@@ -3893,14 +3896,23 @@ async function extractWebsiteStyle(websiteUrl) {
   }
 }
 
-const BUILD_HTML_RULES = `
-CRITICAL RULES — follow exactly:
-- Return ONLY raw HTML. No markdown, no backticks, no explanations.
-- First character of response must be < (start with <!DOCTYPE html>)
-- Last line must be </html>
-- The <body> MUST contain ALL visible content — minimum 500 words
-- All CSS in <style> in <head>. All JS in <script> before </body>.
+const BUILD_HTML_RULES = `You are an expert HTML developer.
+
+TASK: Build a complete, fully working HTML page.
+
+CRITICAL:
+- Your ENTIRE response must be raw HTML
+- Start with: <!DOCTYPE html>
+- End with: </html>
+- Do NOT use markdown or backticks
+- The <body> tag MUST contain ALL visible content
+- Minimum 50 lines of content in <body>
+- All CSS in <style> tag inside <head>
+- All JavaScript in <script> tag before </body>
 - No external dependencies except Google Fonts
+
+Remember: Start your response with <!DOCTYPE html> and fill the body with complete, working content.
+
 `;
 
 // ── Build all services for a lead (SSE) ──────────────────────────────────────
@@ -5265,10 +5277,16 @@ async function aiCall(prompt) {
 // Variant with 8000 max_tokens for HTML generation (pages get cut off at 4000)
 // Joins ALL content blocks — Claude sometimes splits a long response into multiple text blocks.
 async function aiCallBuild(prompt) {
+  console.log('[Build] Starting build...');
+  console.log('[Build] Prompt length:', prompt.length);
+  console.log('[Build] Prompt start:', prompt.substring(0, 200));
+
   aiRateCheck();
   const s = readJSON('settings.json') || {};
   const apiKey = getClaudeApiKey(s);
+  console.log('[Build] API key exists:', !!apiKey);
   if (!apiKey) throw new Error('Claude API sleutel niet ingesteld.');
+
   const { default: fetch } = await import('node-fetch');
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -5284,8 +5302,23 @@ async function aiCallBuild(prompt) {
     })
   });
   const data = await res.json();
-  console.log('[aiCallBuild] stop_reason:', data.stop_reason, '| content blocks:', data.content?.length, '| usage:', JSON.stringify(data.usage));
-  if (!data.content) throw new Error(data.error?.message || 'Claude API fout');
+
+  console.log('[Build] Response received');
+  console.log('[Build] HTTP status:', res.status);
+  console.log('[Build] Stop reason:', data.stop_reason);
+  console.log('[Build] Content blocks:', data.content?.length);
+  console.log('[Build] Usage:', JSON.stringify(data.usage));
+
+  if (!data.content) {
+    console.error('[Build] No content in response. Error:', JSON.stringify(data.error));
+    throw new Error(data.error?.message || 'Claude API fout');
+  }
+
+  data.content.forEach((block, i) => {
+    console.log(`[Build] Block ${i}: type=${block.type} length=${block.text?.length || 0}`);
+    if (block.text) console.log(`[Build] Block ${i} start:`, block.text.substring(0, 200));
+  });
+
   const usage = data.usage || {};
   const tokIn  = usage.input_tokens  || 0;
   const tokOut = usage.output_tokens || 0;
@@ -5299,38 +5332,50 @@ async function aiCallBuild(prompt) {
   statsNow.totalApiTokensOut = (statsNow.totalApiTokensOut || 0) + tokOut;
   statsNow.totalApiCostUsd   = Math.round(((statsNow.totalApiCostUsd || 0) + callCost) * 10000) / 10000;
   writeJSON('stats.json', statsNow);
+
   // Join ALL text blocks — critical: a single [0].text drops content when Claude splits the response
   let fullText = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
-  console.log('[aiCallBuild] raw length:', fullText.length, '| first 300:', fullText.substring(0, 300));
+  console.log('[Build] Total HTML length:', fullText.length);
+  console.log('[Build] HTML start:', fullText.substring(0, 300));
 
-  // FIX 2 — Strip markdown code fences
-  fullText = fullText
+  // Strip markdown code fences
+  let clean = fullText
     .replace(/^```html\s*/i, '')
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();
 
+  console.log('[Build] After strip length:', clean.length);
+  console.log('[Build] Starts with DOCTYPE:', clean.startsWith('<!DOCTYPE') || clean.startsWith('<html') || clean.startsWith('<HTML'));
+
   // Extract valid HTML block if prefixed with explanation text
-  if (!fullText.startsWith('<!DOCTYPE') && !fullText.startsWith('<html') && !fullText.startsWith('<HTML')) {
-    const match = fullText.match(/<!DOCTYPE[\s\S]*<\/html>/i);
+  if (!clean.startsWith('<!DOCTYPE') && !clean.startsWith('<html') && !clean.startsWith('<HTML')) {
+    const match = clean.match(/<!DOCTYPE[\s\S]*<\/html>/i);
     if (match) {
-      fullText = match[0];
+      clean = match[0];
+      console.log('[Build] Extracted HTML from text, length:', clean.length);
     } else {
-      console.error('[aiCallBuild] No valid HTML found. Raw (500):', fullText.substring(0, 500));
+      console.error('[Build] No valid HTML found. Raw (500):', clean.substring(0, 500));
       throw new Error('Geen geldige HTML in response');
     }
   }
 
-  // FIX 3 — Validate body has real content
-  const bodyMatch = fullText.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  // Validate body has real content
+  const bodyMatch = clean.match(/<body[^>]*>([\s\S]*)<\/body>/i);
   const bodyContent = bodyMatch?.[1]?.trim() || '';
-  console.log('[aiCallBuild] body length:', bodyContent.length);
-  if (bodyContent.length < 200) {
-    console.error('[aiCallBuild] Empty/thin body. Body (200):', bodyContent.substring(0, 200));
-    throw new Error('Gegenereerde HTML heeft lege body — probeer opnieuw');
+  console.log('[Build] Body length:', bodyContent.length);
+  console.log('[Build] Body start:', bodyContent.substring(0, 200) || 'EMPTY');
+
+  if (!bodyContent || bodyContent.length < 200) {
+    console.error('[Build] Empty/thin body detected!');
+    console.error('[Build] Full HTML length was:', clean.length);
+    console.error('[Build] stop_reason was:', data.stop_reason);
+    throw new Error(
+      `Lege body na build. HTML length: ${clean.length}, Body length: ${bodyContent.length}, stop_reason: ${data.stop_reason}`
+    );
   }
 
-  return fullText;
+  return clean;
 }
 
 async function aiJSON(prompt) {
@@ -5589,11 +5634,14 @@ async function processOneLead(lead, settings, options = {}) {
       return null;
     }
   } else {
-    // DNS MX check — only reject on empty array, allow on DNS errors
+    // DNS MX check — only reject on empty array, allow on DNS errors or timeout
     const emailDomain = rawEmail.split('@')[1];
     console.log(`  [Agent 2] Email verifiëren: ${rawEmail}`);
     try {
-      const mx = await dnsPromises.resolveMx(emailDomain);
+      const mx = await Promise.race([
+        dnsPromises.resolveMx(emailDomain),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('DNS timeout')), 3000))
+      ]);
       if (mx && mx.length > 0) {
         contactEmail  = rawEmail;
         emailVerified = true;
@@ -5608,10 +5656,10 @@ async function processOneLead(lead, settings, options = {}) {
         }
       }
     } catch (mxErr) {
-      // DNS error (Railway network issue) → allow the email
+      // DNS error or timeout (Railway network issue) → allow the email
       contactEmail  = rawEmail;
       emailVerified = false;
-      console.log(`  [Agent 2] MX check: ${emailDomain} → DNS fout (${mxErr.code || mxErr.message}), email toegestaan`);
+      console.log(`  [Agent 2] MX check: ${emailDomain} → ${mxErr.message === 'DNS timeout' ? 'timeout (3s)' : 'DNS fout (' + (mxErr.code || mxErr.message) + ')'}, email toegestaan`);
     }
   }
 
@@ -6322,8 +6370,8 @@ Example format:
     attempts += Math.max(batchSize, freshBatch.length);
     console.log(`[Agent 1] ${freshBatch.length} nieuwe bedrijven in batch (attempts: ${attempts}/${maxAttempts})`);
 
-    // Early-exit: if 20+ companies checked with 0 leads found, email scraper is likely broken
-    if (attempts >= 20 && found === 0) {
+    // Early-exit: if 25+ companies checked with 0 leads found, email scraper is likely broken
+    if (attempts >= 25 && found === 0) {
       const errMsg = 'Email scraper lijkt niet te werken. Controleer de Railway logs op [Agent2] berichten.';
       console.error(`[Run] GESTOPT: ${errMsg}`);
       logError('scraper', errMsg, `${attempts} bedrijven gecontroleerd, 0 emails gevonden`);
