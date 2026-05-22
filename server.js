@@ -8968,13 +8968,40 @@ app.get('*', (req, res) => {
 
 pgInitPromise.then(() => {
   const server = app.listen(PORT, () => {
-    console.log(`\nAgency AI draait op http://localhost:${PORT}`);
-    console.log(`Data directory: ${DATA_DIR}`);
-    if (!process.env.CLAUDE_API_KEY || process.env.CLAUDE_API_KEY === 'your_anthropic_api_key_here') {
-      console.warn('⚠️  CLAUDE_API_KEY niet ingesteld — voeg toe aan .env');
-    }
-    console.log('\nAgency AI klaar voor deployment');
-    console.log('Ga naar railway.app om online te zetten\n');
+    const s = readJSON('settings.json') || {};
+    const runTime      = s.dailyRunTime      || '09:00';
+    const briefingTime = s.dailyBriefingTime || '08:45';
+    const backupTime   = s.backupTime        || '02:00';
+    const hasClaudeKey = !!(process.env.CLAUDE_API_KEY && process.env.CLAUDE_API_KEY !== 'your_anthropic_api_key_here');
+    const gmailOk      = isGmailReady(s);
+    const pgOk         = !!process.env.DATABASE_URL;
+
+    console.log('');
+    console.log('╔══════════════════════════════════════════════════╗');
+    console.log('║              Agency AI — gestart                 ║');
+    console.log('╠══════════════════════════════════════════════════╣');
+    console.log(`║  URL      : http://localhost:${PORT}${' '.repeat(Math.max(0, 19 - String(PORT).length))}║`);
+    console.log(`║  Data     : ${DATA_DIR.slice(-36).padEnd(36)} ║`);
+    console.log('╠══════════════════════════════════════════════════╣');
+    console.log(`║  Claude   : ${hasClaudeKey ? '✓ API key ingesteld    ' : '✗ ONTBREEKT — stel in '}           ║`);
+    console.log(`║  Gmail    : ${gmailOk      ? '✓ Geconfigureerd       ' : '✗ Niet ingesteld       '}           ║`);
+    console.log(`║  Database : ${pgOk         ? '✓ PostgreSQL (Railway) ' : '✓ SQLite (lokaal)      '}           ║`);
+    console.log('╠══════════════════════════════════════════════════╣');
+    console.log('║  Actieve cron jobs:                              ║');
+    console.log(`║  • Dagelijkse run        : ${runTime} dagelijks        ║`);
+    console.log(`║  • Briefing email        : ${briefingTime} dagelijks        ║`);
+    console.log(`║  • Follow-up check       : 10:00 dagelijks        ║`);
+    console.log(`║  • Upsell check          : 11:00 dagelijks        ║`);
+    console.log(`║  • Referral check        : 12:00 dagelijks        ║`);
+    console.log(`║  • Reply detectie        : elke 2 uur             ║`);
+    console.log(`║  • Geplande emails       : elke minuut            ║`);
+    console.log(`║  • Weekupdates klanten   : vr 16:00               ║`);
+    console.log(`║  • Maandrapporten        : 1e vd maand 09:00      ║`);
+    console.log(`║  • Auto-factuur/herinner : 09:00 dagelijks        ║`);
+    console.log(`║  • Backup                : ${backupTime} dagelijks        ║`);
+    console.log('╚══════════════════════════════════════════════════╝');
+    console.log('');
+
     // Run a reply check shortly after startup so any replies that arrived during downtime are detected immediately
     setTimeout(() => {
       console.log('[Startup] Directe reply check uitvoeren...');
