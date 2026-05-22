@@ -2001,7 +2001,18 @@ app.patch('/api/leads/:id/tasks/:taskId', async (req, res) => {
   const leads = readJSON('leads.json') || [];
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
-  const tIdx = (leads[idx].tasks || []).findIndex(t => t.id === req.params.taskId);
+  let tIdx = (leads[idx].tasks || []).findIndex(t => t.id === req.params.taskId);
+  // Legacy fallback: tasks created before IDs were assigned — try numeric index
+  if (tIdx === -1 && /^\d+$/.test(req.params.taskId)) {
+    const numIdx = parseInt(req.params.taskId);
+    if (numIdx >= 0 && numIdx < (leads[idx].tasks || []).length) {
+      tIdx = numIdx;
+      // Assign a real ID now so future calls use it
+      if (!leads[idx].tasks[tIdx].id) {
+        leads[idx].tasks[tIdx].id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+      }
+    }
+  }
   if (tIdx === -1) return res.status(404).json({ error: 'Taak niet gevonden' });
   leads[idx].tasks[tIdx] = { ...leads[idx].tasks[tIdx], ...req.body };
   if (req.body.status === 'klaar' && !leads[idx].tasks[tIdx].doneAt) leads[idx].tasks[tIdx].doneAt = new Date().toISOString();
@@ -2174,7 +2185,13 @@ Antwoord ALLEEN als JSON: { "tasks": [{ "title": "string", "description": "strin
     lead.projectPlan = projectPlan;
     lead.contentCalendar = contentCalendar;
     lead.onboardingScript = onboardingScript || null;
-    lead.tasks = tasks?.tasks || [];
+    lead.tasks = (tasks?.tasks || []).map(t => ({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      ...t,
+      week: t.week || 1,
+      status: t.status || 'todo',
+      createdAt: new Date().toISOString()
+    }));
     addLeadHistory(leads, lead.id, { event: 'projectStarted', label: 'Project gestart via Project Engine' });
     writeJSON('leads.json', leads);
     send(9, 'Status bijwerken naar klant', 'done');

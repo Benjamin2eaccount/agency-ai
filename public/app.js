@@ -2935,6 +2935,12 @@ async function renderProjectPage() {
             </button>
           </div>
           <div class="agent-chat-history" id="agentChatHistory"></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+            <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="fillAgentChat('${esc(lead.id)}','actieplan')">📋 Actieplan</button>
+            <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="fillAgentChat('${esc(lead.id)}','build-website')">💻 Website</button>
+            <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="fillAgentChat('${esc(lead.id)}','build-booking')">📅 Booking</button>
+            <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="fillAgentChat('${esc(lead.id)}','build-chatbot')">🤖 Chatbot</button>
+          </div>
           <div class="agent-chat-input">
             <textarea id="agentChatMsg" placeholder="Beschrijf wat je wilt bouwen of vraag een actieplan..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAgentChat('${esc(lead.id)}');}"></textarea>
             <button class="btn btn-primary btn-sm" onclick="sendAgentChat('${esc(lead.id)}')"><i class="ti ti-send"></i></button>
@@ -3045,7 +3051,7 @@ async function renderProjectPage() {
         <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Handmatige checklist</div>
         ${checklistTasks.length
           ? checklistTasks.map(t => {
-              const tid = t.id || t._id;
+              const tid = t.id || t._id || String(tasks.indexOf(t));
               const done = t.status === 'klaar';
               return `<label style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);cursor:pointer">
                 <input type="checkbox" ${done?'checked':''} onchange="toggleProjectTask('${esc(lead.id)}','${esc(tid)}',this.checked)" style="width:14px;height:14px;accent-color:var(--accent);flex-shrink:0">
@@ -3890,6 +3896,30 @@ window.selectProblemCard = async function(idx, leadId) {
   }
 
   renderAgentChatHistory(leadId, idx);
+
+  // Auto-trigger first analysis when chat is empty for this problem
+  if (txt && (!window._agentChats[leadId][idx] || window._agentChats[leadId][idx].length === 0)) {
+    const msgEl = document.getElementById('agentChatMsg');
+    if (msgEl) {
+      const co = lead.companyName || 'het bedrijf';
+      msgEl.value = `Analyseer dit probleem voor ${co} en geef een concreet actieplan met concrete stappen: ${txt}`;
+      sendAgentChat(leadId);
+    }
+  }
+};
+
+window.fillAgentChat = function(leadId, type) {
+  const lead = state.leads.find(l => l.id === leadId);
+  const prob = window._selectedProblemType || '';
+  const co = lead?.companyName || 'het bedrijf';
+  const msgs = {
+    'actieplan': `Analyseer dit probleem voor ${co} en geef een concreet actieplan met 5 stappen: ${prob}`,
+    'build-website': `Bouw een professionele landingspagina voor ${co} die dit probleem oplost: ${prob}`,
+    'build-booking': `Bouw een volledig booking/afspraken systeem voor ${co}`,
+    'build-chatbot': `Bouw een AI FAQ chatbot voor ${co} die bezoekers helpt`
+  };
+  const msgEl = document.getElementById('agentChatMsg');
+  if (msgEl) { msgEl.value = msgs[type] || ''; msgEl.focus(); }
 };
 
 window.switchProblemSubTab = function(leadId, tab) {
