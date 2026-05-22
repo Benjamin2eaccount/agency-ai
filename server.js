@@ -1441,7 +1441,7 @@ app.post('/api/booking/:client', async (req, res) => {
   addNotification('contact_form', `Nieuwe boeking: ${naam}`, `${bedrijf ? bedrijf + ' — ' : ''}${service} op ${date} ${time}`, null, 'contacts');
 
   const settings = readJSON('settings.json') || {};
-  if (settings.resendApiKey || process.env.RESEND_API_KEY) {
+  if (isGmailReady(settings)) {
     try {
       await sendEmail({
         to: email,
