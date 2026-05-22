@@ -6178,7 +6178,7 @@ async function runFindLeadsJob(overrides = {}) {
   }
 
   const count      = overrides.count      || settings.leadsPerDay || 15;
-  const services   = settings.services   || [];
+  const services   = settings.services   || DEFAULT_SERVICES;
   const myName     = settings.myName     || 'Ekow';
   const agencyName = settings.agencyName || 'Agency AI';
   console.log('[Run] Target leads:', count, '| Services:', services.length, '| myName:', myName);
