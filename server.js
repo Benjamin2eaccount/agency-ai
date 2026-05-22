@@ -3876,6 +3876,16 @@ async function extractWebsiteStyle(websiteUrl) {
   }
 }
 
+const BUILD_HTML_RULES = `
+CRITICAL RULES — follow exactly:
+- Return ONLY raw HTML. No markdown, no backticks, no explanations.
+- First character of response must be < (start with <!DOCTYPE html>)
+- Last line must be </html>
+- The <body> MUST contain ALL visible content — minimum 500 words
+- All CSS in <style> in <head>. All JS in <script> before </body>.
+- No external dependencies except Google Fonts
+`;
+
 // ── Build all services for a lead (SSE) ──────────────────────────────────────
 app.post('/api/leads/:id/build-all-services', requireAdmin, async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -3956,28 +3966,28 @@ Website: ${lead.websiteUrl || ''}`;
           const isBooking = /booking|reserv|afspra|agenda/i.test(svc.name);
           let prompt;
           if (isBooking) {
-            prompt = `Build a complete HTML booking page for ${lead.companyName} in ${lead.location || ''}.
+            prompt = `${BUILD_HTML_RULES}Build a complete HTML booking page for ${lead.companyName} in ${lead.location || ''}.
 ${intakeContext}${styleLine}
 
-MUST include: header with company name, service selection cards, Mon-Fri calendar (past days disabled), time slot picker (09:00-17:00), contact form (naam/email/tel), submit with loading state, success screen.
+MUST include in <body>: header with company name, service selection cards, Mon-Fri calendar (past days disabled), time slot picker (09:00-17:00), contact form (naam/email/tel), submit with loading state, success screen.
 Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile responsive.`;
           } else if (/chatbot|faq.*assistent|kennisbank/i.test(svc.name)) {
-            prompt = `Build a complete HTML chatbot / FAQ assistant page for ${lead.companyName}.
+            prompt = `${BUILD_HTML_RULES}Build a complete HTML chatbot / FAQ assistant page for ${lead.companyName}.
 ${intakeContext}${styleLine}
 
-MUST include: clean chat interface, 15+ pre-programmed Q&A pairs relevant to their niche (${lead.niche || ''}), floating chat widget with open/close, message bubbles, typing indicator, lead capture form when user asks to contact.
+MUST include in <body>: clean chat interface, 15+ pre-programmed Q&A pairs relevant to their niche (${lead.niche || ''}), floating chat widget with open/close, message bubbles, typing indicator, lead capture form when user asks to contact.
 Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile responsive.`;
           } else if (/dashboard/i.test(svc.name)) {
-            prompt = `Build a complete HTML analytics dashboard for ${lead.companyName}.
+            prompt = `${BUILD_HTML_RULES}Build a complete HTML analytics dashboard for ${lead.companyName}.
 ${intakeContext}${styleLine}
 
-MUST include: KPI cards (revenue, visitors, conversions, engagement), chart placeholders with realistic demo data, sidebar nav, date filter, data table, responsive grid layout.
+MUST include in <body>: KPI cards (revenue, visitors, conversions, engagement), chart placeholders with realistic demo data, sidebar nav, date filter, data table, responsive grid layout.
 Style: white bg, ${style.color} accent, ${style.font}, mobile responsive.`;
           } else {
-            prompt = `Build a complete HTML ${svc.name} page for ${lead.companyName}.
+            prompt = `${BUILD_HTML_RULES}Build a complete HTML ${svc.name} page for ${lead.companyName}.
 ${intakeContext}${styleLine}
 
-MUST include: professional header, rich body content relevant to ${svc.name}, interactive elements, clear CTA section, footer.
+MUST include in <body>: professional header, rich body content relevant to ${svc.name}, interactive elements, clear CTA section, footer.
 Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile responsive. Minimum 500 words visible content.`;
           }
 
