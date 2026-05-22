@@ -616,8 +616,26 @@
             </div>`).join('')}
         </div>` : '';
 
-      const leveringenHtml = (calHtml || faqHtml || msHtml || siteHtml || reportsHtml)
-        ? calHtml + faqHtml + msHtml + siteHtml + reportsHtml
+      // Approved agent deliverables
+      const approvedDelivs = data.approvedDeliverables || [];
+      const delivHtml = approvedDelivs.length > 0 ? `
+        <div class="inner-section">
+          <div class="inner-label">Gebouwde leveringen</div>
+          ${approvedDelivs.map(d => {
+            const typeIcon = d.type === 'code' ? '💻' : d.deliverableType === 'strategy' ? '📊' : '📄';
+            const typeLabel = d.type === 'code' ? 'Interactieve pagina' : d.deliverableType === 'strategy' ? 'Strategiedocument' : 'Document';
+            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;background:#f9fafb">
+              <div>
+                <div style="font-size:13px;font-weight:600;color:#111">${typeIcon} ${(d.service||'').replace(/</g,'&lt;')}</div>
+                <div style="font-size:11px;color:#6b7280">${typeLabel} · Goedgekeurd</div>
+              </div>
+              ${d.url ? `<a href="${d.url.replace(/"/g,'&quot;')}" target="_blank" style="font-size:12px;background:#6366f1;color:#fff;padding:6px 14px;border-radius:6px;text-decoration:none">Bekijken →</a>` : ''}
+            </div>`;
+          }).join('')}
+        </div>` : '';
+
+      const leveringenHtml = (delivHtml || calHtml || faqHtml || msHtml || siteHtml || reportsHtml)
+        ? delivHtml + calHtml + faqHtml + msHtml + siteHtml + reportsHtml
         : `<div class="empty-state">
              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
              <p>Nog geen leveringen beschikbaar</p>

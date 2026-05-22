@@ -1238,7 +1238,10 @@ app.get('/api/portal/:token', (req, res) => {
     onboardingScript:    lead.onboardingScript || null,
     analytics:           lead.analytics || null,
     portalChat:          lead.portalChat || [],
-    documents:           (lead.documents || []).filter(d => d.visible !== false)
+    documents:           (lead.documents || []).filter(d => d.visible !== false),
+    approvedDeliverables: (lead.agentDeliverables || [])
+      .filter(d => d.status === 'approved')
+      .map(d => ({ service: d.service, type: d.type, deliverableType: d.deliverableType, url: d.url, approvedAt: d.approvedAt }))
   });
 });
 
@@ -3888,7 +3891,15 @@ app.post('/api/leads/:id/build-all-services', requireAdmin, async (req, res) => 
     const li       = leads.findIndex(l => l.id === req.params.id);
     if (li === -1) { sse({ type: 'error', service: '', message: 'Lead niet gevonden' }); res.end(); return; }
     const lead     = leads[li];
-    const services = (req.body?.services?.length ? req.body.services : lead.services) || [];
+    // Support: explicit services array, serviceNames string array (for single retry), or all lead.services
+    let services = lead.services || [];
+    if (req.body?.services?.length) {
+      services = req.body.services;
+    } else if (req.body?.serviceNames?.length) {
+      const names = req.body.serviceNames;
+      services = (lead.services || []).filter(s => names.includes(typeof s === 'string' ? s : s.name));
+      if (!services.length) services = names.map(n => ({ name: n }));
+    }
     if (!services.length) { sse({ type: 'error', service: '', message: 'Geen diensten ingesteld op dit project' }); res.end(); return; }
 
     const BASE = process.env.BASE_URL || 'http://localhost:3000';
@@ -3898,8 +3909,22 @@ app.post('/api/leads/:id/build-all-services', requireAdmin, async (req, res) => 
     // Build intake context from all available intake fields
     const intakeRaw = { ...(lead.intakeAnswers || {}), ...(lead.intakeData || {}) };
     const intakeContext = Object.keys(intakeRaw).length
-      ? `\n\nClient intake information:\nCompany: ${lead.companyName}\nLocation: ${lead.location || ''}\n${Object.entries(intakeRaw).map(([k, v]) => `${k}: ${v}`).join('\n')}`
-      : `\n\nClient: ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''})`;
+      ? `\n\nKLANT INFORMATIE (gebruik dit in alles):
+Bedrijf: ${lead.companyName}
+Locatie: ${lead.location || ''}
+Niche: ${lead.niche || ''}
+Website: ${lead.websiteUrl || ''}
+Contact: ${intakeRaw.contactNaam || intakeRaw.naam || ''}
+Startdatum: ${intakeRaw.startDatum || intakeRaw.startdatum || ''}
+Wensen: ${intakeRaw.opmerkingen || intakeRaw.wensen || intakeRaw.notities || ''}
+Taal: ${lead.language === 'nl' || !lead.language ? 'Nederlands' : 'Engels'}
+Volledige intake:
+${Object.entries(intakeRaw).map(([k, v]) => `  ${k}: ${v}`).join('\n')}`
+      : `\n\nKLANT INFORMATIE:
+Bedrijf: ${lead.companyName}
+Locatie: ${lead.location || ''}
+Niche: ${lead.niche || ''}
+Website: ${lead.websiteUrl || ''}`;
 
     // Extract website style for brand-matching
     const style = await extractWebsiteStyle(lead.websiteUrl);

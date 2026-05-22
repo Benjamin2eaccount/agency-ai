@@ -3416,6 +3416,11 @@ async function renderProjectPage() {
           <button class="btn btn-ghost btn-sm" onclick="toggleDeliverableChat('${esc(lead.id)}',${i})"><i class="ti ti-message"></i> Aanpassen</button>
         </div>` : '';
 
+      const errorActions = d.status === 'error' && isAdmin() ? `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+          <button class="btn btn-sm" style="background:var(--danger);color:#fff" onclick="retryBuildService('${esc(lead.id)}','${esc(d.service)}')"><i class="ti ti-refresh"></i> Probeer opnieuw</button>
+        </div>` : '';
+
       const chatPanel = isAdmin() ? `
         <div id="delivChat-${lead.id}-${i}" style="display:none;margin-top:12px;padding:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px">
           <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px"><i class="ti ti-robot" style="margin-right:4px"></i>Aanpassen via AI</div>
@@ -3436,6 +3441,7 @@ async function renderProjectPage() {
         </div>
         ${preview}
         ${actions}
+        ${errorActions}
         ${chatPanel}
         ${d.approvedAt ? `<div style="font-size:11px;color:var(--text-muted);margin-top:8px">Goedgekeurd op ${formatDate(d.approvedAt)}</div>` : ''}
       </div>`;
@@ -4316,6 +4322,121 @@ window.buildAllServicesForLead = async function(leadId) {
             window._buildAllRunning[leadId] = false;
             delete window._buildAllProgress[leadId];
             toast(d.message || 'Fout bij bouwen', 'error');
+            renderProjectPage().then(() => switchProjectTab('agents'));
+          }
+        } catch {}
+      });
+      pump();
+    }).catch(err => {
+      window._buildAllRunning[leadId] = false;
+      delete window._buildAllProgress[leadId];
+      toast('Verbindingsfout: ' + err.message, 'error');
+    });
+
+    pump();
+  } catch (err) {
+    window._buildAllRunning[leadId] = false;
+    delete window._buildAllProgress[leadId];
+    toast('Fout: ' + err.message, 'error');
+    renderProjectPage().then(() => switchProjectTab('agents'));
+  }
+};
+
+window.retryBuildService = async function(leadId, serviceName) {
+  window._buildAllRunning = window._buildAllRunning || {};
+  window._buildAllProgress = window._buildAllProgress || {};
+
+  if (window._buildAllRunning[leadId]) { toast('Al bezig met bouwen...', 'warning'); return; }
+  window._buildAllRunning[leadId] = true;
+
+  const existing = window._buildAllProgress[leadId] || [];
+  const item = existing.find(p => p.service === serviceName);
+  if (item) Object.assign(item, { status: 'waiting', percent: 0 });
+  else existing.push({ service: serviceName, status: 'waiting', percent: 0 });
+  window._buildAllProgress[leadId] = existing;
+
+  await renderProjectPage();
+  switchProjectTab('agents');
+
+  const updateCard = (svc, updates) => {
+    const prog = window._buildAllProgress[leadId];
+    if (!prog) return;
+    const it = prog.find(p => p.service === svc);
+    if (it) Object.assign(it, updates);
+    const slug = svc.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const card = document.getElementById(`build-card-${leadId}-${slug}`);
+    if (!card) return;
+    const statusEl = card.querySelector('.build-status');
+    const progressBar = card.querySelector('.build-progress-bar');
+    const progressWrap = card.querySelector('.build-progress-wrap');
+    if (statusEl) {
+      if (updates.status === 'building') {
+        statusEl.innerHTML = `<span style="font-size:12px;color:var(--accent)"><i class="ti ti-loader-2 spin"></i> Bezig...</span>`;
+        card.style.borderColor = 'var(--accent)';
+      } else if (updates.status === 'done') {
+        statusEl.innerHTML = `<span style="font-size:12px;color:var(--success)"><i class="ti ti-check"></i> Klaar ✓</span>`;
+        card.style.borderColor = 'var(--success)';
+        if (progressWrap) progressWrap.style.display = 'none';
+      } else if (updates.status === 'error') {
+        statusEl.innerHTML = `<span style="font-size:12px;color:var(--danger)"><i class="ti ti-x"></i> Mislukt ✗</span>`;
+        card.style.borderColor = 'var(--danger)';
+        if (progressWrap) progressWrap.style.display = 'none';
+      }
+    }
+    if (progressBar && typeof updates.percent === 'number') {
+      progressBar.style.width = updates.percent + '%';
+      if (progressWrap && updates.status === 'building') progressWrap.style.display = '';
+    }
+  };
+
+  try {
+    const res = await fetch(`/api/leads/${leadId}/build-all-services`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('agencyToken')}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ serviceNames: [serviceName] })
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `HTTP ${res.status}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    const pump = () => reader.read().then(({ done, value }) => {
+      if (done) {
+        window._buildAllRunning[leadId] = false;
+        delete window._buildAllProgress[leadId];
+        renderProjectPage().then(() => switchProjectTab('agents'));
+        return;
+      }
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      parts.forEach(part => {
+        const line = part.trim();
+        if (!line.startsWith('data: ')) return;
+        try {
+          const d = JSON.parse(line.slice(6));
+          if (d.type === 'start') updateCard(d.service, { status: 'building', percent: 10 });
+          else if (d.type === 'progress') updateCard(d.service, { percent: d.percent });
+          else if (d.type === 'done') updateCard(d.service, { status: 'done', percent: 100 });
+          else if (d.type === 'all_done') {
+            window._buildAllRunning[leadId] = false;
+            delete window._buildAllProgress[leadId];
+            const l = state.leads.find(x => x.id === leadId);
+            if (l && d.deliverables) l.agentDeliverables = d.deliverables;
+            toast(`${serviceName} opnieuw gebouwd!`, 'success');
+            renderProjectPage().then(() => switchProjectTab('agents'));
+          } else if (d.type === 'error') {
+            window._buildAllRunning[leadId] = false;
+            delete window._buildAllProgress[leadId];
+            toast(d.message || `Fout bij ${serviceName}`, 'error');
             renderProjectPage().then(() => switchProjectTab('agents'));
           }
         } catch {}
