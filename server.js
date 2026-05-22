@@ -4895,7 +4895,8 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
 
     // Auto-send payment email to client
     const lead = leads[idx];
-    if (lead.email && isGmailReady(settings)) {
+    const payEmailTo = (lead.contactEmail || '').trim();
+    if (payEmailTo && isGmailReady(settings)) {
       try {
         let paymentInfo;
         if (effectiveMethod === 'bank_transfer' && bankDetails) {
@@ -4905,7 +4906,7 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
           paymentInfo = newPayments.map((p, i) => `${newPayments.length > 1 ? `Deel ${i+1}/${newPayments.length}: ` : ''}€${p.amount} → ${p.paymentUrl}`).join('\n');
         }
         await sendEmail({
-          to: lead.email,
+          to: payEmailTo,
           subject: `Factuur ${description || 'AI-diensten'} — ${settings.agencyName}`,
           body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder vind je de betaalinformatie voor ${description || 'onze diensten'}:\n\n${paymentInfo}\n\nHeb je vragen? Neem gerust contact op.\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`,
           settings
@@ -4955,7 +4956,8 @@ app.post('/api/leads/:id/payments/:payId/remind', requireAdmin, async (req, res)
   const pay = (leads[idx].payments || []).find(p => p.id === req.params.payId);
   if (!pay) return res.status(404).json({ error: 'Betaling niet gevonden' });
   const lead = leads[idx];
-  if (!lead.email) return res.status(400).json({ error: 'Geen e-mailadres bekend' });
+  const remindTo = (lead.contactEmail || '').trim();
+  if (!remindTo) return res.status(400).json({ error: 'Geen e-mailadres bekend' });
   if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet geconfigureerd' });
 
   try {
@@ -4965,7 +4967,7 @@ Bedrag: €${pay.amount}. Omschrijving: ${pay.description}. Betaallink: ${pay.pa
 Tone: professioneel maar begripvol. Max 150 woorden.
 Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`);
 
-    await sendEmail({ to: lead.email, subject: reminderEmail.subject, body: reminderEmail.body, settings });
+    await sendEmail({ to: remindTo, subject: reminderEmail.subject, body: reminderEmail.body, settings });
     // Log reminder
     if (!leads[idx].payments) return;
     const pIdx = leads[idx].payments.findIndex(p => p.id === req.params.payId);
