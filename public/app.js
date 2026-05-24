@@ -3181,6 +3181,22 @@ async function renderProjectPage() {
           <span style="font-size:14px;font-weight:500;flex:1">Handmatige email</span>
           <button class="btn btn-sm btn-outline" onclick="openManualEmailModal('${lead.id}')"><i class="ti ti-mail-plus"></i> Opstellen</button>
         </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:2px solid var(--accent);border-radius:10px;margin-bottom:8px;background:var(--accent-light)">
+          <i class="ti ti-package" style="color:var(--accent);font-size:18px;flex-shrink:0"></i>
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:600">Oplevering email</div>
+            <div style="font-size:12px;color:var(--text-muted)">AI genereert email met alles wat gebouwd is + instructies voor klant</div>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="generateDeliveryEmail('${lead.id}')"><i class="ti ti-sparkles"></i> Genereer & stuur</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface)">
+          <i class="ti ti-clipboard-list" style="color:var(--accent);font-size:18px;flex-shrink:0"></i>
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:500">Admin instructies</div>
+            <div style="font-size:12px;color:var(--text-muted)">Intern document: wat gebouwd is, links, wat klant moet doen</div>
+          </div>
+          <button class="btn btn-sm btn-outline" onclick="generateAdminInstructions('${lead.id}')"><i class="ti ti-file-text"></i> Genereer</button>
+        </div>
       </div>`;
 
     const historyRows = historyEmails.length
@@ -6565,6 +6581,113 @@ async function sendWeeklyUpdate(leadId) {
     toast(data?.error || 'Versturen mislukt', 'error');
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-mail-forward"></i> Weekupdate sturen'; }
   }
+}
+
+async function generateDeliveryEmail(leadId) {
+  const btn = document.querySelector(`button[onclick="generateDeliveryEmail('${leadId}')"]`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Genereren...'; }
+  const res  = await api(`/api/leads/${leadId}/generate-delivery-email`, { method: 'POST' });
+  const data = res ? await res.json() : {};
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Genereer & stuur'; }
+  if (!res?.ok) return toast(data?.error || 'Genereren mislukt', 'error');
+  openModal(`
+    <div class="modal-header">
+      <h3 class="modal-title">📦 Oplevering email</h3>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">Onderwerp</div>
+      <div id="delivSubject" style="font-size:14px;font-weight:600;padding:8px 12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">${esc(data.subject)}</div>
+    </div>
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">Email inhoud</div>
+      <div id="delivBodyView" style="font-size:13px;white-space:pre-wrap;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border);max-height:320px;overflow-y:auto">${esc(data.body)}</div>
+      <textarea id="delivBodyEdit" style="display:none;width:100%;min-height:240px;font-size:13px;padding:12px;border:1.5px solid var(--accent);border-radius:8px;font-family:inherit;resize:vertical"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-primary" style="flex:1" onclick="sendDeliveryEmail('${leadId}')"><i class="ti ti-send"></i> Verstuur naar klant</button>
+      <button class="btn btn-outline" onclick="toggleDeliveryEmailEdit()"><i class="ti ti-pencil"></i> Bewerken</button>
+      <button class="btn btn-ghost" onclick="copyToClipboard((document.getElementById('delivBodyEdit')?.style.display!=='none'?document.getElementById('delivBodyEdit')?.value:document.getElementById('delivBodyView')?.textContent)||'','Gekopieerd!')"><i class="ti ti-copy"></i></button>
+    </div>
+  `);
+}
+
+function toggleDeliveryEmailEdit() {
+  const view = document.getElementById('delivBodyView');
+  const edit = document.getElementById('delivBodyEdit');
+  if (!view || !edit) return;
+  if (edit.style.display !== 'none') {
+    view.textContent = edit.value;
+    view.style.display = '';
+    edit.style.display = 'none';
+  } else {
+    edit.value = view.textContent;
+    view.style.display = 'none';
+    edit.style.display = '';
+    edit.focus();
+  }
+}
+
+async function sendDeliveryEmail(leadId) {
+  const subject = document.getElementById('delivSubject')?.textContent?.trim() || '';
+  const editEl  = document.getElementById('delivBodyEdit');
+  const viewEl  = document.getElementById('delivBodyView');
+  const body    = editEl?.style.display !== 'none' ? (editEl?.value || '') : (viewEl?.textContent || '');
+  const btn = document.querySelector(`button[onclick="sendDeliveryEmail('${leadId}')"]`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Versturen...'; }
+  const res  = await api(`/api/leads/${leadId}/send-delivery-email`, { method: 'POST', body: JSON.stringify({ subject, body }) });
+  const data = res ? await res.json() : {};
+  if (res?.ok) {
+    closeModal();
+    toast('Oplevering email verstuurd!', 'success');
+    renderProjectPage();
+  } else {
+    toast(data?.error || 'Versturen mislukt', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-send"></i> Verstuur naar klant'; }
+  }
+}
+
+async function generateAdminInstructions(leadId) {
+  const btn = document.querySelector(`button[onclick="generateAdminInstructions('${leadId}')"]`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Genereren...'; }
+  const res  = await api(`/api/leads/${leadId}/generate-admin-instructions`, { method: 'POST' });
+  const data = res ? await res.json() : {};
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-file-text"></i> Genereer'; }
+  if (!res?.ok) return toast(data?.error || 'Genereren mislukt', 'error');
+  openModal(`
+    <div class="modal-header">
+      <h3 class="modal-title">📋 Admin instructies</h3>
+    </div>
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;max-height:380px;overflow-y:auto;margin-bottom:16px">
+      <pre id="adminInstrText" style="font-size:12px;white-space:pre-wrap;font-family:inherit;color:var(--text-primary);line-height:1.7">${esc(data.text)}</pre>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="sendAdminInstructions('${leadId}')"><i class="ti ti-mail"></i> Stuur naar mijzelf</button>
+      <button class="btn btn-outline" onclick="copyToClipboard(document.getElementById('adminInstrText')?.textContent||'','Gekopieerd!')"><i class="ti ti-copy"></i> Kopieer alles</button>
+      <button class="btn btn-ghost" onclick="downloadAdminInstructions()"><i class="ti ti-download"></i> Download .txt</button>
+    </div>
+  `);
+}
+
+async function sendAdminInstructions(leadId) {
+  const text = document.getElementById('adminInstrText')?.textContent || '';
+  const btn  = document.querySelector(`button[onclick="sendAdminInstructions('${leadId}')"]`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Versturen...'; }
+  const res  = await api(`/api/leads/${leadId}/send-admin-email`, { method: 'POST', body: JSON.stringify({ text }) });
+  const data = res ? await res.json() : {};
+  if (res?.ok) {
+    toast('Admin instructies verstuurd naar jouw email!', 'success');
+  } else {
+    toast(data?.error || 'Versturen mislukt', 'error');
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-mail"></i> Stuur naar mijzelf'; }
+}
+
+function downloadAdminInstructions() {
+  const text = document.getElementById('adminInstrText')?.textContent || '';
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a'); a.href = url; a.download = 'admin-instructies.txt'; a.click();
+  URL.revokeObjectURL(url);
 }
 
 async function sendClientEmail(leadId, trigger) {

@@ -1450,6 +1450,14 @@ app.post('/api/booking/:client', async (req, res) => {
         settings
       });
     } catch (_) { /* non-critical */ }
+    try {
+      await sendEmail({
+        to: settings.gmailAddress,
+        subject: `Nieuwe afspraak: ${naam} — ${service}`,
+        body: `Er is een nieuwe afspraak gemaakt via de boekingspagina.\n\nNaam: ${naam}\n${bedrijf ? 'Bedrijf: ' + bedrijf + '\n' : ''}Email: ${email}\n${tel ? 'Telefoon: ' + tel + '\n' : ''}Dienst: ${service} (${price})\nDatum: ${date}\nTijd: ${time}\nDuur: ${duration}\n${notities ? '\nNotities: ' + notities : ''}`,
+        settings
+      });
+    } catch (_) { /* non-critical */ }
   }
 
   res.json({ ok: true });
@@ -3721,6 +3729,138 @@ app.post('/api/leads/:id/manual-email', requireAdmin, async (req, res) => {
   addLeadHistory(leads, lead.id, { event: 'clientEmailSent', label: `Handmatige email: ${subject}` });
   writeJSON('leads.json', leads);
   addActivity('email', `Handmatige email → ${lead.companyName}`, { leadId: lead.id });
+  res.json({ ok: true });
+});
+
+app.post('/api/leads/:id/generate-delivery-email', requireAdmin, async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead  = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const settings = readJSON('settings.json') || {};
+  const isNL = (lead.language || 'nl') !== 'en';
+  const deliverables = (lead.agentDeliverables || []).filter(d => d.status === 'done' || d.status === 'approved');
+  const delivList = deliverables.length
+    ? deliverables.map(d => `- ${d.service}${d.url ? ': ' + BASE_URL + d.url : ''} [${d.type || 'deliverable'}]`).join('\n')
+    : '- Projectplan, content kalender en takenoverzicht';
+  const portalUrl = lead.portalToken ? `${BASE_URL}/portal/${lead.portalToken}` : '';
+  const agencyName = settings.agencyName || 'Agency AI';
+  const myName = settings.myName || 'Het team';
+  const adminEmail = settings.gmailAddress || '';
+  const prompt = isNL
+    ? `Je bent een professional bij ${agencyName}. Schrijf een warme professionele opleveringsmail voor klant ${lead.companyName}.
+
+GEBOUWDE DELIVERABLES:
+${delivList}
+${portalUrl ? '\nKlantportaal: ' + portalUrl : ''}
+Agency: ${agencyName} | Naam: ${myName} | Email: ${adminEmail}
+
+Schrijf in het Nederlands. Geen markdown, plain text. Geef terug als JSON: {"subject":"...","body":"..."}
+
+Body moet bevatten:
+- Warme opening met bedrijfsnaam klant
+- Overzicht van alles wat gemaakt is met link + korte activatie-instructie per item
+- Sectie "Hoe werkt het voor uw klanten?" met praktische uitleg per deliverable
+- Sectie "Wat u zelf nog moet doen" met 3-5 concrete stappen
+- Afsluiting met contactgegevens`
+    : `You are a professional at ${agencyName}. Write a warm delivery email for client ${lead.companyName}.
+
+DELIVERABLES BUILT:
+${delivList}
+${portalUrl ? '\nClient portal: ' + portalUrl : ''}
+Agency: ${agencyName} | Name: ${myName} | Email: ${adminEmail}
+
+Write in English. Plain text only. Return JSON: {"subject":"...","body":"..."}
+
+Body must include:
+- Warm opening with client name
+- List of deliverables with links and setup instructions
+- "How your customers use it" section
+- "What you need to do next" with 3-5 steps
+- Closing with contact info`;
+  try {
+    const result = await aiJSON(prompt);
+    res.json({ subject: result.subject || `Uw project is klaar — ${lead.companyName}`, body: result.body || '' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/leads/:id/send-delivery-email', requireAdmin, async (req, res) => {
+  const { subject, body } = req.body;
+  if (!subject || !body) return res.status(400).json({ error: 'Onderwerp en inhoud zijn verplicht' });
+  const leads = readJSON('leads.json') || [];
+  const idx   = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const lead = leads[idx];
+  if (!lead.contactEmail) return res.status(400).json({ error: 'Klant heeft geen emailadres' });
+  const settings = readJSON('settings.json') || {};
+  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld. Ga naar Instellingen → Email.' });
+  await sendEmail({ to: lead.contactEmail, subject, body, settings });
+  leads[idx].clientEmailLog = leads[idx].clientEmailLog || [];
+  leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'deliveryEmail', subject, body, sentAt: new Date().toISOString() });
+  addLeadHistory(leads, lead.id, { event: 'clientEmailSent', label: 'Oplevering email verstuurd' });
+  writeJSON('leads.json', leads);
+  addActivity('email', `Oplevering email → ${lead.companyName}`, { leadId: lead.id });
+  res.json({ ok: true });
+});
+
+app.post('/api/leads/:id/generate-admin-instructions', requireAdmin, async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead  = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const settings    = readJSON('settings.json') || {};
+  const deliverables = (lead.agentDeliverables || []).filter(d => d.status === 'done' || d.status === 'approved');
+  const openTasks   = (lead.tasks || []).filter(t => t.status !== 'klaar');
+  const delivList   = deliverables.map(d => `- ${d.service}: ${d.url ? BASE_URL + d.url : '(geen URL)'} [${d.type || 'document'}]`).join('\n') || '(geen deliverables gebouwd)';
+  const taskList    = openTasks.map(t => `- ${t.title} (W${t.week || 1})`).join('\n') || '(geen open taken)';
+  const portalUrl   = lead.portalToken ? `${BASE_URL}/portal/${lead.portalToken}` : 'niet aangemaakt';
+  const bookingD    = deliverables.find(d => /booking|afspraak|reserv/i.test(d.service));
+  const bookingUrl  = bookingD?.url ? BASE_URL + bookingD.url : null;
+  const prompt = `Schrijf een duidelijk admin-instructiedocument in het Nederlands voor project "${lead.companyName}".
+Dit is voor de agency intern — niet voor de klant.
+
+DELIVERABLES:
+${delivList}
+
+OPEN TAKEN:
+${taskList}
+
+INFO:
+Klant: ${lead.companyName} | Email: ${lead.contactEmail || 'onbekend'}
+Portaal: ${portalUrl}
+Admin email: ${settings.gmailAddress || 'niet ingesteld'}
+Agency: ${settings.agencyName || 'Agency AI'}
+${bookingUrl ? 'Booking URL: ' + bookingUrl : ''}
+
+Maak een gestructureerd document (plain text, geen markdown, geen ###) met deze secties:
+ADMIN INSTRUCTIES — ${lead.companyName}
+Aangemaakt: ${new Date().toLocaleDateString('nl-NL')}
+
+WAT IS GEBOUWD
+HOE KLANT DELIVERABLES ZIET
+${bookingUrl ? 'HOE BOEKINGEN WERKEN' : ''}
+WAT KLANT NOG MOET DOEN
+WAT JIJ NOG MOET DOEN
+BELANGRIJKE LINKS
+
+Max 500 woorden. Geef direct de tekst terug, geen JSON.`;
+  try {
+    const text = await aiCall(prompt);
+    res.json({ text: text.trim() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/leads/:id/send-admin-email', requireAdmin, async (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: 'Geen tekst opgegeven' });
+  const leads = readJSON('leads.json') || [];
+  const lead  = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const settings = readJSON('settings.json') || {};
+  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld' });
+  await sendEmail({ to: settings.gmailAddress, subject: `Admin instructies — ${lead.companyName}`, body: text, settings });
   res.json({ ok: true });
 });
 
