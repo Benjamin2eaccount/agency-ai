@@ -729,10 +729,16 @@ async function renderInbox() {
           <i class="ti ti-bolt"></i> ${highScore.length} × 8.0+ goedkeuren
         </button>
       ` : ''}
+      <button class="btn btn-ghost btn-sm bulk-decline-all" onclick="bulkDeclineAll()" style="color:var(--danger);border-color:var(--danger)">
+        <i class="ti ti-x"></i> Alle afwijzen
+      </button>
       <button class="btn btn-ghost btn-sm" onclick="bulkSelectAll()"><i class="ti ti-checkbox"></i> Alles selecteren</button>
       <button class="btn btn-ghost btn-sm" onclick="bulkDeselectAll()"><i class="ti ti-square"></i> Deselecteren</button>
       <button class="btn btn-blue btn-sm" id="bulkApproveSelBtn" style="display:none" onclick="bulkApproveSelected()">
         <i class="ti ti-check"></i> Geselecteerde goedkeuren (<span id="bulkSelCount">0</span>)
+      </button>
+      <button class="btn btn-sm" id="bulkDeclineSelBtn" style="display:none;background:var(--danger);color:#fff" onclick="bulkDeclineSelected()">
+        <i class="ti ti-x"></i> Geselecteerde afwijzen (<span id="bulkDeclineCount">0</span>)
       </button>
     </div>
   ` : '';
@@ -1789,10 +1795,15 @@ function toggleVoicenote(id) {
 
 function updateBulkSelCount() {
   const checked = document.querySelectorAll('.bulk-checkbox:checked');
-  const btn = document.getElementById('bulkApproveSelBtn');
-  const countEl = document.getElementById('bulkSelCount');
-  if (countEl) countEl.textContent = checked.length;
-  if (btn) btn.style.display = checked.length > 0 ? '' : 'none';
+  const n = checked.length;
+  const approveBtn = document.getElementById('bulkApproveSelBtn');
+  const declineBtn = document.getElementById('bulkDeclineSelBtn');
+  const countEl    = document.getElementById('bulkSelCount');
+  const decCountEl = document.getElementById('bulkDeclineCount');
+  if (countEl)    countEl.textContent    = n;
+  if (decCountEl) decCountEl.textContent = n;
+  if (approveBtn) approveBtn.style.display = n > 0 ? '' : 'none';
+  if (declineBtn) declineBtn.style.display = n > 0 ? '' : 'none';
 }
 
 function bulkSelectAll() {
@@ -1847,6 +1858,50 @@ async function runBulkApprove(ids) {
   }
 
   toast(`${done} email${done !== 1 ? 's' : ''} verstuurd!`, 'success');
+  setTimeout(() => renderInbox(), 800);
+}
+
+async function bulkDeclineAll() {
+  const pending = (state.inbox || []).filter(i => i.status === 'pending' || i.status === 'auto-approved');
+  if (!pending.length) return;
+  if (!confirm(`Weet je zeker dat je ${pending.length} leads wilt afwijzen?`)) return;
+  await runBulkDecline(pending.map(i => i.id));
+}
+
+async function bulkDeclineSelected() {
+  const ids = Array.from(document.querySelectorAll('.bulk-checkbox:checked')).map(cb => cb.dataset.id);
+  if (!ids.length) return;
+  if (!confirm(`Weet je zeker dat je ${ids.length} leads wilt afwijzen?`)) return;
+  await runBulkDecline(ids);
+}
+
+async function runBulkDecline(ids) {
+  const bar = document.getElementById('bulkBar');
+  if (bar) bar.innerHTML = `
+    <div style="width:100%;padding:4px 0">
+      <div style="font-size:13px;color:var(--text-primary);margin-bottom:8px">Afwijzen… <span id="bulkDeclineProgress">0</span> / ${ids.length}</div>
+      <div style="background:var(--border);border-radius:99px;height:5px;overflow:hidden">
+        <div id="bulkDeclineBar" style="height:100%;background:var(--danger);border-radius:99px;width:0;transition:width 0.3s"></div>
+      </div>
+    </div>`;
+
+  let done = 0;
+  for (const id of ids) {
+    const card = document.getElementById('card-' + id);
+    try {
+      const res = await api(`/api/inbox/${id}/disapprove`, { method: 'PATCH' });
+      if (res.ok) {
+        done++;
+        const prog = document.getElementById('bulkDeclineProgress');
+        const bar2 = document.getElementById('bulkDeclineBar');
+        if (prog) prog.textContent = done;
+        if (bar2) bar2.style.width = Math.round((done / ids.length) * 100) + '%';
+        if (card) { card.style.opacity = '0.4'; card.style.pointerEvents = 'none'; }
+      }
+    } catch { /* skip failed */ }
+  }
+
+  toast(`${done} lead${done !== 1 ? 's' : ''} afgewezen`, 'success');
   setTimeout(() => renderInbox(), 800);
 }
 
