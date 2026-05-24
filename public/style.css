@@ -3400,6 +3400,7 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
 }
 
 .notif-panel.visible {
+  display: block;
   opacity: 1;
   transform: translate(-50%, -50%);
 }

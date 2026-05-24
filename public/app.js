@@ -11211,7 +11211,7 @@ async function openNotificationPanel() {
     document.body.appendChild(panelEl);
   }
   panelEl.innerHTML = headerHTML + `<div class="notif-list">${notifHTML}</div>`;
-  panelEl.style.display = '';
+  panelEl.style.display = 'block';
   requestAnimationFrame(() => panelEl.classList.add('visible'));
 
   // Backdrop closes on click outside
