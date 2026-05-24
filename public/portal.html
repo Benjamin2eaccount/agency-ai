@@ -577,6 +577,9 @@
             </div>`).join('')}
         </div>` : '';
 
+      const _siteUrl = hasSite && data.generatedSite.siteUrl
+        ? (data.generatedSite.siteUrl.startsWith('http') ? data.generatedSite.siteUrl : (window.location.origin + data.generatedSite.siteUrl))
+        : '';
       const siteHtml = hasSite ? `
         <div class="inner-section">
           <div class="inner-label">Website preview</div>
@@ -584,11 +587,15 @@
             <span style="background:${data.generatedSite.status==='live'?'#16a34a':'#d97706'};color:#fff;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700">${data.generatedSite.status==='live'?'Live':'Preview'}</span>
             <span style="font-size:12px;color:#6b7280">Gegenereerd op ${fmt(data.generatedSite.generatedAt)}</span>
           </div>
+          ${_siteUrl ? `
           <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:12px">
-            <iframe src="${data.generatedSite.siteUrl}" style="width:100%;height:300px;border:none;display:block" loading="lazy" sandbox="allow-same-origin allow-scripts"></iframe>
-          </div>
+            <iframe src="${_siteUrl}" style="width:100%;height:300px;border:none;display:block" loading="lazy" sandbox="allow-same-origin allow-scripts"></iframe>
+          </div>` : `
+          <div style="border:1px solid #e5e7eb;border-radius:8px;padding:20px;text-align:center;margin-bottom:12px;color:#6b7280;font-size:13px">
+            Geen preview beschikbaar — bekijk via de directe link
+          </div>`}
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-            <a href="${data.generatedSite.siteUrl}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#111;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">Bekijk website</a>
+            ${_siteUrl ? `<a href="${_siteUrl}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#111;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">Bekijk website</a>` : ''}
             <button onclick="document.getElementById('siteFbSec').style.display=''" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;color:#111;border:1.5px solid #e5e7eb;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Aanpassingen doorgeven</button>
           </div>
           <div id="siteFbSec" style="display:none">
@@ -618,18 +625,26 @@
 
       // Approved agent deliverables
       const approvedDelivs = data.approvedDeliverables || [];
+      const _absUrl = u => !u ? '' : (u.startsWith('http') ? u : (window.location.origin + u));
       const delivHtml = approvedDelivs.length > 0 ? `
         <div class="inner-section">
           <div class="inner-label">Gebouwde leveringen</div>
           ${approvedDelivs.map(d => {
             const typeIcon = d.type === 'code' ? '💻' : d.deliverableType === 'strategy' ? '📊' : '📄';
             const typeLabel = d.type === 'code' ? 'Interactieve pagina' : d.deliverableType === 'strategy' ? 'Strategiedocument' : 'Document';
-            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;background:#f9fafb">
-              <div>
-                <div style="font-size:13px;font-weight:600;color:#111">${typeIcon} ${(d.service||'').replace(/</g,'&lt;')}</div>
-                <div style="font-size:11px;color:#6b7280">${typeLabel} · Goedgekeurd</div>
+            const absUrl = _absUrl(d.url);
+            return `<div style="padding:12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;background:#f9fafb">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${absUrl && d.type==='code'?'10px':'0'}">
+                <div>
+                  <div style="font-size:13px;font-weight:600;color:#111">${typeIcon} ${(d.service||'').replace(/</g,'&lt;')}</div>
+                  <div style="font-size:11px;color:#6b7280">${typeLabel} · Goedgekeurd</div>
+                </div>
+                ${absUrl ? `<a href="${absUrl.replace(/"/g,'&quot;')}" target="_blank" style="font-size:12px;background:#6366f1;color:#fff;padding:6px 14px;border-radius:6px;text-decoration:none;white-space:nowrap">Bekijken →</a>` : ''}
               </div>
-              ${d.url ? `<a href="${d.url.replace(/"/g,'&quot;')}" target="_blank" style="font-size:12px;background:#6366f1;color:#fff;padding:6px 14px;border-radius:6px;text-decoration:none">Bekijken →</a>` : ''}
+              ${absUrl && d.type==='code' ? `
+              <div style="border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">
+                <iframe src="${absUrl.replace(/"/g,'&quot;')}" style="width:100%;height:220px;border:none;display:block" loading="lazy" sandbox="allow-same-origin allow-scripts" onerror="this.parentElement.innerHTML='<div style=\\'padding:16px;text-align:center;font-size:12px;color:#6b7280\\'>Geen preview beschikbaar — bekijk via de directe link hierboven</div>'"></iframe>
+              </div>` : ''}
             </div>`;
           }).join('')}
         </div>` : '';
@@ -740,7 +755,6 @@
             <button class="tab-btn active" data-tab="overview"   onclick="showTab('overview')">Overzicht</button>
             <button class="tab-btn"         data-tab="leveringen" onclick="showTab('leveringen')">Leveringen</button>
             <button class="tab-btn"         data-tab="facturen"   onclick="showTab('facturen')">${payTabLabel}</button>
-            <button class="tab-btn"         data-tab="timeline"   onclick="showTab('timeline')">Timeline</button>
             <button class="tab-btn"         data-tab="documenten" onclick="showTab('documenten')">${docs.length > 0 ? `Documenten <span style="background:var(--accent);color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;font-weight:700;margin-left:3px">${docs.length}</span>` : 'Documenten'}</button>
             <button class="tab-btn"         data-tab="resultaten" onclick="showTab('resultaten')">Resultaten</button>
             <button class="tab-btn"         data-tab="berichten"  onclick="showTab('berichten')">Berichten</button>
@@ -759,10 +773,6 @@
 
           <div class="tab-pane" data-pane="facturen">
             ${facturenHtml}
-          </div>
-
-          <div class="tab-pane" data-pane="timeline">
-            ${timelineHtml}
           </div>
 
           <div class="tab-pane" data-pane="documenten">

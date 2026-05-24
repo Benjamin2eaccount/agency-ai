@@ -3739,44 +3739,64 @@ app.post('/api/leads/:id/generate-delivery-email', requireAdmin, async (req, res
   const settings = readJSON('settings.json') || {};
   const isNL = (lead.language || 'nl') !== 'en';
   const deliverables = (lead.agentDeliverables || []).filter(d => d.status === 'done' || d.status === 'approved');
-  const delivList = deliverables.length
-    ? deliverables.map(d => `- ${d.service}${d.url ? ': ' + BASE_URL + d.url : ''} [${d.type || 'deliverable'}]`).join('\n')
-    : '- Projectplan, content kalender en takenoverzicht';
+  const htmlDelivs   = deliverables.filter(d => d.type === 'code');
+  const otherDelivs  = deliverables.filter(d => d.type !== 'code');
   const portalUrl = lead.portalToken ? `${BASE_URL}/portal/${lead.portalToken}` : '';
   const agencyName = settings.agencyName || 'Agency AI';
   const myName = settings.myName || 'Het team';
   const adminEmail = settings.gmailAddress || '';
+  const clientLoginUrl = `${BASE_URL}/client/login`;
+
+  const htmlDelivBlock = htmlDelivs.map(d => {
+    const fullUrl = d.url ? (d.url.startsWith('http') ? d.url : BASE_URL + d.url) : null;
+    return `  SERVICE: ${d.service}\n  DIRECTE LINK: ${fullUrl || '(geen URL)'}\n  TYPE: Interactieve HTML pagina`;
+  }).join('\n\n');
+
+  const otherDelivBlock = otherDelivs.map(d => `  SERVICE: ${d.service} [${d.type}]`).join('\n');
+
   const prompt = isNL
     ? `Je bent een professional bij ${agencyName}. Schrijf een warme professionele opleveringsmail voor klant ${lead.companyName}.
 
-GEBOUWDE DELIVERABLES:
-${delivList}
-${portalUrl ? '\nKlantportaal: ' + portalUrl : ''}
+HTML PAGINA'S GEBOUWD (vermeld ELKE pagina met exacte URL):
+${htmlDelivBlock || '  (geen HTML paginas gebouwd)'}
+
+${otherDelivBlock ? 'OVERIGE LEVERINGEN:\n' + otherDelivBlock + '\n' : ''}${portalUrl ? 'Klantportaal: ' + portalUrl : ''}
+Klantlogin pagina: ${clientLoginUrl} (inloggen met gebruikersnaam + wachtwoord, NIET met emailadres)
 Agency: ${agencyName} | Naam: ${myName} | Email: ${adminEmail}
 
 Schrijf in het Nederlands. Geen markdown, plain text. Geef terug als JSON: {"subject":"...","body":"..."}
 
-Body moet bevatten:
-- Warme opening met bedrijfsnaam klant
-- Overzicht van alles wat gemaakt is met link + korte activatie-instructie per item
-- Sectie "Hoe werkt het voor uw klanten?" met praktische uitleg per deliverable
-- Sectie "Wat u zelf nog moet doen" met 3-5 concrete stappen
-- Afsluiting met contactgegevens`
+REGELS:
+1. Noem ALLEEN de diensten en pagina's die hierboven vermeld staan. Noem GEEN projectplan, content kalender of takenoverzicht als die niet in de lijst staan.
+2. Voor elke HTML pagina: geef de exacte URL, leg uit wat het doet, hoe klanten van de klant het gebruiken, en hoe de klant het kan toevoegen aan zijn website (bijv. "Voeg deze link toe als menuknop of navigatiemenuitem").
+3. Portaallogin: schrijf ALTIJD "Log in met uw gebruikersnaam en wachtwoord" — NOOIT "log in met uw e-mailadres".
+4. Body moet bevatten:
+   - Warme opening met bedrijfsnaam klant
+   - Per HTML pagina: directe URL (duidelijk vermeld), wat het doet, hoe klanten het gebruiken, hoe toe te voegen aan website
+   - Sectie "Hoe logt u in op uw portaal?" met gebruikersnaam+wachtwoord instructie en link naar ${clientLoginUrl}
+   - Sectie "Wat u nu kunt doen" met 3-5 concrete stappen
+   - Afsluiting met contactgegevens van ${myName}`
     : `You are a professional at ${agencyName}. Write a warm delivery email for client ${lead.companyName}.
 
-DELIVERABLES BUILT:
-${delivList}
-${portalUrl ? '\nClient portal: ' + portalUrl : ''}
+HTML PAGES BUILT (mention EACH page with exact URL):
+${htmlDelivBlock || '  (no HTML pages built)'}
+
+${otherDelivBlock ? 'OTHER DELIVERABLES:\n' + otherDelivBlock + '\n' : ''}${portalUrl ? 'Client portal: ' + portalUrl : ''}
+Client login page: ${clientLoginUrl} (login with username + password, NOT with email address)
 Agency: ${agencyName} | Name: ${myName} | Email: ${adminEmail}
 
 Write in English. Plain text only. Return JSON: {"subject":"...","body":"..."}
 
-Body must include:
-- Warm opening with client name
-- List of deliverables with links and setup instructions
-- "How your customers use it" section
-- "What you need to do next" with 3-5 steps
-- Closing with contact info`;
+RULES:
+1. Only mention the services and pages listed above. Do NOT mention project plan, content calendar or task overview unless they are in the list.
+2. For each HTML page: include the exact URL, explain what it does, how the client's customers use it, and how to add it to their website (e.g. "Add this link as a menu button or navigation item").
+3. Portal login: always write "Log in with your username and password" — NEVER "log in with your email address".
+4. Body must include:
+   - Warm opening with client company name
+   - Per HTML page: direct URL (clearly shown), what it does, how customers use it, how to add to website
+   - Section "How to log in to your portal" with username+password instruction and link to ${clientLoginUrl}
+   - Section "What you can do now" with 3-5 concrete steps
+   - Closing with contact info for ${myName}`;
   try {
     const result = await aiJSON(prompt);
     res.json({ subject: result.subject || `Uw project is klaar — ${lead.companyName}`, body: result.body || '' });
