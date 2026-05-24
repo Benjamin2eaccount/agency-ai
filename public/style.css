@@ -3376,23 +3376,24 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
 /* ── Notifications ──────────────────────────────────────────────────────────── */
 .notif-backdrop {
   position: fixed; inset: 0;
-  background: transparent;
-  z-index: 199;
+  background: rgba(0,0,0,0.45);
+  z-index: 9998;
 }
 
 .notif-panel {
   position: fixed;
-  top: 64px;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%) translateY(-8px);
-  width: 380px;
+  transform: translate(-50%, -46%);
+  width: 480px;
   max-width: calc(100vw - 32px);
+  max-height: 80vh;
+  overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.14);
-  z-index: 200;
-  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  z-index: 9999;
   opacity: 0;
   transition: opacity 0.18s ease, transform 0.18s ease;
   display: none;
@@ -3400,7 +3401,7 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
 
 .notif-panel.visible {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
+  transform: translate(-50%, -50%);
 }
 
 .notif-header {
@@ -3428,7 +3429,7 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
 .notif-push-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 .notif-push-btn[data-subscribed="1"] { color: var(--accent); border-color: var(--accent); }
 
-.notif-list { max-height: 360px; overflow-y: auto; }
+.notif-list { overflow-y: visible; }
 
 .notif-item {
   display: flex; align-items: flex-start; gap: 10px;
