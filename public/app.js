@@ -11146,46 +11146,56 @@ async function openNotificationPanel() {
   if (!data) return;
   updateNotificationBadge(data.unread);
 
-  const ICONS = {
-    reply_received:   'ti-mail-opened',
-    intake_submitted: 'ti-clipboard-check',
-    high_score_lead:  'ti-star',
-    payment_overdue:  'ti-alert-triangle',
-    payment_received: 'ti-circle-check',
-    run_complete:     'ti-check',
-    email_bounced:    'ti-mail-off',
-    calendly_booking: 'ti-calendar-event',
-    contact_form:     'ti-user-plus',
-    client_question:  'ti-message-circle'
+  const TYPE_EMOJI = {
+    reply_received:   '💬',
+    intake_submitted: '📋',
+    high_score_lead:  '⭐',
+    payment_overdue:  '⚠️',
+    payment_received: '💰',
+    run_complete:     '⚡',
+    email_bounced:    '📭',
+    calendly_booking: '📅',
+    contact_form:     '📩',
+    client_question:  '💬'
   };
 
   const notifHTML = data.notifications.length === 0
-    ? '<div class="notif-empty">Geen meldingen</div>'
+    ? `<div style="text-align:center;padding:40px 16px;color:#9b9b98;font-size:13px;">
+        <div style="font-size:32px;margin-bottom:8px;">🔔</div>
+        <div>Geen nieuwe meldingen</div>
+       </div>`
     : data.notifications.map(n => `
-        <div class="notif-item ${n.read ? '' : 'unread'}" onclick="handleNotificationClick('${n.id}','${encodeURIComponent(n.link || '')}')">
-          <div class="notif-icon-wrap ${n.type}">
-            <i class="ti ${ICONS[n.type] || 'ti-bell'}"></i>
+        <div onclick="handleNotificationClick('${n.id}','${encodeURIComponent(n.link || '')}')"
+          style="display:flex;gap:12px;padding:12px 16px;cursor:pointer;border-bottom:1px solid #e8e8e5;
+            background:${n.read ? 'transparent' : 'rgba(99,102,241,0.05)'};transition:background 0.15s;"
+          onmouseover="this.style.background='rgba(0,0,0,0.03)'"
+          onmouseout="this.style.background='${n.read ? 'transparent' : 'rgba(99,102,241,0.05)'}'">
+          <div style="font-size:20px;flex-shrink:0;padding-top:2px;">
+            ${TYPE_EMOJI[n.type] || '🔔'}
           </div>
-          <div class="notif-content">
-            <div class="notif-title">${esc(n.title)}</div>
-            <div class="notif-body">${esc(n.body)}</div>
-            <div class="notif-time">${relativeTime(n.createdAt)}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:${n.read ? '400' : '600'};font-size:13px;color:#1a1a1a;margin-bottom:2px;">
+              ${esc(n.title || 'Melding')}
+            </div>
+            <div style="font-size:12px;color:#6b7280;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              ${esc(n.body || '')}
+            </div>
+            <div style="font-size:11px;color:#9ca3af;margin-top:3px;">
+              ${relativeTime(n.createdAt)}
+            </div>
           </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
-            ${!n.read ? '<div class="notif-dot"></div>' : ''}
-            ${!n.read ? `<button class="notif-read-btn" title="Markeer als gelezen" onclick="event.stopPropagation();markNotificationRead('${n.id}')"><i class="ti ti-check" style="font-size:11px"></i></button>` : ''}
-          </div>
+          ${!n.read ? `<div style="width:8px;height:8px;background:#6366f1;border-radius:50%;flex-shrink:0;margin-top:5px;"></div>` : ''}
         </div>`).join('');
 
   const pushSubscribed = window._pushSubscription ? '1' : '0';
   const headerHTML = `
-    <div class="notif-panel-header">
-      <span>Meldingen</span>
-      <div style="display:flex;gap:6px;align-items:center;margin-left:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 16px 12px;border-bottom:1px solid #e8e8e5;">
+      <span style="font-size:15px;font-weight:700;color:#1a1a1a;">Meldingen</span>
+      <div style="display:flex;gap:6px;align-items:center;">
         ${'PushManager' in window ? `<button class="push-toggle-btn notif-push-btn" data-subscribed="${pushSubscribed}" onclick="togglePushSubscription()" title="${pushSubscribed === '1' ? 'Notificaties uitschakelen' : 'Notificaties inschakelen'}">
           <i class="ti ti-bell${pushSubscribed === '1' ? '-off' : '-ringing'}"></i>
         </button>` : ''}
-        ${data.unread > 0 ? `<button class="notif-read-all" onclick="markAllNotificationsRead()">Alles gelezen</button>` : ''}
+        ${data.unread > 0 ? `<button onclick="markAllNotificationsRead()" style="font-size:12px;color:#6366f1;background:none;border:none;cursor:pointer;font-weight:600;padding:4px 8px;border-radius:6px;">Alles gelezen</button>` : ''}
       </div>
     </div>`;
 

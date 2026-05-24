@@ -3390,6 +3390,7 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
   max-height: 80vh;
   overflow-y: auto;
   background: var(--surface);
+  color: var(--text-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: 0 20px 60px rgba(0,0,0,0.3);
@@ -3470,6 +3471,8 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
 }
 .notif-read-btn:hover { background: var(--success-light); border-color: var(--success); color: var(--success); }
 
+.notif-content { flex: 1; min-width: 0; }
+.notif-empty { text-align: center; padding: 32px 16px; color: var(--text-secondary); font-size: 13px; }
 .notif-title { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 1px; }
 .notif-body  { font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
 .notif-time  { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
