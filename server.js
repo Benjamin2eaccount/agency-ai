@@ -6223,7 +6223,7 @@ Rules:
   return { item, leadRecord };
 }
 
-async function runFindLeadsJob(overrides = {}) {
+async function runFindLeadsJob(overrides = {}, manual = false) {
   console.log('[Run] Starting runFindLeadsJob...');
   console.log('[Run] Overrides:', JSON.stringify(overrides));
   _runState = { running: true, startedAt: new Date().toISOString(), target: 0, found: 0, skipped: 0, currentAgent: 'Opstarten', currentLead: null, log: [] };
@@ -6237,8 +6237,8 @@ async function runFindLeadsJob(overrides = {}) {
     throw new Error('Claude API sleutel niet ingesteld. Voeg toe via Instellingen → API & integraties of stel CLAUDE_API_KEY in als Railway environment variable.');
   }
   const settings = readJSON('settings.json') || {};
-  if (settings.automationPaused) {
-    console.log('[Agency AI] Automatisering gepauzeerd — run overgeslagen');
+  if (!manual && settings.automationPaused) {
+    console.log('[Agency AI] Automatisering gepauzeerd — geplande run overgeslagen');
     return 0;
   }
 
@@ -6680,7 +6680,9 @@ CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
 
 app.post('/api/find-leads', requireAdmin, async (req, res) => {
   try {
-    const found = await runFindLeadsJob(req.body || {});
+    const overrides = req.body || {};
+    const manual = overrides.manual !== false; // default true for manual route
+    const found = await runFindLeadsJob(overrides, manual);
     res.json({ ok: true, found });
   } catch (err) {
     logError('run', err.message);
@@ -8590,7 +8592,7 @@ function scheduleCron() {
   if (cronJob) cronJob.stop();
   cronJob = cron.schedule(schedule, () => {
     console.log(`[Cron] Dagelijkse run gestart om ${time}`);
-    runFindLeadsJob().catch(err => logError('cron_run', 'Dagelijkse run mislukt', err.message));
+    runFindLeadsJob({}, false).catch(err => logError('cron_run', 'Dagelijkse run mislukt', err.message));
   });
   console.log(`[Cron] Dagelijkse run ingepland om ${time} (${schedule})`);
 }
