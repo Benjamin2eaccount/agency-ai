@@ -3535,6 +3535,8 @@ app.post('/api/leads/:id/agent-chat', requireAdmin, async (req, res) => {
 
 TASK: Build a complete, fully working HTML page.
 
+Be concise. Generate a complete working page in maximum 800 lines of HTML. No comments, no excessive whitespace.
+
 CRITICAL:
 - Your ENTIRE response must be raw HTML
 - Start with: <!DOCTYPE html>
@@ -3899,6 +3901,8 @@ async function extractWebsiteStyle(websiteUrl) {
 const BUILD_HTML_RULES = `You are an expert HTML developer.
 
 TASK: Build a complete, fully working HTML page.
+
+Be concise. Generate a complete working page in maximum 800 lines of HTML. No comments, no excessive whitespace.
 
 CRITICAL:
 - Your ENTIRE response must be raw HTML
@@ -5297,7 +5301,7 @@ async function aiCallBuild(prompt) {
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 8000,
+      max_tokens: 16000,
       messages: [{ role: 'user', content: prompt }]
     })
   });
@@ -5360,18 +5364,32 @@ async function aiCallBuild(prompt) {
     }
   }
 
-  // Validate body has real content
-  const bodyMatch = clean.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-  const bodyContent = bodyMatch?.[1]?.trim() || '';
+  // If Claude hit max_tokens, HTML is cut off — close it gracefully
+  const stopReason = data.stop_reason;
+  if (stopReason === 'max_tokens') {
+    console.warn('[Build] max_tokens hit — attempting to close truncated HTML');
+    if (clean.includes('<body') && !clean.includes('</body>')) {
+      clean = clean + '\n</body>\n</html>';
+      console.log('[Build] Closed truncated HTML');
+    }
+  }
+
+  // Robust body extraction — works even if </body> is missing
+  let bodyContent = '';
+  const bodyOpenMatch = clean.match(/<body[^>]*>/i);
+  if (bodyOpenMatch) {
+    const bodyStart = clean.indexOf(bodyOpenMatch[0]) + bodyOpenMatch[0].length;
+    bodyContent = clean.substring(bodyStart).replace(/<\/body>[\s\S]*$/i, '').trim();
+  }
   console.log('[Build] Body length:', bodyContent.length);
   console.log('[Build] Body start:', bodyContent.substring(0, 200) || 'EMPTY');
 
-  if (!bodyContent || bodyContent.length < 200) {
+  if (!bodyContent || bodyContent.length < 100) {
     console.error('[Build] Empty/thin body detected!');
     console.error('[Build] Full HTML length was:', clean.length);
-    console.error('[Build] stop_reason was:', data.stop_reason);
+    console.error('[Build] stop_reason was:', stopReason);
     throw new Error(
-      `Lege body na build. HTML length: ${clean.length}, Body length: ${bodyContent.length}, stop_reason: ${data.stop_reason}`
+      `Lege body na build. HTML length: ${clean.length}, Body length: ${bodyContent.length}, stop_reason: ${stopReason}`
     );
   }
 
