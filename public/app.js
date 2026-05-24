@@ -3873,11 +3873,15 @@ async function renderProjectPage() {
   }
 }
 
-function renderAgentChatHistory(leadId, idx) {
+function problemToKey(txt) {
+  return 'problem-' + (txt || '').substring(0, 30).replace(/[^a-z0-9]/gi, '-').toLowerCase();
+}
+
+function renderAgentChatHistory(leadId, key) {
   const historyEl = document.getElementById('agentChatHistory');
   if (!historyEl) return;
   window._agentChats = window._agentChats || {};
-  const msgs = (window._agentChats[leadId] || {})[idx] || [];
+  const msgs = (window._agentChats[leadId] || {})[key] || [];
   historyEl.innerHTML = msgs.map(m => {
     if (m.builtUrl) {
       return `<div class="agent-msg ai" style="padding:0;background:none;border:none">
@@ -3926,13 +3930,13 @@ async function saveAgentChats(leadId) {
 }
 
 window.clearAgentChat = async function(leadId) {
-  const idx = window._selectedProblemIdx ?? 0;
+  const key = window._selectedProblemKey ?? 'problem-0';
   if (!confirm('Weet je zeker dat je deze chat wil wissen?')) return;
   window._agentChats = window._agentChats || {};
   if (!window._agentChats[leadId]) window._agentChats[leadId] = {};
-  window._agentChats[leadId][idx] = [];
+  window._agentChats[leadId][key] = [];
   await saveAgentChats(leadId);
-  renderAgentChatHistory(leadId, idx);
+  renderAgentChatHistory(leadId, key);
   toast('Chat gewist', 'success');
 };
 
@@ -3948,28 +3952,28 @@ window.selectProblemCard = async function(idx, leadId) {
   const problems = lead.problems || [];
   const p = problems[idx];
   const txt = p ? (typeof p === 'string' ? p : (p.text || p.description || '')) : '';
+  const problemKey = problemToKey(txt);
 
   window._selectedProblemIdx   = idx;
+  window._selectedProblemKey   = problemKey;
   window._selectedProblemLead  = leadId;
   window._selectedProblemType  = txt;
 
   const titleEl = document.getElementById('chatProblemTitle');
   if (titleEl) titleEl.innerHTML = `<i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>${esc(txt.substring(0, 80))}`;
 
-  // Load from API if not yet in memory for this lead
-  if (!window._agentChats[leadId]) {
-    try {
-      const saved = await apiJSON(`/api/leads/${leadId}/agent-chats`);
-      window._agentChats[leadId] = saved || {};
-    } catch (e) {
-      window._agentChats[leadId] = {};
-    }
+  // Always reload from API on each card open to get latest persisted history
+  try {
+    const saved = await apiJSON(`/api/leads/${leadId}/agent-chats`);
+    window._agentChats[leadId] = saved || {};
+  } catch (e) {
+    window._agentChats[leadId] = window._agentChats[leadId] || {};
   }
 
-  renderAgentChatHistory(leadId, idx);
+  renderAgentChatHistory(leadId, problemKey);
 
   // Auto-trigger first analysis when chat is empty for this problem
-  if (txt && (!window._agentChats[leadId][idx] || window._agentChats[leadId][idx].length === 0)) {
+  if (txt && (!window._agentChats[leadId][problemKey] || window._agentChats[leadId][problemKey].length === 0)) {
     const msgEl = document.getElementById('agentChatMsg');
     if (msgEl) {
       const co = lead.companyName || 'het bedrijf';
@@ -4037,7 +4041,11 @@ window.startCheckedProblems = async function(leadId) {
   // Switch to Chat sub-tab and select the first checked problem
   window._activeProblemSubTab = window._activeProblemSubTab || {};
   window._activeProblemSubTab[leadId] = 'chat';
-  window._selectedProblemIdx = [...checked][0];
+  const firstCheckedIdx = [...checked][0];
+  const firstCheckedP = problems[firstCheckedIdx];
+  const firstCheckedTxt = firstCheckedP ? (typeof firstCheckedP === 'string' ? firstCheckedP : (firstCheckedP.text || firstCheckedP.description || '')) : '';
+  window._selectedProblemIdx = firstCheckedIdx;
+  window._selectedProblemKey = problemToKey(firstCheckedTxt);
   window._selectedProblemLead = leadId;
 
   await renderProjectPage();
@@ -4058,12 +4066,12 @@ async function sendAgentChat(leadId) {
   const message = msgEl.value.trim();
   if (!message) return;
 
-  const idx = window._selectedProblemIdx ?? 0;
+  const key = window._selectedProblemKey ?? 'problem-0';
   const problemType = window._selectedProblemType || '';
 
   window._agentChats = window._agentChats || {};
   if (!window._agentChats[leadId]) window._agentChats[leadId] = {};
-  if (!window._agentChats[leadId][idx]) window._agentChats[leadId][idx] = [];
+  if (!window._agentChats[leadId][key]) window._agentChats[leadId][key] = [];
 
   const isBuild = /\b(bouw|bouwen|maak|genereer|build|generate|cre[eë]er|aanmaken|schrijf.*pagina|maak.*pagina|bouw.*pagina)\b/i.test(message)
     || /\b(booking.*pagina|landingspagina|website|chatbot|dashboard|content.*kalender|rapport|strateg)\b/i.test(message);
@@ -4076,12 +4084,12 @@ async function sendAgentChat(leadId) {
   }
 
   // Add user message and persist immediately
-  window._agentChats[leadId][idx].push({ role: 'user', text: message, ts: new Date().toISOString() });
+  window._agentChats[leadId][key].push({ role: 'user', text: message, ts: new Date().toISOString() });
   msgEl.value = '';
   saveAgentChats(leadId);
 
   // Show history + thinking indicator
-  renderAgentChatHistory(leadId, idx);
+  renderAgentChatHistory(leadId, key);
   const historyEl = document.getElementById('agentChatHistory');
   if (historyEl) {
     historyEl.innerHTML += `<div class="agent-msg ai" id="agentThinking"><i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Bezig...</div>`;
@@ -4098,15 +4106,15 @@ async function sendAgentChat(leadId) {
     document.getElementById('agentThinking')?.remove();
 
     if (data?.built && data?.url) {
-      window._agentChats[leadId][idx].push({ role: 'ai', builtUrl: data.url, ts: new Date().toISOString() });
+      window._agentChats[leadId][key].push({ role: 'ai', builtUrl: data.url, ts: new Date().toISOString() });
       const updatedLeads = await apiJSON('/api/leads');
       if (updatedLeads) state.leads = updatedLeads;
     } else if (data?.response) {
-      window._agentChats[leadId][idx].push({ role: 'ai', text: data.response, ts: new Date().toISOString() });
+      window._agentChats[leadId][key].push({ role: 'ai', text: data.response, ts: new Date().toISOString() });
     }
     if (data?.error) {
       const isBuildErr = action === 'build' || /lege body|probeer opnieuw|geen geldige html/i.test(data.error);
-      window._agentChats[leadId][idx].push({
+      window._agentChats[leadId][key].push({
         role: 'ai',
         text: data.error,
         buildError: isBuildErr,
@@ -4116,7 +4124,7 @@ async function sendAgentChat(leadId) {
   } catch (err) {
     document.getElementById('agentThinking')?.remove();
     const isBuildErr = action === 'build';
-    window._agentChats[leadId][idx].push({
+    window._agentChats[leadId][key].push({
       role: 'ai',
       text: `Verbindingsfout: ${err.message}`,
       buildError: isBuildErr,
@@ -4126,7 +4134,7 @@ async function sendAgentChat(leadId) {
 
   // Persist after AI response and re-render
   saveAgentChats(leadId);
-  renderAgentChatHistory(leadId, idx);
+  renderAgentChatHistory(leadId, key);
 }
 
 window.runAgentsForLead = async function(leadId) {
