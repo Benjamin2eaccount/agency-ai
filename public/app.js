@@ -3181,14 +3181,38 @@ async function renderProjectPage() {
           <span style="font-size:14px;font-weight:500;flex:1">Handmatige email</span>
           <button class="btn btn-sm btn-outline" onclick="openManualEmailModal('${lead.id}')"><i class="ti ti-mail-plus"></i> Opstellen</button>
         </div>
-        <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:2px solid var(--accent);border-radius:10px;margin-bottom:8px;background:var(--accent-light)">
-          <i class="ti ti-package" style="color:var(--accent);font-size:18px;flex-shrink:0"></i>
-          <div style="flex:1">
-            <div style="font-size:14px;font-weight:600">Oplevering email</div>
-            <div style="font-size:12px;color:var(--text-muted)">AI genereert email met alles wat gebouwd is + instructies voor klant</div>
-          </div>
-          <button class="btn btn-sm btn-primary" onclick="generateDeliveryEmail('${lead.id}')"><i class="ti ti-sparkles"></i> Genereer & stuur</button>
-        </div>
+        ${(() => {
+          const oe = lead.opleveringEmail;
+          if (oe) {
+            return `<div style="padding:14px 16px;border:2px solid var(--success);border-radius:10px;margin-bottom:8px;background:var(--success-light)">
+              <div style="display:flex;align-items:flex-start;gap:10px">
+                <i class="ti ti-package" style="color:var(--success);font-size:18px;flex-shrink:0;margin-top:2px"></i>
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+                    <span style="font-size:14px;font-weight:600">📦 Oplevering email</span>
+                    <span style="font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 7px;color:var(--text-secondary)">Gegenereerd op ${formatDate(oe.generatedAt)}</span>
+                    ${oe.sentAt ? `<span style="font-size:11px;background:#dcfce7;color:#16a34a;border-radius:4px;padding:1px 7px;font-weight:600"><i class="ti ti-check" style="font-size:10px"></i> Verstuurd ${relativeTime(oe.sentAt)}</span>` : ''}
+                  </div>
+                  <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Onderwerp: ${esc(oe.subject)}</div>
+                  <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${esc((oe.body||'').substring(0,100))}${(oe.body||'').length>100?'…':''}</div>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <button class="btn btn-sm btn-primary" onclick="openSavedDeliveryEmail('${lead.id}')"><i class="ti ti-eye"></i> Bekijk &amp; verstuur</button>
+                    ${oe.sentAt ? `<button class="btn btn-sm btn-outline" onclick="openSavedDeliveryEmail('${lead.id}')"><i class="ti ti-send"></i> Stuur opnieuw</button>` : ''}
+                    <button class="btn btn-sm btn-ghost" style="font-size:11px" onclick="generateDeliveryEmail('${lead.id}', true)"><i class="ti ti-refresh"></i> Opnieuw genereren</button>
+                  </div>
+                </div>
+              </div>
+            </div>`;
+          }
+          return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:2px solid var(--accent);border-radius:10px;margin-bottom:8px;background:var(--accent-light)">
+            <i class="ti ti-package" style="color:var(--accent);font-size:18px;flex-shrink:0"></i>
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:600">Oplevering email</div>
+              <div style="font-size:12px;color:var(--text-muted)">AI genereert email met alles wat gebouwd is + instructies voor klant</div>
+            </div>
+            <button class="btn btn-sm btn-primary" onclick="generateDeliveryEmail('${lead.id}')"><i class="ti ti-sparkles"></i> Genereer &amp; stuur</button>
+          </div>`;
+        })()}
         <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface)">
           <i class="ti ti-clipboard-list" style="color:var(--accent);font-size:18px;flex-shrink:0"></i>
           <div style="flex:1">
@@ -3538,6 +3562,48 @@ async function renderProjectPage() {
       </div>`;
   }
 
+  // ── Tab: Bestanden ──────────────────────────────────────────────────────────
+  function buildProjectFilesTab() {
+    const files = lead.projectFiles || [];
+    const fileRows = files.map(f => {
+      const icon = f.type === 'html' ? '🌐' : f.type === 'document' ? '📄' : '📊';
+      const fullUrl = f.fullUrl || (f.url.startsWith('http') ? f.url : window.location.origin + f.url);
+      const shared = f.sharedWithClient;
+      return `
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface)">
+          <span style="font-size:22px;flex-shrink:0;margin-top:2px">${icon}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:600;margin-bottom:2px">${esc(f.name)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Aangemaakt op ${formatDate(f.createdAt)}${f.problem ? ` · ${esc(f.problem.substring(0,50))}` : ''}</div>
+            <a href="${esc(fullUrl)}" target="_blank" style="font-size:12px;color:var(--accent);word-break:break-all;display:block;margin-bottom:8px">${esc(fullUrl)}</a>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <a href="${esc(fullUrl)}" target="_blank" class="btn btn-sm btn-ghost" style="font-size:11px"><i class="ti ti-eye"></i> Preview</a>
+              <button class="btn btn-sm btn-ghost" style="font-size:11px" onclick="navigator.clipboard.writeText('${esc(fullUrl)}').then(()=>toast('URL gekopieerd!','success'))"><i class="ti ti-copy"></i> Kopieer</button>
+              <button class="btn btn-sm ${shared ? 'btn-outline' : 'btn-ghost'}" style="font-size:11px;${shared ? 'color:var(--success);border-color:var(--success)' : 'color:var(--text-muted)'}" onclick="toggleProjectFileShare('${esc(lead.id)}','${esc(f.id)}',${!shared})">
+                ${shared ? '<i class="ti ti-check"></i> Zichtbaar voor klant' : '<i class="ti ti-eye-off"></i> Alleen admin'}
+              </button>
+              <button class="btn btn-sm btn-ghost" style="font-size:11px;color:var(--danger)" onclick="deleteProjectFile('${esc(lead.id)}','${esc(f.id)}')"><i class="ti ti-trash"></i></button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="project-tab-content" data-tab-content="bestanden" style="${activeTab !== 'bestanden' ? 'display:none' : ''}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+          <div class="project-section-title" style="margin:0"><i class="ti ti-files" style="color:var(--accent);margin-right:6px"></i>Project bestanden</div>
+          <button class="btn btn-sm btn-outline" onclick="openAddProjectFileModal('${esc(lead.id)}')"><i class="ti ti-plus"></i> Bestand toevoegen</button>
+        </div>
+        ${files.length === 0
+          ? `<div style="text-align:center;padding:40px 20px;color:var(--text-muted);font-size:13px"><i class="ti ti-files" style="font-size:32px;display:block;margin-bottom:8px;opacity:.4"></i>Nog geen bestanden — ze verschijnen hier automatisch na een agent build.</div>`
+          : fileRows}
+        <div style="margin-top:16px;padding:12px 14px;background:var(--surface-2);border-radius:8px;font-size:12px;color:var(--text-muted)">
+          <i class="ti ti-info-circle" style="margin-right:4px"></i>
+          Bestanden met <strong>Zichtbaar voor klant</strong> verschijnen automatisch in het klantportaal onder Leveringen.
+        </div>
+      </div>`;
+  }
+
   // ── Tab: Website ────────────────────────────────────────────────────────────
   function buildWebsiteTabProject() {
     const site = lead.generatedSite;
@@ -3842,6 +3908,7 @@ async function renderProjectPage() {
           <button class="project-tab${activeTab==='contract'?' active':''}" data-tab="contract" onclick="switchProjectTab('contract')">${lead.contract ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Contract</button>
           <button class="project-tab${activeTab==='website'?' active':''}" data-tab="website" onclick="switchProjectTab('website')">Website</button>
           <button class="project-tab${activeTab==='afspraken'?' active':''}" data-tab="afspraken" onclick="switchProjectTab('afspraken')">Afspraken</button>
+          <button class="project-tab${activeTab==='bestanden'?' active':''}" data-tab="bestanden" onclick="switchProjectTab('bestanden')"><i class="ti ti-files" style="margin-right:3px"></i>Bestanden${(lead.projectFiles||[]).length > 0 ? ` (${(lead.projectFiles||[]).length})` : ''}</button>
           <button class="project-tab${activeTab==='documenten'?' active':''}" data-tab="documenten" onclick="switchProjectTab('documenten')"><i class="ti ti-folder" style="margin-right:3px"></i>Documenten${(lead.documents||[]).length > 0 ? ` (${(lead.documents||[]).length})` : ''}</button>
           <button class="project-tab${activeTab==='portaal'?' active':''}" data-tab="portaal" onclick="switchProjectTab('portaal')">${(lead.portalChat||[]).filter(m=>m.from==='client'&&!m.readAt).length > 0 ? `<i class="ti ti-message-circle" style="color:var(--danger);margin-right:3px"></i>` : ''}Klantportaal</button>
           <button class="project-tab${activeTab==='geschiedenis'?' active':''}" data-tab="geschiedenis" onclick="switchProjectTab('geschiedenis')">Geschiedenis</button>
@@ -3864,6 +3931,7 @@ async function renderProjectPage() {
         ${tabGeschiedenis}
         ${tabNotities}
         ${buildAgentsTab()}
+        ${buildProjectFilesTab()}
       </div>
     </div>`;
 
@@ -4107,6 +4175,22 @@ async function sendAgentChat(leadId) {
 
     if (data?.built && data?.url) {
       window._agentChats[leadId][key].push({ role: 'ai', builtUrl: data.url, ts: new Date().toISOString() });
+      // Auto-save to project files
+      const lead = state.leads.find(l => l.id === leadId);
+      const coName = lead?.companyName || leadId;
+      const fileType = /booking|afspraak|reserv/i.test(message) ? 'html'
+        : /chatbot|faq/i.test(message) ? 'html'
+        : /rapport|audit|analyse|keyword|strateg/i.test(message) ? 'document'
+        : 'html';
+      const fileName = /booking/i.test(message) ? `Boekingssysteem ${coName}`
+        : /chatbot/i.test(message) ? `Chatbot ${coName}`
+        : /dashboard/i.test(message) ? `Dashboard ${coName}`
+        : /landing/i.test(message) ? `Landingspagina ${coName}`
+        : `Website ${coName}`;
+      api(`/api/leads/${leadId}/project-files`, {
+        method: 'POST',
+        body: JSON.stringify({ name: fileName, type: fileType, url: data.url, problem: problemType })
+      }).catch(() => {});
       const updatedLeads = await apiJSON('/api/leads');
       if (updatedLeads) state.leads = updatedLeads;
     } else if (data?.response) {
@@ -6591,24 +6675,18 @@ async function sendWeeklyUpdate(leadId) {
   }
 }
 
-async function generateDeliveryEmail(leadId) {
-  const btn = document.querySelector(`button[onclick="generateDeliveryEmail('${leadId}')"]`);
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Genereren...'; }
-  const res  = await api(`/api/leads/${leadId}/generate-delivery-email`, { method: 'POST' });
-  const data = res ? await res.json() : {};
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Genereer & stuur'; }
-  if (!res?.ok) return toast(data?.error || 'Genereren mislukt', 'error');
+function _openDeliveryEmailModal(leadId, subject, body) {
   openModal(`
     <div class="modal-header">
       <h3 class="modal-title">📦 Oplevering email</h3>
     </div>
     <div style="margin-bottom:12px">
       <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">Onderwerp</div>
-      <div id="delivSubject" style="font-size:14px;font-weight:600;padding:8px 12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">${esc(data.subject)}</div>
+      <div id="delivSubject" style="font-size:14px;font-weight:600;padding:8px 12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">${esc(subject)}</div>
     </div>
     <div style="margin-bottom:16px">
       <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">Email inhoud</div>
-      <div id="delivBodyView" style="font-size:13px;white-space:pre-wrap;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border);max-height:320px;overflow-y:auto">${esc(data.body)}</div>
+      <div id="delivBodyView" style="font-size:13px;white-space:pre-wrap;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border);max-height:320px;overflow-y:auto">${esc(body)}</div>
       <textarea id="delivBodyEdit" style="display:none;width:100%;min-height:240px;font-size:13px;padding:12px;border:1.5px solid var(--accent);border-radius:8px;font-family:inherit;resize:vertical"></textarea>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -6617,6 +6695,33 @@ async function generateDeliveryEmail(leadId) {
       <button class="btn btn-ghost" onclick="copyToClipboard((document.getElementById('delivBodyEdit')?.style.display!=='none'?document.getElementById('delivBodyEdit')?.value:document.getElementById('delivBodyView')?.textContent)||'','Gekopieerd!')"><i class="ti ti-copy"></i></button>
     </div>
   `);
+}
+
+window.openSavedDeliveryEmail = function(leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  const oe = lead?.opleveringEmail;
+  if (!oe) return toast('Geen opgeslagen email gevonden', 'error');
+  _openDeliveryEmailModal(leadId, oe.subject, oe.body);
+};
+
+async function generateDeliveryEmail(leadId, regenerate = false) {
+  if (regenerate) {
+    if (!confirm('Weet je zeker? De huidige email wordt overschreven.')) return;
+  }
+  const btn = document.querySelector(`button[onclick="generateDeliveryEmail('${leadId}')"], button[onclick="generateDeliveryEmail('${leadId}', true)"]`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Genereren...'; }
+  const res  = await api(`/api/leads/${leadId}/generate-delivery-email`, { method: 'POST' });
+  const data = res ? await res.json() : {};
+  if (btn) { btn.disabled = false; btn.innerHTML = regenerate ? '<i class="ti ti-refresh"></i> Opnieuw genereren' : '<i class="ti ti-sparkles"></i> Genereer & stuur'; }
+  if (!res?.ok) return toast(data?.error || 'Genereren mislukt', 'error');
+  if (regenerate) toast('Email opnieuw gegenereerd', 'success');
+  // Update local state so UI refreshes
+  const lead = state.leads.find(l => l.id === leadId);
+  if (lead) {
+    lead.opleveringEmail = { subject: data.subject, body: data.body, generatedAt: new Date().toISOString(), sentAt: lead.opleveringEmail?.sentAt || null };
+  }
+  renderProjectPage().then(() => switchProjectTab('emails'));
+  _openDeliveryEmailModal(leadId, data.subject, data.body);
 }
 
 function toggleDeliveryEmailEdit() {
@@ -6647,7 +6752,9 @@ async function sendDeliveryEmail(leadId) {
   if (res?.ok) {
     closeModal();
     toast('Oplevering email verstuurd!', 'success');
-    renderProjectPage();
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead?.opleveringEmail) lead.opleveringEmail.sentAt = new Date().toISOString();
+    renderProjectPage().then(() => switchProjectTab('emails'));
   } else {
     toast(data?.error || 'Versturen mislukt', 'error');
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-send"></i> Verstuur naar klant'; }
@@ -6697,6 +6804,76 @@ function downloadAdminInstructions() {
   const a    = document.createElement('a'); a.href = url; a.download = 'admin-instructies.txt'; a.click();
   URL.revokeObjectURL(url);
 }
+
+// ── Project files helpers ───────────────────────────────────────────────────
+window.toggleProjectFileShare = async function(leadId, fileId, shared) {
+  const res = await api(`/api/leads/${leadId}/project-files/${fileId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ sharedWithClient: shared, adminOnly: !shared })
+  });
+  if (!res?.ok) return toast('Bijwerken mislukt', 'error');
+  const lead = state.leads.find(l => l.id === leadId);
+  if (lead) {
+    const f = (lead.projectFiles || []).find(f => f.id === fileId);
+    if (f) { f.sharedWithClient = shared; f.adminOnly = !shared; }
+  }
+  toast(shared ? 'Zichtbaar voor klant ✓' : 'Verborgen voor klant', shared ? 'success' : 'info');
+  renderProjectPage().then(() => switchProjectTab('bestanden'));
+};
+
+window.deleteProjectFile = async function(leadId, fileId) {
+  if (!confirm('Bestand verwijderen?')) return;
+  const res = await api(`/api/leads/${leadId}/project-files/${fileId}`, { method: 'DELETE' });
+  if (!res?.ok) return toast('Verwijderen mislukt', 'error');
+  const lead = state.leads.find(l => l.id === leadId);
+  if (lead) lead.projectFiles = (lead.projectFiles || []).filter(f => f.id !== fileId);
+  toast('Bestand verwijderd', 'info');
+  renderProjectPage().then(() => switchProjectTab('bestanden'));
+};
+
+window.openAddProjectFileModal = function(leadId) {
+  openModal(`
+    <div class="modal-header"><h3 class="modal-title">📁 Bestand toevoegen</h3></div>
+    <div class="form-group">
+      <label>Naam</label>
+      <input type="text" id="pfName" placeholder="Bijv. Boekingssysteem MexyDigital" class="form-control">
+    </div>
+    <div class="form-group">
+      <label>Type</label>
+      <select id="pfType" class="form-control">
+        <option value="html">🌐 HTML pagina</option>
+        <option value="document">📄 Document</option>
+        <option value="strategy">📊 Strategie</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>URL</label>
+      <input type="text" id="pfUrl" placeholder="https://... of /sites/..." class="form-control">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-primary" style="flex:1" onclick="saveProjectFile('${leadId}')"><i class="ti ti-plus"></i> Toevoegen</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
+    </div>
+  `);
+};
+
+window.saveProjectFile = async function(leadId) {
+  const name = document.getElementById('pfName')?.value?.trim();
+  const type = document.getElementById('pfType')?.value || 'html';
+  const url  = document.getElementById('pfUrl')?.value?.trim();
+  if (!name || !url) return toast('Naam en URL zijn verplicht', 'error');
+  const res  = await api(`/api/leads/${leadId}/project-files`, {
+    method: 'POST',
+    body: JSON.stringify({ name, type, url })
+  });
+  const data = res ? await res.json() : {};
+  if (!res?.ok) return toast(data?.error || 'Toevoegen mislukt', 'error');
+  const lead = state.leads.find(l => l.id === leadId);
+  if (lead) { lead.projectFiles = lead.projectFiles || []; lead.projectFiles.push(data); }
+  closeModal();
+  toast('Bestand toegevoegd!', 'success');
+  renderProjectPage().then(() => switchProjectTab('bestanden'));
+};
 
 async function sendClientEmail(leadId, trigger) {
   const lead = state.leads.find(l => l.id === leadId);

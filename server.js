@@ -1241,7 +1241,10 @@ app.get('/api/portal/:token', (req, res) => {
     documents:           (lead.documents || []).filter(d => d.visible !== false),
     approvedDeliverables: (lead.agentDeliverables || [])
       .filter(d => d.status === 'approved')
-      .map(d => ({ service: d.service, type: d.type, deliverableType: d.deliverableType, url: d.url, approvedAt: d.approvedAt }))
+      .map(d => ({ service: d.service, type: d.type, deliverableType: d.deliverableType, url: d.url, approvedAt: d.approvedAt })),
+    sharedProjectFiles: (lead.projectFiles || [])
+      .filter(f => f.sharedWithClient)
+      .map(f => ({ id: f.id, name: f.name, type: f.type, url: f.url, fullUrl: f.fullUrl, createdAt: f.createdAt }))
   });
 });
 
@@ -3799,7 +3802,16 @@ RULES:
    - Closing with contact info for ${myName}`;
   try {
     const result = await aiJSON(prompt);
-    res.json({ subject: result.subject || `Uw project is klaar — ${lead.companyName}`, body: result.body || '' });
+    const subject = result.subject || `Uw project is klaar — ${lead.companyName}`;
+    const body    = result.body || '';
+    // Persist to lead so UI can show saved state
+    const leadsW = readJSON('leads.json') || [];
+    const wIdx   = leadsW.findIndex(l => l.id === req.params.id);
+    if (wIdx !== -1) {
+      leadsW[wIdx].opleveringEmail = { subject, body, generatedAt: new Date().toISOString(), sentAt: leadsW[wIdx].opleveringEmail?.sentAt || null };
+      writeJSON('leads.json', leadsW);
+    }
+    res.json({ subject, body });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -3816,11 +3828,66 @@ app.post('/api/leads/:id/send-delivery-email', requireAdmin, async (req, res) =>
   const settings = readJSON('settings.json') || {};
   if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld. Ga naar Instellingen → Email.' });
   await sendEmail({ to: lead.contactEmail, subject, body, settings });
+  const sentAt = new Date().toISOString();
   leads[idx].clientEmailLog = leads[idx].clientEmailLog || [];
-  leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'deliveryEmail', subject, body, sentAt: new Date().toISOString() });
+  leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'deliveryEmail', subject, body, sentAt });
+  if (leads[idx].opleveringEmail) leads[idx].opleveringEmail.sentAt = sentAt;
   addLeadHistory(leads, lead.id, { event: 'clientEmailSent', label: 'Oplevering email verstuurd' });
   writeJSON('leads.json', leads);
   addActivity('email', `Oplevering email → ${lead.companyName}`, { leadId: lead.id });
+  res.json({ ok: true });
+});
+
+// ── Project files ───────────────────────────────────────────────────────────
+app.get('/api/leads/:id/project-files', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead  = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+  res.json(lead.projectFiles || []);
+});
+
+app.post('/api/leads/:id/project-files', requireAdmin, (req, res) => {
+  const { name, type, url, problem } = req.body;
+  if (!name || !url) return res.status(400).json({ error: 'Naam en URL zijn verplicht' });
+  const leads = readJSON('leads.json') || [];
+  const idx   = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const file = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    name: name.trim(),
+    type: type || 'html',
+    url,
+    fullUrl: url.startsWith('http') ? url : (process.env.BASE_URL || 'https://www.agencyai.info') + url,
+    problem: problem || '',
+    createdAt: new Date().toISOString(),
+    sharedWithClient: false,
+    adminOnly: true
+  };
+  leads[idx].projectFiles = leads[idx].projectFiles || [];
+  leads[idx].projectFiles.push(file);
+  writeJSON('leads.json', leads);
+  res.json(file);
+});
+
+app.patch('/api/leads/:id/project-files/:fileId', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx   = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const files = leads[idx].projectFiles || [];
+  const fIdx  = files.findIndex(f => f.id === req.params.fileId);
+  if (fIdx === -1) return res.status(404).json({ error: 'Bestand niet gevonden' });
+  Object.assign(files[fIdx], req.body);
+  leads[idx].projectFiles = files;
+  writeJSON('leads.json', leads);
+  res.json(files[fIdx]);
+});
+
+app.delete('/api/leads/:id/project-files/:fileId', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx   = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  leads[idx].projectFiles = (leads[idx].projectFiles || []).filter(f => f.id !== req.params.fileId);
+  writeJSON('leads.json', leads);
   res.json({ ok: true });
 });
 
