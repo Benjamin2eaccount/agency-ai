@@ -336,6 +336,8 @@
     const CHEVRON = `<svg class="faq-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
     const CAL_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
 
+    function e(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
     function getToken() {
       return window.location.pathname.split('/').filter(Boolean).pop();
     }
@@ -420,7 +422,7 @@
     }
 
     function renderPortal(data, token) {
-      document.title = 'Projectstatus – ' + data.companyName;
+      document.title = 'Projectstatus – ' + (data.companyName || '');
       const cur      = data.currentPhase || 1;
       const pct      = Math.round(((cur - 1) / (PHASES.length - 1)) * 100);
       const svcs     = data.services  || [];
@@ -440,15 +442,15 @@
       }).join('');
 
       /* ── Overzicht tab ── */
-      const monthlyTotal = svcs.filter(s => !(s.description||'').includes('eenmalig')).reduce((s,v)=>s+(v.price||0),0);
-      const onceTotal    = svcs.filter(s =>  (s.description||'').includes('eenmalig')).reduce((s,v)=>s+(v.price||0),0);
+      const monthlyTotal = svcs.filter(s => s.billing !== 'eenmalig').reduce((s,v)=>s+(v.price||0),0);
+      const onceTotal    = svcs.filter(s => s.billing === 'eenmalig').reduce((s,v)=>s+(v.price||0),0);
 
       const svcsHtml = svcs.length > 0 ? `
         <div class="inner-section">
           <div class="inner-label">Diensten &amp; Investering</div>
           ${svcs.map(s => {
-            const isOnce = (s.description||'').includes('eenmalig');
-            return `<div class="svc-row"><span>${s.name}</span><span class="svc-price">€${(s.price||0).toLocaleString('nl-NL')}${isOnce?' eenmalig':'/mnd'}</span></div>`;
+            const isOnce = s.billing === 'eenmalig';
+            return `<div class="svc-row"><span>${e(s.name)}</span><span class="svc-price">€${(s.price||0).toLocaleString('nl-NL')}${isOnce?' eenmalig':'/mnd'}</span></div>`;
           }).join('')}
           ${svcs.length > 1 ? (
             (monthlyTotal > 0 ? `<div class="svc-total"><span>Totaal per maand</span><span>€${monthlyTotal.toLocaleString('nl-NL')}</span></div>` : '') +
@@ -759,14 +761,14 @@
       document.getElementById('root').innerHTML = `
         <div class="agency-header">
           <div class="agency-logo">
-            ${data.agencyLogo ? `<img src="${data.agencyLogo}" style="width:26px;height:26px;object-fit:contain;border-radius:4px;display:block" alt="${data.agencyName}">` : '<svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>'}
+            ${data.agencyLogo ? `<img src="${e(data.agencyLogo)}" style="width:26px;height:26px;object-fit:contain;border-radius:4px;display:block" alt="${e(data.agencyName)}">` : '<svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>'}
           </div>
-          <div class="agency-name">${data.agencyName}</div>
+          <div class="agency-name">${e(data.agencyName)}</div>
         </div>
 
         <div class="project-banner">
-          <div class="company-name">${data.companyName}</div>
-          <div class="company-sub">Bijgewerkt door ${data.myName || data.agencyName}</div>
+          <div class="company-name">${e(data.companyName)}</div>
+          <div class="company-sub">Bijgewerkt door ${e(data.myName || data.agencyName)}</div>
           <div class="phase-track">${phaseTrack}</div>
           <div class="progress-wrap"><div class="progress-fill" style="width:${pct}%"></div></div>
           <div class="phase-caption">Fase: <strong>Fase ${cur} — ${PHASES[cur-1]?.label}</strong></div>

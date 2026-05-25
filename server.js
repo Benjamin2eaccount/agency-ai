@@ -126,7 +126,7 @@ if (!readJSON('settings.json')) {
   const hash = bcrypt.hashSync('agency2024', 12);
   writeJSON('settings.json', {
     username: 'admin', password: hash,
-    agencyName: 'Agency AI', myName: 'Ekow', myTitle: 'AI Growth Specialist',
+    agencyName: 'Agency AI', myName: 'Admin', myTitle: 'AI Growth Specialist',
     gmailAddress: '', gmailPassword: '', linkedinUrl: '', stripeSecretKey: '',
     mollieApiKey: '', paypalMe: '', preferredPaymentMethod: 'stripe',
     bankTransferIban: '', bankTransferName: '', bankTransferBic: '',
@@ -608,8 +608,7 @@ function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken, opts) 
               <p style="margin:0 0 2px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#1a1a1a">${e(myName||'')}</p>
               <p style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280">${e(myTitle||'AI Growth Specialist')} &middot; ${e(agencyName||'Agency AI')}</p>
               ${myEmail ? '<p style="margin:0 0 3px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280">&#x1F4E7;&nbsp;' + e(myEmail) + '</p>' : ''}
-              <p style="margin:0 0 3px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280">&#x1F310;&nbsp;www.agencyai.info</p>
-              <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280">&#x1F4CD;&nbsp;Nederland</p>
+              <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280">&#x1F310;&nbsp;${e(opts.agencyWebsite || BASE_URL || '')}</p>
             </td>
             <td valign="top" align="right" style="vertical-align:top;width:44px;padding-left:16px">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right"><tr>
@@ -623,7 +622,7 @@ function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken, opts) 
       </td></tr>
       <tr><td style="padding:16px 32px;background:#f4f4f2;border-top:1px solid #e8e8e5">
         <p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9b9b98;text-align:center;line-height:1.5">U ontvangt deze email omdat uw bedrijf voldoet aan onze selectiecriteria voor groeipotentieel. Wilt u geen emails meer ontvangen? Stuur een reply met &#39;Uitschrijven&#39;.</p>
-        <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9b9b98;text-align:center">&copy; 2026 ${e(agencyName||'Agency AI')} &mdash; www.agencyai.info</p>
+        <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9b9b98;text-align:center">&copy; ${new Date().getFullYear()} ${e(agencyName||'Agency AI')}</p>
       </td></tr>
     </table>
   </td></tr>
@@ -2073,18 +2072,18 @@ app.patch('/api/leads/:id/tasks/:taskId', async (req, res) => {
       const weekTasks = (leads[idx].tasks || []).filter(t => (t.week||1) === week);
       const allDone = weekTasks.length > 0 && weekTasks.every(t => t.status === 'klaar');
       const lead = leads[idx];
-      if (allDone && lead.email && isResendReady(settings)) {
+      if (allDone && lead.contactEmail && isResendReady(settings)) {
         // Only send once (check log)
         const alreadySent = (lead.clientEmailLog || []).some(e => e.trigger === 'weekComplete' && e.week === week);
         if (!alreadySent) {
           try {
             const email = await generateClientEmail(lead, 'weekComplete', settings, { week, tasksDone: weekTasks.length, tasksTotal: weekTasks.length });
-            await sendEmail({ to: lead.email, subject: email.subject, body: email.body, settings });
+            await sendEmail({ to: lead.contactEmail, subject: email.subject, body: email.body, settings });
             const freshLeads = readJSON('leads.json') || [];
             const fIdx = freshLeads.findIndex(l => l.id === lead.id);
             if (fIdx !== -1) {
               if (!freshLeads[fIdx].clientEmailLog) freshLeads[fIdx].clientEmailLog = [];
-              freshLeads[fIdx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'weekComplete', week, subject: email.subject, body: email.body, to: lead.email, sentAt: new Date().toISOString(), sentBy: 'systeem' });
+              freshLeads[fIdx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'weekComplete', week, subject: email.subject, body: email.body, to: lead.contactEmail, sentAt: new Date().toISOString(), sentBy: 'systeem' });
               writeJSON('leads.json', freshLeads);
             }
             console.log(`[ClientEmail] weekComplete week ${week} → ${lead.companyName}`);
@@ -2263,7 +2262,7 @@ app.post('/api/leads/:id/generate-proposal', requireAdmin, async (req, res) => {
 
   const settings = readJSON('settings.json') || {};
   const agencyName = settings.agencyName || 'Agency AI';
-  const myName     = settings.myName     || 'Ekow';
+  const myName     = settings.myName     || '';
   const myTitle    = settings.myTitle    || 'AI Growth Specialist';
 
   try {
@@ -2361,7 +2360,7 @@ app.post('/api/leads/:id/proposal/send', authMiddleware, async (req, res) => {
     await sendEmail({
       to,
       subject: `Voorstel van ${settings.agencyName || 'Agency AI'} voor ${lead.companyName}`,
-      body: `Beste ${lead.contactName || 'eigenaar'},\n\nHierbij sturen wij ons voorstel voor ${lead.companyName}.\n\nBekijk het voorstel in de bijlage of reply op deze email voor vragen.\n\nMet vriendelijke groet,\n${settings.myName || 'Ekow'}\n${settings.myTitle || 'AI Growth Specialist'}\n${settings.agencyName || 'Agency AI'}`,
+      body: `Beste ${lead.contactName || 'eigenaar'},\n\nHierbij sturen wij ons voorstel voor ${lead.companyName}.\n\nBekijk het voorstel in de bijlage of reply op deze email voor vragen.\n\nMet vriendelijke groet,\n${settings.myName || ''}\n${settings.myTitle || 'AI Growth Specialist'}\n${settings.agencyName || 'Agency AI'}`,
       settings,
       html: lead.proposal
     });
@@ -2389,7 +2388,7 @@ app.post('/api/leads/:id/generate-contract', requireAdmin, async (req, res) => {
 
   const settings = readJSON('settings.json') || {};
   const agencyName = settings.agencyName || 'Agency AI';
-  const myName     = settings.myName     || 'Ekow';
+  const myName     = settings.myName     || '';
   const myTitle    = settings.myTitle    || 'AI Growth Specialist';
   const agencyAddress = settings.agencyAddress || '';
   const btwNumber  = settings.btwNumber  || '';
@@ -2484,7 +2483,7 @@ app.post('/api/leads/:id/contract/send', authMiddleware, async (req, res) => {
     await sendEmail({
       to,
       subject: `Dienstverleningsovereenkomst — ${settings.agencyName || 'Agency AI'} × ${lead.companyName}`,
-      body: `Beste ${lead.contactName || 'eigenaar'},\n\nHierbij sturen wij de dienstverleningsovereenkomst ter ondertekening.\n\nLees het contract door, onderteken en stuur een scan/foto terug.\n\nMet vriendelijke groet,\n${settings.myName || 'Ekow'}\n${settings.myTitle || 'AI Growth Specialist'}\n${settings.agencyName || 'Agency AI'}`,
+      body: `Beste ${lead.contactName || 'eigenaar'},\n\nHierbij sturen wij de dienstverleningsovereenkomst ter ondertekening.\n\nLees het contract door, onderteken en stuur een scan/foto terug.\n\nMet vriendelijke groet,\n${settings.myName || ''}\n${settings.myTitle || 'AI Growth Specialist'}\n${settings.agencyName || 'Agency AI'}`,
       settings,
       html: lead.contract
     });
@@ -2832,12 +2831,12 @@ ${(d.sections||[]).length?`<div style="margin-top:12px;border:1px solid #e5e7eb;
     writeJSON('leads.json', leads);
 
     // Auto-send AI delivery email to client
-    if (settings.autoClientEmails?.deliveryReady !== false && lead.email && isResendReady(settings)) {
+    if (settings.autoClientEmails?.deliveryReady !== false && lead.contactEmail && isResendReady(settings)) {
       try {
         const email = await generateClientEmail(leads[idx], 'deliveryReady', settings);
-        await sendEmail({ to: lead.email, subject: email.subject, body: email.body, settings });
+        await sendEmail({ to: lead.contactEmail, subject: email.subject, body: email.body, settings });
         if (!leads[idx].clientEmailLog) leads[idx].clientEmailLog = [];
-        leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'deliveryReady', subject: email.subject, body: email.body, to: lead.email, sentAt: new Date().toISOString(), sentBy: 'systeem' });
+        leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'deliveryReady', subject: email.subject, body: email.body, to: lead.contactEmail, sentAt: new Date().toISOString(), sentBy: 'systeem' });
         writeJSON('leads.json', leads);
       } catch { /* optional */ }
     }
@@ -5344,7 +5343,7 @@ app.post('/api/upsell/:leadId/email', async (req, res) => {
   const opp      = opps.find(o => o.leadId === req.params.leadId);
   if (!opp) return res.status(404).json({ error: 'Niet gevonden' });
 
-  const myName     = settings.myName     || 'Ekow';
+  const myName     = settings.myName     || '';
   const agencyName = settings.agencyName || 'Agency AI';
 
   try {
@@ -5867,7 +5866,9 @@ async function processOneLead(lead, settings, options = {}) {
     console.log(`  ✗ Duplicaat overgeslagen: ${lead.companyName} (bestaat al als ${dup.status})`);
     return null;
   }
-  const { services = [], myName = '', agencyName = 'Agency AI' } = settings;
+  const services  = settings.services || DEFAULT_SERVICES;
+  const myName    = settings.myName    || '';
+  const agencyName = settings.agencyName || 'Agency AI';
 
   const c = (lead.country || '').toLowerCase().replace(/[^a-z]/g, '');
   const language =
@@ -6529,7 +6530,7 @@ async function runFindLeadsJob(overrides = {}, manual = false) {
 
   const count      = overrides.count      || settings.leadsPerDay || 15;
   const services   = settings.services   || DEFAULT_SERVICES;
-  const myName     = settings.myName     || 'Ekow';
+  const myName     = settings.myName     || '';
   const agencyName = settings.agencyName || 'Agency AI';
   console.log('[Run] Target leads:', count, '| Services:', services.length, '| myName:', myName);
 
@@ -6985,7 +6986,7 @@ async function runFollowUpJob() {
   const settings  = readJSON('settings.json');
   if (settings.automationPaused) return;
 
-  const myName      = settings.myName     || 'Ekow';
+  const myName      = settings.myName     || '';
   const agencyName  = settings.agencyName || 'Agency AI';
   const _fuCalendly = settings.calendlyUrl ? `\nCalendly: ${settings.calendlyUrl} — je kunt dit in de email verwerken als uitnodiging` : '';
   const _fuCalendlyEN = settings.calendlyUrl ? `\nCalendly: ${settings.calendlyUrl} — you may include this as a booking invitation` : '';
@@ -8436,7 +8437,7 @@ async function runMonthlyReports() {
   if (settings.monthlyReports === false) return;
 
   const leads = readJSON('leads.json') || [];
-  const myName     = settings.myName     || 'Ekow';
+  const myName     = settings.myName     || '';
   const agencyName = settings.agencyName || 'Agency AI';
   const clients = leads.filter(l => l.status === 'client');
   if (!clients.length) return;
@@ -8506,7 +8507,7 @@ async function runReferralCheck() {
   const settings   = readJSON('settings.json');
   const leads      = readJSON('leads.json') || [];
   const inbox      = readJSON('inbox.json') || [];
-  const myName     = settings.myName     || 'Ekow';
+  const myName     = settings.myName     || '';
   const agencyName = settings.agencyName || 'Agency AI';
   const now        = Date.now();
   let changed = false;
@@ -8983,8 +8984,8 @@ cron.schedule('0 9 * * *', async () => {
           addLeadHistory(freshLeads, lead.id, { event: 'autoInvoice', label: `Automatische factuur aangemaakt: €${total}` });
           writeJSON('leads.json', freshLeads);
         }
-        if (lead.email && isResendReady(settings)) {
-          await sendEmail({ to: lead.email, subject: `Factuur ${today.toLocaleDateString('nl-NL', {month:'long'})} — ${settings.agencyName}`, body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder de factuur voor deze maand:\n\n${desc}\nBedrag: €${total}\nBetaallink: ${url}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`, settings });
+        if (lead.contactEmail && isResendReady(settings)) {
+          await sendEmail({ to: lead.contactEmail, subject: `Factuur ${today.toLocaleDateString('nl-NL', {month:'long'})} — ${settings.agencyName}`, body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder de factuur voor deze maand:\n\n${desc}\nBedrag: €${total}\nBetaallink: ${url}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`, settings });
         }
         console.log(`[AutoInvoice] €${total} → ${lead.companyName}`);
       } catch (err) { console.error(`[AutoInvoice] Fout voor ${lead.companyName}:`, err.message); }
@@ -9003,10 +9004,10 @@ cron.schedule('0 9 * * *', async () => {
       // Don't spam: only send if no reminder in last 7 days
       const lastReminder = pay.lastReminderAt ? new Date(pay.lastReminderAt) : null;
       if (lastReminder && (today - lastReminder) < 7 * 86400000) continue;
-      if (!lead.email || !isResendReady(settings)) continue;
+      if (!lead.contactEmail || !isResendReady(settings)) continue;
       try {
         const reminderEmail = await aiJSON(`Schrijf een vriendelijke betalingsherinnering. Klant: ${lead.companyName}. Bedrag: €${pay.amount}. ${daysOverdue} dagen te laat. Betaallink: ${pay.paymentUrl}. Max 100 woorden. JSON: { "subject": "...", "body": "..." }`);
-        await sendEmail({ to: lead.email, subject: reminderEmail.subject, body: reminderEmail.body, settings });
+        await sendEmail({ to: lead.contactEmail, subject: reminderEmail.subject, body: reminderEmail.body, settings });
         const lIdx = allLeads.findIndex(l => l.id === lead.id);
         const pIdx = (allLeads[lIdx]?.payments || []).findIndex(p => p.id === pay.id);
         if (lIdx !== -1 && pIdx !== -1) { allLeads[lIdx].payments[pIdx].lastReminderAt = new Date().toISOString(); allLeads[lIdx].payments[pIdx].reminderCount = (allLeads[lIdx].payments[pIdx].reminderCount || 0) + 1; }
