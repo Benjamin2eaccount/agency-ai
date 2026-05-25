@@ -2164,7 +2164,7 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
         console.warn(`[Project] Welkomstmail mislukt voor ${lead.companyName}:`, emailErr.message);
       }
     }
-    send(3, 'Welkomstmail versturen', emailSent ? 'done' : 'skipped', { note: emailSent ? clientEmail : 'Geen email of Gmail niet geconfigureerd' });
+    send(3, 'Welkomstmail versturen', emailSent ? 'done' : 'skipped', { note: emailSent ? clientEmail : 'Geen email of Email niet geconfigureerd' });
 
     // Step 4 — AI project plan
     send(4, 'Projectplan genereren (AI)', 'running');
@@ -3932,7 +3932,7 @@ app.post('/api/leads/:id/generate-admin-instructions', requireAdmin, async (req,
   const settings    = readJSON('settings.json') || {};
   const deliverables = (lead.agentDeliverables || []).filter(d => d.status === 'done' || d.status === 'approved');
   const openTasks   = (lead.tasks || []).filter(t => t.status !== 'klaar');
-  const delivList   = deliverables.map(d => `- ${d.service}: ${d.url ? BASE_URL + d.url : '(geen URL)'} [${d.type || 'document'}]`).join('\n') || '(geen deliverables gebouwd)';
+  const delivList   = deliverables.map(d => `- ${d.service}: ${d.url ? (d.url.startsWith('http') ? d.url : BASE_URL + d.url) : '(geen URL)'} [${d.type || 'document'}]`).join('\n') || '(geen deliverables gebouwd)';
   const taskList    = openTasks.map(t => `- ${t.title} (W${t.week || 1})`).join('\n') || '(geen open taken)';
   const portalUrl   = lead.portalToken ? `${BASE_URL}/portal/${lead.portalToken}` : 'niet aangemaakt';
   const bookingD    = deliverables.find(d => /booking|afspraak|reserv/i.test(d.service));
@@ -3981,8 +3981,13 @@ app.post('/api/leads/:id/send-admin-email', requireAdmin, async (req, res) => {
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
   const settings = readJSON('settings.json') || {};
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
-  await sendEmail({ to: settings.gmailAddress, subject: `Admin instructies — ${lead.companyName}`, body: text, settings });
-  res.json({ ok: true });
+  if (!settings.gmailAddress) return res.status(400).json({ error: 'Geen admin emailadres ingesteld in Instellingen → Email' });
+  try {
+    await sendEmail({ to: settings.gmailAddress, subject: `Admin instructies — ${lead.companyName}`, body: text, settings });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/leads/:id/portal/read', (req, res) => {
@@ -4386,7 +4391,7 @@ app.post('/api/leads/:id/deliverables/:dIdx/preview-email', requireAdmin, async 
     const emailBody = await aiCall(`Schrijf een professionele leveringsemail voor een klant.
 Dienst: ${d.service}
 Klant: ${lead.companyName} (${lead.location || ''})
-Wat gedaan (instructies samenvatting): ${(d.instructions || '').substring(0, 600)}
+Wat gedaan (instructies samenvatting): ${(d.content || d.instructions || (d.url ? `Live URL: ${d.url}` : '') || d.todoText || '').substring(0, 600)}
 Agency: ${agencyName} — ${myName}${myTitle ? `, ${myTitle}` : ''}
 
 De email moet bevatten:
@@ -5004,7 +5009,7 @@ app.patch('/api/settings/stripe', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/stripe/invoice', async (req, res) => {
+app.post('/api/stripe/invoice', requireAdmin, async (req, res) => {
   const settings = readJSON('settings.json');
   if (!settings.stripeSecretKey) {
     return res.status(400).json({ error: 'Stripe sleutel niet ingesteld — voeg toe in Instellingen' });
@@ -5020,7 +5025,7 @@ app.post('/api/stripe/invoice', async (req, res) => {
     });
     const priceData = {
       product: product.id,
-      unit_amount: Math.round(amount) * 100,
+      unit_amount: Math.round(parseFloat(amount) * 100),
       currency: 'eur'
     };
     if (billing !== 'eenmalig') priceData.recurring = { interval: 'month' };
@@ -5047,7 +5052,7 @@ app.post('/api/mollie/invoice', requireAdmin, async (req, res) => {
     const fetch = (await import('node-fetch')).default;
     const body = {
       description: description || `AI-diensten — ${companyName}`,
-      amount: { currency: 'EUR', value: (Math.round(amount)).toFixed(2) },
+      amount: { currency: 'EUR', value: parseFloat(amount).toFixed(2) },
       redirectUrl: settings.websiteContact || 'https://agencyai.nl',
     };
     const mollieRes = await fetch('https://api.mollie.com/v2/payment-links', {
@@ -5090,7 +5095,7 @@ async function createPaymentLink(method, { companyName, amount, description, bil
     if (!settings.stripeSecretKey) throw new Error('Stripe niet geconfigureerd');
     const stripe = Stripe(settings.stripeSecretKey);
     const product = await stripe.products.create({ name: description || `AI-diensten — ${companyName}` });
-    const priceData = { product: product.id, unit_amount: Math.round(amount) * 100, currency: 'eur' };
+    const priceData = { product: product.id, unit_amount: Math.round(parseFloat(amount) * 100), currency: 'eur' };
     if (billing !== 'eenmalig') priceData.recurring = { interval: 'month' };
     const price = await stripe.prices.create(priceData);
     const link = await stripe.paymentLinks.create({ line_items: [{ price: price.id, quantity: 1 }] });
@@ -5102,7 +5107,7 @@ async function createPaymentLink(method, { companyName, amount, description, bil
     const mollieRes = await fetch('https://api.mollie.com/v2/payment-links', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${settings.mollieApiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description: description || `AI-diensten — ${companyName}`, amount: { currency: 'EUR', value: Math.round(amount).toFixed(2) }, redirectUrl: settings.websiteContact || 'https://agencyai.nl' })
+      body: JSON.stringify({ description: description || `AI-diensten — ${companyName}`, amount: { currency: 'EUR', value: parseFloat(amount).toFixed(2) }, redirectUrl: settings.websiteContact || 'https://agencyai.nl' })
     });
     const d = await mollieRes.json();
     if (!mollieRes.ok) throw new Error(d.detail || 'Mollie fout');
@@ -5260,9 +5265,10 @@ app.post('/api/leads/:id/payments/:payId/remind', requireAdmin, async (req, res)
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet geconfigureerd' });
 
   try {
+    const payLinkLine = pay.paymentUrl ? `Betaallink: ${pay.paymentUrl}` : (pay.bankDetails ? `Bankoverschrijving naar IBAN: ${pay.bankDetails.iban}` : '');
     const reminderEmail = await aiJSON(`Schrijf een vriendelijke maar dringende betalingsherinnering.
 Klant: ${lead.companyName}. Bureau: ${settings.agencyName}, ${settings.myName}.
-Bedrag: €${pay.amount}. Omschrijving: ${pay.description}. Betaallink: ${pay.paymentUrl}.
+Bedrag: €${pay.amount}. Omschrijving: ${pay.description}. ${payLinkLine}
 Tone: professioneel maar begripvol. Max 150 woorden.
 Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`);
 
@@ -5363,8 +5369,11 @@ app.post('/api/upsell/:leadId/send', async (req, res) => {
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
   const { subject, body } = req.body;
   if (!subject || !body) return res.status(400).json({ error: 'Subject en body vereist' });
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.id === req.params.leadId);
+  if (!lead || !lead.contactEmail) return res.status(400).json({ error: 'Klant heeft geen emailadres' });
   try {
-    await sendEmail({ to: settings.gmailAddress, subject, body, settings });
+    await sendEmail({ to: lead.contactEmail, subject, body, settings });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -8418,7 +8427,7 @@ async function runUpsellCheck() {
       upsellService: topUpsell.name,
       upsellPrice: topUpsell.price,
       upsellDescription: topUpsell.description || '',
-      clientEmail: client.email?.to || null,
+      clientEmail: client.contactEmail || null,
       daysSince
     });
   }
@@ -8480,7 +8489,7 @@ async function runMonthlyReports() {
     }
 
     // Email notification if portal exists
-    if (client.portalToken && isResendReady(settings)) {
+    if (client.portalToken && client.contactEmail && isResendReady(settings)) {
       try {
         const portalUrl = BASE_URL + '/portal/' + client.portalToken;
         const subject = lang === 'nl'
@@ -8489,7 +8498,7 @@ async function runMonthlyReports() {
         const body = lang === 'nl'
           ? 'Beste ' + client.companyName + ',\n\nUw maandrapport voor ' + monthName + ' staat klaar in uw portaal.\n\nBekijk het hier: ' + portalUrl + '\n\nMet vriendelijke groet,\n' + myName
           : 'Dear ' + client.companyName + ',\n\nYour monthly report for ' + monthName + ' is ready in your portal.\n\nView it here: ' + portalUrl + '\n\nBest regards,\n' + myName;
-        await sendEmail({ to: settings.gmailAddress, subject, body, settings });
+        await sendEmail({ to: client.contactEmail, subject, body, settings });
       } catch { /* skip */ }
     }
   }
@@ -8985,7 +8994,8 @@ cron.schedule('0 9 * * *', async () => {
           writeJSON('leads.json', freshLeads);
         }
         if (lead.contactEmail && isResendReady(settings)) {
-          await sendEmail({ to: lead.contactEmail, subject: `Factuur ${today.toLocaleDateString('nl-NL', {month:'long'})} — ${settings.agencyName}`, body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder de factuur voor deze maand:\n\n${desc}\nBedrag: €${total}\nBetaallink: ${url}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`, settings });
+          const invoiceLinkLine = url ? `Betaallink: ${url}` : (settings.bankTransferIban ? `Bankoverschrijving naar IBAN: ${settings.bankTransferIban}` : '');
+          await sendEmail({ to: lead.contactEmail, subject: `Factuur ${today.toLocaleDateString('nl-NL', {month:'long'})} — ${settings.agencyName}`, body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder de factuur voor deze maand:\n\n${desc}\nBedrag: €${total}\n${invoiceLinkLine}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`, settings });
         }
         console.log(`[AutoInvoice] €${total} → ${lead.companyName}`);
       } catch (err) { console.error(`[AutoInvoice] Fout voor ${lead.companyName}:`, err.message); }
@@ -9006,7 +9016,8 @@ cron.schedule('0 9 * * *', async () => {
       if (lastReminder && (today - lastReminder) < 7 * 86400000) continue;
       if (!lead.contactEmail || !isResendReady(settings)) continue;
       try {
-        const reminderEmail = await aiJSON(`Schrijf een vriendelijke betalingsherinnering. Klant: ${lead.companyName}. Bedrag: €${pay.amount}. ${daysOverdue} dagen te laat. Betaallink: ${pay.paymentUrl}. Max 100 woorden. JSON: { "subject": "...", "body": "..." }`);
+        const overdueLink = pay.paymentUrl ? `Betaallink: ${pay.paymentUrl}` : (pay.bankDetails ? `IBAN: ${pay.bankDetails.iban}` : '');
+        const reminderEmail = await aiJSON(`Schrijf een vriendelijke betalingsherinnering. Klant: ${lead.companyName}. Bedrag: €${pay.amount}. ${daysOverdue} dagen te laat. ${overdueLink} Max 100 woorden. JSON: { "subject": "...", "body": "..." }`);
         await sendEmail({ to: lead.contactEmail, subject: reminderEmail.subject, body: reminderEmail.body, settings });
         const lIdx = allLeads.findIndex(l => l.id === lead.id);
         const pIdx = (allLeads[lIdx]?.payments || []).findIndex(p => p.id === pay.id);
