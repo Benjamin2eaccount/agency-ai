@@ -249,6 +249,19 @@ app.get('/client-login', (_, res) => res.sendFile(path.join(__dirname, 'public',
 app.get('/app',          (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/status',       (_, res) => res.sendFile(path.join(__dirname, 'public', 'status.html')));
 
+// MPA routes — each /app/:page serves its own HTML file
+app.get('/app/:page', (req, res) => {
+  const page = req.params.page;
+  // Block path traversal
+  if (!/^[a-z0-9-]+$/i.test(page)) return res.redirect('/app');
+  const filePath = path.join(__dirname, 'public', 'app', page + '.html');
+  if (require('fs').existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.redirect('/app');
+  }
+});
+
 // readJSON / writeJSON are provided by database.js (SQLite-backed)
 
 function addActivity(type, label, opts) {

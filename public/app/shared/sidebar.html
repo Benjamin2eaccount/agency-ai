@@ -1,0 +1,86 @@
+<div class="sidebar-header">
+  <div class="sidebar-logo">
+    <div class="logo-icon" id="sidebarLogoIcon">
+      <i class="ti ti-bolt"></i>
+    </div>
+    <span class="logo-name" id="sidebarLogoName">Agency AI</span>
+  </div>
+  <button class="notif-btn" id="notifBtn" title="Meldingen">
+    <i class="ti ti-bell"></i>
+    <span class="notif-badge" id="notifBadge" style="display:none">0</span>
+  </button>
+</div>
+
+<nav class="sidebar-nav">
+  <div class="sidebar-section-label">Werkruimte</div>
+  <a href="/app/dashboard" class="nav-item" data-page="dashboard">
+    <i class="ti ti-layout-dashboard"></i>
+    <span>Dashboard</span>
+  </a>
+  <a href="/app/inbox" class="nav-item" data-page="inbox">
+    <i class="ti ti-inbox"></i>
+    <span>Inbox</span>
+    <span class="nav-badge" id="inboxBadge" style="display:none"></span>
+  </a>
+  <a href="/app/leads" class="nav-item" data-page="leads">
+    <i class="ti ti-users"></i>
+    <span>Leads</span>
+  </a>
+  <a href="/app/pipeline" class="nav-item" data-page="pipeline">
+    <i class="ti ti-git-branch"></i>
+    <span>Pipeline</span>
+  </a>
+  <a href="/app/agents" class="nav-item" data-page="agents">
+    <i class="ti ti-robot"></i>
+    <span>Agents</span>
+  </a>
+  <a href="/app/runs" class="nav-item" data-page="runs">
+    <i class="ti ti-rotate-clockwise"></i>
+    <span>Runs</span>
+  </a>
+  <a href="/app/stats" class="nav-item" data-page="stats">
+    <i class="ti ti-chart-bar"></i>
+    <span>Statistieken</span>
+  </a>
+  <a href="/app/chat" class="nav-item" data-page="chat">
+    <i class="ti ti-message-circle"></i>
+    <span>Chat</span>
+    <span class="nav-badge" id="chatBadge" style="display:none"></span>
+  </a>
+  <a href="/app/contacts" class="nav-item" data-page="contacts" data-admin-only>
+    <i class="ti ti-address-book"></i>
+    <span>Contacten</span>
+    <span class="nav-badge" id="contactsBadge" style="display:none"></span>
+  </a>
+  <a href="/app/settings" class="nav-item" data-page="settings" data-admin-only>
+    <i class="ti ti-settings"></i>
+    <span>Instellingen</span>
+  </a>
+</nav>
+
+<div class="sidebar-running" id="sidebarRunning" style="display:none">
+  <div class="sidebar-running-label">Nu draait</div>
+  <div class="sidebar-running-item">
+    <span class="running-dot"></span>
+    <span id="sidebarRunningText">Outreach run</span>
+  </div>
+  <div class="sidebar-running-progress">
+    <div class="sidebar-running-bar" id="sidebarRunningBar" style="width:0%"></div>
+  </div>
+</div>
+
+<div class="sidebar-footer">
+  <div class="user-info">
+    <div class="user-avatar" id="userAvatar">A</div>
+    <div class="user-details">
+      <div class="user-name" id="userName">Admin</div>
+      <div class="user-role" id="userRole">Admin</div>
+    </div>
+  </div>
+  <button class="btn-theme" id="themeBtn" title="Dark/light mode">
+    <i class="ti ti-moon"></i>
+  </button>
+  <button class="btn-logout" id="logoutBtn" title="Uitloggen">
+    <i class="ti ti-logout"></i>
+  </button>
+</div>
