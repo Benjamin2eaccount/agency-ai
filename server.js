@@ -15,6 +15,7 @@ const dnsPromises = require('dns').promises;
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'agency_ai_secret';
+if (!process.env.JWT_SECRET) console.warn('[Security] JWT_SECRET not set — using insecure default. Set JWT_SECRET in environment variables.');
 const DATA_DIR = path.join(__dirname, 'data');
 const BASE_URL = process.env.BASE_URL || 'https://www.agencyai.info';
 
@@ -728,6 +729,9 @@ function getGmailPassword(s) {
 function isGmailReady(s) {
   return !!(s && (s.gmailAddress || process.env.GMAIL_ADDRESS) && getGmailPassword(s));
 }
+function isResendReady(s) {
+  return !!(s && (s.resendApiKey || process.env.RESEND_API_KEY));
+}
 
 // Claude API key: encrypted DB value → env var fallback
 // Always call with fresh settings object from readJSON
@@ -776,9 +780,27 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-// â"€â"€â"€ Auth routes (public â€" no middleware) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ── Auth routes (public — no middleware) ────────────────────────────────────
 
-app.post('/api/auth/login', async (req, res) => {
+// Simple in-memory login rate limiter: max 10 attempts per IP per 15 minutes
+const _loginAttempts = new Map();
+function loginRateLimit(req, res, next) {
+  const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const window = 15 * 60 * 1000; // 15 minutes
+  const max = 10;
+  const entry = _loginAttempts.get(ip) || { count: 0, resetAt: now + window };
+  if (now > entry.resetAt) { entry.count = 0; entry.resetAt = now + window; }
+  entry.count++;
+  _loginAttempts.set(ip, entry);
+  if (entry.count > max) {
+    const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+    return res.status(429).json({ error: `Te veel inlogpogingen. Probeer het opnieuw over ${Math.ceil(retryAfter / 60)} minuten.` });
+  }
+  next();
+}
+
+app.post('/api/auth/login', loginRateLimit, async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Gebruikersnaam en wachtwoord verplicht' });
@@ -888,7 +910,7 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
   const settings = readJSON('settings.json') || {};
 
   // Notify team
-  if (isGmailReady(settings)) {
+  if (isResendReady(settings)) {
     try {
       const answersText = Object.entries(req.body.answers || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
       await sendEmail({ to: settings.gmailAddress, subject: `[Intake ingevuld] ${leads[idx].companyName}`, body: `De intake van ${leads[idx].companyName} is ingevuld.\n\nAntwoorden:\n${answersText}`, settings });
@@ -898,7 +920,7 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
   // Auto-send intake confirmation email to client
   const lead = leads[idx];
   const intakeConfirmTo = (lead.contactEmail || '').trim();
-  if (settings.autoClientEmails?.intakeReceived !== false && intakeConfirmTo && isGmailReady(settings)) {
+  if (settings.autoClientEmails?.intakeReceived !== false && intakeConfirmTo && isResendReady(settings)) {
     try {
       const email = await generateClientEmail(lead, 'intakeReceived', settings);
       await sendEmail({ to: intakeConfirmTo, subject: email.subject, body: email.body, settings });
@@ -1349,7 +1371,7 @@ app.post('/api/contact', async (req, res) => {
   writeJSON('contacts.json', contacts);
   addNotification('contact_form', `Nieuwe aanvraag: ${name}`, `${company ? company + ' — ' : ''}${service || 'Algemene aanvraag'}`, null, 'contacts');
   const settings = readJSON('settings.json') || {};
-  if (isGmailReady(settings)) {
+  if (isResendReady(settings)) {
     try {
       await sendEmail({
         to: settings.gmailAddress,
@@ -1411,7 +1433,7 @@ app.post('/api/order', async (req, res) => {
   addNotification('contact_form', `Nieuwe bestelling: ${name}`, `${company ? company + ' — ' : ''}${service || 'Dienst onbekend'}`, leadId, `project:${leadId}`);
 
   // Confirmation email to customer
-  if (isGmailReady(settings) || (settings.resendApiKey || process.env.RESEND_API_KEY)) {
+  if (isResendReady(settings)) {
     try {
       const calendlyCta = settings.calendlyUrl ? `\n\nWil je alvast een gesprek inplannen om de details door te nemen?\n${settings.calendlyUrl}` : '';
       await sendEmail({
@@ -1424,7 +1446,7 @@ app.post('/api/order', async (req, res) => {
   }
 
   // Notification email to admin
-  if (isGmailReady(settings)) {
+  if (isResendReady(settings)) {
     try {
       await sendEmail({
         to: settings.gmailAddress,
@@ -1457,7 +1479,7 @@ app.post('/api/booking/:client', async (req, res) => {
   addNotification('contact_form', `Nieuwe boeking: ${naam}`, `${bedrijf ? bedrijf + ' — ' : ''}${service} op ${date} ${time}`, null, 'contacts');
 
   const settings = readJSON('settings.json') || {};
-  if (isGmailReady(settings)) {
+  if (isResendReady(settings)) {
     try {
       await sendEmail({
         to: email,
@@ -2051,7 +2073,7 @@ app.patch('/api/leads/:id/tasks/:taskId', async (req, res) => {
       const weekTasks = (leads[idx].tasks || []).filter(t => (t.week||1) === week);
       const allDone = weekTasks.length > 0 && weekTasks.every(t => t.status === 'klaar');
       const lead = leads[idx];
-      if (allDone && lead.email && isGmailReady(settings)) {
+      if (allDone && lead.email && isResendReady(settings)) {
         // Only send once (check log)
         const alreadySent = (lead.clientEmailLog || []).some(e => e.trigger === 'weekComplete' && e.week === week);
         if (!alreadySent) {
@@ -2133,7 +2155,7 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
     send(3, 'Welkomstmail versturen', 'running');
     const clientEmail = (lead.contactEmail || '').trim();
     let emailSent = false;
-    if (clientEmail && isGmailReady(settings)) {
+    if (clientEmail && isResendReady(settings)) {
       try {
         const calendlyCta = settings.calendlyUrl ? `\n\nWil je alvast een gesprek inplannen? Dat kan direct via:\n${settings.calendlyUrl}` : '';
         const welcomeBody = `Beste ${lead.contactName || lead.companyName},\n\nWelkom! We zijn verheugd om samen te werken.\n\nVia de onderstaande link kun je jouw intake-vragenlijst invullen, zodat we zo snel mogelijk kunnen starten:\n${intakeUrl}\n\nHeb je vragen? Stuur dan gerust een bericht via je klantportaal:\n${portalUrl}${calendlyCta}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.myTitle || ''}\n${settings.agencyName}`;
@@ -2192,7 +2214,7 @@ Antwoord ALLEEN als JSON: { "tasks": [{ "title": "string", "description": "strin
     // Step 8 — Team briefing email (includes onboarding script)
     send(8, 'Team briefing versturen', 'running');
     let briefingSent = false;
-    if (isGmailReady(settings)) {
+    if (isResendReady(settings)) {
       try {
         const scriptSection = onboardingScript ? `\n\n--- ONBOARDING VIDEO SCRIPT ---\n${onboardingScript}\n--- EINDE SCRIPT ---` : '';
         const briefBody = `Nieuw project gestart: ${lead.companyName}\n\nNiche: ${lead.niche} | Locatie: ${lead.location}\nDiensten: ${(lead.services || []).map(s => s.name).join(', ')}\nGeschat maandbedrag: €${lead.estimatedValue || 0}\n\nProjectplan: ${projectPlan?.title || ''}\n${projectPlan?.overview || ''}\n\nIntake link (voor klant): ${intakeUrl}\nKlantportaal: ${portalUrl}\n\nWeek 1 focus: ${projectPlan?.weeks?.[0]?.focus || 'Onboarding'}${scriptSection}`;
@@ -2330,7 +2352,7 @@ app.post('/api/leads/:id/proposal/send', authMiddleware, async (req, res) => {
   if (!lead?.proposal) return res.status(400).json({ error: 'Geen voorstel beschikbaar' });
 
   const settings = readJSON('settings.json') || {};
-  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld' });
+  if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
 
   const to = lead.contactEmail;
   if (!to) return res.status(400).json({ error: 'Geen email adres bekend' });
@@ -2453,7 +2475,7 @@ app.post('/api/leads/:id/contract/send', authMiddleware, async (req, res) => {
   if (!lead?.contract) return res.status(400).json({ error: 'Geen contract beschikbaar' });
 
   const settings = readJSON('settings.json') || {};
-  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld' });
+  if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
 
   const to = lead.contactEmail;
   if (!to) return res.status(400).json({ error: 'Geen email adres bekend' });
@@ -2810,7 +2832,7 @@ ${(d.sections||[]).length?`<div style="margin-top:12px;border:1px solid #e5e7eb;
     writeJSON('leads.json', leads);
 
     // Auto-send AI delivery email to client
-    if (settings.autoClientEmails?.deliveryReady !== false && lead.email && isGmailReady(settings)) {
+    if (settings.autoClientEmails?.deliveryReady !== false && lead.email && isResendReady(settings)) {
       try {
         const email = await generateClientEmail(leads[idx], 'deliveryReady', settings);
         await sendEmail({ to: lead.email, subject: email.subject, body: email.body, settings });
@@ -3125,7 +3147,7 @@ Geef ALLEEN de volledige HTML terug. Geen uitleg, geen markdown, geen backticks.
 
     // Step 4 — Send preview to client
     send(4, 'Preview link versturen naar klant', 'running');
-    if (contactEmail && isGmailReady(settings)) {
+    if (contactEmail && isResendReady(settings)) {
       try {
         const subject = `Je website preview is klaar — ${lead.companyName}`;
         const body = `Hoi${lead.contactName ? ' ' + lead.contactName.split(' ')[0] : ''},\n\nJe website preview staat klaar! Bekijk hem via de link hieronder:\n\n${siteUrl}\n\nHeb je feedback of aanpassingen? Laat het gerust weten via het klantportaal of stuur een reply.\n\nMet vriendelijke groet,\n${settings.myName || settings.agencyName || 'Agency AI'}`;
@@ -3378,7 +3400,7 @@ app.post('/api/leads/:id/client-email', requireAdmin, async (req, res) => {
     console.log(`[ClientEmail] contactEmail raw: ${JSON.stringify(lead.contactEmail)}`);
     console.log(`[ClientEmail] Char codes: ${[...(lead.contactEmail || '')].map(c => c.charCodeAt(0)).join(',')}`);
     if (!to) return res.status(400).json({ error: 'Geen email adres bekend voor dit bedrijf' });
-    if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet geconfigureerd' });
+    if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet geconfigureerd' });
 
     await sendEmail({ to, subject: email.subject, body: email.body, settings });
 
@@ -3414,7 +3436,7 @@ app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
   const to = (lead.contactEmail || '').trim();
   if (!to) return res.status(400).json({ error: 'Geen contactEmail op deze lead — stel het handmatig in via Overzicht → potlood-knop.' });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ error: `Ongeldig emailadres: "${to}" — pas het aan via Overzicht.` });
-  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Email niet geconfigureerd — stel Gmail in via Instellingen → Email.' });
+  if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet geconfigureerd — voeg Resend API key toe via Instellingen → Email.' });
 
   try {
     // Ensure intake token exists
@@ -3737,7 +3759,7 @@ app.post('/api/leads/:id/manual-email', requireAdmin, async (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
   if (!lead.contactEmail) return res.status(400).json({ error: 'Lead heeft geen email adres' });
-  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld' });
+  if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
   await sendEmail({ to: lead.contactEmail, subject, body, settings });
   const entry = { id: Date.now().toString(36), trigger: 'manual', subject, body, sentAt: new Date().toISOString() };
   leads[idx].clientEmailLog = leads[idx].clientEmailLog || [];
@@ -3839,7 +3861,7 @@ app.post('/api/leads/:id/send-delivery-email', requireAdmin, async (req, res) =>
   const lead = leads[idx];
   if (!lead.contactEmail) return res.status(400).json({ error: 'Klant heeft geen emailadres' });
   const settings = readJSON('settings.json') || {};
-  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld. Ga naar Instellingen → Email.' });
+  if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld. Ga naar Instellingen → Email.' });
   await sendEmail({ to: lead.contactEmail, subject, body, settings });
   const sentAt = new Date().toISOString();
   leads[idx].clientEmailLog = leads[idx].clientEmailLog || [];
@@ -3959,7 +3981,7 @@ app.post('/api/leads/:id/send-admin-email', requireAdmin, async (req, res) => {
   const lead  = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
   const settings = readJSON('settings.json') || {};
-  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld' });
+  if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
   await sendEmail({ to: settings.gmailAddress, subject: `Admin instructies — ${lead.companyName}`, body: text, settings });
   res.json({ ok: true });
 });
@@ -3988,7 +4010,7 @@ app.post('/api/leads/:id/portal-reply', requireAdmin, async (req, res) => {
   writeJSON('leads.json', leads);
   // Optionally email the client
   const clientEmail = (lead.contactEmail || '').trim();
-  if (clientEmail && isGmailReady(settings) && lead.portalToken) {
+  if (clientEmail && isResendReady(settings) && lead.portalToken) {
     const portalUrl = `${BASE_URL}/portal/${lead.portalToken}`;
     try {
       await sendEmail({ to: clientEmail, subject: `Reactie van ${settings.agencyName || 'uw bureau'}`, body: `Beste ${lead.contactName || lead.companyName},\n\nU heeft een nieuw bericht ontvangen via uw klantportaal:\n\n"${message.trim()}"\n\nBekijk het portaal: ${portalUrl}\n\nMet vriendelijke groet,\n${settings.myName || settings.agencyName}`, settings });
@@ -4399,7 +4421,7 @@ app.post('/api/leads/:id/deliverables/:dIdx/approve', requireAdmin, async (req, 
 
   // Email client — use custom subject/body if provided (manual deliverable flow), else generic
   const lead = leads[li];
-  if (isGmailReady(settings) && lead.contactEmail) {
+  if (isResendReady(settings) && lead.contactEmail) {
     const subject = req.body?.emailSubject || `Uw ${d.service} is klaar!`;
     const body = req.body?.emailBody || `Beste ${lead.companyName},\n\nGoed nieuws! Uw ${d.service} is klaar.\n\n${d.url ? `Bekijk hier: ${d.url}\n\n` : ''}Log in op uw klantportaal voor alle details.\n\nMet vriendelijke groet,\n${settings.myName || 'Het team'} — ${settings.agencyName || 'Agency AI'}`;
     await sendEmail({ to: lead.contactEmail, subject, body, settings }).catch(e => console.warn('[Approve] Email fout:', e.message));
@@ -4503,12 +4525,17 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
     return res.json(inbox[idx]);
   }
 
-  if (isGmailReady(settings)) {
+  if (isResendReady(settings)) {
     try {
       const trackingToken = 'otk-' + item.leadId + '-' + Math.random().toString(36).substr(2, 8);
       inbox[idx].trackingToken = trackingToken;
       // Accept manually entered email from frontend (for leads without verified email)
       const manualEmail    = req.body?.manualEmail?.trim() || null;
+      if (manualEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(manualEmail)) {
+        inbox[idx].status = 'approved';
+        writeJSON('inbox.json', inbox);
+        return res.status(400).json({ error: `Ongeldig emailadres: "${manualEmail}"` });
+      }
       if (manualEmail) {
         inbox[idx].contactEmail = manualEmail;
         inbox[idx].emailSource  = 'handmatig';
@@ -4547,7 +4574,7 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
       return res.status(500).json({ error: 'Email verzenden mislukt: ' + err.message });
     }
   } else {
-    inbox[idx].status = 'approved'; // approved, Gmail not configured
+    inbox[idx].status = 'approved'; // approved, Resend not configured
   }
 
   writeJSON('inbox.json', inbox);
@@ -4694,7 +4721,7 @@ app.get('/api/settings', (req, res) => {
   res.json(safe);
 });
 
-app.patch('/api/settings/account', async (req, res) => {
+app.patch('/api/settings/account', requireAdmin, async (req, res) => {
   const settings = readJSON('settings.json');
   const { agencyName, myName, myTitle, username, newPassword, currentPassword, websiteTagline, websiteAbout, websiteContact, calendlyUrl, agencyLogo } = req.body;
 
@@ -5169,7 +5196,7 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
     // Auto-send payment email to client
     const lead = leads[idx];
     const payEmailTo = (lead.contactEmail || '').trim();
-    if (payEmailTo && isGmailReady(settings)) {
+    if (payEmailTo && isResendReady(settings)) {
       try {
         let paymentInfo;
         if (effectiveMethod === 'bank_transfer' && bankDetails) {
@@ -5231,7 +5258,7 @@ app.post('/api/leads/:id/payments/:payId/remind', requireAdmin, async (req, res)
   const lead = leads[idx];
   const remindTo = (lead.contactEmail || '').trim();
   if (!remindTo) return res.status(400).json({ error: 'Geen e-mailadres bekend' });
-  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet geconfigureerd' });
+  if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet geconfigureerd' });
 
   try {
     const reminderEmail = await aiJSON(`Schrijf een vriendelijke maar dringende betalingsherinnering.
@@ -5334,7 +5361,7 @@ app.post('/api/upsell/:leadId/email', async (req, res) => {
 
 app.post('/api/upsell/:leadId/send', async (req, res) => {
   const settings = readJSON('settings.json');
-  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld' });
+  if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
   const { subject, body } = req.body;
   if (!subject || !body) return res.status(400).json({ error: 'Subject en body vereist' });
   try {
@@ -6847,7 +6874,7 @@ CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
 
   // Run-complete notification email
   const runSettings = readJSON('settings.json');
-  if (isGmailReady(runSettings)) {
+  if (isResendReady(runSettings)) {
     try {
       const agencyName = runSettings.agencyName || 'Agency AI';
       const runDate    = new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -7810,49 +7837,6 @@ app.post('/api/run-templates/:id/run', async (req, res) => {
   }
 });
 
-// ── Run templates ─────────────────────────────────────────────────────────────
-
-app.get('/api/run-templates', (req, res) => {
-  const templates = readJSON('run-templates.json') || [];
-  res.json({ templates });
-});
-
-app.post('/api/run-templates', (req, res) => {
-  const { name, niches, count, location } = req.body;
-  if (!name) return res.status(400).json({ error: 'Naam verplicht' });
-  const templates = readJSON('run-templates.json') || [];
-  const tmpl = {
-    id:        Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
-    name:      name.trim(),
-    niches:    Array.isArray(niches) ? niches : (niches ? niches.split(',').map(n => n.trim()).filter(Boolean) : []),
-    count:     parseInt(count) || 10,
-    location:  (location || '').trim(),
-    createdAt: new Date().toISOString()
-  };
-  templates.push(tmpl);
-  writeJSON('run-templates.json', templates);
-  res.json({ ok: true, template: tmpl });
-});
-
-app.delete('/api/run-templates/:id', (req, res) => {
-  const templates = readJSON('run-templates.json') || [];
-  const updated = templates.filter(t => t.id !== req.params.id);
-  writeJSON('run-templates.json', updated);
-  res.json({ ok: true });
-});
-
-app.post('/api/run-templates/:id/run', async (req, res) => {
-  const templates = readJSON('run-templates.json') || [];
-  const tmpl = templates.find(t => t.id === req.params.id);
-  if (!tmpl) return res.status(404).json({ error: 'Sjabloon niet gevonden' });
-  try {
-    const found = await runFindLeadsJob({ count: tmpl.count, niches: tmpl.niches, location: tmpl.location });
-    res.json({ ok: true, found });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.get('/api/replies/new', (req, res) => {
   const stats = readJSON('stats.json') || {};
   const newReplies = stats.newReplies || [];
@@ -8336,7 +8320,7 @@ app.post('/api/leads/:id/blacklist', (req, res) => {
 async function sendDailyBriefing() {
   const settings = readJSON('settings.json');
   if (settings.dailyBriefingEnabled === false) return;
-  if (!isGmailReady(settings)) return;
+  if (!isResendReady(settings)) return;
 
   const inbox  = readJSON('inbox.json') || [];
   const leads  = readJSON('leads.json') || [];
@@ -8495,7 +8479,7 @@ async function runMonthlyReports() {
     }
 
     // Email notification if portal exists
-    if (client.portalToken && isGmailReady(settings)) {
+    if (client.portalToken && isResendReady(settings)) {
       try {
         const portalUrl = BASE_URL + '/portal/' + client.portalToken;
         const subject = lang === 'nl'
@@ -8585,8 +8569,8 @@ async function runReferralCheck() {
 async function runWeeklyUpdates() {
   const settings = readJSON('settings.json') || {};
   if (!settings.weeklyUpdatesEnabled) return;
-  if (!isGmailReady(settings)) {
-    console.warn('[WeeklyUpdate] Gmail niet ingesteld — overgeslagen');
+  if (!isResendReady(settings)) {
+    console.warn('[WeeklyUpdate] Resend niet ingesteld — overgeslagen');
     return;
   }
   const leads = readJSON('leads.json') || [];
@@ -8620,7 +8604,7 @@ app.post('/api/leads/:id/send-weekly-update', requireAdmin, async (req, res) => 
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
   if (!(lead.contactEmail || '').trim()) return res.status(400).json({ error: 'Geen email adres voor deze klant' });
-  if (!isGmailReady(settings)) return res.status(400).json({ error: 'Gmail niet ingesteld' });
+  if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
   try {
     const email = await generateClientEmail(lead, 'weeklyUpdate', settings);
     await sendEmail({ to: (lead.contactEmail || '').trim(), subject: email.subject, body: email.body, settings });
@@ -8918,7 +8902,7 @@ cron.schedule('* * * * *', async () => {
   if (!due.length) return;
 
   const settings = readJSON('settings.json');
-  if (!isGmailReady(settings)) return;
+  if (!isResendReady(settings)) return;
 
   const leads = readJSON('leads.json') || [];
   let changed = false;
@@ -8930,8 +8914,10 @@ cron.schedule('* * * * *', async () => {
     try {
       const scheduledToken = item.trackingToken || ('otk-' + item.leadId + '-' + Math.random().toString(36).substr(2, 8));
       if (!item.trackingToken) inbox[idx].trackingToken = scheduledToken;
+      const scheduledTo = item.contactEmail || item.email?.to || '';
+      if (!scheduledTo) { console.warn(`[Scheduled] Geen contactEmail voor ${item.companyName} — overgeslagen`); continue; }
       await sendEmail({
-        to: settings.gmailAddress,
+        to: scheduledTo,
         subject: chosenEmail?.subject || item.email?.subject || 'Outreach email',
         body: chosenEmail?.body || item.email?.body || '',
         settings,
@@ -8997,7 +8983,7 @@ cron.schedule('0 9 * * *', async () => {
           addLeadHistory(freshLeads, lead.id, { event: 'autoInvoice', label: `Automatische factuur aangemaakt: €${total}` });
           writeJSON('leads.json', freshLeads);
         }
-        if (lead.email && isGmailReady(settings)) {
+        if (lead.email && isResendReady(settings)) {
           await sendEmail({ to: lead.email, subject: `Factuur ${today.toLocaleDateString('nl-NL', {month:'long'})} — ${settings.agencyName}`, body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder de factuur voor deze maand:\n\n${desc}\nBedrag: €${total}\nBetaallink: ${url}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`, settings });
         }
         console.log(`[AutoInvoice] €${total} → ${lead.companyName}`);
@@ -9017,7 +9003,7 @@ cron.schedule('0 9 * * *', async () => {
       // Don't spam: only send if no reminder in last 7 days
       const lastReminder = pay.lastReminderAt ? new Date(pay.lastReminderAt) : null;
       if (lastReminder && (today - lastReminder) < 7 * 86400000) continue;
-      if (!lead.email || !isGmailReady(settings)) continue;
+      if (!lead.email || !isResendReady(settings)) continue;
       try {
         const reminderEmail = await aiJSON(`Schrijf een vriendelijke betalingsherinnering. Klant: ${lead.companyName}. Bedrag: €${pay.amount}. ${daysOverdue} dagen te laat. Betaallink: ${pay.paymentUrl}. Max 100 woorden. JSON: { "subject": "...", "body": "..." }`);
         await sendEmail({ to: lead.email, subject: reminderEmail.subject, body: reminderEmail.body, settings });
@@ -9278,11 +9264,7 @@ app.get('/sites/:siteSlug', (req, res) => {
   res.sendFile(sitePath);
 });
 
-// ─── SPA fallback ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-app.get('/login', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'login.html'));
-});
+// ─── SPA fallback ─────────────────────────────────────────────────────────────
 
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Niet gevonden' });

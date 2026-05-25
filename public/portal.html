@@ -818,7 +818,7 @@
                       <div style="font-size:10px;margin-top:3px;opacity:.65">${m.from==='admin'?(m.name||'Accountmanager'):(m.name||'U')} · ${fmtS(m.time)}</div>
                     </div>`).join('')}
             </div>
-            <div style="border-top:1px solid var(--border);padding-top:14px">
+            <div id="msgForm" style="border-top:1px solid var(--border);padding-top:14px">
               <div class="form-group">
                 <label>Uw naam</label>
                 <input type="text" id="msgName" placeholder="Uw naam">
@@ -850,9 +850,11 @@
     }
 
     async function sendMsg(token) {
-      const name    = document.getElementById('msgName')?.value?.trim();
-      const message = document.getElementById('msgText')?.value?.trim();
-      const btn     = document.getElementById('sendBtn');
+      const nameEl    = document.getElementById('msgName');
+      const textEl    = document.getElementById('msgText');
+      const btn       = document.getElementById('sendBtn');
+      const name      = nameEl?.value?.trim();
+      const message   = textEl?.value?.trim();
       if (!name || !message) { alert('Vul je naam en een bericht in.'); return; }
       btn.disabled = true;
       btn.textContent = 'Versturen...';
@@ -862,11 +864,13 @@
           body: JSON.stringify({ name, message })
         });
         if (res.ok) {
-          document.getElementById('msgForm').innerHTML = `
-            <div class="success-msg">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              Bericht verstuurd! We nemen zo snel mogelijk contact op.
-            </div>`;
+          if (textEl) textEl.value = '';
+          btn.textContent = '✓ Verstuurd!';
+          btn.style.background = '#16a34a';
+          setTimeout(() => { btn.disabled = false; btn.textContent = 'Verstuur bericht'; btn.style.background = ''; }, 2500);
+          // Refresh thread immediately
+          clearTimeout(_chatPollTimer);
+          pollChat(token);
         } else {
           btn.disabled = false;
           btn.textContent = 'Verstuur bericht';
@@ -927,21 +931,35 @@
 
     function renderChatMessages(chat) {
       const el = document.getElementById('chatMessages');
-      if (!el) return;
-      if (chat.length === 0) {
-        el.innerHTML = '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:20px 0">Stuur een bericht om het gesprek te starten.</div>';
-        return;
+      if (el) {
+        if (chat.length === 0) {
+          el.innerHTML = '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:20px 0">Stuur een bericht om het gesprek te starten.</div>';
+        } else {
+          el.innerHTML = chat.map(m => `
+            <div>
+              <div class="chat-msg ${m.from === 'client' ? 'client' : 'admin'}">
+                ${(m.message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+              </div>
+              <div class="chat-msg-meta" style="text-align:${m.from==='client'?'right':'left'};font-size:10px;color:#9ca3af;margin:2px 4px">
+                ${m.from==='admin'?(m.name||'Accountmanager'):(m.name||'U')} · ${fmtS(m.time)}
+              </div>
+            </div>`).join('');
+          el.scrollTop = el.scrollHeight;
+        }
       }
-      el.innerHTML = chat.map(m => `
-        <div>
-          <div class="chat-msg ${m.from === 'client' ? 'client' : 'admin'}">
-            ${(m.message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-          </div>
-          <div class="chat-msg-meta" style="text-align:${m.from==='client'?'right':'left'};font-size:10px;color:#9ca3af;margin:2px 4px">
-            ${m.from==='admin'?(m.name||'Accountmanager'):(m.name||'U')} · ${fmtS(m.time)}
-          </div>
-        </div>`).join('');
-      el.scrollTop = el.scrollHeight;
+      // Also update the Berichten tab thread
+      const tab = document.getElementById('tabChatThread');
+      if (tab) {
+        if (chat.length === 0) {
+          tab.innerHTML = '<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0">Nog geen berichten. Stuur ons een bericht!</div>';
+        } else {
+          tab.innerHTML = chat.map(m => `
+            <div style="max-width:85%;padding:8px 12px;border-radius:12px;font-size:13px;line-height:1.5;${m.from==='client'?'background:var(--accent);color:#fff;align-self:flex-end;border-bottom-right-radius:4px;margin-left:auto':'background:#f3f4f6;color:#111;align-self:flex-start;border-bottom-left-radius:4px'}">
+              ${(m.message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+              <div style="font-size:10px;margin-top:3px;opacity:.65">${m.from==='admin'?(m.name||'Accountmanager'):(m.name||'U')} · ${fmtS(m.time)}</div>
+            </div>`).join('');
+        }
+      }
     }
 
     async function pollChat(token) {
