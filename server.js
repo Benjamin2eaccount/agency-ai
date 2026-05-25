@@ -4837,6 +4837,7 @@ app.patch('/api/settings/gmail', requireAdmin, (req, res) => {
 });
 
 app.patch('/api/settings/services', requireAdmin, (req, res) => {
+  if (!Array.isArray(req.body.services)) return res.status(400).json({ error: 'Services moet een array zijn' });
   const settings = readJSON('settings.json');
   settings.services = req.body.services;
   writeJSON('settings.json', settings);
@@ -4904,6 +4905,8 @@ app.patch('/api/settings/automation', requireAdmin, (req, res) => {
   if (req.body.instagramTargeting   !== undefined) settings.instagramTargeting   = req.body.instagramTargeting;
   if (req.body.googleMapsTargeting  !== undefined) settings.googleMapsTargeting  = req.body.googleMapsTargeting;
   if (req.body.weeklyUpdatesEnabled !== undefined) settings.weeklyUpdatesEnabled = req.body.weeklyUpdatesEnabled;
+  if (req.body.targetNiches    !== undefined) settings.targetNiches    = req.body.targetNiches;
+  if (req.body.targetSubNiches !== undefined) settings.targetSubNiches = req.body.targetSubNiches;
   writeJSON('settings.json', settings);
   scheduleCron(); // re-schedule if run time changed
   scheduleBriefingCron(); // re-schedule briefing if time changed

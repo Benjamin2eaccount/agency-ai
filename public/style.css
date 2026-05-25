@@ -500,7 +500,7 @@ input, select, textarea { font-family: inherit; }
   display: none;
   position: fixed;
   bottom: 0; left: 0; right: 0;
-  height: 60px;
+  height: calc(60px + env(safe-area-inset-bottom));
   background: #111111;
   border-top: 1px solid rgba(255,255,255,0.08);
   z-index: 100;
@@ -554,7 +554,7 @@ input, select, textarea { font-family: inherit; }
   z-index: 150;
   background: #111111;
   border: none;
-  width: 40px; height: 40px;
+  width: 44px; height: 44px;
   border-radius: 50%;
   color: #fff;
   align-items: center;
@@ -3797,7 +3797,7 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
 
   .main-content {
     margin-left: 0;
-    padding: 16px 16px 80px;
+    padding: 16px 16px calc(80px + env(safe-area-inset-bottom));
   }
 
   .stats-grid { grid-template-columns: 1fr 1fr; gap: 8px; }

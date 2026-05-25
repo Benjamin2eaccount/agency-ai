@@ -11092,7 +11092,7 @@ function attachSettingsHandlers(s) {
       toast('Account opgeslagen', 'success');
       localStorage.setItem('myName', body.myName);
       document.getElementById('userName').textContent = body.myName;
-      document.getElementById('userAvatar').textContent = body.myName[0].toUpperCase();
+      document.getElementById('userAvatar').textContent = (body.myName || 'A')[0].toUpperCase();
       if (window._pendingLogo !== undefined) {
         updateSidebarLogo(window._pendingLogo);
         if (state.settings) state.settings.agencyLogo = window._pendingLogo;
