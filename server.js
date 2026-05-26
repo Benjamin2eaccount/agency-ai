@@ -4251,7 +4251,7 @@ Website: ${lead.websiteUrl || ''}`;
     const style = await extractWebsiteStyle(lead.websiteUrl);
 
     // Service classification
-    const HTML_KEYWORDS   = /website|booking|chatbot|dashboard|landingspagina|landing.*page|faq.*assistent|kennisbank|offerte.*generator|onboarding/i;
+    const HTML_KEYWORDS   = /website|boek|boeking|booking|chatbot|dashboard|landingspagina|landing.*page|faq.*assistent|kennisbank|offerte.*generator|onboarding/i;
     const STRAT_KEYWORDS  = /seo.*rapport|concurrentie|audit|crm|lead.*scoring|branding|heatmap|trend|keyword.*research/i;
     // everything else → TEXT_DOCUMENT
 
@@ -4279,7 +4279,7 @@ Website: ${lead.websiteUrl || ''}`;
           console.log(`[Build] Type: HTML_BUILD | Service: ${serviceName}`);
           sse({ type: 'progress', service: serviceName, percent: 20 });
 
-          const isBooking = /booking|reserv|afspra|agenda/i.test(serviceName);
+          const isBooking = /boek|booking|afspraak|reserv|agenda|integreren.*systeem|systeem.*integrer/i.test(serviceName);
           let prompt;
           if (isBooking) {
             prompt = `${BUILD_HTML_RULES}Build a complete HTML booking page for ${lead.companyName} in ${lead.location || ''}.
