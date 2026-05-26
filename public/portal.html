@@ -738,7 +738,6 @@
           ${pj.startDate ? `
             ${pj.phase    ? statRow('Huidige fase', 'Fase ' + pj.phase + ' van 5') : ''}
             ${pj.daysActive !== null ? statRow('Dagen actief als klant', pj.daysActive) : ''}
-            ${pj.tasksTotal > 0 ? statRow('Taken voltooid', pj.tasksCompleted + ' van ' + pj.tasksTotal) : ''}
           ` : `<div style="font-size:13px;color:var(--muted);padding:4px 0">Project is nog niet gestart.</div>`}
         </div>`;
 

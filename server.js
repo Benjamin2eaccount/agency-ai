@@ -3080,9 +3080,9 @@ function computeRealAnalytics(lead) {
   bookings.forEach(b => { if (b.service) svcCounts[b.service] = (svcCounts[b.service] || 0) + 1; });
   const popularService = Object.entries(svcCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 
-  // Deliverables (approved / done / has URL)
+  // Deliverables: only client-visible approved pages with a URL
   const deliverables = (lead.agentDeliverables || [])
-    .filter(d => d.status === 'approved' || d.status === 'done' || d.url)
+    .filter(d => d.status === 'approved' && d.clientVisible === true && d.url)
     .map(d => ({
       service:     d.service || '',
       url:         d.url     || null,
