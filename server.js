@@ -5743,6 +5743,109 @@ CRITICAL RULES:
   });
 });
 
+// Test all 34 auto-buildable services end-to-end (admin only, long-running)
+app.get('/api/test-all-services', requireAdmin, async (req, res) => {
+  res.setTimeout(600000); // 10-minute ceiling for 34 sequential AI calls
+
+  const AUTO_BUILDABLE = [
+    'Website bouwen', 'Online boekingssysteem integreren', 'AI chatbot voor website',
+    'AI landingspagina', 'AI FAQ assistent', 'AI kennisbank systeem',
+    'AI onboarding systeem', 'Chatbot script voor website', 'Email autoresponder reeks',
+    'AI offerte generator', 'Nieuwsbrief template ontwerpen', 'Over ons pagina schrijven',
+    'FAQ pagina schrijven', 'Website teksten schrijven', 'SEO teksten optimaliseren',
+    'Blog artikelen schrijven', 'Email nieuwsbrief reeks', 'AI content voor social media',
+    'Maandelijkse content kalender', 'Instagram Reels scripts', 'AI TikTok content systeem',
+    'AI YouTube scripts', 'AI video content creatie', 'Product beschrijvingen',
+    'Privacy policy + algemene voorwaarden', 'AI keyword research', 'Lokale SEO optimalisatie',
+    'Google Bedrijfsprofiel content', 'Concurrentieanalyse rapport', 'Social media audit',
+    'AI branding kit generatie', 'AI sales opvolging', 'Verlaten winkelwagen emails',
+    'Email marketing automatisering',
+  ];
+
+  const testLead = {
+    companyName: 'Test Bedrijf', location: 'Amsterdam, NL', niche: 'beauty',
+    websiteUrl: 'https://example.com', language: 'nl',
+    intakeData: { contactNaam: 'Test Persoon', opmerkingen: 'Wil graag een professionele online aanwezigheid' },
+  };
+
+  const HTML_KW   = /website|boek|boeking|booking|chatbot|dashboard|landingspagina|landing.*page|faq.*assistent|kennisbank|offerte.*generator|onboarding/i;
+  const STRAT_KW  = /seo.*rapport|concurrentie|audit|crm|lead.*scoring|branding|heatmap|trend|keyword.*research/i;
+  const FORCE_TXT = /\bteksten\b/i;
+
+  const intakeCtx = `\n\nKLANT INFORMATIE:\nBedrijf: ${testLead.companyName}\nLocatie: ${testLead.location}\nNiche: ${testLead.niche}\nWebsite: ${testLead.websiteUrl}\nContact: ${testLead.intakeData.contactNaam}\nWensen: ${testLead.intakeData.opmerkingen}`;
+
+  const results = [];
+  let passed = 0;
+  let failed = 0;
+
+  try {
+    for (let idx = 0; idx < AUTO_BUILDABLE.length; idx++) {
+      await new Promise(r => process.nextTick(r)); // yield event loop between calls
+
+      const serviceName = AUTO_BUILDABLE[idx];
+      let type = 'TEXT_DOCUMENT';
+      let length = 0;
+      let success = false;
+      let errorMsg;
+
+      try {
+        if (HTML_KW.test(serviceName) && !FORCE_TXT.test(serviceName)) {
+          type = 'HTML_BUILD';
+          const isBooking = /boek|booking|afspraak|reserv|agenda|integreren.*systeem|systeem.*integrer/i.test(serviceName);
+          const isChatbot = /chatbot|faq.*assistent|kennisbank/i.test(serviceName);
+          let prompt;
+          if (isBooking) {
+            prompt = `${BUILD_HTML_RULES}Build a complete HTML booking page for ${testLead.companyName} in ${testLead.location}.${intakeCtx}\nMUST include in <body>: header, 3 service cards, Mon-Fri calendar (past disabled), time slots 09:00-17:00, contact form, success screen. Style: white bg, #6366f1 accent, Inter, mobile responsive.`;
+          } else if (isChatbot) {
+            prompt = `${BUILD_HTML_RULES}Build a complete HTML chatbot/FAQ page for ${testLead.companyName} (${testLead.niche}).${intakeCtx}\nMUST include in <body>: chat widget, 15+ Q&A pairs for ${testLead.niche}, animated bubbles, typing indicator, lead capture form. Style: white bg, #6366f1 accent, Inter, mobile responsive.`;
+          } else {
+            prompt = `${BUILD_HTML_RULES}Build a complete HTML ${serviceName} page for ${testLead.companyName} (${testLead.niche}) in ${testLead.location}.${intakeCtx}\nMUST include in <body>: branded header, 3+ content sections relevant to "${serviceName}", CTA with form/button, footer. Style: white bg, #6366f1 accent, Inter, mobile responsive. Min 500 words.`;
+          }
+          const html = await aiCallBuild(prompt);
+          const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+          length = (bodyMatch?.[1]?.trim() || '').length;
+          success = length >= 200;
+          if (!success) errorMsg = `HTML body te kort: ${length} tekens`;
+
+        } else if (STRAT_KW.test(serviceName)) {
+          type = 'STRATEGY_DOCUMENT';
+          const content = await aiCall(`Schrijf een professioneel "${serviceName}" document voor ${testLead.companyName} (${testLead.niche}, ${testLead.location}).${intakeCtx}\n\nStructuur:\n1. Managementsamenvatting\n2. Huidige situatie\n3. Verbeterpunten (min 5)\n4. Stappenplan Q1-Q4\n5. KPI's\n6. Volgende stap\n\nMin 400 woorden Nederlands.`);
+          length = content.length;
+          success = length >= 200;
+          if (!success) errorMsg = `Content te kort: ${length} tekens`;
+
+        } else {
+          type = 'TEXT_DOCUMENT';
+          const content = await aiCall(`Lever de dienst "${serviceName}" volledig op voor ${testLead.companyName} (${testLead.niche}, ${testLead.location}).${intakeCtx}\n\nSchrijf direct bruikbare Nederlandse inhoud, minimaal 300 woorden, geen placeholders.`);
+          length = content.length;
+          success = length >= 200;
+          if (!success) errorMsg = `Content te kort: ${length} tekens`;
+        }
+
+        console.log(`[TestAll] ${success ? '✓' : '✗'} ${serviceName} (${type}) — ${length} tekens`);
+        if (success) passed++; else failed++;
+        results.push({ service: serviceName, type, success, length, ...(errorMsg ? { error: errorMsg } : {}) });
+
+      } catch (err) {
+        console.log(`[TestAll] ✗ ${serviceName} — ${err.message}`);
+        failed++;
+        results.push({ service: serviceName, type, success: false, length: 0, error: err.message });
+      }
+
+      if (idx < AUTO_BUILDABLE.length - 1) await new Promise(r => setTimeout(r, 2000));
+    }
+
+    if (!res.writableEnded) {
+      res.json({ total: AUTO_BUILDABLE.length, passed, failed, results });
+    }
+  } catch (outerErr) {
+    console.error('[TestAll] Fatal:', outerErr.message);
+    if (!res.writableEnded) {
+      res.status(500).json({ error: outerErr.message, total: AUTO_BUILDABLE.length, passed, failed, results });
+    }
+  }
+});
+
 // â"€â"€â"€ Server-side Claude helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 // In-memory token accumulator — reset per run

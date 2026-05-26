@@ -10331,6 +10331,65 @@ function copyExtensionUrl() {
   if (val) navigator.clipboard.writeText(val).then(() => toast('Server URL gekopieerd.', 'success'));
 }
 
+// ─── Test alle diensten ───────────────────────────────────────────────────────
+
+async function testAllServices() {
+  // Show progress modal immediately
+  openModal(`
+    <div style="padding:8px 0">
+      <h3 style="margin:0 0 12px;font-size:16px">Test alle diensten</h3>
+      <p style="color:var(--text-secondary);font-size:13px;margin:0 0 16px">
+        Bouwt 34 diensten met AI — dit duurt ca. 10 minuten. Laat dit venster open.
+      </p>
+      <div style="display:flex;align-items:center;gap:10px;padding:14px;background:var(--surface-2);border-radius:8px">
+        <div class="spinner" style="width:18px;height:18px;border-width:2px;flex-shrink:0"></div>
+        <span id="testAllStatus" style="font-size:13px;color:var(--text-secondary)">Bezig met testen…</span>
+      </div>
+    </div>
+  `);
+
+  try {
+    const res = await api('/api/test-all-services');
+    const data = await res.json();
+
+    const typeIcon = t => t === 'HTML_BUILD' ? '💻' : t === 'STRATEGY_DOCUMENT' ? '📊' : '📄';
+    const rows = (data.results || []).map(r => `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+        <span style="font-size:15px">${r.success ? '✅' : '❌'}</span>
+        <span style="flex:1;color:var(--text-primary)">${esc(r.service)}</span>
+        <span style="color:var(--text-muted);white-space:nowrap">${typeIcon(r.type)} ${r.type.replace('_', ' ')}</span>
+        <span style="color:var(--text-muted);white-space:nowrap;min-width:70px;text-align:right">${r.length.toLocaleString('nl-NL')} t.</span>
+        ${r.error ? `<span style="color:var(--danger);font-size:11px" title="${esc(r.error)}">⚠ ${esc(r.error.substring(0, 40))}</span>` : ''}
+      </div>`).join('');
+
+    const passColor = data.failed === 0 ? 'var(--success)' : data.failed <= 3 ? 'var(--warning)' : 'var(--danger)';
+
+    openModal(`
+      <div style="padding:8px 0">
+        <h3 style="margin:0 0 4px;font-size:16px">Test alle diensten — resultaten</h3>
+        <div style="display:flex;gap:16px;margin-bottom:16px">
+          <span style="font-size:13px;color:var(--success);font-weight:600">✅ ${data.passed} geslaagd</span>
+          <span style="font-size:13px;color:${passColor};font-weight:600">❌ ${data.failed} mislukt</span>
+          <span style="font-size:13px;color:var(--text-muted)">van ${data.total} diensten</span>
+        </div>
+        <div style="max-height:400px;overflow-y:auto;margin:0 -4px;padding:0 4px">
+          ${rows || '<p style="color:var(--text-muted);font-size:13px">Geen resultaten.</p>'}
+        </div>
+      </div>
+    `);
+  } catch (err) {
+    openModal(`
+      <div style="padding:8px 0">
+        <h3 style="margin:0 0 12px;font-size:16px">Test mislukt</h3>
+        <p style="color:var(--danger);font-size:13px">${esc(err.message)}</p>
+        <p style="color:var(--text-secondary);font-size:12px;margin-top:8px">
+          Controleer de Railway logs voor details.
+        </p>
+      </div>
+    `);
+  }
+}
+
 // ─── Zapier & Webhooks ────────────────────────────────────────────────────────
 
 function copyZapierUrl() {
@@ -10906,6 +10965,7 @@ async function renderSettings() {
             <button class="btn btn-ghost btn-sm" id="addServiceBtn"><i class="ti ti-plus"></i> Dienst toevoegen</button>
             <button class="btn btn-ghost btn-sm" id="loadDefaultServicesBtn"><i class="ti ti-refresh"></i> Standaard laden</button>
             <button class="btn btn-primary" id="saveServicesBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
+            <button class="btn btn-ghost btn-sm" onclick="testAllServices()" title="Test of alle 34 diensten correct gebouwd worden (duurt ~10 min)"><i class="ti ti-test-pipe"></i> Test alle diensten</button>
           </div>
         </div>
       </div>
