@@ -692,31 +692,69 @@
           <p>Nog geen documenten beschikbaar. Uw accountmanager zal hier binnenkort bestanden en links plaatsen.</p>
         </div>`;
 
-      /* ── Resultaten tab ── */
-      const an = data.analytics;
-      const analyticsHtml = an && an.metrics?.length > 0 ? `
-        ${an.summary ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#166534;line-height:1.55">${(an.summary||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>` : ''}
-        <div class="inner-label">${an.month || 'Afgelopen maand'} — Overzicht per dienst</div>
-        <div class="analytics-grid">
-          ${an.metrics.map(m => `
-            <div class="analytics-card ${m.color || 'blue'}">
-              <div class="analytics-card-title">${(m.service||'').replace(/</g,'&lt;')}</div>
-              ${(m.stats||[]).map(s => `
-                <div class="analytics-stat">
-                  <span class="analytics-stat-label">${(s.label||'').replace(/</g,'&lt;')}</span>
-                  <div class="analytics-stat-right">
-                    <span class="analytics-stat-value">${(s.value||'').replace(/</g,'&lt;')}${s.unit ? ' '+s.unit : ''}</span>
-                    ${s.trend ? `<span class="${s.trendUp === false ? 'analytics-trend-down' : 'analytics-trend-up'}">${s.trend}</span>` : ''}
-                  </div>
+      /* ── Resultaten tab (real data only) ── */
+      const ra = data.analytics || {};
+      const bk = ra.bookings   || {};
+      const dv = ra.deliverables || {};
+      const pj = ra.project    || {};
+      const em = ra.emails     || {};
+
+      const statRow = (label, value) =>
+        `<div class="analytics-stat">
+           <span class="analytics-stat-label">${label}</span>
+           <span class="analytics-stat-value">${value}</span>
+         </div>`;
+
+      const bookingsSection = `
+        <div class="analytics-card blue" style="margin-bottom:10px">
+          <div class="analytics-card-title" style="color:#1d4ed8">📅 Boekingen</div>
+          ${bk.total > 0 ? `
+            ${statRow('Totaal boekingen', bk.total)}
+            ${statRow('Boekingen deze maand', bk.thisMonth || 0)}
+            ${bk.lastBooking ? statRow('Laatste boeking', fmtS(bk.lastBooking)) : ''}
+            ${bk.popularService ? statRow('Populairste dienst', e(bk.popularService)) : ''}
+          ` : `<div style="font-size:13px;color:var(--muted);padding:4px 0">Nog geen boekingen ontvangen.</div>`}
+        </div>`;
+
+      const delivSection = `
+        <div class="analytics-card green" style="margin-bottom:10px">
+          <div class="analytics-card-title" style="color:#15803d">💻 Gebouwde pagina's</div>
+          ${dv.total > 0 ? `
+            ${statRow("Pagina's gebouwd", dv.total)}
+            ${dv.lastBuilt ? statRow('Laatste update', fmtS(dv.lastBuilt)) : ''}
+            <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+              ${(dv.items||[]).map(d => `
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:5px 0;border-top:1px solid rgba(0,0,0,.06)">
+                  <span style="color:#374151;font-weight:600">${e(d.service)}</span>
+                  ${d.url ? `<a href="${d.url}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:none;font-size:11px">Bekijk →</a>` : '<span style="color:var(--muted);font-size:11px">Geen link</span>'}
                 </div>`).join('')}
-            </div>`).join('')}
-        </div>
-        <div class="analytics-disclaimer">
-          ⓘ Cijfers zijn indicatief en gebaseerd op gemiddelde resultaten voor uw sector. Definitieve rapportages worden maandelijks verstrekt.
-        </div>` : `
-        <div class="empty-state">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          <p>Resultaten worden binnenkort beschikbaar gesteld door uw accountmanager.</p>
+            </div>
+          ` : `<div style="font-size:13px;color:var(--muted);padding:4px 0">Nog geen pagina's gebouwd.</div>`}
+        </div>`;
+
+      const projectSection = `
+        <div class="analytics-card purple" style="margin-bottom:10px">
+          <div class="analytics-card-title" style="color:#6d28d9">📊 Project voortgang</div>
+          ${pj.startDate ? `
+            ${pj.phase    ? statRow('Huidige fase', 'Fase ' + pj.phase + ' van 5') : ''}
+            ${pj.daysActive !== null ? statRow('Dagen actief als klant', pj.daysActive) : ''}
+            ${pj.tasksTotal > 0 ? statRow('Taken voltooid', pj.tasksCompleted + ' van ' + pj.tasksTotal) : ''}
+          ` : `<div style="font-size:13px;color:var(--muted);padding:4px 0">Project is nog niet gestart.</div>`}
+        </div>`;
+
+      const emailSection = em.total > 0 ? `
+        <div class="analytics-card orange" style="margin-bottom:10px">
+          <div class="analytics-card-title" style="color:#c2410c">✉️ Communicatie</div>
+          ${statRow('Berichten ontvangen', em.total)}
+          ${em.lastSent ? statRow('Laatste bericht', fmtS(em.lastSent)) : ''}
+        </div>` : '';
+
+      const analyticsHtml = `
+        <div style="margin-bottom:14px">
+          ${bookingsSection}
+          ${delivSection}
+          ${projectSection}
+          ${emailSection}
         </div>`;
 
       /* ── Tab badge for open invoices ── */

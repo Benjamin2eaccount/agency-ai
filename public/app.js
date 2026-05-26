@@ -3966,39 +3966,17 @@ async function renderProjectPage() {
         ${lead.portalWelcomeMessage ? `<button class="btn btn-ghost btn-sm" style="margin-left:8px;color:var(--text-muted)" onclick="clearPortalWelcomeMessage('${esc(lead.id)}')"><i class="ti ti-x"></i> Wissen</button>` : ''}
       </div>
 
-      <!-- SECTIE 6: Dashboard Analytics -->
-      <div style="margin-bottom:20px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)">
+      <!-- SECTIE 6: Dashboard Analytics (real data) -->
+      <div style="margin-bottom:20px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)" id="realAnalyticsSection-${esc(lead.id)}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
           <div class="project-section-title" style="margin-bottom:0">6 — Dashboard Analytics</div>
-          <button class="btn btn-sm btn-outline" id="genAnalyticsBtn" onclick="generateClientAnalytics('${esc(lead.id)}')">
-            <i class="ti ti-chart-bar"></i> ${lead.analytics ? 'Hergeneer' : 'Genereer resultaten'}
+          <button class="btn btn-sm btn-outline" onclick="loadRealAnalytics('${esc(lead.id)}')">
+            <i class="ti ti-refresh"></i> Vernieuwen
           </button>
         </div>
-        ${lead.analytics?.metrics?.length ? `
-          <div style="margin-bottom:8px;font-size:12px;color:var(--text-muted)">Gegenereerd: ${relativeTime(lead.analytics.generatedAt)} &mdash; ${lead.analytics.month || ''}</div>
-          ${lead.analytics.summary ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#166534">${esc(lead.analytics.summary)}</div>` : ''}
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            ${(lead.analytics.metrics||[]).map((m, mi) => {
-              const colorMap = { green: '#f0fdf4', blue: '#eff6ff', purple: '#f5f3ff', orange: '#fff7ed' };
-              const borderMap = { green: '#bbf7d0', blue: '#bfdbfe', purple: '#ddd6fe', orange: '#fed7aa' };
-              const textMap   = { green: '#15803d', blue: '#1d4ed8', purple: '#6d28d9', orange: '#c2410c' };
-              const c = m.color || 'blue';
-              return `<div style="border-radius:10px;padding:14px 16px;background:${colorMap[c]||colorMap.blue};border:1px solid ${borderMap[c]||borderMap.blue}">
-                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${textMap[c]||textMap.blue};margin-bottom:10px">${esc(m.service||'')}</div>
-                ${(m.stats||[]).map((s, si) => `
-                  <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-bottom:1px solid rgba(0,0,0,.06)">
-                    <span style="font-size:12px;color:#374151">${esc(s.label||'')}</span>
-                    <div style="display:flex;align-items:baseline;gap:5px">
-                      <input type="text" value="${esc(s.value||'')}" style="width:70px;text-align:right;font-size:13px;font-weight:700;border:none;background:transparent;color:#111;padding:0;outline:none;cursor:pointer"
-                        onblur="updateAnalyticsStat('${esc(lead.id)}',${mi},${si},this.value)" onkeydown="if(event.key==='Enter')this.blur()">
-                      ${s.trend ? `<span style="font-size:11px;font-weight:700;color:${s.trendUp===false?'var(--danger)':'var(--success)'}">${esc(s.trend)}</span>` : ''}
-                    </div>
-                  </div>`).join('')}
-              </div>`;
-            }).join('')}
-          </div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:10px;padding:8px 10px;background:var(--surface-2);border-radius:6px">ⓘ Klik op een waarde om deze aan te passen. Wijzigingen worden direct zichtbaar in het klantportaal.</div>
-        ` : `<div style="font-size:13px;color:var(--text-muted)">Nog geen analytics gegenereerd. Klik op "Genereer resultaten" om automatisch statistieken aan te maken.</div>`}
+        <div id="realAnalyticsBody-${esc(lead.id)}">
+          ${buildRealAnalyticsHtml(lead)}
+        </div>
       </div>
 
       <!-- SECTIE 7: Portaallink & toegang -->
@@ -5096,36 +5074,82 @@ async function resetPortalToken(leadId) {
   }
 }
 
-async function generateClientAnalytics(leadId) {
-  const btn = document.getElementById('genAnalyticsBtn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Genereren...'; }
-  const res = await api(`/api/leads/${leadId}/generate-analytics`, { method: 'POST' });
+function buildRealAnalyticsHtml(lead) {
+  const ra = lead._realAnalytics || {};
+  const bk = ra.bookings    || {};
+  const dv = ra.deliverables|| {};
+  const pj = ra.project     || {};
+  const em = ra.emails      || {};
+
+  const row = (label, value) =>
+    `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(0,0,0,.06);font-size:13px">
+       <span style="color:var(--text-secondary)">${label}</span>
+       <span style="font-weight:600;color:var(--text-primary)">${value}</span>
+     </div>`;
+
+  const card = (emoji, title, color, border, textColor, body) =>
+    `<div style="background:${color};border:1px solid ${border};border-radius:10px;padding:14px 16px;margin-bottom:10px">
+       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${textColor};margin-bottom:8px">${emoji} ${title}</div>
+       ${body}
+     </div>`;
+
+  const empty = txt => `<div style="font-size:13px;color:var(--text-muted);padding:3px 0">${txt}</div>`;
+
+  const bookBody = bk.total > 0
+    ? `${row('Totaal boekingen', bk.total)}
+       ${row('Boekingen deze maand', bk.thisMonth || 0)}
+       ${bk.lastBooking  ? row('Laatste boeking', relativeTime(bk.lastBooking))  : ''}
+       ${bk.popularService ? row('Populairste dienst', esc(bk.popularService))  : ''}`
+    : empty('Nog geen boekingen ontvangen.');
+
+  const delivBody = dv.total > 0
+    ? `${row("Pagina's gebouwd", dv.total)}
+       ${dv.lastBuilt ? row('Laatste update', relativeTime(dv.lastBuilt)) : ''}
+       <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
+         ${(dv.items||[]).map(d => `
+           <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-top:1px solid rgba(0,0,0,.06)">
+             <span style="font-weight:600">${esc(d.service)}</span>
+             ${d.url ? `<a href="${d.url}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-size:11px">Bekijk →</a>` : '<span style="color:var(--text-muted);font-size:11px">Geen link</span>'}
+           </div>`).join('')}
+       </div>`
+    : empty('Nog geen paginas gebouwd.');
+
+  const projBody = pj.startDate
+    ? `${pj.phase ? row('Huidige fase', 'Fase ' + pj.phase + ' van 5') : ''}
+       ${pj.daysActive !== null ? row('Dagen actief als klant', pj.daysActive) : ''}
+       ${pj.tasksTotal > 0 ? row('Taken voltooid', pj.tasksCompleted + ' van ' + pj.tasksTotal) : ''}`
+    : empty('Project is nog niet gestart.');
+
+  const emailBody = em.total > 0
+    ? `${row('Berichten verstuurd', em.total)}
+       ${em.lastSent ? row('Laatste bericht', relativeTime(em.lastSent)) : ''}`
+    : '';
+
+  return `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      ${card('📅', 'Boekingen',       '#eff6ff', '#bfdbfe', '#1d4ed8', bookBody)}
+      ${card('💻', "Gebouwde pagina's",'#f0fdf4', '#bbf7d0', '#15803d', delivBody)}
+      ${card('📊', 'Project voortgang','#f5f3ff', '#ddd6fe', '#6d28d9', projBody)}
+      ${emailBody ? card('✉️', 'Communicatie', '#fff7ed', '#fed7aa', '#c2410c', emailBody) : ''}
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:10px;padding:8px 10px;background:var(--surface-2);border-radius:6px">
+      ⓘ Alle cijfers zijn gebaseerd op werkelijke data — geen schattingen.
+      ${ra.generatedAt ? 'Bijgewerkt: ' + relativeTime(ra.generatedAt) : ''}
+    </div>`;
+}
+
+async function loadRealAnalytics(leadId) {
+  const body = document.getElementById(`realAnalyticsBody-${leadId}`);
+  if (!body) return;
+  body.innerHTML = '<div style="font-size:13px;color:var(--text-muted)"><i class="ti ti-loader-2 spin"></i> Laden...</div>';
+  const res = await api(`/api/leads/${leadId}/real-analytics`);
   if (res?.ok) {
     const data = await res.json();
     const lead = state.leads.find(l => l.id === leadId);
-    if (lead && data.analytics) lead.analytics = data.analytics;
-    toast('Analytics gegenereerd', 'success');
-    renderProjectPage();
+    if (lead) lead._realAnalytics = data;
+    body.innerHTML = buildRealAnalyticsHtml(lead || { _realAnalytics: data });
   } else {
-    toast('Analytics genereren mislukt', 'error');
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-chart-bar"></i> Genereer resultaten'; }
-  }
-}
-
-async function updateAnalyticsStat(leadId, metricIdx, statIdx, value) {
-  const res = await api(`/api/leads/${leadId}/analytics`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ metricIdx, statIdx, value })
-  });
-  if (res?.ok) {
-    const lead = state.leads.find(l => l.id === leadId);
-    if (lead?.analytics?.metrics?.[metricIdx]?.stats?.[statIdx]) {
-      lead.analytics.metrics[metricIdx].stats[statIdx].value = String(value);
-    }
-    toast('Waarde opgeslagen', 'success');
-  } else {
-    toast('Opslaan mislukt', 'error');
+    body.innerHTML = '<div style="font-size:13px;color:var(--danger)">Laden mislukt.</div>';
   }
 }
 

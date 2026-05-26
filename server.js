@@ -1436,7 +1436,7 @@ app.get('/api/portal/:token', (req, res) => {
                          })),
     messages:            (lead.clientMessages || []),
     timeline:            (lead.history || []).slice(-40).reverse(),
-    analytics:           lead.analytics || null,
+    analytics:           computeRealAnalytics(lead),
     portalChat:          lead.portalChat || [],
     documents:           (lead.documents || []).filter(d => d.visible !== false),
     portalWelcomeMessage: lead.portalWelcomeMessage || null,
@@ -3053,60 +3053,89 @@ function getColorScheme(niche) {
   return schemes[key] || { primary: '#4f46e5', accent: '#6366f1' };
 }
 
-// ─── Client Dashboard Analytics ──────────────────────────────────────────────
+// ─── Real Analytics (computed from actual lead data) ─────────────────────────
 
-app.post('/api/leads/:id/generate-analytics', requireAdmin, async (req, res) => {
-  const leads = readJSON('leads.json') || [];
-  const idx   = leads.findIndex(l => l.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
-  const lead     = leads[idx];
-  const services = (lead.services || []).map(s => s.name).join(', ') || 'Marketingdiensten';
+function computeRealAnalytics(lead) {
   const now      = new Date();
-  const month    = now.toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' });
+  const contacts = readJSON('contacts.json') || [];
 
-  try {
-    const analytics = await aiJSON(`Je bent een marketing analytics expert.
-Genereer realistische maar iets rooskleurige prestatiemetrics voor de afgelopen maand (${month}) voor klant "${lead.companyName || 'de klant'}" (${lead.niche || 'ondernemer'}, ${lead.location || ''}).
-Diensten geleverd: ${services}.
-Regels: cijfers moeten realistisch zijn voor een kleine/middelgrote lokale ondernemer met professionele marketing. Trends altijd positief (5-35% groei). Gebruik Nederlandse labels.
+  // Bookings: match by contactEmail or company name
+  const leadEmail   = (lead.contactEmail || '').toLowerCase();
+  const leadCompany = (lead.companyName  || '').toLowerCase();
+  const bookings = contacts.filter(c => {
+    if (c.type !== 'booking') return false;
+    if (leadEmail   && c.email   && c.email.toLowerCase()   === leadEmail)   return true;
+    if (leadCompany && c.company && c.company.toLowerCase() === leadCompany) return true;
+    return false;
+  }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
-Antwoord ALLEEN als JSON:
-{
-  "month": "${month}",
-  "summary": "1-2 zinnen positieve samenvatting van de resultaten",
-  "metrics": [
-    {
-      "service": "naam van de dienst",
-      "color": "green|blue|purple|orange",
-      "stats": [
-        { "label": "Bereik", "value": "12.400", "unit": "", "trend": "+18%", "trendUp": true },
-        { "label": "Engagements", "value": "847", "unit": "", "trend": "+24%", "trendUp": true },
-        { "label": "Nieuwe volgers", "value": "156", "unit": "", "trend": "+12%", "trendUp": true }
-      ]
-    }
-  ]
+  const thisMonth   = now.getMonth();
+  const thisYear    = now.getFullYear();
+  const monthBookings = bookings.filter(b => {
+    const d = new Date(b.createdAt || 0);
+    return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
+  });
+
+  const svcCounts = {};
+  bookings.forEach(b => { if (b.service) svcCounts[b.service] = (svcCounts[b.service] || 0) + 1; });
+  const popularService = Object.entries(svcCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+  // Deliverables (approved / done / has URL)
+  const deliverables = (lead.agentDeliverables || [])
+    .filter(d => d.status === 'approved' || d.status === 'done' || d.url)
+    .map(d => ({
+      service:     d.service || '',
+      url:         d.url     || null,
+      builtAt:     d.builtAt || null,
+      approvedAt:  d.approvedAt || null,
+      type:        d.deliverableType || d.type || 'html',
+    }))
+    .sort((a, b) => new Date(b.builtAt || 0) - new Date(a.builtAt || 0));
+
+  // Tasks
+  const tasks          = lead.tasks || [];
+  const completedTasks = tasks.filter(t => t.status === 'klaar' || t.done === true);
+
+  // Project age
+  const startDate  = lead.projectStartedAt ? new Date(lead.projectStartedAt) : null;
+  const daysActive = startDate ? Math.max(0, Math.floor((now - startDate) / 86400000)) : null;
+
+  // Client emails sent
+  const emailLog = lead.clientEmailLog || [];
+
+  return {
+    bookings: {
+      total:              bookings.length,
+      thisMonth:          monthBookings.length,
+      lastBooking:        bookings[0]?.createdAt        || null,
+      lastBookingService: bookings[0]?.service          || null,
+      popularService,
+    },
+    deliverables: {
+      total:    deliverables.length,
+      lastBuilt: deliverables[0]?.builtAt || null,
+      items:    deliverables,
+    },
+    project: {
+      phase:          lead.currentPhase   || null,
+      daysActive,
+      startDate:      lead.projectStartedAt || null,
+      tasksTotal:     tasks.length,
+      tasksCompleted: completedTasks.length,
+    },
+    emails: {
+      total:    emailLog.length,
+      lastSent: emailLog.slice(-1)[0]?.sentAt || null,
+    },
+    generatedAt: now.toISOString(),
+  };
 }
-Voeg metrics toe die passen bij elke dienst (social media → bereik/engagements/volgers, SEO → organisch verkeer/posities/klikken, ads → vertoningen/klikken/conversies, email → opens/clicks/bezorgd, website → bezoekers/sessies/laadtijd, chatbot → chats/opgeloste vragen/tevredenheid).`);
 
-    leads[idx].analytics = { ...analytics, generatedAt: now.toISOString() };
-    writeJSON('leads.json', leads);
-    res.json({ ok: true, analytics: leads[idx].analytics });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.patch('/api/leads/:id/analytics', requireAdmin, (req, res) => {
+app.get('/api/leads/:id/real-analytics', requireAdmin, (req, res) => {
   const leads = readJSON('leads.json') || [];
-  const idx   = leads.findIndex(l => l.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
-  const { metricIdx, statIdx, value } = req.body;
-  if (!leads[idx].analytics?.metrics) return res.status(400).json({ error: 'Geen analytics' });
-  if (leads[idx].analytics.metrics[metricIdx]?.stats[statIdx] !== undefined) {
-    leads[idx].analytics.metrics[metricIdx].stats[statIdx].value = String(value);
-  }
-  writeJSON('leads.json', leads);
-  res.json({ ok: true });
+  const lead  = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+  res.json(computeRealAnalytics(lead));
 });
 
 // ─── Document Vault ───────────────────────────────────────────────────────────
