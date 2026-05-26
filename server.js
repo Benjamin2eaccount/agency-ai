@@ -256,11 +256,13 @@ app.get('/', (req, res) => { console.log('[route] GET / → landing.html'); res.
 app.get('/login',        (_, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/client',       (_, res) => res.sendFile(path.join(__dirname, 'public', 'client-login.html')));
 app.get('/client-login', (_, res) => res.sendFile(path.join(__dirname, 'public', 'client-login.html')));
-app.get('/app', requireAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+// /app routes — no server-side auth; frontend (app.js) reads JWT from localStorage
+// and redirects to /login if missing. Server just serves the HTML shell.
+app.get('/app', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/status',       (_, res) => res.sendFile(path.join(__dirname, 'public', 'status.html')));
 
 // MPA routes — each /app/:page serves its own HTML file
-app.get('/app/:page', requireAuth, (req, res) => {
+app.get('/app/:page', (req, res) => {
   const page = req.params.page;
   // Block path traversal
   if (!/^[a-z0-9-]+$/i.test(page)) return res.redirect('/app');
@@ -273,7 +275,7 @@ app.get('/app/:page', requireAuth, (req, res) => {
 });
 
 // Wildcard catch-all for deep /app/** paths — serves SPA shell, client router takes over
-app.get('/app/*', requireAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/app/*', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // readJSON / writeJSON are provided by database.js (SQLite-backed)
 
