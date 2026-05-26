@@ -2762,6 +2762,8 @@ async function renderProjectPage() {
   window._agentChats = window._agentChats || {};
   if (!window._agentChats[lead.id]) window._agentChats[lead.id] = {};
 
+  if (window._projectTab === 'taken') window._projectTab = 'overzicht';
+  if (window._projectTab === 'agents' || window._projectTab === 'website') window._projectTab = 'building';
   const activeTab = window._projectTab || 'overzicht';
 
   // Build score/status pills
@@ -2773,22 +2775,57 @@ async function renderProjectPage() {
   const tabOverzicht = `
     <div class="project-tab-content" data-tab-content="overzicht" style="${activeTab !== 'overzicht' ? 'display:none' : ''}">
 
-      ${lead.intakeSubmittedAt ? `
-      <div style="border:2px solid var(--accent);border-radius:14px;background:linear-gradient(135deg,#eff6ff 0%,#f8faff 100%);padding:20px 22px;margin-bottom:20px">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap">
-          <div style="display:flex;align-items:flex-start;gap:12px">
-            <span style="font-size:22px;flex-shrink:0;margin-top:1px">📋</span>
+      ${lead.status === 'replied' && !lead.projectStartedAt ? `
+      <div style="border:2.5px solid #16a34a;border-radius:16px;background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);padding:22px 24px;margin-bottom:22px;box-shadow:0 2px 12px rgba(22,163,74,.12)">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <div style="display:flex;align-items:flex-start;gap:14px">
+            <span style="font-size:28px;flex-shrink:0;margin-top:2px">💬</span>
             <div>
-              <div style="font-size:15px;font-weight:800;color:var(--accent);margin-bottom:3px">Intake ontvangen van ${esc(lead.companyName)}</div>
-              <div style="font-size:13px;color:var(--text-secondary);margin-bottom:6px">De agents kunnen nu automatisch aan de slag met de bestelde diensten.</div>
-              ${lead.agentsRanAt ? `<div style="font-size:11px;color:var(--text-muted)"><i class="ti ti-check" style="color:var(--success)"></i> Agents liepen op ${formatDate(lead.agentsRanAt)} — ${(lead.agentDeliverables||[]).length} leveringen gebouwd</div>` : ''}
+              <div style="font-size:17px;font-weight:800;color:#15803d;margin-bottom:4px">${esc(lead.companyName)} heeft gereageerd!</div>
+              <div style="font-size:13px;color:#166534;margin-bottom:2px">Klaar om het project te starten?</div>
+              ${lead.repliedAt ? `<div style="font-size:11px;color:#4ade80;margin-top:4px"><i class="ti ti-clock"></i> Gereageerd ${relativeTime(lead.repliedAt)}</div>` : ''}
             </div>
           </div>
+          <button class="btn btn-dark" style="background:#15803d;font-size:15px;padding:12px 22px;flex-shrink:0;align-self:center" onclick="startProject('${esc(lead.id)}')">
+            <i class="ti ti-rocket"></i> Project configureren &amp; starten →
+          </button>
+        </div>
+      </div>
+      ` : ''}
+
+      ${lead.projectStartedAt && lead.intakeToken && !lead.intakeSubmittedAt ? `
+      <div style="border:2px solid var(--warning);border-radius:14px;background:linear-gradient(135deg,#fffbeb 0%,#fef9c3 100%);padding:20px 22px;margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <span style="font-size:24px;flex-shrink:0">⏳</span>
+          <div style="flex:1">
+            <div style="font-size:15px;font-weight:800;color:#92400e;margin-bottom:3px">Wacht op intake formulier</div>
+            <div style="font-size:13px;color:#78350f">De klant heeft de intake nog niet ingevuld. Agents kunnen nog niet bouwen.</div>
+          </div>
           <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText('${window.location.origin}/intake/${esc(lead.id)}/${esc(lead.intakeToken)}').then(()=>toast('Link gekopieerd','success'))"><i class="ti ti-copy"></i> Kopieer intake link</button>
+          </div>
+        </div>
+      </div>
+      ` : ''}
+
+      ${lead.intakeSubmittedAt ? `
+      <div style="border:2.5px solid var(--success);border-radius:14px;background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);padding:20px 22px;margin-bottom:20px;box-shadow:0 2px 10px rgba(16,185,129,.1)">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap">
+          <div style="display:flex;align-items:flex-start;gap:12px">
+            <span style="font-size:24px;flex-shrink:0;margin-top:1px">✅</span>
+            <div>
+              <div style="font-size:15px;font-weight:800;color:#15803d;margin-bottom:3px">Intake ontvangen!</div>
+              <div style="font-size:13px;color:#166534;margin-bottom:6px">
+                ${(lead.selectedProblems||[]).length ? `Agents bouwen voor ${(lead.selectedProblems||[]).length} geselecteerde probleem${(lead.selectedProblems||[]).length>1?'en':''}.` : 'Agents bouwen op basis van bestelde diensten en gevonden problemen.'}
+              </div>
+              ${lead.agentsRanAt ? `<div style="font-size:11px;color:var(--text-muted)"><i class="ti ti-check" style="color:var(--success)"></i> Gebouwd op ${formatDate(lead.agentsRanAt)} — ${(lead.agentDeliverables||[]).length} leveringen</div>` : ''}
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;align-items:center">
             ${lead.agentsRanAt ? `<button class="btn btn-ghost btn-sm" onclick="buildAllServicesForLead('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Opnieuw bouwen</button>` : ''}
-            <button class="btn btn-dark" onclick="buildAllServicesForLead('${esc(lead.id)}')">
-              <i class="ti ti-robot"></i> ${lead.agentsRanAt ? 'Alles herbouwen' : 'Laat agents aan het werk →'}
-            </button>
+            ${isAdmin() ? `<button class="btn btn-dark" style="font-size:14px;padding:10px 20px" onclick="buildAllServicesForLead('${esc(lead.id)}')">
+              <i class="ti ti-robot"></i> ${lead.agentsRanAt ? 'Alles herbouwen' : 'Ga verder — laat agents bouwen'}
+            </button>` : ''}
           </div>
         </div>
       </div>
@@ -3429,41 +3466,63 @@ async function renderProjectPage() {
       </div>`;
   }
 
-  // ── Tab: Agents aan het werk ─────────────────────────────────────────────────
-  function buildAgentsTab() {
+  // ── Tab: Building (agent build dashboard) ─────────────────────────────────
+  function buildBuildingTab() {
     const deliverables = lead.agentDeliverables || [];
     const running = !!(window._buildAllRunning && window._buildAllRunning[lead.id]);
     const progress = (window._buildAllProgress && window._buildAllProgress[lead.id]) || [];
 
+    const doneCount    = running ? progress.filter(p => p.status === 'done').length   : deliverables.filter(d => d.status !== 'error').length;
+    const errorCount   = running ? progress.filter(p => p.status === 'error').length  : deliverables.filter(d => d.status === 'error').length;
+    const totalCount   = running ? progress.length : deliverables.length;
+    const approvedCount = deliverables.filter(d => d.status === 'approved').length;
+    const pendingCount  = deliverables.filter(d => d.status !== 'approved' && d.status !== 'error').length;
+
     // Empty state
     if (!deliverables.length && !running) {
       return `
-        <div class="project-tab-content" data-tab-content="agents" style="${activeTab !== 'agents' ? 'display:none' : ''}">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-            <div class="project-section-title" style="margin:0"><i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>Agents aan het werk</div>
-          </div>
-          <div style="text-align:center;padding:40px 20px">
-            <i class="ti ti-robot" style="font-size:40px;color:var(--text-muted);display:block;margin-bottom:12px"></i>
-            <div style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">Agents nog niet gestart</div>
-            <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px">${lead.intakeSubmittedAt ? 'Klik op "Laat agents aan het werk" in het Overzicht.' : 'Wacht tot de klant de intake heeft ingevuld.'}</div>
-            ${lead.intakeSubmittedAt && isAdmin() ? `<button class="btn btn-primary" onclick="buildAllServicesForLead('${esc(lead.id)}')"><i class="ti ti-robot"></i> Agents starten</button>` : ''}
+        <div class="project-tab-content" data-tab-content="building" style="${activeTab !== 'building' ? 'display:none' : ''}">
+          <div style="text-align:center;padding:48px 20px">
+            <i class="ti ti-hammer" style="font-size:44px;color:var(--text-muted);display:block;margin-bottom:14px"></i>
+            <div style="font-size:15px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">Nog niets gebouwd</div>
+            <div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">Start via de intake flow hierboven in het Overzicht.</div>
+            ${lead.intakeSubmittedAt && isAdmin() ? `<button class="btn btn-primary" onclick="buildAllServicesForLead('${esc(lead.id)}')"><i class="ti ti-rocket"></i> Nu starten</button>` : ''}
           </div>
         </div>`;
     }
+
+    // Overall progress bar (during build)
+    const overallPct = running && progress.length ? Math.round((progress.filter(p => p.status === 'done' || p.status === 'error').length / progress.length) * 100) : 0;
+    const buildingIdx = running ? progress.findIndex(p => p.status === 'building') : -1;
+    const remainingServices = running ? progress.filter(p => p.status === 'waiting').length : 0;
+    const estMinutes = remainingServices * 1.5;
+
+    const overallProgressBar = running ? `
+      <div style="margin-bottom:18px;padding:16px 18px;border:1px solid var(--accent);border-radius:12px;background:linear-gradient(135deg,#eff6ff,#f8faff)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+          <div style="font-size:14px;font-weight:700;color:var(--accent)"><i class="ti ti-loader-2 spin"></i> Bezig met bouwen... ${overallPct}% voltooid</div>
+          ${estMinutes > 0 ? `<div style="font-size:12px;color:var(--text-muted)">~${Math.ceil(estMinutes)} min resterend</div>` : ''}
+        </div>
+        <div style="height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden">
+          <div style="height:100%;background:var(--accent);border-radius:4px;width:${overallPct}%;transition:width .5s"></div>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:6px">${doneCount} van ${totalCount} klaar${errorCount > 0 ? ` · ${errorCount} mislukt` : ''}</div>
+      </div>
+    ` : '';
 
     // Live progress cards (during build)
     const liveCards = running && progress.length ? progress.map(p => {
       const slug = p.service.toLowerCase().replace(/[^a-z0-9]/g, '-');
       const borderColor = p.status === 'building' ? 'var(--accent)' : p.status === 'done' ? 'var(--success)' : p.status === 'error' ? 'var(--danger)' : 'var(--border)';
       const statusHtml = p.status === 'waiting'
-        ? `<span style="font-size:12px;color:var(--text-muted)"><i class="ti ti-clock"></i> Wachten...</span>`
+        ? `<span style="font-size:12px;color:var(--text-muted)"><i class="ti ti-clock"></i> Wachten</span>`
         : p.status === 'building'
           ? `<span style="font-size:12px;color:var(--accent)"><i class="ti ti-loader-2 spin"></i> Bezig...</span>`
           : p.status === 'done'
             ? `<span style="font-size:12px;color:var(--success)"><i class="ti ti-check"></i> Klaar ✓</span>`
             : `<span style="font-size:12px;color:var(--danger)"><i class="ti ti-x"></i> Mislukt ✗</span>`;
       return `
-        <div id="build-card-${lead.id}-${slug}" style="border:1px solid ${borderColor};border-radius:10px;padding:12px 16px;margin-bottom:10px;background:var(--surface);transition:border-color .3s">
+        <div id="build-card-${lead.id}-${slug}" style="border:1.5px solid ${borderColor};border-radius:10px;padding:12px 16px;margin-bottom:8px;background:var(--surface);transition:border-color .3s">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${p.status==='building'?'8':'0'}px">
             <div style="font-size:13px;font-weight:600">${esc(p.service)}</div>
             <div class="build-status">${statusHtml}</div>
@@ -3548,17 +3607,56 @@ async function renderProjectPage() {
       </div>`;
     }).join('');
 
-    const doneCount = progress.filter(p => p.status === 'done').length;
+    // Right-side summary panel
+    const totalBuildMs = deliverables.reduce((s, d) => s + (d.buildTimeMs || 0), 0);
+    const totalBuildMin = totalBuildMs > 0 ? Math.ceil(totalBuildMs / 60000) : null;
+
+    const rightPanel = (!running && deliverables.length) ? `
+      <div style="flex-shrink:0;width:220px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;align-self:flex-start;position:sticky;top:16px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:12px">Samenvatting</div>
+        <div style="margin-bottom:8px;display:flex;justify-content:space-between;font-size:13px">
+          <span style="color:var(--text-secondary)">Klaar</span>
+          <span style="font-weight:600;color:var(--success)">${doneCount}</span>
+        </div>
+        <div style="margin-bottom:8px;display:flex;justify-content:space-between;font-size:13px">
+          <span style="color:var(--text-secondary)">Goedgekeurd</span>
+          <span style="font-weight:600;color:var(--accent)">${approvedCount}</span>
+        </div>
+        <div style="margin-bottom:8px;display:flex;justify-content:space-between;font-size:13px">
+          <span style="color:var(--text-secondary)">Wacht</span>
+          <span style="font-weight:600;color:var(--warning)">${pendingCount}</span>
+        </div>
+        ${errorCount > 0 ? `<div style="margin-bottom:8px;display:flex;justify-content:space-between;font-size:13px">
+          <span style="color:var(--text-secondary)">Mislukt</span>
+          <span style="font-weight:600;color:var(--danger)">${errorCount}</span>
+        </div>` : ''}
+        ${totalBuildMin ? `<div style="margin-bottom:12px;display:flex;justify-content:space-between;font-size:13px">
+          <span style="color:var(--text-secondary)">Bouwtijd</span>
+          <span style="font-weight:600">${totalBuildMin}min</span>
+        </div>` : ''}
+        <div style="height:1px;background:var(--border);margin-bottom:12px"></div>
+        ${isAdmin() && pendingCount > 0 ? `<button class="btn btn-primary btn-sm" style="width:100%;margin-bottom:8px" onclick="approveAllDeliverables('${esc(lead.id)}')"><i class="ti ti-checks"></i> Alles goedkeuren</button>` : ''}
+        ${isAdmin() && approvedCount > 0 ? `<button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px" onclick="sendAllDeliverablesToClient('${esc(lead.id)}')"><i class="ti ti-send"></i> Stuur alles naar klant</button>` : ''}
+        ${isAdmin() ? `<button class="btn btn-ghost btn-sm" style="width:100%" onclick="buildAllServicesForLead('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Opnieuw bouwen</button>` : ''}
+      </div>` : '';
 
     return `
-      <div class="project-tab-content" data-tab-content="agents" style="${activeTab !== 'agents' ? 'display:none' : ''}">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-          <div class="project-section-title" style="margin:0"><i class="ti ti-robot" style="color:var(--accent);margin-right:6px"></i>Agents aan het werk</div>
-          ${!running && lead.intakeSubmittedAt && isAdmin() ? `<button class="btn btn-ghost btn-sm" onclick="buildAllServicesForLead('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Opnieuw bouwen</button>` : ''}
+      <div class="project-tab-content" data-tab-content="building" style="${activeTab !== 'building' ? 'display:none' : ''}">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div class="project-section-title" style="margin:0"><i class="ti ti-hammer" style="color:var(--accent);margin-right:6px"></i>Building</div>
+            ${!running && deliverables.length ? `<span class="build-counter" style="font-size:12px;color:var(--text-muted)">${doneCount} van ${totalCount} gebouwd${errorCount > 0 ? ` · ${errorCount} mislukt` : ''}</span>` : ''}
+          </div>
+          ${!running && lead.intakeSubmittedAt && isAdmin() && deliverables.length ? `<button class="btn btn-ghost btn-sm" onclick="buildAllServicesForLead('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Opnieuw</button>` : ''}
         </div>
-        ${running && progress.length ? `<div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:12px"><i class="ti ti-loader-2 spin"></i> Bezig... ${doneCount}/${progress.length} leveringen klaar</div>` : ''}
-        ${liveCards}
-        ${deliverableCards}
+        ${overallProgressBar}
+        <div style="display:flex;gap:20px;align-items:flex-start">
+          <div style="flex:1;min-width:0">
+            ${liveCards}
+            ${deliverableCards}
+          </div>
+          ${rightPanel}
+        </div>
       </div>`;
   }
 
@@ -3900,37 +3998,33 @@ async function renderProjectPage() {
         </div>
         <div class="project-tabs">
           <button class="project-tab${activeTab==='overzicht'?' active':''}" data-tab="overzicht" onclick="switchProjectTab('overzicht')">Overzicht</button>
-          <button class="project-tab${activeTab==='taken'?' active':''}" data-tab="taken" onclick="switchProjectTab('taken')">Problemen &amp; Taken</button>
           <button class="project-tab${activeTab==='emails'?' active':''}" data-tab="emails" onclick="switchProjectTab('emails')">Emails</button>
           ${lead.intakeToken ? `<button class="project-tab${activeTab==='intake'?' active':''}" data-tab="intake" onclick="switchProjectTab('intake')">${lead.intakeSubmittedAt ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Intake</button>` : ''}
           <button class="project-tab${activeTab==='betalingen'?' active':''}" data-tab="betalingen" onclick="switchProjectTab('betalingen')">${(lead.payments||[]).filter(p=>p.status==='sent').length > 0 ? `<i class="ti ti-coin" style="color:var(--warning);margin-right:3px"></i>` : ''}Betalingen</button>
           <button class="project-tab${activeTab==='voorstel'?' active':''}" data-tab="voorstel" onclick="switchProjectTab('voorstel')">${lead.proposal ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Voorstel</button>
           <button class="project-tab${activeTab==='contract'?' active':''}" data-tab="contract" onclick="switchProjectTab('contract')">${lead.contract ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Contract</button>
-          <button class="project-tab${activeTab==='website'?' active':''}" data-tab="website" onclick="switchProjectTab('website')">Website</button>
+          <button class="project-tab${activeTab==='building'?' active':''}" data-tab="building" onclick="switchProjectTab('building')" style="${(lead.agentDeliverables||[]).some(d=>d.status==='wacht_op_goedkeuring') ? 'color:var(--warning);font-weight:700' : ''}">${(lead.agentDeliverables||[]).some(d=>d.status==='wacht_op_goedkeuring') ? '<i class="ti ti-clock" style="margin-right:3px;color:var(--warning)"></i>' : '<i class="ti ti-hammer" style="margin-right:3px"></i>'}Building${(lead.agentDeliverables||[]).filter(d=>d.status!=='error').length > 0 ? ` (${(lead.agentDeliverables||[]).filter(d=>d.status!=='error').length})` : ''}</button>
           <button class="project-tab${activeTab==='afspraken'?' active':''}" data-tab="afspraken" onclick="switchProjectTab('afspraken')">Afspraken</button>
           <button class="project-tab${activeTab==='bestanden'?' active':''}" data-tab="bestanden" onclick="switchProjectTab('bestanden')"><i class="ti ti-files" style="margin-right:3px"></i>Bestanden${(lead.projectFiles||[]).length > 0 ? ` (${(lead.projectFiles||[]).length})` : ''}</button>
           <button class="project-tab${activeTab==='documenten'?' active':''}" data-tab="documenten" onclick="switchProjectTab('documenten')"><i class="ti ti-folder" style="margin-right:3px"></i>Documenten${(lead.documents||[]).length > 0 ? ` (${(lead.documents||[]).length})` : ''}</button>
           <button class="project-tab${activeTab==='portaal'?' active':''}" data-tab="portaal" onclick="switchProjectTab('portaal')">${(lead.portalChat||[]).filter(m=>m.from==='client'&&!m.readAt).length > 0 ? `<i class="ti ti-message-circle" style="color:var(--danger);margin-right:3px"></i>` : ''}Klantportaal</button>
           <button class="project-tab${activeTab==='geschiedenis'?' active':''}" data-tab="geschiedenis" onclick="switchProjectTab('geschiedenis')">Geschiedenis</button>
           <button class="project-tab${activeTab==='notities'?' active':''}" data-tab="notities" onclick="switchProjectTab('notities')">Notities</button>
-          ${lead.agentDeliverables?.length || lead.intakeSubmittedAt ? `<button class="project-tab${activeTab==='agents'?' active':''}" data-tab="agents" onclick="switchProjectTab('agents')" style="${lead.agentDeliverables?.some(d=>d.status==='wacht_op_goedkeuring') ? 'color:var(--warning);font-weight:700' : ''}">${lead.agentDeliverables?.some(d=>d.status==='wacht_op_goedkeuring') ? '<i class="ti ti-clock" style="margin-right:3px;color:var(--warning)"></i>' : '<i class="ti ti-robot" style="margin-right:3px"></i>'}Agents</button>` : ''}
         </div>
       </div>
       <div class="project-content">
         ${tabOverzicht}
-        ${buildProblemsTab()}
+        ${buildBuildingTab()}
         ${buildEmailsTab()}
         ${buildIntakeTabProject()}
         ${buildBetalingenTabProject()}
         ${buildVoorstelTabProject()}
         ${buildContractTabProject()}
-        ${buildWebsiteTabProject()}
         ${tabAfspraken}
         ${tabDocumenten}
         ${tabPortaal}
         ${tabGeschiedenis}
         ${tabNotities}
-        ${buildAgentsTab()}
         ${buildProjectFilesTab()}
       </div>
     </div>`;
@@ -4117,7 +4211,7 @@ window.startCheckedProblems = async function(leadId) {
   window._selectedProblemLead = leadId;
 
   await renderProjectPage();
-  switchProjectTab('taken');
+  switchProjectTab('overzicht');
 
   const msgEl = document.getElementById('agentChatMsg');
   if (msgEl && selectedTexts.length) {
@@ -4227,7 +4321,7 @@ window.runAgentsForLead = async function(leadId) {
 
   // Switch to agents tab + re-render to show progress card
   await renderProjectPage();
-  switchProjectTab('agents');
+  switchProjectTab('building');
 
   const progressList = document.getElementById(`agentsProgressList-${leadId}`);
   const lead = state.leads.find(l => l.id === leadId);
@@ -4245,7 +4339,7 @@ window.runAgentsForLead = async function(leadId) {
       if (done) {
         window._agentsRunning[leadId] = false;
         // Re-render page to show final deliverables
-        renderProjectPage().then(() => switchProjectTab('agents'));
+        renderProjectPage().then(() => switchProjectTab('building'));
         return;
       }
       buf += decoder.decode(value, { stream: true });
@@ -4260,7 +4354,7 @@ window.runAgentsForLead = async function(leadId) {
             window._agentsRunning[leadId] = false;
             // Merge deliverables into state
             if (lead) lead.agentDeliverables = d.deliverables || [];
-            renderProjectPage().then(() => switchProjectTab('agents'));
+            renderProjectPage().then(() => switchProjectTab('building'));
             return;
           }
           if (d.status === 'error' && d.idx === -1) {
@@ -4303,7 +4397,7 @@ window.approveDeliverable = async function(leadId, dIdx) {
     toast('Levering goedgekeurd en klant genotificeerd!', 'success');
     const freshLeads = await apiJSON('/api/leads');
     if (freshLeads) state.leads = freshLeads;
-    renderProjectPage().then(() => switchProjectTab('agents'));
+    renderProjectPage().then(() => switchProjectTab('building'));
   } else {
     const d = await res?.json();
     toast(d?.error || 'Goedkeuren mislukt', 'error');
@@ -4352,7 +4446,7 @@ window.sendManualDeliverable = async function(leadId, dIdx) {
     toast('Email verstuurd en levering goedgekeurd!', 'success');
     const freshLeads = await apiJSON('/api/leads');
     if (freshLeads) state.leads = freshLeads;
-    renderProjectPage().then(() => switchProjectTab('agents'));
+    renderProjectPage().then(() => switchProjectTab('building'));
   } else {
     const d = await res?.json();
     toast(d?.error || 'Versturen mislukt', 'error');
@@ -4397,7 +4491,7 @@ window.sendDeliverableAdjust = async function(leadId, dIdx) {
     if (input) input.value = '';
     const freshLeads = await apiJSON('/api/leads');
     if (freshLeads) state.leads = freshLeads;
-    renderProjectPage().then(() => switchProjectTab('agents'));
+    renderProjectPage().then(() => switchProjectTab('building'));
   } else {
     toast(res?.error || 'Aanpassing mislukt', 'error');
   }
@@ -4419,7 +4513,7 @@ window.buildAllServicesForLead = async function(leadId) {
     : [{ service: 'Diensten laden...', status: 'waiting', percent: 0 }];
 
   await renderProjectPage();
-  switchProjectTab('agents');
+  switchProjectTab('building');
 
   const updateCard = (serviceName, updates) => {
     const prog = window._buildAllProgress[leadId];
@@ -4457,7 +4551,7 @@ window.buildAllServicesForLead = async function(leadId) {
     // Update counter in header
     const prog2 = window._buildAllProgress[leadId] || [];
     const doneCount = prog2.filter(p => p.status === 'done').length;
-    const hdr = document.querySelector(`[data-tab-content="agents"] .build-counter`);
+    const hdr = document.querySelector(`[data-tab-content="building"] .build-counter`);
     if (hdr) hdr.textContent = `Bezig... ${doneCount}/${prog2.length} leveringen klaar`;
   };
 
@@ -4483,7 +4577,7 @@ window.buildAllServicesForLead = async function(leadId) {
       if (done) {
         window._buildAllRunning[leadId] = false;
         delete window._buildAllProgress[leadId];
-        renderProjectPage().then(() => switchProjectTab('agents'));
+        renderProjectPage().then(() => switchProjectTab('building'));
         return;
       }
       buf += decoder.decode(value, { stream: true });
@@ -4510,12 +4604,12 @@ window.buildAllServicesForLead = async function(leadId) {
             const l = state.leads.find(x => x.id === leadId);
             if (l) l.agentDeliverables = d.deliverables || [];
             toast(`${d.count} leveringen klaar!`, 'success');
-            renderProjectPage().then(() => switchProjectTab('agents'));
+            renderProjectPage().then(() => switchProjectTab('building'));
           } else if (d.type === 'error' && !d.service) {
             window._buildAllRunning[leadId] = false;
             delete window._buildAllProgress[leadId];
             toast(d.message || 'Fout bij bouwen', 'error');
-            renderProjectPage().then(() => switchProjectTab('agents'));
+            renderProjectPage().then(() => switchProjectTab('building'));
           }
         } catch {}
       });
@@ -4531,8 +4625,35 @@ window.buildAllServicesForLead = async function(leadId) {
     window._buildAllRunning[leadId] = false;
     delete window._buildAllProgress[leadId];
     toast('Fout: ' + err.message, 'error');
-    renderProjectPage().then(() => switchProjectTab('agents'));
+    renderProjectPage().then(() => switchProjectTab('building'));
   }
+};
+
+window.approveAllDeliverables = async function(leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead) return;
+  const pending = (lead.agentDeliverables || []).map((d, i) => ({ d, i })).filter(({d}) => d.status !== 'approved' && d.status !== 'error');
+  if (!pending.length) return toast('Geen leveringen om goed te keuren', 'info');
+  if (!confirm(`${pending.length} levering${pending.length > 1 ? 'en' : ''} goedkeuren en naar klant sturen?`)) return;
+  for (const {i} of pending) {
+    await api(`/api/leads/${leadId}/deliverables/${i}/approve`, { method: 'POST' });
+  }
+  toast(`${pending.length} leveringen goedgekeurd!`, 'success');
+  const freshLeads = await apiJSON('/api/leads');
+  if (freshLeads) state.leads = freshLeads;
+  renderProjectPage().then(() => switchProjectTab('building'));
+};
+
+window.sendAllDeliverablesToClient = async function(leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead) return;
+  if (!lead.contactEmail) return toast('Geen email adres voor deze klant', 'error');
+  if (!confirm(`Oplevering email genereren en sturen naar ${lead.contactEmail}?`)) return;
+  const res = await apiJSON(`/api/leads/${leadId}/generate-delivery-email`, { method: 'POST' });
+  if (!res?.subject) return toast('Email genereren mislukt', 'error');
+  const sendRes = await api(`/api/leads/${leadId}/send-delivery-email`, { method: 'POST', body: JSON.stringify({ subject: res.subject, body: res.body }) });
+  if (sendRes?.ok) toast('Oplevering email verstuurd naar klant!', 'success');
+  else toast('Versturen mislukt', 'error');
 };
 
 window.retryBuildService = async function(leadId, serviceName) {
@@ -4549,7 +4670,7 @@ window.retryBuildService = async function(leadId, serviceName) {
   window._buildAllProgress[leadId] = existing;
 
   await renderProjectPage();
-  switchProjectTab('agents');
+  switchProjectTab('building');
 
   const updateCard = (svc, updates) => {
     const prog = window._buildAllProgress[leadId];
@@ -4605,7 +4726,7 @@ window.retryBuildService = async function(leadId, serviceName) {
       if (done) {
         window._buildAllRunning[leadId] = false;
         delete window._buildAllProgress[leadId];
-        renderProjectPage().then(() => switchProjectTab('agents'));
+        renderProjectPage().then(() => switchProjectTab('building'));
         return;
       }
       buf += decoder.decode(value, { stream: true });
@@ -4625,12 +4746,12 @@ window.retryBuildService = async function(leadId, serviceName) {
             const l = state.leads.find(x => x.id === leadId);
             if (l && d.deliverables) l.agentDeliverables = d.deliverables;
             toast(`${serviceName} opnieuw gebouwd!`, 'success');
-            renderProjectPage().then(() => switchProjectTab('agents'));
+            renderProjectPage().then(() => switchProjectTab('building'));
           } else if (d.type === 'error') {
             window._buildAllRunning[leadId] = false;
             delete window._buildAllProgress[leadId];
             toast(d.message || `Fout bij ${serviceName}`, 'error');
-            renderProjectPage().then(() => switchProjectTab('agents'));
+            renderProjectPage().then(() => switchProjectTab('building'));
           }
         } catch {}
       });
@@ -4646,7 +4767,7 @@ window.retryBuildService = async function(leadId, serviceName) {
     window._buildAllRunning[leadId] = false;
     delete window._buildAllProgress[leadId];
     toast('Fout: ' + err.message, 'error');
-    renderProjectPage().then(() => switchProjectTab('agents'));
+    renderProjectPage().then(() => switchProjectTab('building'));
   }
 };
 
@@ -6089,12 +6210,37 @@ function openProjectConfigModal(leadId, editMode) {
   ];
   const currentBilling = lead.projectBilling || 'maandelijks';
 
+  const problems = lead.problems || [];
+  const problemCheckboxes = problems.length
+    ? problems.map((p, i) => {
+        const txt = typeof p === 'string' ? p : (p.text || p.description || JSON.stringify(p));
+        const low = txt.toLowerCase();
+        const isCritical = low.includes('geen') || low.includes('niet') || low.includes('slecht') || low.includes('0');
+        const icon = isCritical ? '🔴' : '🟡';
+        const severityLabel = isCritical ? 'Kritiek' : 'Medium';
+        const severityColor = isCritical ? 'var(--danger)' : '#d97706';
+        const alreadySel = !lead.selectedProblems || lead.selectedProblems.includes(txt);
+        return `<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;margin-bottom:6px;background:var(--surface)">
+          <input type="checkbox" name="prob" value="${esc(txt)}" ${alreadySel ? 'checked' : ''} style="width:15px;height:15px;accent-color:var(--accent);flex-shrink:0">
+          <span style="font-size:15px;flex-shrink:0">${icon}</span>
+          <span style="flex:1;font-size:13px;line-height:1.4">${esc(txt)}</span>
+          <span style="font-size:10px;padding:1px 7px;border-radius:3px;background:${severityColor}22;color:${severityColor};font-weight:600;white-space:nowrap;flex-shrink:0">${severityLabel}</span>
+        </label>`;
+      }).join('')
+    : `<div style="font-size:13px;color:var(--text-muted);padding:8px 0">Geen problemen gedetecteerd — agents bouwen op basis van bestelde diensten.</div>`;
+
   openModal(`
     <div class="modal-header">
       <strong><i class="ti ti-settings" style="color:var(--accent)"></i> Project configureren — ${esc(lead.companyName)}</strong>
       <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
     </div>
     <div style="padding:0 0 8px;max-height:65vh;overflow-y:auto">
+
+      ${problems.length ? `
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px">Problemen <span style="font-weight:400;text-transform:none;color:var(--text-secondary)">(selecteer wat agents aanpakken)</span></div>
+      <div id="projProblemsList" style="margin-bottom:16px">${problemCheckboxes}</div>
+      <div style="height:1px;background:var(--border);margin-bottom:16px"></div>
+      ` : ''}
 
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px">Diensten</div>
       <div id="projServicesList" style="margin-bottom:6px">${serviceCheckboxes}</div>
@@ -6191,6 +6337,7 @@ async function confirmStartProject(leadId, editMode) {
 
   const checkedBoxes = [...document.querySelectorAll('#projServicesList input[name="svc"]:checked')].map(el => el.value);
   const services  = checkedBoxes.length ? checkedBoxes : (lead.services || []);
+  const selectedProblems = [...document.querySelectorAll('#projProblemsList input[name="prob"]:checked')].map(el => el.value);
   const price     = parseFloat(document.getElementById('projPrice')?.value) || 0;
   const billing   = document.getElementById('projBilling')?.value || 'maandelijks';
   const duration  = parseInt(document.getElementById('projDuration')?.value) || 0;
@@ -6203,6 +6350,7 @@ async function confirmStartProject(leadId, editMode) {
     projectBilling: billing, projectDuration: duration,
     projectStartDate: startDate, projectEndDate: endDate,
     projectNotes: notes,
+    selectedProblems: selectedProblems,
   };
   if (services.length) patch.services = services;
 
