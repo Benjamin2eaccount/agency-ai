@@ -1,4 +1,13 @@
 require('dotenv').config();
+
+// Global error handlers — log instead of silent crash
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err?.message, err?.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled rejection:', reason?.message || reason);
+});
+
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
@@ -9515,6 +9524,12 @@ app.get('*', (req, res) => {
 });
 
 // â"€â"€â"€ Start â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+pgInitPromise.catch(err => {
+  console.error('[DB] pgInitPromise rejected (unexpected):', err?.message || err);
+}).finally(() => {
+  // Server ALWAYS starts — even if pgInitPromise somehow rejects
+});
 
 pgInitPromise.then(() => {
   const server = app.listen(PORT, () => {

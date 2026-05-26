@@ -80,7 +80,7 @@ const pgInitPromise = (async () => {
         : { rejectUnauthorized: false },
       max: 5,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000,
+      connectionTimeoutMillis: 5000,
     });
 
     // Test connection
