@@ -5835,6 +5835,29 @@ app.get('/api/test-all-services', requireAdmin, async (req, res) => {
       if (idx < AUTO_BUILDABLE.length - 1) await new Promise(r => setTimeout(r, 2000));
     }
 
+    // ── Log summary to Railway console ─────────────────────────────────────
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[TestAll] RESULTATEN OVERZICHT');
+    console.log(`[TestAll] ✅ Geslaagd: ${passed}/${AUTO_BUILDABLE.length}`);
+    console.log(`[TestAll] ❌ Mislukt:  ${failed}/${AUTO_BUILDABLE.length}`);
+    results.forEach(r => {
+      const icon = r.success ? '✅' : '❌';
+      console.log(`[TestAll] ${icon} ${r.service} — ${r.length} tekens${r.error ? ` (${r.error})` : ''}`);
+    });
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    // ── Save results to public/test-results.json ────────────────────────────
+    try {
+      const outPath = path.join(__dirname, 'public', 'test-results.json');
+      fs.writeFileSync(outPath, JSON.stringify({
+        testedAt: new Date().toISOString(),
+        total: AUTO_BUILDABLE.length, passed, failed, results
+      }, null, 2));
+      console.log('[TestAll] Resultaten opgeslagen → public/test-results.json');
+    } catch (saveErr) {
+      console.warn('[TestAll] Kon test-results.json niet opslaan:', saveErr.message);
+    }
+
     if (!res.writableEnded) {
       res.json({ total: AUTO_BUILDABLE.length, passed, failed, results });
     }

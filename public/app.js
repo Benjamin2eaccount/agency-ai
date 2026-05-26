@@ -10353,26 +10353,33 @@ async function testAllServices() {
     const data = await res.json();
 
     const typeIcon = t => t === 'HTML_BUILD' ? '💻' : t === 'STRATEGY_DOCUMENT' ? '📊' : '📄';
-    const rows = (data.results || []).map(r => `
-      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
-        <span style="font-size:15px">${r.success ? '✅' : '❌'}</span>
-        <span style="flex:1;color:var(--text-primary)">${esc(r.service)}</span>
-        <span style="color:var(--text-muted);white-space:nowrap">${typeIcon(r.type)} ${r.type.replace('_', ' ')}</span>
-        <span style="color:var(--text-muted);white-space:nowrap;min-width:70px;text-align:right">${r.length.toLocaleString('nl-NL')} t.</span>
-        ${r.error ? `<span style="color:var(--danger);font-size:11px" title="${esc(r.error)}">⚠ ${esc(r.error.substring(0, 40))}</span>` : ''}
+    const failColor = data.failed === 0 ? 'var(--success)' : data.failed <= 3 ? 'var(--warning)' : 'var(--danger)';
+
+    const rows = (data.results || []).map((r, i) => `
+      <div style="display:grid;grid-template-columns:20px 1fr auto auto;gap:8px;align-items:start;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px">
+        <span>${r.success ? '✅' : '❌'}</span>
+        <div>
+          <div style="color:var(--text-primary);font-weight:500">${i + 1}. ${esc(r.service)}</div>
+          ${r.error ? `<div style="color:var(--danger);font-size:11px;margin-top:2px">⚠ ${esc(r.error)}</div>` : ''}
+        </div>
+        <span style="color:var(--text-muted);white-space:nowrap;padding-top:1px">${typeIcon(r.type)}</span>
+        <span style="color:var(--text-muted);white-space:nowrap;text-align:right;padding-top:1px">${r.length.toLocaleString('nl-NL')} t.</span>
       </div>`).join('');
 
-    const passColor = data.failed === 0 ? 'var(--success)' : data.failed <= 3 ? 'var(--warning)' : 'var(--danger)';
-
     openModal(`
-      <div style="padding:8px 0">
-        <h3 style="margin:0 0 4px;font-size:16px">Test alle diensten — resultaten</h3>
-        <div style="display:flex;gap:16px;margin-bottom:16px">
-          <span style="font-size:13px;color:var(--success);font-weight:600">✅ ${data.passed} geslaagd</span>
-          <span style="font-size:13px;color:${passColor};font-weight:600">❌ ${data.failed} mislukt</span>
-          <span style="font-size:13px;color:var(--text-muted)">van ${data.total} diensten</span>
+      <div style="display:flex;flex-direction:column;height:min(75vh,600px)">
+        <div style="flex-shrink:0;padding-bottom:12px;border-bottom:2px solid var(--border);margin-bottom:12px">
+          <h3 style="margin:0 0 10px;font-size:16px">Test alle diensten — resultaten</h3>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:10px 14px;background:var(--surface-2);border-radius:8px;font-size:13px;font-weight:600">
+            <span style="color:var(--success)">✅ ${data.passed} geslaagd</span>
+            <span style="color:var(--text-muted)">／</span>
+            <span style="color:${failColor}">❌ ${data.failed} mislukt</span>
+            <span style="color:var(--text-muted)">／</span>
+            <span style="color:var(--text-secondary);font-weight:400">${data.total} totaal</span>
+            <a href="/test-results.json" target="_blank" style="margin-left:auto;font-size:11px;color:var(--accent);text-decoration:none;font-weight:400">↗ JSON</a>
+          </div>
         </div>
-        <div style="max-height:400px;overflow-y:auto;margin:0 -4px;padding:0 4px">
+        <div style="flex:1;overflow-y:auto;margin:0 -4px;padding:0 4px">
           ${rows || '<p style="color:var(--text-muted);font-size:13px">Geen resultaten.</p>'}
         </div>
       </div>
@@ -10382,9 +10389,7 @@ async function testAllServices() {
       <div style="padding:8px 0">
         <h3 style="margin:0 0 12px;font-size:16px">Test mislukt</h3>
         <p style="color:var(--danger);font-size:13px">${esc(err.message)}</p>
-        <p style="color:var(--text-secondary);font-size:12px;margin-top:8px">
-          Controleer de Railway logs voor details.
-        </p>
+        <p style="color:var(--text-secondary);font-size:12px;margin-top:8px">Controleer de Railway logs voor details.</p>
       </div>
     `);
   }
