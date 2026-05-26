@@ -1401,6 +1401,7 @@ app.get('/api/portal/:token', (req, res) => {
   const leads   = readJSON('leads.json') || [];
   const lead    = leads.find(l => l.portalToken === req.params.token);
   if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+  if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd. Neem contact op met uw accountmanager.' });
   const settings = readJSON('settings.json') || {};
   const settingsSvcs = settings.services || [];
   const enrichedSvcs = (lead.services || []).map(s => {
@@ -1430,9 +1431,10 @@ app.get('/api/portal/:token', (req, res) => {
     analytics:           lead.analytics || null,
     portalChat:          lead.portalChat || [],
     documents:           (lead.documents || []).filter(d => d.visible !== false),
+    portalWelcomeMessage: lead.portalWelcomeMessage || null,
     approvedDeliverables: (lead.agentDeliverables || [])
-      .filter(d => d.status === 'approved')
-      .map(d => ({ service: d.service, type: d.type, deliverableType: d.deliverableType, url: d.url, approvedAt: d.approvedAt })),
+      .filter(d => d.clientVisible === true || (d.clientVisible == null && d.status === 'approved'))
+      .map(d => ({ service: d.service, type: d.type, deliverableType: d.deliverableType, url: d.url, approvedAt: d.approvedAt, builtAt: d.builtAt })),
     sharedProjectFiles: (lead.projectFiles || [])
       .filter(f => f.sharedWithClient)
       .map(f => ({ id: f.id, name: f.name, type: f.type, url: f.url, fullUrl: f.fullUrl, createdAt: f.createdAt }))
@@ -4600,6 +4602,7 @@ app.post('/api/leads/:id/deliverables/:dIdx/approve', requireAdmin, async (req, 
 
   leads[li].agentDeliverables[dIdx].status = 'approved';
   leads[li].agentDeliverables[dIdx].approvedAt = new Date().toISOString();
+  leads[li].agentDeliverables[dIdx].clientVisible = true;
 
   // Email client — rich HTML for HTML deliverables, custom body for manual, generic fallback
   const lead = leads[li];
@@ -4622,6 +4625,30 @@ app.post('/api/leads/:id/deliverables/:dIdx/approve', requireAdmin, async (req, 
   addNotification('run_complete', `Levering goedgekeurd: ${d.service}`, `${lead.companyName} — ${d.service}`, lead.id, `project:${lead.id}`);
   writeJSON('leads.json', leads);
   res.json({ ok: true });
+});
+
+// Toggle deliverable clientVisible
+app.patch('/api/leads/:id/deliverables/:dIdx/visibility', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const li = leads.findIndex(l => l.id === req.params.id);
+  if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const dIdx = parseInt(req.params.dIdx);
+  if (!leads[li].agentDeliverables?.[dIdx]) return res.status(404).json({ error: 'Levering niet gevonden' });
+  leads[li].agentDeliverables[dIdx].clientVisible = !!req.body.clientVisible;
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+// Reset portal token
+app.post('/api/leads/:id/portal/reset-token', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const li = leads.findIndex(l => l.id === req.params.id);
+  if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const newToken = Math.random().toString(36).substr(2, 8) + Math.random().toString(36).substr(2, 4);
+  leads[li].portalToken = newToken;
+  addLeadHistory(leads, req.params.id, { event: 'portalTokenReset', label: 'Portaalcode gereset door admin' });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true, portalToken: newToken });
 });
 
 // ── Inbox ────────────────────────────────────────────────────────────────────

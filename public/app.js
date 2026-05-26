@@ -187,6 +187,13 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function formatDateTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) +
+    ' om ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
 function formatOptimalTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -3591,19 +3598,24 @@ async function renderProjectPage() {
           </div>
         </div>` : '';
 
+      const timestamps = [
+        d.builtAt ? `<span><i class="ti ti-hammer" style="margin-right:2px"></i>Gebouwd op ${formatDateTime(d.builtAt)}</span>` : '',
+        d.approvedAt ? `<span style="color:var(--success)"><i class="ti ti-check" style="margin-right:2px"></i>Goedgekeurd op ${formatDateTime(d.approvedAt)}</span>` : '',
+      ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+
       return `<div style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px;background:var(--surface)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:8px;flex-wrap:wrap">
           <div style="font-size:14px;font-weight:700">${esc(d.service)}</div>
           <div style="display:flex;align-items:center;gap:6px">
             <span style="font-size:11px;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:1px 7px">${typeIcon} ${typeLabel}</span>
             ${statusBadge}
           </div>
         </div>
+        ${timestamps ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;display:flex;flex-wrap:wrap;gap:6px">${timestamps}</div>` : '<div style="margin-bottom:8px"></div>'}
         ${preview}
         ${actions}
         ${errorActions}
         ${chatPanel}
-        ${d.approvedAt ? `<div style="font-size:11px;color:var(--text-muted);margin-top:8px">Goedgekeurd op ${formatDate(d.approvedAt)}</div>` : ''}
       </div>`;
     }).join('');
 
@@ -3813,67 +3825,151 @@ async function renderProjectPage() {
   // ── Tab: Klantportaal ───────────────────────────────────────────────────────
   const portalUrl = lead.portalToken ? `${window.location.origin}/portal/${lead.portalToken}` : null;
   const clientLoginUrl = `${window.location.origin}/client/login`;
-  const clientMessages = lead.clientMessages || [];
+
+  // Portal phase labels
+  const phaseLabels = ['', 'Fase 1: Intake', 'Fase 2: Strategie', 'Fase 3: Uitvoering', 'Fase 4: Live gaan', 'Fase 5: Optimalisatie'];
+  const currentPhase = lead.currentPhase || 1;
+
+  // Deliverable visibility list (for section 3)
+  const delivVis = (lead.agentDeliverables || []).map((d, i) => {
+    const isVisible = d.clientVisible === true || (d.clientVisible == null && d.status === 'approved');
+    const typeIcon = d.type === 'code' ? '💻' : (d.deliverableType === 'strategy' ? '📊' : '📄');
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:var(--surface-2);margin-bottom:6px;gap:8px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:8px;min-width:0">
+          <span style="flex-shrink:0">${typeIcon}</span>
+          <div style="min-width:0">
+            <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.service)}</div>
+            ${d.builtAt ? `<div style="font-size:11px;color:var(--text-muted)">${formatDateTime(d.builtAt)}</div>` : ''}
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          ${d.url ? `<a href="${esc(d.url)}" target="_blank" class="btn btn-ghost btn-xs"><i class="ti ti-external-link"></i></a>` : ''}
+          <button class="btn btn-xs ${isVisible ? 'btn-outline' : 'btn-ghost'}" style="${isVisible ? 'border-color:var(--success);color:var(--success)' : 'color:var(--text-muted)'}"
+            onclick="toggleDeliverableVisibility('${esc(lead.id)}',${i},${!isVisible})">
+            <i class="ti ${isVisible ? 'ti-eye' : 'ti-eye-off'}"></i> ${isVisible ? 'Zichtbaar' : 'Verborgen'}
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Chat section (reusable)
+  const chat = lead.portalChat || [];
+  const chatUnread = chat.filter(m => m.from === 'client' && !m.readAt).length;
+  const chatSection = `
+    <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface)">
+      <div style="max-height:260px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px" id="portalChatThread">
+        ${chat.length === 0
+          ? '<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:16px 0">Nog geen berichten in de portaalchat.</div>'
+          : chat.map(m => `
+            <div style="max-width:82%;${m.from==='client'?'margin-left:auto':'margin-right:auto'}">
+              <div style="padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;${m.from==='client'?'background:var(--accent);color:#fff;border-bottom-right-radius:3px':'background:#f3f4f6;color:var(--text);border-bottom-left-radius:3px'}">${esc(m.message||'')}</div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px;${m.from==='client'?'text-align:right':''}">${m.from==='admin'?esc(m.name||'Accountmanager'):esc(m.name||'Klant')} &middot; ${relativeTime(m.time)}</div>
+            </div>`).join('')}
+      </div>
+      ${isAdmin() ? `
+      <div style="border-top:1px solid var(--border);padding:10px;display:flex;gap:8px;align-items:flex-end;background:var(--surface)">
+        <textarea id="portalReplyInput" placeholder="Stuur een bericht naar de klant..." rows="1"
+          style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:none;outline:none;background:var(--surface);color:var(--text);min-height:38px"
+          oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendPortalReply('${esc(lead.id)}');}"></textarea>
+        <button class="btn btn-primary btn-sm" onclick="sendPortalReply('${esc(lead.id)}')"><i class="ti ti-send"></i></button>
+      </div>` : ''}
+    </div>`;
+
   const tabPortaal = `
     <div class="project-tab-content" data-tab-content="portaal" style="${activeTab !== 'portaal' ? 'display:none' : ''}">
 
-      ${lead.portalToken ? `
-        <div class="credentials-card" style="margin-bottom:24px">
-          <div class="credentials-card-title"><i class="ti ti-key"></i> Inloggegevens klant</div>
-
-          <div class="credentials-row">
-            <div class="credentials-label">Inlogpagina</div>
-            <div class="credentials-value-row">
-              <code class="credentials-code">${esc(clientLoginUrl)}</code>
-              <button class="btn btn-ghost btn-xs" onclick="navigator.clipboard.writeText('${esc(clientLoginUrl)}');toast('Link gekopieerd!')">
-                <i class="ti ti-copy"></i> Kopieer
-              </button>
-              <a class="btn btn-ghost btn-xs" href="${esc(clientLoginUrl)}" target="_blank"><i class="ti ti-external-link"></i></a>
+      <!-- SECTIE 1: Inloggegevens -->
+      <div style="margin-bottom:20px">
+        <div class="project-section-title">1 — Inloggegevens klant</div>
+        ${lead.portalToken ? `
+          <div class="credentials-card">
+            <div class="credentials-row">
+              <div class="credentials-label">Inlogpagina</div>
+              <div class="credentials-value-row">
+                <code class="credentials-code">${esc(clientLoginUrl)}</code>
+                <button class="btn btn-ghost btn-xs" onclick="navigator.clipboard.writeText('${esc(clientLoginUrl)}');toast('Link gekopieerd!')"><i class="ti ti-copy"></i></button>
+                <a class="btn btn-ghost btn-xs" href="${esc(clientLoginUrl)}" target="_blank"><i class="ti ti-external-link"></i></a>
+              </div>
+            </div>
+            <div class="credentials-row">
+              <div class="credentials-label">Portaalcode</div>
+              <div class="credentials-value-row">
+                <code class="credentials-code" id="portalCodeDisplay" style="letter-spacing:3px">••••••••••••</code>
+                <button class="btn btn-ghost btn-xs" id="showTokenBtn" onclick="togglePortalToken('${esc(lead.portalToken)}')"><i class="ti ti-eye"></i> Toon</button>
+                <button class="btn btn-ghost btn-xs" onclick="navigator.clipboard.writeText('${esc(lead.portalToken)}');toast('Code gekopieerd!')"><i class="ti ti-copy"></i></button>
+              </div>
+            </div>
+            <div class="credentials-hint"><i class="ti ti-info-circle"></i> Stuur de portaalcode naar de klant. Ze loggen in via de inlogpagina met deze code.</div>
+            <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-sm btn-outline" onclick="copyPortalInstructions('${esc(lead.portalToken)}','${esc(clientLoginUrl)}','${esc(lead.companyName)}')"><i class="ti ti-clipboard-text"></i> Kopieer instructies</button>
+              <button class="btn btn-sm btn-ghost" onclick="resendWelcomeEmail('${esc(lead.id)}')"><i class="ti ti-mail-forward"></i> Welkomstmail sturen</button>
             </div>
           </div>
-
-          <div class="credentials-row">
-            <div class="credentials-label">Portaalcode</div>
-            <div class="credentials-value-row">
-              <code class="credentials-code" id="portalCodeDisplay" style="letter-spacing:3px">••••••••••••</code>
-              <button class="btn btn-ghost btn-xs" id="showTokenBtn" onclick="togglePortalToken('${esc(lead.portalToken)}')">
-                <i class="ti ti-eye"></i> Toon
-              </button>
-              <button class="btn btn-ghost btn-xs" onclick="navigator.clipboard.writeText('${esc(lead.portalToken)}');toast('Code gekopieerd!')">
-                <i class="ti ti-copy"></i> Kopieer
-              </button>
-            </div>
+        ` : `
+          <div class="credentials-card credentials-card-empty">
+            <i class="ti ti-lock" style="font-size:24px;color:var(--text-muted);display:block;margin-bottom:8px"></i>
+            <div style="font-size:14px;font-weight:600;margin-bottom:4px">Nog geen portaal aangemaakt</div>
+            <div style="font-size:13px;color:var(--text-muted)">Start het project om automatisch een portaalcode aan te maken.</div>
           </div>
-
-          <div class="credentials-hint">
-            <i class="ti ti-info-circle"></i>
-            Stuur de portaalcode naar de klant. Ze loggen in via de inlogpagina met deze code.
-          </div>
-
-          <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-sm btn-outline" onclick="copyPortalInstructions('${esc(lead.portalToken)}','${esc(clientLoginUrl)}','${esc(lead.companyName)}')">
-              <i class="ti ti-clipboard-text"></i> Kopieer instructies voor klant
-            </button>
-            <a class="btn btn-sm btn-ghost" href="${esc(portalUrl)}" target="_blank">
-              <i class="ti ti-external-link"></i> Open portaal
-            </a>
-            <button class="btn btn-sm btn-ghost" onclick="resendWelcomeEmail('${esc(lead.id)}')">
-              <i class="ti ti-mail-forward"></i> Welkomstmail sturen
-            </button>
-          </div>
-        </div>
-      ` : `
-        <div class="credentials-card credentials-card-empty" style="margin-bottom:24px">
-          <i class="ti ti-lock" style="font-size:24px;color:var(--text-muted);display:block;margin-bottom:8px"></i>
-          <div style="font-size:14px;font-weight:600;margin-bottom:4px">Nog geen portaal aangemaakt</div>
-          <div style="font-size:13px;color:var(--text-muted)">Start het project om automatisch een portaalcode aan te maken.</div>
-        </div>
-      `}
+        `}
+      </div>
 
       ${isAdmin() ? `
+
+      <!-- SECTIE 2: Fase beheer -->
+      <div style="margin-bottom:20px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div class="project-section-title" style="margin-bottom:0">2 — Fase beheer</div>
+          <span style="font-size:12px;padding:3px 10px;background:var(--accent);color:#fff;border-radius:20px;font-weight:600">${esc(phaseLabels[currentPhase] || `Fase ${currentPhase}`)}</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="portalPhaseSelect" class="form-input" style="flex:1;min-width:180px;max-width:280px">
+            ${phaseLabels.slice(1).map((label, i) => `<option value="${i+1}" ${currentPhase === i+1 ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="savePortalPhase('${esc(lead.id)}')"><i class="ti ti-check"></i> Zet fase handmatig</button>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:8px">De klant ziet de huidige fase direct in zijn portaal.</div>
+      </div>
+
+      <!-- SECTIE 3: Zichtbare builds -->
+      <div style="margin-bottom:20px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div class="project-section-title" style="margin-bottom:0">3 — Zichtbare builds voor klant</div>
+          ${(lead.agentDeliverables||[]).filter(d=>d.status==='approved').length > 0 ? `
+            <button class="btn btn-ghost btn-sm" style="font-size:12px" onclick="showAllApprovedDeliverables('${esc(lead.id)}')">
+              <i class="ti ti-eye"></i> Toon alle goedgekeurde
+            </button>` : ''}
+        </div>
+        ${(lead.agentDeliverables||[]).length > 0 ? `
+          <div>${delivVis}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Zichtbare builds verschijnen in het Leveringen tab van de klant.</div>
+        ` : `<div style="font-size:13px;color:var(--text-muted)">Nog geen builds beschikbaar. Ga naar het Building tab om builds te starten.</div>`}
+      </div>
+
+      <!-- SECTIE 4: Portaalchat -->
       <div style="margin-bottom:20px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-          <div class="project-section-title" style="margin-bottom:0">Dashboard Analytics</div>
+          <div class="project-section-title" style="margin-bottom:0">4 — Klantportaal bericht sturen ${chatUnread > 0 ? `<span class="tab-badge" style="background:var(--danger)">${chatUnread} nieuw</span>` : chat.length > 0 ? `<span class="tab-badge">${chat.length}</span>` : ''}</div>
+          ${chatUnread > 0 ? `<button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="markPortalChatRead('${esc(lead.id)}')"><i class="ti ti-checks"></i> Alles gelezen</button>` : ''}
+        </div>
+        ${chatSection}
+      </div>
+
+      <!-- SECTIE 5: Welkomstbericht -->
+      <div style="margin-bottom:20px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)">
+        <div class="project-section-title" style="margin-bottom:8px">5 — Welkomstbericht aanpassen</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Dit bericht verschijnt bovenaan het klantportaal Overzicht. Gebruik het voor persoonlijke updates of aankondigingen.</div>
+        <textarea id="portalWelcomeInput" class="form-input" rows="3" placeholder="Schrijf een persoonlijk welkomstbericht voor ${esc(lead.companyName)}..." style="resize:vertical;font-size:13px;margin-bottom:8px">${esc(lead.portalWelcomeMessage || '')}</textarea>
+        <button class="btn btn-primary btn-sm" onclick="savePortalWelcomeMessage('${esc(lead.id)}')"><i class="ti ti-device-floppy"></i> Opslaan</button>
+        ${lead.portalWelcomeMessage ? `<button class="btn btn-ghost btn-sm" style="margin-left:8px;color:var(--text-muted)" onclick="clearPortalWelcomeMessage('${esc(lead.id)}')"><i class="ti ti-x"></i> Wissen</button>` : ''}
+      </div>
+
+      <!-- SECTIE 6: Dashboard Analytics -->
+      <div style="margin-bottom:20px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div class="project-section-title" style="margin-bottom:0">6 — Dashboard Analytics</div>
           <button class="btn btn-sm btn-outline" id="genAnalyticsBtn" onclick="generateClientAnalytics('${esc(lead.id)}')">
             <i class="ti ti-chart-bar"></i> ${lead.analytics ? 'Hergeneer' : 'Genereer resultaten'}
           </button>
@@ -3901,49 +3997,39 @@ async function renderProjectPage() {
               </div>`;
             }).join('')}
           </div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:10px;padding:8px 10px;background:var(--surface);border-radius:6px">
-            ⓘ Klik op een waarde om deze aan te passen. Wijzigingen worden direct zichtbaar in het klantportaal.
-          </div>
-        ` : `<div style="font-size:13px;color:var(--text-muted);padding:12px 0">Nog geen analytics gegenereerd. Klik op "Genereer resultaten" om automatisch statistieken aan te maken.</div>`}
+          <div style="font-size:11px;color:var(--text-muted);margin-top:10px;padding:8px 10px;background:var(--surface-2);border-radius:6px">ⓘ Klik op een waarde om deze aan te passen. Wijzigingen worden direct zichtbaar in het klantportaal.</div>
+        ` : `<div style="font-size:13px;color:var(--text-muted)">Nog geen analytics gegenereerd. Klik op "Genereer resultaten" om automatisch statistieken aan te maken.</div>`}
       </div>
-      ` : ''}
 
-      <div style="margin-bottom:20px">
-        ${(() => {
-          const chat = lead.portalChat || [];
-          const unread = chat.filter(m => m.from === 'client' && !m.readAt).length;
-          return `
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-            <div class="project-section-title" style="margin-bottom:0">
-              Portaalchat ${unread > 0 ? `<span class="tab-badge" style="background:var(--danger)">${unread} nieuw</span>` : chat.length > 0 ? `<span class="tab-badge">${chat.length}</span>` : ''}
+      <!-- SECTIE 7: Portaallink & toegang -->
+      <div style="padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)">
+        <div class="project-section-title" style="margin-bottom:12px">7 — Portaallink &amp; toegang</div>
+        ${lead.portalToken ? `
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <code style="flex:1;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;font-size:12px;word-break:break-all">${esc(portalUrl)}</code>
+              <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText('${esc(portalUrl)}');toast('URL gekopieerd!')"><i class="ti ti-copy"></i></button>
+              <a class="btn btn-primary btn-sm" href="${esc(portalUrl)}" target="_blank"><i class="ti ti-external-link"></i> Open als klant</a>
             </div>
-            ${unread > 0 && isAdmin() ? `<button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="markPortalChatRead('${esc(lead.id)}')"><i class="ti ti-checks"></i> Alles gelezen</button>` : ''}
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-ghost btn-sm" onclick="resetPortalToken('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Reset portaalcode</button>
+              <button class="btn btn-sm ${lead.portalBlocked ? 'btn-primary' : 'btn-ghost'}" style="${lead.portalBlocked ? 'background:var(--danger);border-color:var(--danger)' : 'color:var(--danger)'}" onclick="togglePortalAccess('${esc(lead.id)}',${!lead.portalBlocked})">
+                <i class="ti ${lead.portalBlocked ? 'ti-lock' : 'ti-lock-open'}"></i> ${lead.portalBlocked ? 'Toegang geblokkeerd — klik om te deblokkeren' : 'Blokkeer toegang'}
+              </button>
+            </div>
+            ${lead.portalBlocked ? `<div style="font-size:12px;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;color:#dc2626"><i class="ti ti-alert-circle"></i> Klant kan momenteel niet inloggen op het portaal.</div>` : ''}
           </div>
-          <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface)">
-            <div style="max-height:260px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px" id="portalChatThread">
-              ${chat.length === 0
-                ? '<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:16px 0">Nog geen berichten in de portaalchat.</div>'
-                : chat.map(m => `
-                  <div style="max-width:82%;${m.from==='client'?'margin-left:auto':'margin-right:auto'}">
-                    <div style="padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;${m.from==='client'?'background:var(--accent);color:#fff;border-bottom-right-radius:3px':'background:#f3f4f6;color:var(--text);border-bottom-left-radius:3px'}">
-                      ${esc(m.message||'')}
-                    </div>
-                    <div style="font-size:10px;color:var(--text-muted);margin-top:2px;${m.from==='client'?'text-align:right':''}">
-                      ${m.from==='admin'?(esc(m.name||'Accountmanager')):(esc(m.name||'Klant'))} &middot; ${relativeTime(m.time)}
-                    </div>
-                  </div>`).join('')}
-            </div>
-            ${isAdmin() ? `
-            <div style="border-top:1px solid var(--border);padding:10px;display:flex;gap:8px;align-items:flex-end;background:#fff">
-              <textarea id="portalReplyInput" placeholder="Stuur een bericht naar de klant..." rows="1"
-                style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:none;outline:none;background:var(--surface);color:var(--text);min-height:38px"
-                oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"
-                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendPortalReply('${esc(lead.id)}');}"></textarea>
-              <button class="btn btn-primary btn-sm" onclick="sendPortalReply('${esc(lead.id)}')"><i class="ti ti-send"></i></button>
-            </div>` : ''}
-          </div>`;
-        })()}
+        ` : `<div style="font-size:13px;color:var(--text-muted)">Geen portaal aangemaakt. Start het project om een portaallink te genereren.</div>`}
       </div>
+
+      ` : `
+      <!-- Non-admin: just show the chat -->
+      <div style="margin-bottom:20px">
+        <div class="project-section-title" style="margin-bottom:12px">Portaalchat</div>
+        ${chatSection}
+      </div>
+      `}
+
     </div>`;
 
   // ── Tab: Geschiedenis ───────────────────────────────────────────────────────
@@ -4917,6 +5003,97 @@ async function markPortalChatRead(leadId) {
   const lead = state.leads.find(l => l.id === leadId);
   if (lead?.portalChat) lead.portalChat.filter(m => m.from === 'client').forEach(m => { m.readAt = new Date().toISOString(); });
   renderProjectPage();
+}
+
+async function savePortalPhase(leadId) {
+  const phase = parseInt(document.getElementById('portalPhaseSelect')?.value || '1');
+  const res = await api(`/api/leads/${leadId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentPhase: phase }) });
+  if (res?.ok) {
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead) lead.currentPhase = phase;
+    toast('Fase bijgewerkt — klant ziet dit direct', 'success');
+    renderProjectPage().then(() => switchProjectTab('portaal'));
+  } else {
+    toast('Opslaan mislukt', 'error');
+  }
+}
+
+async function toggleDeliverableVisibility(leadId, dIdx, visible) {
+  const res = await api(`/api/leads/${leadId}/deliverables/${dIdx}/visibility`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientVisible: visible })
+  });
+  if (res?.ok) {
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead?.agentDeliverables?.[dIdx]) lead.agentDeliverables[dIdx].clientVisible = visible;
+    toast(visible ? 'Build zichtbaar voor klant' : 'Build verborgen voor klant', 'success');
+    renderProjectPage().then(() => switchProjectTab('portaal'));
+  } else {
+    toast('Opslaan mislukt', 'error');
+  }
+}
+
+async function showAllApprovedDeliverables(leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  const approved = (lead?.agentDeliverables || []).map((d, i) => ({ d, i })).filter(({ d }) => d.status === 'approved' && !d.clientVisible);
+  if (!approved.length) { toast('Alle goedgekeurde builds zijn al zichtbaar', 'success'); return; }
+  for (const { i } of approved) {
+    await api(`/api/leads/${leadId}/deliverables/${i}/visibility`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientVisible: true })
+    });
+    if (lead?.agentDeliverables?.[i]) lead.agentDeliverables[i].clientVisible = true;
+  }
+  toast(`${approved.length} build(s) zichtbaar gemaakt voor klant`, 'success');
+  renderProjectPage().then(() => switchProjectTab('portaal'));
+}
+
+async function savePortalWelcomeMessage(leadId) {
+  const msg = document.getElementById('portalWelcomeInput')?.value?.trim() || '';
+  const res = await api(`/api/leads/${leadId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ portalWelcomeMessage: msg }) });
+  if (res?.ok) {
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead) lead.portalWelcomeMessage = msg;
+    toast('Welkomstbericht opgeslagen', 'success');
+    renderProjectPage().then(() => switchProjectTab('portaal'));
+  } else {
+    toast('Opslaan mislukt', 'error');
+  }
+}
+
+async function clearPortalWelcomeMessage(leadId) {
+  const res = await api(`/api/leads/${leadId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ portalWelcomeMessage: '' }) });
+  if (res?.ok) {
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead) lead.portalWelcomeMessage = '';
+    toast('Welkomstbericht gewist', 'success');
+    renderProjectPage().then(() => switchProjectTab('portaal'));
+  }
+}
+
+async function togglePortalAccess(leadId, block) {
+  if (block && !confirm(`Wil je de portaaltoegang voor deze klant blokkeren? Ze kunnen dan niet meer inloggen.`)) return;
+  const res = await api(`/api/leads/${leadId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ portalBlocked: block }) });
+  if (res?.ok) {
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead) lead.portalBlocked = block;
+    toast(block ? 'Portaaltoegang geblokkeerd' : 'Portaaltoegang hersteld', block ? 'error' : 'success');
+    renderProjectPage().then(() => switchProjectTab('portaal'));
+  } else {
+    toast('Opslaan mislukt', 'error');
+  }
+}
+
+async function resetPortalToken(leadId) {
+  if (!confirm('Wil je een nieuwe portaalcode genereren? De oude code werkt dan niet meer.')) return;
+  const res = await api(`/api/leads/${leadId}/portal/reset-token`, { method: 'POST' });
+  if (res?.ok) {
+    const data = await res.json();
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead && data.portalToken) lead.portalToken = data.portalToken;
+    toast('Nieuwe portaalcode gegenereerd', 'success');
+    renderProjectPage().then(() => switchProjectTab('portaal'));
+  } else {
+    toast('Reset mislukt', 'error');
+  }
 }
 
 async function generateClientAnalytics(leadId) {

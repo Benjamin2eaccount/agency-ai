@@ -787,10 +787,18 @@
           </nav>
 
           <div class="tab-pane active" data-pane="overview">
+            ${data.portalWelcomeMessage ? `
+              <div class="inner-section" style="background:linear-gradient(135deg,#eff6ff,#f8faff);border:1.5px solid #bfdbfe;border-radius:10px;padding:14px 16px">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+                  <span style="font-size:15px">👋</span>
+                  <span style="font-size:12px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:.06em">Bericht van uw accountmanager</span>
+                </div>
+                <p style="margin:0;font-size:14px;line-height:1.65;color:#1e3a8a;white-space:pre-line">${e(data.portalWelcomeMessage)}</p>
+              </div>` : ''}
             ${onboardingHtml}
             ${svcsHtml}
             ${calendlyHtml}
-            ${!onboardingHtml && !svcsHtml && !calendlyHtml ? '<div class="empty-state"><p>Nog geen projectinformatie beschikbaar.</p></div>' : ''}
+            ${!data.portalWelcomeMessage && !onboardingHtml && !svcsHtml && !calendlyHtml ? '<div class="empty-state"><p>Nog geen projectinformatie beschikbaar.</p></div>' : ''}
           </div>
 
           <div class="tab-pane" data-pane="leveringen">
