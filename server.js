@@ -634,6 +634,167 @@ ${pixel}
   return html;
 }
 
+// Rich HTML delivery email for approved HTML deliverables (booking pages, websites, etc.)
+function buildDeliveryEmailHTML({ lead, d, settings, portalLink }) {
+  const e = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const agencyName  = settings.agencyName || 'Agency AI';
+  const myName      = settings.myName || 'Het team';
+  const myTitle     = settings.myTitle || 'AI Growth Specialist';
+  const myEmail     = settings.gmailAddress || settings.resendFromAddress || process.env.RESEND_FROM_ADDRESS || '';
+  const logoUrl     = settings.agencyLogo ? `${BASE_URL}/api/logo` : '';
+  const baseUrl     = BASE_URL;
+  const serviceNm   = d.service || 'levering';
+  const liveUrl     = d.url || '';
+  const company     = lead.companyName || 'uw bedrijf';
+  const portalBtn   = portalLink
+    ? `<tr><td align="center" style="padding-top:10px">
+        <a href="${e(portalLink)}" target="_blank" style="display:inline-block;padding:10px 22px;background:#f4f4f2;border-radius:6px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;color:#111111;text-decoration:none;border:1px solid #e0e0de">Bekijk uw klantportaal &rarr;</a>
+       </td></tr>`
+    : '';
+
+  const nameParts = (myName || 'AA').trim().split(/\s+/).filter(Boolean);
+  const initials = ((nameParts[0]?.[0] || 'A') + (nameParts.length > 1 ? (nameParts[nameParts.length - 1]?.[0] || 'A') : (nameParts[0]?.[1] || 'A'))).toUpperCase();
+
+  return `<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${e(serviceNm)} klaar — ${e(agencyName)}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f2;-webkit-text-size-adjust:100%">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f2">
+<tr><td align="center" style="padding:32px 16px">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:8px;overflow:hidden">
+
+  <!-- Header -->
+  <tr><td style="padding:22px 32px;background:#111111">
+    ${logoUrl
+      ? `<img src="${logoUrl}" alt="${e(agencyName)}" style="height:30px;max-width:150px;object-fit:contain;display:block">`
+      : `<span style="font-family:Arial,Helvetica,sans-serif;font-size:17px;font-weight:700;color:#ffffff">${e(agencyName)}</span>`}
+  </td></tr>
+
+  <!-- Success banner -->
+  <tr><td style="padding:0">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td style="padding:24px 32px;background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);border-bottom:2px solid #bbf7d0">
+      <p style="margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.07em">Klaar voor gebruik</p>
+      <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:800;color:#14532d">Uw ${e(serviceNm)} staat klaar!</p>
+    </td></tr>
+    </table>
+  </td></tr>
+
+  <!-- Greeting -->
+  <tr><td style="padding:28px 32px 0">
+    <p style="margin:0 0 20px;font-family:Georgia,serif;font-size:15px;line-height:1.75;color:#1a1a1a">Beste ${e(company)},</p>
+    <p style="margin:0 0 24px;font-family:Georgia,serif;font-size:15px;line-height:1.75;color:#1a1a1a">Geweldig nieuws — uw <strong>${e(serviceNm)}</strong> is volledig opgebouwd en klaar voor gebruik. Hieronder vindt u alles wat u moet weten om direct aan de slag te gaan.</p>
+  </td></tr>
+
+  <!-- Wat staat klaar -->
+  <tr><td style="padding:0 32px 24px">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f9f9f8;border-radius:8px;border:1px solid #e8e8e5;overflow:hidden">
+      <tr><td style="padding:16px 20px;background:#111111;border-radius:8px 8px 0 0">
+        <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:.06em">Wat er voor u klaarstaat</p>
+      </td></tr>
+      <tr><td style="padding:20px">
+        <p style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#111111">${e(serviceNm)}</p>
+        ${liveUrl ? `<p style="margin:0 0 14px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280">Uw pagina is live op het volgende adres:</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td style="background:#2563eb;border-radius:6px">
+            <a href="${e(liveUrl)}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none">&#128279; Bekijk uw pagina live &rarr;</a>
+          </td>
+        </tr></table>` : ''}
+      </td></tr>
+    </table>
+  </td></tr>
+
+  <!-- Zo gebruikt u het -->
+  <tr><td style="padding:0 32px 24px">
+    <p style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#111111">Zo gebruikt u het</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      ${[
+        [`1`, `Open de pagina`, liveUrl ? `Ga naar: <a href="${e(liveUrl)}" style="color:#2563eb;word-break:break-all">${e(liveUrl)}</a>` : 'Open uw pagina via de link hierboven.'],
+        [`2`, `Test het zelf`, `Doorloop het proces als klant — plaats een testboeking of vul het formulier in om te controleren of alles werkt.`],
+        [`3`, `Voeg de link toe aan uw website`, `Ga naar uw websitebeheer → maak een nieuw menu-item of knop aan → plak de URL: <code style="background:#f4f4f2;padding:2px 6px;border-radius:4px;font-size:12px;color:#111">${e(liveUrl)}</code>`],
+        [`4`, `Deel met uw klanten`, `Stuur de link via WhatsApp, social media of zet hem in uw Instagram bio — klanten kunnen dan direct boeken of contact opnemen.`],
+      ].map(([num, title, desc]) => `
+      <tr><td style="padding:0 0 14px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td valign="top" style="width:32px;padding-top:2px">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+              <td align="center" valign="middle" style="width:26px;height:26px;background:#111111;border-radius:50%">
+                <span style="font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;color:#ffffff;display:block;line-height:26px;text-align:center">${num}</span>
+              </td>
+            </tr></table>
+          </td>
+          <td style="padding-left:12px">
+            <p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#111111">${title}</p>
+            <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.6;color:#374151">${desc}</p>
+          </td>
+        </tr>
+        </table>
+      </td></tr>`).join('')}
+    </table>
+  </td></tr>
+
+  <!-- Zo zien uw klanten het -->
+  <tr><td style="padding:0 32px 24px">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eff6ff;border-radius:8px;border:1px solid #bfdbfe">
+      <tr><td style="padding:20px">
+        <p style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#1e40af">Zo zien uw klanten het</p>
+        <p style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.6;color:#1e3a8a">Uw klanten kunnen via de pagina:</p>
+        ${['Een dienst of product kiezen', 'Een datum en tijd selecteren', 'Hun gegevens invullen', 'Direct een bevestiging ontvangen'].map(item =>
+          `<p style="margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#1e3a8a">&#10003; &nbsp;${item}</p>`
+        ).join('')}
+        <p style="margin:12px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.6;color:#1e3a8a"><strong>U ontvangt een notificatie bij elke nieuwe aanvraag of boeking.</strong></p>
+      </td></tr>
+    </table>
+  </td></tr>
+
+  <!-- Vragen -->
+  <tr><td style="padding:0 32px 28px">
+    <p style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#111111">Heeft u vragen?</p>
+    <p style="margin:0 0 16px;font-family:Georgia,serif;font-size:14px;line-height:1.7;color:#374151">Wij staan altijd voor u klaar. U kunt uw klantportaal raadplegen voor updates, documenten en facturen, of direct op deze email antwoorden.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+      ${portalBtn}
+    </table>
+  </td></tr>
+
+  <!-- Divider -->
+  <tr><td style="padding:0 32px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:1px;background:#e8e8e5;font-size:0;line-height:0">&nbsp;</td></tr></table></td></tr>
+
+  <!-- Signature -->
+  <tr><td style="padding:22px 32px;background:#f9f9f8">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td valign="top">
+        <p style="margin:0 0 2px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#1a1a1a">${e(myName)}</p>
+        <p style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280">${e(myTitle)} &middot; ${e(agencyName)}</p>
+        ${myEmail ? `<p style="margin:0 0 3px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280">&#x1F4E7;&nbsp;${e(myEmail)}</p>` : ''}
+        <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280">&#x1F310;&nbsp;${e(baseUrl)}</p>
+      </td>
+      <td valign="top" align="right" style="width:44px;padding-left:16px">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right"><tr>
+          <td align="center" valign="middle" style="width:36px;height:36px;background:#111111;border-radius:4px">
+            <span style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;color:#ffffff;display:block;line-height:36px;text-align:center">${initials}</span>
+          </td>
+        </tr></table>
+      </td>
+    </tr></table>
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="padding:16px 32px;background:#f4f4f2;border-top:1px solid #e8e8e5">
+    <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9b9b98;text-align:center">&copy; ${new Date().getFullYear()} ${e(agencyName)} &bull; Vragen? Antwoord op deze email.</p>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
 // Sanitize email subject: replace fancy Unicode chars with ASCII equivalents
 function sanitizeSubject(s) {
   return String(s || '')
@@ -4440,12 +4601,21 @@ app.post('/api/leads/:id/deliverables/:dIdx/approve', requireAdmin, async (req, 
   leads[li].agentDeliverables[dIdx].status = 'approved';
   leads[li].agentDeliverables[dIdx].approvedAt = new Date().toISOString();
 
-  // Email client — use custom subject/body if provided (manual deliverable flow), else generic
+  // Email client — rich HTML for HTML deliverables, custom body for manual, generic fallback
   const lead = leads[li];
   if (isResendReady(settings) && lead.contactEmail) {
-    const subject = req.body?.emailSubject || `Uw ${d.service} is klaar!`;
-    const body = req.body?.emailBody || `Beste ${lead.companyName},\n\nGoed nieuws! Uw ${d.service} is klaar.\n\n${d.url ? `Bekijk hier: ${d.url}\n\n` : ''}Log in op uw klantportaal voor alle details.\n\nMet vriendelijke groet,\n${settings.myName || 'Het team'} — ${settings.agencyName || 'Agency AI'}`;
-    await sendEmail({ to: lead.contactEmail, subject, body, settings }).catch(e => console.warn('[Approve] Email fout:', e.message));
+    const agencyName = settings.agencyName || 'Agency AI';
+    const subject = req.body?.emailSubject || `Uw ${d.service} staat klaar — hier is alles wat u moet weten`;
+    if (d.url && !req.body?.emailBody) {
+      // HTML deliverable: send rich delivery email
+      const portalLink = lead.portalToken ? `${BASE_URL}/portal/${lead.portalToken}` : null;
+      const html = buildDeliveryEmailHTML({ lead, d, settings, portalLink });
+      await sendEmail({ to: lead.contactEmail, subject, html, settings }).catch(e => console.warn('[Approve] Email fout:', e.message));
+    } else {
+      // Manual deliverable or custom override
+      const body = req.body?.emailBody || `Beste ${lead.companyName},\n\nGoed nieuws! Uw ${d.service} is klaar.\n\nLog in op uw klantportaal voor alle details.\n\nMet vriendelijke groet,\n${settings.myName || 'Het team'} — ${agencyName}`;
+      await sendEmail({ to: lead.contactEmail, subject: req.body?.emailSubject || subject, body, settings }).catch(e => console.warn('[Approve] Email fout:', e.message));
+    }
   }
 
   addLeadHistory(leads, req.params.id, { event: 'deliverableApproved', label: `Levering goedgekeurd: ${d.service}` });

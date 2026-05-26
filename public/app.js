@@ -4392,6 +4392,35 @@ window.runAgentsForLead = async function(leadId) {
 };
 
 window.approveDeliverable = async function(leadId, dIdx) {
+  const lead = state.leads.find(l => l.id === leadId);
+  const hasPaidInvoice = (lead?.payments || []).some(p => p.status === 'paid');
+  if (!hasPaidInvoice) {
+    openModal(`
+      <div class="modal-header">
+        <strong>⚠️ Nog geen betaling ontvangen</strong>
+        <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+      </div>
+      <div style="padding:16px 0 4px">
+        <p style="color:var(--text-secondary);font-size:14px;line-height:1.6;margin:0 0 20px">
+          <strong>${esc(lead?.companyName || 'Deze klant')}</strong> heeft nog niet betaald.<br>
+          Wil je toch de levering sturen?
+        </p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="closeModal();createPayment('${esc(leadId)}')">
+            <i class="ti ti-receipt"></i> Maak eerst factuur aan
+          </button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--text-muted)" onclick="closeModal();_doApproveDeliverable('${esc(leadId)}',${dIdx})">
+            Stuur toch
+          </button>
+        </div>
+      </div>
+    `);
+    return;
+  }
+  await _doApproveDeliverable(leadId, dIdx);
+};
+
+window._doApproveDeliverable = async function(leadId, dIdx) {
   const res = await api(`/api/leads/${leadId}/deliverables/${dIdx}/approve`, { method: 'POST' });
   if (res?.ok) {
     toast('Levering goedgekeurd en klant genotificeerd!', 'success');
@@ -4405,6 +4434,35 @@ window.approveDeliverable = async function(leadId, dIdx) {
 };
 
 window.approveManualDeliverable = async function(leadId, dIdx) {
+  const lead = state.leads.find(l => l.id === leadId);
+  const hasPaidInvoice = (lead?.payments || []).some(p => p.status === 'paid');
+  if (!hasPaidInvoice) {
+    openModal(`
+      <div class="modal-header">
+        <strong>⚠️ Nog geen betaling ontvangen</strong>
+        <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+      </div>
+      <div style="padding:16px 0 4px">
+        <p style="color:var(--text-secondary);font-size:14px;line-height:1.6;margin:0 0 20px">
+          <strong>${esc(lead?.companyName || 'Deze klant')}</strong> heeft nog niet betaald.<br>
+          Wil je toch de levering sturen?
+        </p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="closeModal();createPayment('${esc(leadId)}')">
+            <i class="ti ti-receipt"></i> Maak eerst factuur aan
+          </button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--text-muted)" onclick="closeModal();_doApproveManualDeliverable('${esc(leadId)}',${dIdx})">
+            Stuur toch
+          </button>
+        </div>
+      </div>
+    `);
+    return;
+  }
+  await _doApproveManualDeliverable(leadId, dIdx);
+};
+
+window._doApproveManualDeliverable = async function(leadId, dIdx) {
   const btn = document.getElementById(`manualApproveBtn-${leadId}-${dIdx}`);
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2"></i> Email genereren…'; }
 
