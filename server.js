@@ -1436,7 +1436,6 @@ app.get('/api/portal/:token', (req, res) => {
                          })),
     messages:            (lead.clientMessages || []),
     timeline:            (lead.history || []).slice(-40).reverse(),
-    onboardingScript:    lead.onboardingScript || null,
     analytics:           lead.analytics || null,
     portalChat:          lead.portalChat || [],
     documents:           (lead.documents || []).filter(d => d.visible !== false),
