@@ -4217,7 +4217,6 @@ app.post('/api/leads/:id/run-agents', requireAdmin, async (req, res) => {
     const intakeContext = lead.intakeAnswers
       ? '\n\nKlant intake antwoorden:\n' + Object.entries(lead.intakeAnswers).map(([k,v]) => `- ${k}: ${v}`).join('\n')
       : '';
-    const BASE = process.env.BASE_URL || 'http://localhost:3000';
     const companySlug = (lead.companyName || 'bedrijf')
       .toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 
@@ -4245,7 +4244,7 @@ All CSS in <style> in <head>. All JS in <script> before </body>.`;
           fs.mkdirSync(sitesDir, { recursive: true });
           const filename = `${typeSlug}.html`;
           fs.writeFileSync(path.join(sitesDir, filename), html, 'utf8');
-          const url = `${BASE}/sites/${companySlug}/${filename}`;
+          const url = `${BASE_URL}/sites/${companySlug}/${filename}`;
 
           // Auto-generate todo list for client
           const embedCode = `<iframe src="${url}" width="100%" height="600" frameborder="0" allowfullscreen></iframe>`;
@@ -4386,7 +4385,6 @@ app.post('/api/leads/:id/build-all-services', requireAdmin, async (req, res) => 
 
     if (!services.length) { sse({ type: 'error', service: '', message: 'Geen diensten ingesteld op dit project' }); res.end(); return; }
 
-    const BASE = process.env.BASE_URL || 'http://localhost:3000';
     const companySlug = (lead.companyName || 'bedrijf')
       .toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 
@@ -4479,7 +4477,7 @@ Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile 
           fs.mkdirSync(sitesDir, { recursive: true });
           const filename = `${typeSlug}.html`;
           fs.writeFileSync(path.join(sitesDir, filename), html, 'utf8');
-          const url = `${BASE}/sites/${companySlug}/${filename}`;
+          const url = `${BASE_URL}/sites/${companySlug}/${filename}`;
 
           const todoText = await aiCall(`Schrijf max 5 concrete stappen voor de klant om "${serviceName}" te activeren op hun website. Live URL: ${url}. Embed code: <iframe src="${url}" width="100%" height="600" frameborder="0"></iframe>. Stap-voor-stap, in het Nederlands.`).catch(() => '');
 
