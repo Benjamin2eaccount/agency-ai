@@ -256,11 +256,11 @@ app.get('/', (req, res) => { console.log('[route] GET / → landing.html'); res.
 app.get('/login',        (_, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/client',       (_, res) => res.sendFile(path.join(__dirname, 'public', 'client-login.html')));
 app.get('/client-login', (_, res) => res.sendFile(path.join(__dirname, 'public', 'client-login.html')));
-app.get('/app',          (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/app', requireAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/status',       (_, res) => res.sendFile(path.join(__dirname, 'public', 'status.html')));
 
 // MPA routes — each /app/:page serves its own HTML file
-app.get('/app/:page', (req, res) => {
+app.get('/app/:page', requireAuth, (req, res) => {
   const page = req.params.page;
   // Block path traversal
   if (!/^[a-z0-9-]+$/i.test(page)) return res.redirect('/app');
@@ -271,6 +271,9 @@ app.get('/app/:page', (req, res) => {
     res.redirect('/app');
   }
 });
+
+// Wildcard catch-all for deep /app/** paths — serves SPA shell, client router takes over
+app.get('/app/*', requireAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // readJSON / writeJSON are provided by database.js (SQLite-backed)
 
@@ -947,6 +950,18 @@ function requireAdmin(req, res, next) {
     return res.status(403).json({ error: 'Geen toegang — alleen admins' });
   }
   next();
+}
+
+// Browser-friendly auth: redirects to /login for page navigations instead of returning JSON 401
+function requireAuth(req, res, next) {
+  const header = req.headers['authorization'];
+  if (!header || !header.startsWith('Bearer ')) {
+    if (req.headers.accept?.includes('text/html')) {
+      return res.redirect('/login');
+    }
+    return res.status(401).json({ error: 'Niet geautoriseerd' });
+  }
+  return authMiddleware(req, res, next);
 }
 
 // ── Auth routes (public — no middleware) ────────────────────────────────────
