@@ -5726,152 +5726,6 @@ CRITICAL RULES:
   });
 });
 
-// ── Test all 34 auto-buildable services end-to-end (admin only) ──────────────
-app.get('/api/test-all-services', requireAdmin, async (req, res) => {
-  res.setTimeout(600000); // 10-minute window for 34 sequential AI calls
-
-  const AUTO_BUILDABLE = [
-    'Website bouwen', 'Online boekingssysteem integreren', 'AI chatbot voor website',
-    'AI landingspagina', 'AI FAQ assistent', 'AI kennisbank systeem',
-    'AI onboarding systeem', 'Chatbot script voor website', 'Email autoresponder reeks',
-    'AI offerte generator', 'Nieuwsbrief template ontwerpen', 'Over ons pagina schrijven',
-    'FAQ pagina schrijven', 'Website teksten schrijven', 'SEO teksten optimaliseren',
-    'Blog artikelen schrijven', 'Email nieuwsbrief reeks', 'AI content voor social media',
-    'Maandelijkse content kalender', 'Instagram Reels scripts', 'AI TikTok content systeem',
-    'AI YouTube scripts', 'AI video content creatie', 'Product beschrijvingen',
-    'Privacy policy + algemene voorwaarden', 'AI keyword research', 'Lokale SEO optimalisatie',
-    'Google Bedrijfsprofiel content', 'Concurrentieanalyse rapport', 'Social media audit',
-    'AI branding kit generatie', 'AI sales opvolging', 'Verlaten winkelwagen emails',
-    'Email marketing automatisering',
-  ];
-
-  const testLead = {
-    companyName: 'Test Bedrijf',
-    location: 'Amsterdam, NL',
-    niche: 'beauty',
-    websiteUrl: 'https://example.com',
-    language: 'nl',
-    intakeData: { contactNaam: 'Test Persoon', opmerkingen: 'Wil graag een professionele online aanwezigheid' },
-  };
-
-  const HTML_KW   = /website|boek|boeking|booking|chatbot|dashboard|landingspagina|landing.*page|faq.*assistent|kennisbank|offerte.*generator|onboarding/i;
-  const STRAT_KW  = /seo.*rapport|concurrentie|audit|crm|lead.*scoring|branding|heatmap|trend|keyword.*research/i;
-  const FORCE_TXT = /\bteksten\b/i; // "Website teksten schrijven" → TEXT_DOCUMENT not HTML
-
-  const intakeCtx = `\n\nKLANT INFORMATIE:\nBedrijf: ${testLead.companyName}\nLocatie: ${testLead.location}\nNiche: ${testLead.niche}\nWebsite: ${testLead.websiteUrl}\nContact: ${testLead.intakeData.contactNaam}\nWensen: ${testLead.intakeData.opmerkingen}`;
-
-  const results = [];
-  let passed = 0;
-  let failed = 0;
-
-  // Outer try/catch ensures no unhandled rejection crashes the process if the
-  // client disconnects (e.g. Railway LB timeout) while the 10-min loop is running.
-  try {
-    for (let idx = 0; idx < AUTO_BUILDABLE.length; idx++) {
-      // Yield the event loop before each iteration so other requests are not starved.
-      await new Promise(r => process.nextTick(r));
-
-      const serviceName = AUTO_BUILDABLE[idx];
-      let type = 'TEXT_DOCUMENT';
-      let length = 0;
-      let success = false;
-      let errorMsg;
-
-      try {
-        if (HTML_KW.test(serviceName) && !FORCE_TXT.test(serviceName)) {
-          type = 'HTML_BUILD';
-          const isBooking   = /boek|booking|afspraak|reserv|agenda|integreren.*systeem|systeem.*integrer/i.test(serviceName);
-          const isChatbot   = /chatbot|faq.*assistent|kennisbank/i.test(serviceName);
-          const isDashboard = /dashboard/i.test(serviceName);
-          let prompt;
-          if (isBooking) {
-            prompt = `${BUILD_HTML_RULES}Build a complete HTML booking page for ${testLead.companyName} in ${testLead.location}.${intakeCtx}
-
-MUST include in <body>: header with company name, service selection cards (3 services), Mon-Fri calendar (past days disabled), time slot picker (09:00-17:00), contact form (naam/email/tel/dienst), submit with loading state, success confirmation screen.
-Style: white bg, #6366f1 accent, Inter from Google Fonts, fully mobile responsive.`;
-          } else if (isChatbot) {
-            prompt = `${BUILD_HTML_RULES}Build a complete HTML chatbot / FAQ assistant page for ${testLead.companyName} (${testLead.niche} sector).${intakeCtx}
-
-MUST include in <body>: floating chat widget with open/close button, 15+ pre-programmed Q&A pairs relevant to ${testLead.niche} business, animated message bubbles, typing indicator animation, lead capture form at bottom.
-Style: white bg, #6366f1 accent, Inter from Google Fonts, mobile responsive.`;
-          } else if (isDashboard) {
-            prompt = `${BUILD_HTML_RULES}Build a complete HTML analytics dashboard for ${testLead.companyName}.${intakeCtx}
-
-MUST include in <body>: KPI cards (revenue/visitors/conversions/engagement) with realistic demo numbers, chart placeholders with SVG demo data, sidebar navigation, date filter dropdown, responsive data table.
-Style: white bg, #6366f1 accent, Inter from Google Fonts, mobile responsive.`;
-          } else {
-            prompt = `${BUILD_HTML_RULES}Build a complete HTML ${serviceName} page for ${testLead.companyName} (${testLead.niche} sector) in ${testLead.location}.${intakeCtx}
-
-MUST include in <body>: professional branded header, rich content sections fully relevant to "${serviceName}", at least 3 interactive or informative sections, clear CTA section with form or button, professional footer.
-Style: white bg, #6366f1 accent, Inter from Google Fonts, mobile responsive. Minimum 500 words of visible body content.`;
-          }
-
-          const html = await aiCallBuild(prompt);
-          const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-          const bodyLen   = (bodyMatch?.[1]?.trim() || '').length;
-          length  = bodyLen;
-          success = bodyLen >= 200;
-          if (!success) errorMsg = `HTML body too short: ${bodyLen} chars`;
-
-        } else if (STRAT_KW.test(serviceName)) {
-          type = 'STRATEGY_DOCUMENT';
-          const content = await aiCall(`Schrijf een professioneel "${serviceName}" document voor ${testLead.companyName} (${testLead.niche}, ${testLead.location}).${intakeCtx}
-
-Structuur:
-1. Managementsamenvatting (3-5 bevindingen)
-2. Huidige situatie analyse
-3. Verbeterpunten (genummerd, concreet, minimaal 5 punten)
-4. Stappenplan per kwartaal (Q1-Q4)
-5. KPI's en succesmetrics
-6. Aanbevolen volgende stap
-
-Schrijf in professioneel Nederlands, minimaal 400 woorden. Wees concreet voor ${testLead.niche} in ${testLead.location}.`);
-          length  = content.length;
-          success = length >= 200;
-          if (!success) errorMsg = `Content too short: ${length} chars`;
-
-        } else {
-          type = 'TEXT_DOCUMENT';
-          const content = await aiCall(`Lever de dienst "${serviceName}" volledig op voor ${testLead.companyName} (${testLead.niche}, ${testLead.location}).${intakeCtx}
-
-Schrijf complete, direct bruikbare inhoud in professioneel Nederlands:
-- Specifiek voor hun niche (${testLead.niche}) en locatie (${testLead.location})
-- Klaar om te publiceren of te versturen — geen placeholders zoals [naam] of [bedrijf]
-- Minimaal 300 woorden bruikbare content`);
-          length  = content.length;
-          success = length >= 200;
-          if (!success) errorMsg = `Content too short: ${length} chars`;
-        }
-
-        console.log(`[Test] Service: ${serviceName}`);
-        console.log(`[Test] Type: ${type}`);
-        console.log(`[Test] Length: ${length}`);
-        console.log(`[Test] Success: ${success}`);
-        if (success) passed++; else failed++;
-        results.push({ service: serviceName, type, success, length, ...(errorMsg ? { error: errorMsg } : {}) });
-
-      } catch (err) {
-        console.log(`[Test] Service: ${serviceName} — FAILED: ${err.message}`);
-        failed++;
-        results.push({ service: serviceName, type, success: false, length: 0, error: err.message });
-      }
-
-      // Pause between calls to stay under rate limits
-      if (idx < AUTO_BUILDABLE.length - 1) await new Promise(r => setTimeout(r, 2000));
-    }
-
-    // Guard against writing to a closed socket (client disconnected during long run)
-    if (!res.writableEnded) {
-      res.json({ total: AUTO_BUILDABLE.length, passed, failed, results });
-    }
-  } catch (outerErr) {
-    console.error('[Test] Fatal error in test-all-services:', outerErr.message);
-    if (!res.writableEnded) {
-      res.status(500).json({ error: outerErr.message, total: AUTO_BUILDABLE.length, passed, failed, results });
-    }
-  }
-});
-
 // â"€â"€â"€ Server-side Claude helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 // In-memory token accumulator — reset per run
@@ -8003,9 +7857,9 @@ async function checkReplies() {
     const messages = await connection.search(searchCriteria, fetchOptions);
     const leads  = readJSON('leads.json') || [];
     const stats  = readJSON('stats.json') || {};
+    // Include clients — they can reply too; only permanently-dead leads are excluded
     const sentLeads = leads.filter(l =>
-      (l.sentAt || ['sent','replied','followup1','followup2'].includes(l.status)) &&
-      !['client','dead'].includes(l.status)
+      l.sentAt || ['sent','replied','followup1','followup2','client'].includes(l.status)
     );
     console.log(`[IMAP] ${messages.length} emails gevonden in inbox (laatste 14 dagen), ${sentLeads.length} verstuurde leads om tegen te checken`);
 
@@ -8031,6 +7885,9 @@ async function checkReplies() {
 
       console.log(`[IMAP] Reply email: from="${senderEmail}", subject="${rawSubject}"`);
 
+      // Pre-compute sender domain for Strategy 4
+      const fromDomain = (senderEmail.split('@')[1] || '').toLowerCase().trim();
+
       const matched = sentLeads.find(l => {
         // Skip already-processed message IDs
         if (l.processedMessageIds?.includes(msgId)) return false;
@@ -8038,7 +7895,7 @@ async function checkReplies() {
         // ── Strategy 1: sender email matches lead contact email (most reliable) ──
         if (senderEmail && l.contactEmail &&
             senderEmail === l.contactEmail.toLowerCase().trim()) {
-          console.log(`[IMAP]   → Match via sender email: ${l.companyName} (${l.contactEmail})`);
+          console.log(`[IMAP]   → Match via contactEmail: ${l.companyName} (${l.contactEmail})`);
           return true;
         }
 
@@ -8062,6 +7919,23 @@ async function checkReplies() {
               (orig.length >= 10 && cleanSubject.includes(orig.substring(0, 30))) ||
               (cleanSubject.length >= 10 && orig.includes(cleanSubject.substring(0, 30)))) {
             console.log(`[IMAP]   → Match via onderwerp: ${l.companyName} (orig: "${orig}")`);
+            return true;
+          }
+        }
+
+        // ── Strategy 4: sender domain matches lead's website domain or email domain ──
+        if (fromDomain.length >= 4) {
+          // Strip protocol/www to get bare hostname
+          const websiteHost = (l.websiteUrl || '')
+            .replace(/^https?:\/\/(www\.)?/, '').toLowerCase().split('/')[0].split('?')[0];
+          if (websiteHost && websiteHost === fromDomain) {
+            console.log(`[IMAP]   → Match via website domein: ${l.companyName} (${l.websiteUrl})`);
+            return true;
+          }
+          // Contact email on same domain (catches info@X.nl when we only stored contact@X.nl)
+          const contactDomain = (l.contactEmail || '').split('@')[1]?.toLowerCase().trim() || '';
+          if (contactDomain && contactDomain === fromDomain) {
+            console.log(`[IMAP]   → Match via email domein: ${l.companyName} (${l.contactEmail} ~ ${senderEmail})`);
             return true;
           }
         }
