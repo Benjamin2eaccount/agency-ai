@@ -6256,7 +6256,26 @@ Website problemen: ${website.problems?.join(', ') || 'geen'}
 
   _runState.currentAgent = 'Agent 4 — Scorer';
   console.log(`  [Agent 4] Kansen berekenen...`);
-  const servicesList = services.map(s => `- ${s.name} (${s.billing}): €${s.price} — ${s.description}`).join('\n');
+
+  // Only recommend services agents can build 100% automatically (HTML page or written document)
+  const AUTO_BUILDABLE = new Set([
+    'website bouwen', 'online boekingssysteem integreren', 'ai chatbot voor website',
+    'ai landingspagina', 'ai faq assistent', 'ai kennisbank systeem',
+    'ai onboarding systeem', 'chatbot script voor website', 'email autoresponder reeks',
+    'ai offerte generator', 'nieuwsbrief template ontwerpen', 'over ons pagina schrijven',
+    'faq pagina schrijven', 'website teksten schrijven', 'seo teksten optimaliseren',
+    'blog artikelen schrijven', 'email nieuwsbrief reeks', 'ai content voor social media',
+    'maandelijkse content kalender', 'instagram reels scripts', 'ai tiktok content systeem',
+    'ai youtube scripts', 'ai video content creatie', 'product beschrijvingen',
+    'privacy policy + algemene voorwaarden', 'ai keyword research',
+    'lokale seo optimalisatie', 'google bedrijfsprofiel content', 'concurrentieanalyse rapport',
+    'social media audit', 'ai branding kit generatie', 'ai sales opvolging',
+    'verlaten winkelwagen emails', 'email marketing automatisering',
+  ]);
+  const buildableServices = services.filter(s => AUTO_BUILDABLE.has((s.name || '').toLowerCase().trim()));
+  const servicesList = (buildableServices.length > 0 ? buildableServices : services)
+    .map(s => `- ${s.name} (${s.billing}): €${s.price} — ${s.description}`).join('\n');
+
   let opportunity;
   try {
     opportunity = await aiJSON(`Analyseer dit bedrijf en geef een opportunity score. Geef JSON terug:
@@ -6273,6 +6292,7 @@ ${servicesList}
 
 Kies ALLEEN diensten die echt passen bij de problemen van dit bedrijf (niche, locatie, sociale media situatie).
 Kies 1-2 maandelijkse + eventueel 1 eenmalige dienst als logisch startpunt.
+BELANGRIJK: Kies ALLEEN diensten die volledig automatisch geleverd kunnen worden als HTML-pagina of geschreven document. Nooit diensten die handmatige advertentie-instellingen, API-koppelingen of toegang tot externe platforms vereisen.
 
 Geef JSON:
 {
@@ -6517,15 +6537,26 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - BANNED WORDS: solution, trajectory, optimize, implement, synergy, leverage, innovative, data-driven, tailored, unique offering, fantastic, absolutely, transform, take to the next level, proven, competitive advantage, seamlessly, cutting-edge, game-changer
 - SEASONAL: It is currently ${seasonal.season}. Optionally weave in 1 subtle seasonal reference only if it genuinely fits their niche (e.g. ${seasonal.event}). Do NOT force this.`;
 
-  const promptA = language === 'nl'
-    ? `Schrijf een koude email — VERSIE A: PROBLEEM-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.\n\nCONTEXT:\n${sharedContext}\n\nOPENING ZIN (gebruik deze exact of pas licht aan):\n"${opener}"\n\nAANPAK VERSIE A: Begin met het probleem. Gebruik de opening zin hierboven. Noem het probleem concreet met een getal of vergelijking. Dan de dienst als logische oplossing.\n\nREGELS:\n${sharedRules}\n\n{"subject": "onderwerp", "body": "emailtekst"}`
+  // No-ads restriction appended to sharedRules for all languages
+  const noAdsLine = language === 'nl'
+    ? '\n- NOOIT vermelden in de email: Meta advertenties, Facebook ads, Google Ads, betaalde advertenties, WhatsApp Business automatisering, CRM-systemen, heatmap analyse, A/B testing\n- FOCUS ALLEEN OP: website verbetering, online boekingssysteem, AI chatbot voor website, professionele content (blogs/social/emails), SEO teksten, landingspagina\'s, email reeksen'
     : language === 'de'
-    ? `Schreibe eine Kalt-E-Mail — VERSION A: PROBLEM-ORIENTIERT. Klingt wie ein echter Mensch, NICHT wie KI. Schreibe auf DEUTSCH. JSON zurückgeben.\n\nKONTEXT:\n${sharedContext}\n\nERÖFFNUNGSSATZ (exakt verwenden oder leicht anpassen):\n"${opener}"\n\nANSATZ VERSION A: Mit dem Problem beginnen. Den Eröffnungssatz verwenden. Problem konkret mit Zahlen nennen. Dann Dienstleistung als logische Lösung.\n\nREGELN:\n${sharedRules}\n\n{"subject": "Betreff", "body": "E-Mail-Text"}`
+    ? '\n- NIE in der E-Mail erwähnen: Meta-Anzeigen, Facebook Ads, Google Ads, bezahlte Werbung, WhatsApp-Automatisierung, CRM-Systeme, Heatmap-Analyse, A/B-Tests\n- NUR fokussieren auf: Website-Verbesserung, Online-Buchungssystem, KI-Chatbot, professionelle Inhalte (Blogs/Social/E-Mails), SEO-Texte, Landingpages, E-Mail-Sequenzen'
     : language === 'fr'
-    ? `Rédige un e-mail de prospection — VERSION A: CENTRÉ SUR LE PROBLÈME. Sonne comme une vraie personne, PAS comme une IA. Écrire en FRANÇAIS. Retourner JSON.\n\nCONTEXTE:\n${sharedContext}\n\nPHRASE D'OUVERTURE (utiliser exactement ou adapter légèrement):\n"${opener}"\n\nAPPROCHE VERSION A: Commencer par le problème. Utiliser la phrase d'ouverture. Mentionner le problème concrètement avec un chiffre. Puis le service comme solution logique.\n\nRÈGLES:\n${sharedRules}\n\n{"subject": "objet", "body": "corps de l'e-mail"}`
+    ? "\n- NE JAMAIS mentionner: publicités Meta, Facebook Ads, Google Ads, publicité payante, WhatsApp, CRM, heatmaps, A/B testing\n- SE CONCENTRER UNIQUEMENT SUR: amélioration du site web, réservation en ligne, chatbot IA, contenu (blogs/réseaux/emails), textes SEO, pages d'atterrissage, séquences email"
     : language === 'it'
-    ? `Scrivi una cold email — VERSIONE A: FOCALIZZATA SUL PROBLEMA. Suona come una persona reale, NON come un'IA. Scrivere in ITALIANO. Restituire JSON.\n\nCONTESTO:\n${sharedContext}\n\nFRASE D'APERTURA (usare esattamente o adattare leggermente):\n"${opener}"\n\nAPPROCCIO VERSIONE A: Iniziare con il problema. Usare la frase d'apertura. Menzionare il problema concretamente con un numero. Poi il servizio come soluzione logica.\n\nREGOLE:\n${sharedRules}\n\n{"subject": "oggetto", "body": "corpo email"}`
-    : `Write a cold email — VERSION A: PROBLEM-FOCUSED. Reads like a real person typed it, NOT like AI. Return JSON.\n\nCONTEXT:\n${sharedContext}\n\nOPENING LINE (use this exactly or adapt slightly):\n"${opener}"\n\nVERSION A APPROACH: Start with the problem. Use the opening line above. State the problem concretely with a number or comparison. Then offer the service as the logical next step.\n\nRULES:\n${sharedRules}\n\n{"subject": "subject line", "body": "email body"}`;
+    ? '\n- NON menzionare mai: Meta ads, Facebook Ads, Google Ads, pubblicità a pagamento, WhatsApp, CRM, heatmap, A/B testing\n- CONCENTRARSI SOLO SU: sito web, prenotazioni online, chatbot AI, contenuto (blog/social/email), SEO, landing page, sequenze email'
+    : '\n- NEVER mention in the email: Meta ads, Facebook ads, Google Ads, paid advertising, WhatsApp automation, CRM systems, heatmap analysis, A/B testing\n- FOCUS ONLY ON: website improvement, online booking systems, AI chatbot, professional content (blogs/social/emails), SEO content, landing pages, email sequences';
+
+  const promptA = language === 'nl'
+    ? `Schrijf een koude email — VERSIE A: PROBLEEM-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.\n\nCONTEXT:\n${sharedContext}\n\nOPENING ZIN (gebruik deze exact of pas licht aan):\n"${opener}"\n\nAANPAK VERSIE A: Begin met het probleem. Gebruik de opening zin hierboven. Noem het probleem concreet met een getal of vergelijking. Dan de dienst als logische oplossing.\n\nREGELS:\n${sharedRules}${noAdsLine}\n\n{"subject": "onderwerp", "body": "emailtekst"}`
+    : language === 'de'
+    ? `Schreibe eine Kalt-E-Mail — VERSION A: PROBLEM-ORIENTIERT. Klingt wie ein echter Mensch, NICHT wie KI. Schreibe auf DEUTSCH. JSON zurückgeben.\n\nKONTEXT:\n${sharedContext}\n\nERÖFFNUNGSSATZ (exakt verwenden oder leicht anpassen):\n"${opener}"\n\nANSATZ VERSION A: Mit dem Problem beginnen. Den Eröffnungssatz verwenden. Problem konkret mit Zahlen nennen. Dann Dienstleistung als logische Lösung.\n\nREGELN:\n${sharedRules}${noAdsLine}\n\n{"subject": "Betreff", "body": "E-Mail-Text"}`
+    : language === 'fr'
+    ? `Rédige un e-mail de prospection — VERSION A: CENTRÉ SUR LE PROBLÈME. Sonne comme une vraie personne, PAS comme une IA. Écrire en FRANÇAIS. Retourner JSON.\n\nCONTEXTE:\n${sharedContext}\n\nPHRASE D'OUVERTURE (utiliser exactement ou adapter légèrement):\n"${opener}"\n\nAPPROCHE VERSION A: Commencer par le problème. Utiliser la phrase d'ouverture. Mentionner le problème concrètement avec un chiffre. Puis le service comme solution logique.\n\nRÈGLES:\n${sharedRules}${noAdsLine}\n\n{"subject": "objet", "body": "corps de l'e-mail"}`
+    : language === 'it'
+    ? `Scrivi una cold email — VERSIONE A: FOCALIZZATA SUL PROBLEMA. Suona come una persona reale, NON come un'IA. Scrivere in ITALIANO. Restituire JSON.\n\nCONTESTO:\n${sharedContext}\n\nFRASE D'APERTURA (usare esattamente o adattare leggermente):\n"${opener}"\n\nAPPROCCIO VERSIONE A: Iniziare con il problema. Usare la frase d'apertura. Menzionare il problema concretamente con un numero. Poi il servizio come soluzione logica.\n\nREGOLE:\n${sharedRules}${noAdsLine}\n\n{"subject": "oggetto", "body": "corpo email"}`
+    : `Write a cold email — VERSION A: PROBLEM-FOCUSED. Reads like a real person typed it, NOT like AI. Return JSON.\n\nCONTEXT:\n${sharedContext}\n\nOPENING LINE (use this exactly or adapt slightly):\n"${opener}"\n\nVERSION A APPROACH: Start with the problem. Use the opening line above. State the problem concretely with a number or comparison. Then offer the service as the logical next step.\n\nRULES:\n${sharedRules}${noAdsLine}\n\n{"subject": "subject line", "body": "email body"}`;
 
   const openerB = language === 'nl'
     ? `${lead.companyName} heeft echt potentieel in ${lead.location} — en ik denk dat ${topService.toLowerCase()} precies dat kan versnellen.`
@@ -6538,14 +6569,14 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
     : `${lead.companyName} has real potential to grow in ${lead.location} — and I think ${topService.toLowerCase()} could accelerate that.`;
 
   const promptB = language === 'nl'
-    ? `Schrijf een koude email — VERSIE B: GROEIKANSEN-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.\n\nCONTEXT:\n${sharedContext}\n\nOPENING ZIN VERSIE B (gebruik deze exact of pas licht aan):\n"${openerB}"\n\nAANPAK VERSIE B: Begin positief — met groeipotentieel, niet met problemen. Focus op wat ze KUNNEN bereiken met ${topService}. Enthousiaster toon.\n\nREGELS:\n${sharedRules}\n\n{"subject": "onderwerp", "body": "emailtekst"}`
+    ? `Schrijf een koude email — VERSIE B: GROEIKANSEN-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.\n\nCONTEXT:\n${sharedContext}\n\nOPENING ZIN VERSIE B (gebruik deze exact of pas licht aan):\n"${openerB}"\n\nAANPAK VERSIE B: Begin positief — met groeipotentieel, niet met problemen. Focus op wat ze KUNNEN bereiken met ${topService}. Enthousiaster toon.\n\nREGELS:\n${sharedRules}${noAdsLine}\n\n{"subject": "onderwerp", "body": "emailtekst"}`
     : language === 'de'
-    ? `Schreibe eine Kalt-E-Mail — VERSION B: WACHSTUMSORIENTIERT. Klingt wie ein echter Mensch, NICHT wie KI. Schreibe auf DEUTSCH. JSON zurückgeben.\n\nKONTEXT:\n${sharedContext}\n\nERÖFFNUNGSSATZ VERSION B (exakt verwenden oder leicht anpassen):\n"${openerB}"\n\nANSATZ VERSION B: Positiv beginnen — Wachstumspotenzial betonen, nicht Probleme. Auf das fokussieren, was mit ${topService} erreicht werden kann.\n\nREGELN:\n${sharedRules}\n\n{"subject": "Betreff", "body": "E-Mail-Text"}`
+    ? `Schreibe eine Kalt-E-Mail — VERSION B: WACHSTUMSORIENTIERT. Klingt wie ein echter Mensch, NICHT wie KI. Schreibe auf DEUTSCH. JSON zurückgeben.\n\nKONTEXT:\n${sharedContext}\n\nERÖFFNUNGSSATZ VERSION B (exakt verwenden oder leicht anpassen):\n"${openerB}"\n\nANSATZ VERSION B: Positiv beginnen — Wachstumspotenzial betonen, nicht Probleme. Auf das fokussieren, was mit ${topService} erreicht werden kann.\n\nREGELN:\n${sharedRules}${noAdsLine}\n\n{"subject": "Betreff", "body": "E-Mail-Text"}`
     : language === 'fr'
-    ? `Rédige un e-mail de prospection — VERSION B: CENTRÉ SUR LA CROISSANCE. Sonne comme une vraie personne, PAS comme une IA. Écrire en FRANÇAIS. Retourner JSON.\n\nCONTEXTE:\n${sharedContext}\n\nPHRASE D'OUVERTURE VERSION B (utiliser exactement ou adapter légèrement):\n"${openerB}"\n\nAPPROCHE VERSION B: Commencer positivement — potentiel de croissance, pas les problèmes. Se concentrer sur ce qui peut être accompli avec ${topService}.\n\nRÈGLES:\n${sharedRules}\n\n{"subject": "objet", "body": "corps de l'e-mail"}`
+    ? `Rédige un e-mail de prospection — VERSION B: CENTRÉ SUR LA CROISSANCE. Sonne comme une vraie personne, PAS comme une IA. Écrire en FRANÇAIS. Retourner JSON.\n\nCONTEXTE:\n${sharedContext}\n\nPHRASE D'OUVERTURE VERSION B (utiliser exactement ou adapter légèrement):\n"${openerB}"\n\nAPPROCHE VERSION B: Commencer positivement — potentiel de croissance, pas les problèmes. Se concentrer sur ce qui peut être accompli avec ${topService}.\n\nRÈGLES:\n${sharedRules}${noAdsLine}\n\n{"subject": "objet", "body": "corps de l'e-mail"}`
     : language === 'it'
-    ? `Scrivi una cold email — VERSIONE B: FOCALIZZATA SULLA CRESCITA. Suona come una persona reale, NON come un'IA. Scrivere in ITALIANO. Restituire JSON.\n\nCONTESTO:\n${sharedContext}\n\nFRASE D'APERTURA VERSIONE B (usare esattamente o adattare leggermente):\n"${openerB}"\n\nAPPROCCIO VERSIONE B: Iniziare positivamente — potenziale di crescita, non problemi. Concentrarsi su cosa si può raggiungere con ${topService}.\n\nREGOLE:\n${sharedRules}\n\n{"subject": "oggetto", "body": "corpo email"}`
-    : `Write a cold email — VERSION B: GROWTH/OPPORTUNITY-FOCUSED. Reads like a real person typed it, NOT like AI. Return JSON.\n\nCONTEXT:\n${sharedContext}\n\nOPENING LINE VERSION B (use this exactly or adapt slightly):\n"${openerB}"\n\nVERSION B APPROACH: Start positively — with growth potential, not problems. Focus on what they CAN achieve with ${topService}. More enthusiastic tone.\n\nRULES:\n${sharedRules}\n\n{"subject": "subject line", "body": "email body"}`;
+    ? `Scrivi una cold email — VERSIONE B: FOCALIZZATA SULLA CRESCITA. Suona come una persona reale, NON come un'IA. Scrivere in ITALIANO. Restituire JSON.\n\nCONTESTO:\n${sharedContext}\n\nFRASE D'APERTURA VERSIONE B (usare esattamente o adattare leggermente):\n"${openerB}"\n\nAPPROCCIO VERSIONE B: Iniziare positivamente — potenziale di crescita, non problemi. Concentrarsi su cosa si può raggiungere con ${topService}.\n\nREGOLE:\n${sharedRules}${noAdsLine}\n\n{"subject": "oggetto", "body": "corpo email"}`
+    : `Write a cold email — VERSION B: GROWTH/OPPORTUNITY-FOCUSED. Reads like a real person typed it, NOT like AI. Return JSON.\n\nCONTEXT:\n${sharedContext}\n\nOPENING LINE VERSION B (use this exactly or adapt slightly):\n"${openerB}"\n\nVERSION B APPROACH: Start positively — with growth potential, not problems. Focus on what they CAN achieve with ${topService}. More enthusiastic tone.\n\nRULES:\n${sharedRules}${noAdsLine}\n\n{"subject": "subject line", "body": "email body"}`;
 
   // ITEM 18: use winning A/B version when auto-pick is set for this niche
   const autoVersion = getAutoPickVersion(lead.niche, lead.country);
