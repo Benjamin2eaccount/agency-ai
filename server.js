@@ -5743,129 +5743,58 @@ CRITICAL RULES:
   });
 });
 
-// Test all 34 auto-buildable services end-to-end (admin only, long-running)
-app.get('/api/test-all-services', requireAdmin, async (req, res) => {
-  res.setTimeout(600000); // 10-minute ceiling for 34 sequential AI calls
-
-  const AUTO_BUILDABLE = [
-    'Website bouwen', 'Online boekingssysteem integreren', 'AI chatbot voor website',
-    'AI landingspagina', 'AI FAQ assistent', 'AI kennisbank systeem',
-    'AI onboarding systeem', 'Chatbot script voor website', 'Email autoresponder reeks',
-    'AI offerte generator', 'Nieuwsbrief template ontwerpen', 'Over ons pagina schrijven',
-    'FAQ pagina schrijven', 'Website teksten schrijven', 'SEO teksten optimaliseren',
-    'Blog artikelen schrijven', 'Email nieuwsbrief reeks', 'AI content voor social media',
-    'Maandelijkse content kalender', 'Instagram Reels scripts', 'AI TikTok content systeem',
-    'AI YouTube scripts', 'AI video content creatie', 'Product beschrijvingen',
-    'Privacy policy + algemene voorwaarden', 'AI keyword research', 'Lokale SEO optimalisatie',
-    'Google Bedrijfsprofiel content', 'Concurrentieanalyse rapport', 'Social media audit',
-    'AI branding kit generatie', 'AI sales opvolging', 'Verlaten winkelwagen emails',
-    'Email marketing automatisering',
-  ];
-
-  const testLead = {
-    companyName: 'Test Bedrijf', location: 'Amsterdam, NL', niche: 'beauty',
-    websiteUrl: 'https://example.com', language: 'nl',
-    intakeData: { contactNaam: 'Test Persoon', opmerkingen: 'Wil graag een professionele online aanwezigheid' },
-  };
+// Test a single service end-to-end with custom inputs (admin only)
+app.post('/api/test-service', requireAdmin, async (req, res) => {
+  const { serviceName, companyName = 'Test Bedrijf BV', location = 'Amsterdam', niche = 'bedrijf', wishes = '' } = req.body;
+  if (!serviceName) return res.status(400).json({ error: 'serviceName vereist' });
 
   const HTML_KW   = /website|boek|boeking|booking|chatbot|dashboard|landingspagina|landing.*page|faq.*assistent|kennisbank|offerte.*generator|onboarding/i;
   const STRAT_KW  = /seo.*rapport|concurrentie|audit|crm|lead.*scoring|branding|heatmap|trend|keyword.*research/i;
   const FORCE_TXT = /\bteksten\b/i;
 
-  const intakeCtx = `\n\nKLANT INFORMATIE:\nBedrijf: ${testLead.companyName}\nLocatie: ${testLead.location}\nNiche: ${testLead.niche}\nWebsite: ${testLead.websiteUrl}\nContact: ${testLead.intakeData.contactNaam}\nWensen: ${testLead.intakeData.opmerkingen}`;
+  const intakeCtx = `\n\nKLANT INFORMATIE:\nBedrijf: ${companyName}\nLocatie: ${location}\nNiche: ${niche}\nWensen: ${wishes || 'Professionele online aanwezigheid'}`;
 
-  const results = [];
-  let passed = 0;
-  let failed = 0;
-
+  let type = 'TEXT_DOCUMENT';
   try {
-    for (let idx = 0; idx < AUTO_BUILDABLE.length; idx++) {
-      await new Promise(r => process.nextTick(r)); // yield event loop between calls
-
-      const serviceName = AUTO_BUILDABLE[idx];
-      let type = 'TEXT_DOCUMENT';
-      let length = 0;
-      let success = false;
-      let errorMsg;
-
-      try {
-        if (HTML_KW.test(serviceName) && !FORCE_TXT.test(serviceName)) {
-          type = 'HTML_BUILD';
-          const isBooking = /boek|booking|afspraak|reserv|agenda|integreren.*systeem|systeem.*integrer/i.test(serviceName);
-          const isChatbot = /chatbot|faq.*assistent|kennisbank/i.test(serviceName);
-          let prompt;
-          if (isBooking) {
-            prompt = `${BUILD_HTML_RULES}Build a complete HTML booking page for ${testLead.companyName} in ${testLead.location}.${intakeCtx}\nMUST include in <body>: header, 3 service cards, Mon-Fri calendar (past disabled), time slots 09:00-17:00, contact form, success screen. Style: white bg, #6366f1 accent, Inter, mobile responsive.`;
-          } else if (isChatbot) {
-            prompt = `${BUILD_HTML_RULES}Build a complete HTML chatbot/FAQ page for ${testLead.companyName} (${testLead.niche}).${intakeCtx}\nMUST include in <body>: chat widget, 15+ Q&A pairs for ${testLead.niche}, animated bubbles, typing indicator, lead capture form. Style: white bg, #6366f1 accent, Inter, mobile responsive.`;
-          } else {
-            prompt = `${BUILD_HTML_RULES}Build a complete HTML ${serviceName} page for ${testLead.companyName} (${testLead.niche}) in ${testLead.location}.${intakeCtx}\nMUST include in <body>: branded header, 3+ content sections relevant to "${serviceName}", CTA with form/button, footer. Style: white bg, #6366f1 accent, Inter, mobile responsive. Min 500 words.`;
-          }
-          const html = await aiCallBuild(prompt);
-          const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-          length = (bodyMatch?.[1]?.trim() || '').length;
-          success = length >= 200;
-          if (!success) errorMsg = `HTML body te kort: ${length} tekens`;
-
-        } else if (STRAT_KW.test(serviceName)) {
-          type = 'STRATEGY_DOCUMENT';
-          const content = await aiCall(`Schrijf een professioneel "${serviceName}" document voor ${testLead.companyName} (${testLead.niche}, ${testLead.location}).${intakeCtx}\n\nStructuur:\n1. Managementsamenvatting\n2. Huidige situatie\n3. Verbeterpunten (min 5)\n4. Stappenplan Q1-Q4\n5. KPI's\n6. Volgende stap\n\nMin 400 woorden Nederlands.`);
-          length = content.length;
-          success = length >= 200;
-          if (!success) errorMsg = `Content te kort: ${length} tekens`;
-
-        } else {
-          type = 'TEXT_DOCUMENT';
-          const content = await aiCall(`Lever de dienst "${serviceName}" volledig op voor ${testLead.companyName} (${testLead.niche}, ${testLead.location}).${intakeCtx}\n\nSchrijf direct bruikbare Nederlandse inhoud, minimaal 300 woorden, geen placeholders.`);
-          length = content.length;
-          success = length >= 200;
-          if (!success) errorMsg = `Content te kort: ${length} tekens`;
-        }
-
-        console.log(`[TestAll] ${success ? '✓' : '✗'} ${serviceName} (${type}) — ${length} tekens`);
-        if (success) passed++; else failed++;
-        results.push({ service: serviceName, type, success, length, ...(errorMsg ? { error: errorMsg } : {}) });
-
-      } catch (err) {
-        console.log(`[TestAll] ✗ ${serviceName} — ${err.message}`);
-        failed++;
-        results.push({ service: serviceName, type, success: false, length: 0, error: err.message });
+    if (HTML_KW.test(serviceName) && !FORCE_TXT.test(serviceName)) {
+      type = 'HTML_BUILD';
+      const isBooking = /boek|booking|afspraak|reserv|agenda|integreren.*systeem|systeem.*integrer/i.test(serviceName);
+      const isChatbot = /chatbot|faq.*assistent|kennisbank/i.test(serviceName);
+      let prompt;
+      if (isBooking) {
+        prompt = `${BUILD_HTML_RULES}Build a complete HTML booking page for ${companyName} in ${location}.${intakeCtx}\nMUST include in <body>: header, 3 service cards, Mon-Fri calendar (past disabled), time slots 09:00-17:00, contact form, success screen. Style: white bg, #6366f1 accent, Inter, mobile responsive.`;
+      } else if (isChatbot) {
+        prompt = `${BUILD_HTML_RULES}Build a complete HTML chatbot/FAQ page for ${companyName} (${niche}).${intakeCtx}\nMUST include in <body>: chat widget, 15+ Q&A pairs for ${niche}, animated bubbles, typing indicator, lead capture form. Style: white bg, #6366f1 accent, Inter, mobile responsive.`;
+      } else {
+        prompt = `${BUILD_HTML_RULES}Build a complete HTML ${serviceName} page for ${companyName} (${niche}) in ${location}.${intakeCtx}\nMUST include in <body>: branded header, 3+ content sections relevant to "${serviceName}", CTA with form/button, footer. Style: white bg, #6366f1 accent, Inter, mobile responsive. Min 500 words.`;
       }
+      const html = await aiCallBuild(prompt);
+      const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+      const bodyLength = (bodyMatch?.[1]?.trim() || '').length;
+      const htmlLength = html.length;
+      const success = bodyLength >= 200;
+      console.log(`[TestService] ${success ? '✓' : '✗'} ${serviceName} (HTML_BUILD) — body: ${bodyLength} tekens`);
+      return res.json({ success, type, html, htmlLength, bodyLength, testedAt: new Date().toISOString(), ...(!success ? { error: `HTML body te kort: ${bodyLength} tekens` } : {}) });
 
-      if (idx < AUTO_BUILDABLE.length - 1) await new Promise(r => setTimeout(r, 2000));
-    }
+    } else if (STRAT_KW.test(serviceName)) {
+      type = 'STRATEGY_DOCUMENT';
+      const content = await aiCall(`Schrijf een professioneel "${serviceName}" document voor ${companyName} (${niche}, ${location}).${intakeCtx}\n\nStructuur:\n1. Managementsamenvatting\n2. Huidige situatie\n3. Verbeterpunten (min 5)\n4. Stappenplan Q1-Q4\n5. KPI's\n6. Volgende stap\n\nMin 400 woorden Nederlands.`);
+      const contentLength = content.length;
+      const success = contentLength >= 200;
+      console.log(`[TestService] ${success ? '✓' : '✗'} ${serviceName} (STRATEGY_DOCUMENT) — ${contentLength} tekens`);
+      return res.json({ success, type, content, contentLength, testedAt: new Date().toISOString(), ...(!success ? { error: `Content te kort: ${contentLength} tekens` } : {}) });
 
-    // ── Log summary to Railway console ─────────────────────────────────────
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('[TestAll] RESULTATEN OVERZICHT');
-    console.log(`[TestAll] ✅ Geslaagd: ${passed}/${AUTO_BUILDABLE.length}`);
-    console.log(`[TestAll] ❌ Mislukt:  ${failed}/${AUTO_BUILDABLE.length}`);
-    results.forEach(r => {
-      const icon = r.success ? '✅' : '❌';
-      console.log(`[TestAll] ${icon} ${r.service} — ${r.length} tekens${r.error ? ` (${r.error})` : ''}`);
-    });
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-    // ── Save results to public/test-results.json ────────────────────────────
-    try {
-      const outPath = path.join(__dirname, 'public', 'test-results.json');
-      fs.writeFileSync(outPath, JSON.stringify({
-        testedAt: new Date().toISOString(),
-        total: AUTO_BUILDABLE.length, passed, failed, results
-      }, null, 2));
-      console.log('[TestAll] Resultaten opgeslagen → public/test-results.json');
-    } catch (saveErr) {
-      console.warn('[TestAll] Kon test-results.json niet opslaan:', saveErr.message);
+    } else {
+      type = 'TEXT_DOCUMENT';
+      const content = await aiCall(`Lever de dienst "${serviceName}" volledig op voor ${companyName} (${niche}, ${location}).${intakeCtx}\n\nSchrijf direct bruikbare Nederlandse inhoud, minimaal 300 woorden, geen placeholders.`);
+      const contentLength = content.length;
+      const success = contentLength >= 200;
+      console.log(`[TestService] ${success ? '✓' : '✗'} ${serviceName} (TEXT_DOCUMENT) — ${contentLength} tekens`);
+      return res.json({ success, type, content, contentLength, testedAt: new Date().toISOString(), ...(!success ? { error: `Content te kort: ${contentLength} tekens` } : {}) });
     }
-
-    if (!res.writableEnded) {
-      res.json({ total: AUTO_BUILDABLE.length, passed, failed, results });
-    }
-  } catch (outerErr) {
-    console.error('[TestAll] Fatal:', outerErr.message);
-    if (!res.writableEnded) {
-      res.status(500).json({ error: outerErr.message, total: AUTO_BUILDABLE.length, passed, failed, results });
-    }
+  } catch (err) {
+    console.error(`[TestService] ✗ ${serviceName} — ${err.message}`);
+    return res.status(500).json({ success: false, type, error: err.message, testedAt: new Date().toISOString() });
   }
 });
 
@@ -9739,16 +9668,6 @@ app.get('/sites/:siteSlug', (req, res) => {
   const sitePath = path.join(__dirname, 'public', 'sites', req.params.siteSlug, 'index.html');
   if (!fs.existsSync(sitePath)) return res.status(404).send('<h1>Website niet gevonden</h1>');
   res.sendFile(sitePath);
-});
-
-// ─── test-results.json — explicit route so SPA fallback doesn't intercept it ──
-app.get('/test-results.json', (req, res) => {
-  const p = path.join(__dirname, 'public', 'test-results.json');
-  if (!fs.existsSync(p)) {
-    return res.status(404).json({ error: 'Nog geen testresultaten. Voer eerst een test uit via Settings → Diensten.' });
-  }
-  res.setHeader('Content-Type', 'application/json');
-  res.sendFile(p);
 });
 
 // ─── SPA fallback ─────────────────────────────────────────────────────────────

@@ -10331,81 +10331,117 @@ function copyExtensionUrl() {
   if (val) navigator.clipboard.writeText(val).then(() => toast('Server URL gekopieerd.', 'success'));
 }
 
-// ─── Test alle diensten ───────────────────────────────────────────────────────
+// ─── Per-dienst tester ────────────────────────────────────────────────────────
 
-async function testAllServices() {
-  // Show progress modal immediately
+let _lastServiceTestResult = null;
+
+function openServiceTestModal(serviceName) {
+  if (!serviceName || !serviceName.trim()) {
+    toast('Vul eerst een dienst naam in.', 'warning');
+    return;
+  }
   openModal(`
-    <div style="padding:8px 0">
-      <h3 style="margin:0 0 12px;font-size:16px">Test alle diensten</h3>
-      <p style="color:var(--text-secondary);font-size:13px;margin:0 0 16px">
-        Bouwt 34 diensten met AI — dit duurt ca. 10 minuten. Laat dit venster open.
-      </p>
-      <div style="display:flex;align-items:center;gap:10px;padding:14px;background:var(--surface-2);border-radius:8px">
-        <div class="spinner" style="width:18px;height:18px;border-width:2px;flex-shrink:0"></div>
-        <span id="testAllStatus" style="font-size:13px;color:var(--text-secondary)">Bezig met testen…</span>
+    <div style="padding:4px 0;min-width:320px">
+      <h3 style="margin:0 0 4px;font-size:16px">Test: ${esc(serviceName)}</h3>
+      <p style="color:var(--text-secondary);font-size:12px;margin:0 0 16px">Vul testgegevens in en klik Start test om een preview te genereren.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px">Bedrijfsnaam</label>
+          <input id="stBedrijf" class="stg-input" style="width:100%" placeholder="Test Bedrijf BV" value="Test Bedrijf BV">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px">Locatie</label>
+          <input id="stLocatie" class="stg-input" style="width:100%" placeholder="Amsterdam" value="Amsterdam">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px">Niche</label>
+          <input id="stNiche" class="stg-input" style="width:100%" placeholder="beauty / horeca / retail…" value="beauty">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px">Wensen</label>
+          <input id="stWensen" class="stg-input" style="width:100%" placeholder="Professionele online aanwezigheid">
+        </div>
       </div>
+      <button class="btn btn-primary" style="width:100%" onclick="runServiceTest(${JSON.stringify(esc(serviceName))})">
+        <i class="ti ti-test-pipe"></i> Start test
+      </button>
+      <div id="stResult" style="margin-top:14px"></div>
     </div>
   `);
+}
+
+async function runServiceTest(serviceName) {
+  const bedrijf = document.getElementById('stBedrijf')?.value.trim() || 'Test Bedrijf BV';
+  const locatie = document.getElementById('stLocatie')?.value.trim() || 'Amsterdam';
+  const niche   = document.getElementById('stNiche')?.value.trim() || 'bedrijf';
+  const wensen  = document.getElementById('stWensen')?.value.trim() || '';
+  const resultEl = document.getElementById('stResult');
+  if (!resultEl) return;
+
+  resultEl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface-2);border-radius:8px">
+      <div class="spinner" style="width:16px;height:16px;border-width:2px;flex-shrink:0"></div>
+      <span style="font-size:13px;color:var(--text-secondary)">Bezig met genereren…</span>
+    </div>`;
 
   try {
-    // Use raw fetch with a 15-minute AbortController — the api() wrapper has no
-    // explicit timeout and browsers/proxies can drop long-lived connections early.
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 900000); // 15 minutes
-    let res;
-    try {
-      res = await fetch('/api/test-all-services', {
-        headers: { 'Authorization': 'Bearer ' + getToken() },
-        signal: controller.signal
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
+    const res = await fetch('/api/test-service', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: JSON.stringify({ serviceName, companyName: bedrijf, location: locatie, niche, wishes: wensen })
+    });
     if (res.status === 401) { logout(); return; }
     const data = await res.json();
+    _lastServiceTestResult = { serviceName, bedrijf, locatie, niche, wensen, ...data };
 
-    const typeIcon = t => t === 'HTML_BUILD' ? '💻' : t === 'STRATEGY_DOCUMENT' ? '📊' : '📄';
-    const failColor = data.failed === 0 ? 'var(--success)' : data.failed <= 3 ? 'var(--warning)' : 'var(--danger)';
+    const typeLabel = data.type === 'HTML_BUILD' ? '💻 HTML pagina' : data.type === 'STRATEGY_DOCUMENT' ? '📊 Strategie document' : '📄 Tekst document';
+    const chars     = data.htmlLength || data.contentLength || 0;
+    const bodyChars = data.bodyLength ?? chars;
+    const ok        = data.success;
+    const dateStr   = data.testedAt ? new Date(data.testedAt).toLocaleString('nl-NL') : '—';
 
-    const rows = (data.results || []).map((r, i) => `
-      <div style="display:grid;grid-template-columns:20px 1fr auto auto;gap:8px;align-items:start;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px">
-        <span>${r.success ? '✅' : '❌'}</span>
-        <div>
-          <div style="color:var(--text-primary);font-weight:500">${i + 1}. ${esc(r.service)}</div>
-          ${r.error ? `<div style="color:var(--danger);font-size:11px;margin-top:2px">⚠ ${esc(r.error)}</div>` : ''}
-        </div>
-        <span style="color:var(--text-muted);white-space:nowrap;padding-top:1px">${typeIcon(r.type)}</span>
-        <span style="color:var(--text-muted);white-space:nowrap;text-align:right;padding-top:1px">${r.length.toLocaleString('nl-NL')} t.</span>
-      </div>`).join('');
+    const preview = data.type === 'HTML_BUILD' && data.html
+      ? `<iframe srcdoc="${esc(data.html)}" style="width:100%;height:340px;border:1px solid var(--border);border-radius:8px;margin-top:10px" sandbox="allow-scripts allow-same-origin"></iframe>`
+      : data.content
+        ? `<pre style="white-space:pre-wrap;font-size:12px;color:var(--text-primary);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px;max-height:300px;overflow-y:auto;margin-top:10px">${esc(data.content.slice(0, 3000))}${data.content.length > 3000 ? '\n\n…(ingekort)' : ''}</pre>`
+        : '';
 
-    openModal(`
-      <div style="display:flex;flex-direction:column;height:min(75vh,600px)">
-        <div style="flex-shrink:0;padding-bottom:12px;border-bottom:2px solid var(--border);margin-bottom:12px">
-          <h3 style="margin:0 0 10px;font-size:16px">Test alle diensten — resultaten</h3>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:10px 14px;background:var(--surface-2);border-radius:8px;font-size:13px;font-weight:600">
-            <span style="color:var(--success)">✅ ${data.passed} geslaagd</span>
-            <span style="color:var(--text-muted)">／</span>
-            <span style="color:${failColor}">❌ ${data.failed} mislukt</span>
-            <span style="color:var(--text-muted)">／</span>
-            <span style="color:var(--text-secondary);font-weight:400">${data.total} totaal</span>
-            <a href="/test-results.json" target="_blank" style="margin-left:auto;font-size:11px;color:var(--accent);text-decoration:none;font-weight:400">↗ JSON</a>
-          </div>
-        </div>
-        <div style="flex:1;overflow-y:auto;margin:0 -4px;padding:0 4px">
-          ${rows || '<p style="color:var(--text-muted);font-size:13px">Geen resultaten.</p>'}
+    resultEl.innerHTML = `
+      ${ok
+        ? `<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);border-radius:8px;font-size:13px;font-weight:600;color:var(--success)">✅ Test geslaagd</div>`
+        : `<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:8px;font-size:13px;font-weight:600;color:var(--danger)">❌ Test mislukt${data.error ? ' — ' + esc(data.error) : ''}</div>`
+      }
+      ${preview}
+      <div style="margin-top:12px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;font-size:12px">
+        <div style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px">TESTRAPPORT</div>
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;color:var(--text-secondary)">
+          <span style="color:var(--text-muted)">Datum</span><span style="color:var(--text-primary)">${dateStr}</span>
+          <span style="color:var(--text-muted)">Type</span><span style="color:var(--text-primary)">${typeLabel}</span>
+          <span style="color:var(--text-muted)">Totaal tekens</span><span style="color:var(--text-primary)">${chars.toLocaleString('nl-NL')}</span>
+          ${data.type === 'HTML_BUILD' ? `<span style="color:var(--text-muted)">Body tekens</span><span style="color:var(--text-primary)">${bodyChars.toLocaleString('nl-NL')}</span>` : ''}
+          <span style="color:var(--text-muted)">Kwaliteit</span><span style="color:var(--text-primary)">${bodyChars >= 2000 ? '⭐⭐⭐ Uitstekend' : bodyChars >= 800 ? '⭐⭐ Goed' : bodyChars >= 200 ? '⭐ Voldoende' : '✗ Onvoldoende'}</span>
+          <span style="color:var(--text-muted)">Bedrijf</span><span style="color:var(--text-primary)">${esc(bedrijf)} · ${esc(locatie)}</span>
+          <span style="color:var(--text-muted)">Niche</span><span style="color:var(--text-primary)">${esc(niche)}</span>
         </div>
       </div>
-    `);
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-ghost btn-sm" onclick="closeModal()">Sluit</button>
+        <button class="btn btn-ghost btn-sm" onclick="_saveServiceTestReport()"><i class="ti ti-download"></i> Sla rapport op</button>
+      </div>
+    `;
   } catch (err) {
-    openModal(`
-      <div style="padding:8px 0">
-        <h3 style="margin:0 0 12px;font-size:16px">Test mislukt</h3>
-        <p style="color:var(--danger);font-size:13px">${esc(err.message)}</p>
-        <p style="color:var(--text-secondary);font-size:12px;margin-top:8px">Controleer de Railway logs voor details.</p>
-      </div>
-    `);
+    resultEl.innerHTML = `<div style="padding:10px 14px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:8px;font-size:13px;color:var(--danger)">❌ ${esc(err.message)}</div>`;
   }
+}
+
+function _saveServiceTestReport() {
+  if (!_lastServiceTestResult) return;
+  const blob = new Blob([JSON.stringify(_lastServiceTestResult, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `test-${(_lastServiceTestResult.serviceName || 'dienst').replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 // ─── Zapier & Webhooks ────────────────────────────────────────────────────────
@@ -10976,6 +11012,7 @@ async function renderSettings() {
                   <option value="eenmalig" ${svc.billing==='eenmalig'?'selected':''}>Eenmalig</option>
                 </select>
                 <input type="text" class="svc-desc" value="${esc(svc.description)}" placeholder="Beschrijving">
+                <button class="btn btn-ghost btn-sm btn-icon" title="Test deze dienst" onclick="openServiceTestModal(this.closest('.service-row').querySelector('.svc-name').value)"><i class="ti ti-test-pipe"></i></button>
                 <button class="btn btn-ghost btn-sm btn-icon" onclick="this.closest('.service-row').remove()"><i class="ti ti-trash"></i></button>
               </div>`).join('')}
           </div>
@@ -10983,7 +11020,6 @@ async function renderSettings() {
             <button class="btn btn-ghost btn-sm" id="addServiceBtn"><i class="ti ti-plus"></i> Dienst toevoegen</button>
             <button class="btn btn-ghost btn-sm" id="loadDefaultServicesBtn"><i class="ti ti-refresh"></i> Standaard laden</button>
             <button class="btn btn-primary" id="saveServicesBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
-            <button class="btn btn-ghost btn-sm" onclick="testAllServices()" title="Test of alle 34 diensten correct gebouwd worden (duurt ~10 min)"><i class="ti ti-test-pipe"></i> Test alle diensten</button>
           </div>
         </div>
       </div>
@@ -11622,6 +11658,7 @@ function attachSettingsHandlers(s) {
         <option value="eenmalig">Eenmalig</option>
       </select>
       <input type="text" class="svc-desc" placeholder="Beschrijving">
+      <button class="btn btn-ghost btn-sm btn-icon" title="Test deze dienst" onclick="openServiceTestModal(this.closest('.service-row').querySelector('.svc-name').value)"><i class="ti ti-test-pipe"></i></button>
       <button class="btn btn-ghost btn-sm btn-icon" onclick="this.closest('.service-row').remove()"><i class="ti ti-trash"></i></button>
     `;
     table.appendChild(row);
@@ -11641,6 +11678,7 @@ function attachSettingsHandlers(s) {
           <option value="eenmalig" ${svc.billing==='eenmalig'?'selected':''}>Eenmalig</option>
         </select>
         <input type="text" class="svc-desc" value="${esc(svc.description)}" placeholder="Beschrijving">
+        <button class="btn btn-ghost btn-sm btn-icon" title="Test deze dienst" onclick="openServiceTestModal(this.closest('.service-row').querySelector('.svc-name').value)"><i class="ti ti-test-pipe"></i></button>
         <button class="btn btn-ghost btn-sm btn-icon" onclick="this.closest('.service-row').remove()"><i class="ti ti-trash"></i></button>
       </div>
     `).join('');
