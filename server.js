@@ -4218,7 +4218,8 @@ app.post('/api/leads/:id/run-agents', requireAdmin, async (req, res) => {
       ? '\n\nKlant intake antwoorden:\n' + Object.entries(lead.intakeAnswers).map(([k,v]) => `- ${k}: ${v}`).join('\n')
       : '';
     const companySlug = (lead.companyName || 'bedrijf')
-      .toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+      .toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+      .substring(0, 20);
 
     const deliverables = [];
 
@@ -4229,7 +4230,16 @@ app.post('/api/leads/:id/run-agents', requireAdmin, async (req, res) => {
       try {
         if (isCodeService(svc.name)) {
           // Build HTML page
-          const typeSlug = svc.name.toLowerCase().replace(/[^a-z0-9]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'') || 'page';
+          const nameL = (svc.name || '').toLowerCase();
+          const typeSlug = (() => {
+            if (/boek|booking|afspraak|reserv|agenda/.test(nameL)) return 'booking';
+            if (/website|site/.test(nameL)) return 'website';
+            if (/chatbot|chat/.test(nameL)) return 'chatbot';
+            if (/dashboard/.test(nameL)) return 'dashboard';
+            if (/landing/.test(nameL)) return 'landing';
+            if (/faq/.test(nameL)) return 'faq';
+            return nameL.replace(/[^a-z]/g, '').substring(0, 20) || 'deliverable';
+          })();
           const prompt = `Build a complete HTML page for ${lead.companyName}: ${svc.name}.
 Return ONLY raw HTML starting with <!DOCTYPE html>. No markdown, no backticks, no explanation.
 Includes all features for: ${svc.name}.${intakeContext}
@@ -4386,7 +4396,8 @@ app.post('/api/leads/:id/build-all-services', requireAdmin, async (req, res) => 
     if (!services.length) { sse({ type: 'error', service: '', message: 'Geen diensten ingesteld op dit project' }); res.end(); return; }
 
     const companySlug = (lead.companyName || 'bedrijf')
-      .toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+      .toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+      .substring(0, 20);
 
     // Build intake context from all available intake fields
     const intakeRaw = { ...(lead.intakeAnswers || {}), ...(lead.intakeData || {}) };
@@ -4429,7 +4440,15 @@ Website: ${lead.websiteUrl || ''}`;
 
       try {
         const nameL = serviceName.toLowerCase();
-        const typeSlug = nameL.replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'levering';
+        const typeSlug = (() => {
+          if (/boek|booking|afspraak|reserv|agenda/.test(nameL)) return 'booking';
+          if (/website|site/.test(nameL)) return 'website';
+          if (/chatbot|chat/.test(nameL)) return 'chatbot';
+          if (/dashboard/.test(nameL)) return 'dashboard';
+          if (/landing/.test(nameL)) return 'landing';
+          if (/faq/.test(nameL)) return 'faq';
+          return nameL.replace(/[^a-z]/g, '').substring(0, 20) || 'deliverable';
+        })();
 
         const styleLine = `\nMatch the visual style of ${lead.websiteUrl || lead.companyName}. Primary color: ${style.color}. Font: ${style.font}.`;
 
@@ -9491,6 +9510,7 @@ app.get('/sites/:siteSlug', (req, res) => {
 
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Niet gevonden' });
+  if (req.path.startsWith('/sites/')) return res.status(404).send('<h1>Pagina niet gevonden</h1>');
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
