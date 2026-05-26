@@ -5764,52 +5764,58 @@ app.get('/api/test-all-services', requireAdmin, async (req, res) => {
   let passed = 0;
   let failed = 0;
 
-  for (let idx = 0; idx < AUTO_BUILDABLE.length; idx++) {
-    const serviceName = AUTO_BUILDABLE[idx];
-    let type = 'TEXT_DOCUMENT';
-    let length = 0;
-    let success = false;
-    let errorMsg;
+  // Outer try/catch ensures no unhandled rejection crashes the process if the
+  // client disconnects (e.g. Railway LB timeout) while the 10-min loop is running.
+  try {
+    for (let idx = 0; idx < AUTO_BUILDABLE.length; idx++) {
+      // Yield the event loop before each iteration so other requests are not starved.
+      await new Promise(r => process.nextTick(r));
 
-    try {
-      if (HTML_KW.test(serviceName) && !FORCE_TXT.test(serviceName)) {
-        type = 'HTML_BUILD';
-        const isBooking   = /boek|booking|afspraak|reserv|agenda|integreren.*systeem|systeem.*integrer/i.test(serviceName);
-        const isChatbot   = /chatbot|faq.*assistent|kennisbank/i.test(serviceName);
-        const isDashboard = /dashboard/i.test(serviceName);
-        let prompt;
-        if (isBooking) {
-          prompt = `${BUILD_HTML_RULES}Build a complete HTML booking page for ${testLead.companyName} in ${testLead.location}.${intakeCtx}
+      const serviceName = AUTO_BUILDABLE[idx];
+      let type = 'TEXT_DOCUMENT';
+      let length = 0;
+      let success = false;
+      let errorMsg;
+
+      try {
+        if (HTML_KW.test(serviceName) && !FORCE_TXT.test(serviceName)) {
+          type = 'HTML_BUILD';
+          const isBooking   = /boek|booking|afspraak|reserv|agenda|integreren.*systeem|systeem.*integrer/i.test(serviceName);
+          const isChatbot   = /chatbot|faq.*assistent|kennisbank/i.test(serviceName);
+          const isDashboard = /dashboard/i.test(serviceName);
+          let prompt;
+          if (isBooking) {
+            prompt = `${BUILD_HTML_RULES}Build a complete HTML booking page for ${testLead.companyName} in ${testLead.location}.${intakeCtx}
 
 MUST include in <body>: header with company name, service selection cards (3 services), Mon-Fri calendar (past days disabled), time slot picker (09:00-17:00), contact form (naam/email/tel/dienst), submit with loading state, success confirmation screen.
 Style: white bg, #6366f1 accent, Inter from Google Fonts, fully mobile responsive.`;
-        } else if (isChatbot) {
-          prompt = `${BUILD_HTML_RULES}Build a complete HTML chatbot / FAQ assistant page for ${testLead.companyName} (${testLead.niche} sector).${intakeCtx}
+          } else if (isChatbot) {
+            prompt = `${BUILD_HTML_RULES}Build a complete HTML chatbot / FAQ assistant page for ${testLead.companyName} (${testLead.niche} sector).${intakeCtx}
 
 MUST include in <body>: floating chat widget with open/close button, 15+ pre-programmed Q&A pairs relevant to ${testLead.niche} business, animated message bubbles, typing indicator animation, lead capture form at bottom.
 Style: white bg, #6366f1 accent, Inter from Google Fonts, mobile responsive.`;
-        } else if (isDashboard) {
-          prompt = `${BUILD_HTML_RULES}Build a complete HTML analytics dashboard for ${testLead.companyName}.${intakeCtx}
+          } else if (isDashboard) {
+            prompt = `${BUILD_HTML_RULES}Build a complete HTML analytics dashboard for ${testLead.companyName}.${intakeCtx}
 
 MUST include in <body>: KPI cards (revenue/visitors/conversions/engagement) with realistic demo numbers, chart placeholders with SVG demo data, sidebar navigation, date filter dropdown, responsive data table.
 Style: white bg, #6366f1 accent, Inter from Google Fonts, mobile responsive.`;
-        } else {
-          prompt = `${BUILD_HTML_RULES}Build a complete HTML ${serviceName} page for ${testLead.companyName} (${testLead.niche} sector) in ${testLead.location}.${intakeCtx}
+          } else {
+            prompt = `${BUILD_HTML_RULES}Build a complete HTML ${serviceName} page for ${testLead.companyName} (${testLead.niche} sector) in ${testLead.location}.${intakeCtx}
 
 MUST include in <body>: professional branded header, rich content sections fully relevant to "${serviceName}", at least 3 interactive or informative sections, clear CTA section with form or button, professional footer.
 Style: white bg, #6366f1 accent, Inter from Google Fonts, mobile responsive. Minimum 500 words of visible body content.`;
-        }
+          }
 
-        const html = await aiCallBuild(prompt);
-        const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-        const bodyLen   = (bodyMatch?.[1]?.trim() || '').length;
-        length  = bodyLen;
-        success = bodyLen >= 200;
-        if (!success) errorMsg = `HTML body too short: ${bodyLen} chars`;
+          const html = await aiCallBuild(prompt);
+          const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+          const bodyLen   = (bodyMatch?.[1]?.trim() || '').length;
+          length  = bodyLen;
+          success = bodyLen >= 200;
+          if (!success) errorMsg = `HTML body too short: ${bodyLen} chars`;
 
-      } else if (STRAT_KW.test(serviceName)) {
-        type = 'STRATEGY_DOCUMENT';
-        const content = await aiCall(`Schrijf een professioneel "${serviceName}" document voor ${testLead.companyName} (${testLead.niche}, ${testLead.location}).${intakeCtx}
+        } else if (STRAT_KW.test(serviceName)) {
+          type = 'STRATEGY_DOCUMENT';
+          const content = await aiCall(`Schrijf een professioneel "${serviceName}" document voor ${testLead.companyName} (${testLead.niche}, ${testLead.location}).${intakeCtx}
 
 Structuur:
 1. Managementsamenvatting (3-5 bevindingen)
@@ -5820,41 +5826,50 @@ Structuur:
 6. Aanbevolen volgende stap
 
 Schrijf in professioneel Nederlands, minimaal 400 woorden. Wees concreet voor ${testLead.niche} in ${testLead.location}.`);
-        length  = content.length;
-        success = length >= 200;
-        if (!success) errorMsg = `Content too short: ${length} chars`;
+          length  = content.length;
+          success = length >= 200;
+          if (!success) errorMsg = `Content too short: ${length} chars`;
 
-      } else {
-        type = 'TEXT_DOCUMENT';
-        const content = await aiCall(`Lever de dienst "${serviceName}" volledig op voor ${testLead.companyName} (${testLead.niche}, ${testLead.location}).${intakeCtx}
+        } else {
+          type = 'TEXT_DOCUMENT';
+          const content = await aiCall(`Lever de dienst "${serviceName}" volledig op voor ${testLead.companyName} (${testLead.niche}, ${testLead.location}).${intakeCtx}
 
 Schrijf complete, direct bruikbare inhoud in professioneel Nederlands:
 - Specifiek voor hun niche (${testLead.niche}) en locatie (${testLead.location})
 - Klaar om te publiceren of te versturen — geen placeholders zoals [naam] of [bedrijf]
 - Minimaal 300 woorden bruikbare content`);
-        length  = content.length;
-        success = length >= 200;
-        if (!success) errorMsg = `Content too short: ${length} chars`;
+          length  = content.length;
+          success = length >= 200;
+          if (!success) errorMsg = `Content too short: ${length} chars`;
+        }
+
+        console.log(`[Test] Service: ${serviceName}`);
+        console.log(`[Test] Type: ${type}`);
+        console.log(`[Test] Length: ${length}`);
+        console.log(`[Test] Success: ${success}`);
+        if (success) passed++; else failed++;
+        results.push({ service: serviceName, type, success, length, ...(errorMsg ? { error: errorMsg } : {}) });
+
+      } catch (err) {
+        console.log(`[Test] Service: ${serviceName} — FAILED: ${err.message}`);
+        failed++;
+        results.push({ service: serviceName, type, success: false, length: 0, error: err.message });
       }
 
-      console.log(`[Test] Service: ${serviceName}`);
-      console.log(`[Test] Type: ${type}`);
-      console.log(`[Test] Length: ${length}`);
-      console.log(`[Test] Success: ${success}`);
-      if (success) passed++; else failed++;
-      results.push({ service: serviceName, type, success, length, ...(errorMsg ? { error: errorMsg } : {}) });
-
-    } catch (err) {
-      console.log(`[Test] Service: ${serviceName} — FAILED: ${err.message}`);
-      failed++;
-      results.push({ service: serviceName, type, success: false, length: 0, error: err.message });
+      // Pause between calls to stay under rate limits
+      if (idx < AUTO_BUILDABLE.length - 1) await new Promise(r => setTimeout(r, 2000));
     }
 
-    // Small pause between calls to stay under rate limits
-    if (idx < AUTO_BUILDABLE.length - 1) await new Promise(r => setTimeout(r, 2000));
+    // Guard against writing to a closed socket (client disconnected during long run)
+    if (!res.writableEnded) {
+      res.json({ total: AUTO_BUILDABLE.length, passed, failed, results });
+    }
+  } catch (outerErr) {
+    console.error('[Test] Fatal error in test-all-services:', outerErr.message);
+    if (!res.writableEnded) {
+      res.status(500).json({ error: outerErr.message, total: AUTO_BUILDABLE.length, passed, failed, results });
+    }
   }
-
-  res.json({ total: AUTO_BUILDABLE.length, passed, failed, results });
 });
 
 // â"€â"€â"€ Server-side Claude helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
