@@ -1164,9 +1164,11 @@ async function submitContact(e) {
 })();
 
 // ── Services section renderer ─────────────────────────────────────────────────
+const _esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 (async function renderServices() {
   try {
     const services = await fetch('/api/services').then(r => r.json());
+    if (!Array.isArray(services)) throw new Error('Invalid response');
 
     // Icon map — service name keywords → emoji
     const icons = [
@@ -1281,11 +1283,11 @@ async function submitContact(e) {
       monthlyGrid.innerHTML = monthly.map(s => {
         const cat = getCategory(s.name);
         const selectVal = catToSelectVal[cat] || 'marketing';
-        return `<div class="svc-card visible" data-cat="${cat}" data-selectval="${selectVal}" onclick="scrollToContactWithService(this.dataset.selectval)">
+        return `<div class="svc-card visible" data-cat="${_esc(cat)}" data-selectval="${_esc(selectVal)}" onclick="scrollToContactWithService(this.dataset.selectval)">
           <div class="svc-card-icon">${getIcon(s.name)}</div>
-          <div class="svc-card-name">${s.name}</div>
-          <div class="svc-card-desc">${s.description || ''}</div>
-          <div class="svc-card-price">€${s.price}/mnd</div>
+          <div class="svc-card-name">${_esc(s.name)}</div>
+          <div class="svc-card-desc">${_esc(s.description || '')}</div>
+          <div class="svc-card-price">€${Number(s.price).toLocaleString('nl-NL')}/mnd</div>
         </div>`;
       }).join('');
     }
@@ -1338,9 +1340,9 @@ async function submitContact(e) {
             ${groupItems.map(s => `
               <div class="svc-card" onclick="scrollToContactWithService('website')">
                 <div class="svc-card-icon">${getIcon(s.name)}</div>
-                <div class="svc-card-name">${s.name}</div>
-                <div class="svc-card-desc">${s.description || ''}</div>
-                <div class="svc-card-price" style="color:#16a34a">€${s.price} eenmalig</div>
+                <div class="svc-card-name">${_esc(s.name)}</div>
+                <div class="svc-card-desc">${_esc(s.description || '')}</div>
+                <div class="svc-card-price" style="color:#16a34a">€${Number(s.price).toLocaleString('nl-NL')} eenmalig</div>
               </div>`).join('')}
           </div>
         </div>`;

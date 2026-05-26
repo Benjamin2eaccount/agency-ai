@@ -586,8 +586,8 @@ async function renderDashboard() {
         ${upsells.map(o => `
           <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f3f4f6;gap:12px;flex-wrap:wrap">
             <div style="min-width:0">
-              <div style="font-size:14px;font-weight:600;color:var(--text-primary)">${o.companyName}</div>
-              <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Huidig: <em>${o.currentService}</em> &rarr; Voorstel: <strong>${o.upsellService}</strong> &mdash; €${(o.upsellPrice||0).toLocaleString('nl-NL')}/mnd &mdash; klant ${o.daysSince} dagen</div>
+              <div style="font-size:14px;font-weight:600;color:var(--text-primary)">${esc(o.companyName)}</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Huidig: <em>${esc(o.currentService)}</em> &rarr; Voorstel: <strong>${esc(o.upsellService)}</strong> &mdash; €${(o.upsellPrice||0).toLocaleString('nl-NL')}/mnd &mdash; klant ${o.daysSince} dagen</div>
             </div>
             <button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="generateUpsellEmail('${o.leadId}')">
               <i class="ti ti-mail"></i> Genereer upsell email
@@ -1577,7 +1577,7 @@ function viewLinkedin(id) {
   if (!item?.linkedinDm) return toast('Geen LinkedIn DM beschikbaar', 'error');
   openModal(`
     <div class="modal-header">
-      <h3>LinkedIn DM — ${item.companyName}</h3>
+      <h3>LinkedIn DM — ${esc(item.companyName)}</h3>
       <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
     </div>
     <div class="email-preview">
@@ -4800,7 +4800,7 @@ function openLeadDetail(id) {
   panel.innerHTML = `
     <div class="detail-header">
       <div>
-        <div class="detail-company">${lead.companyName}${flag ? ` ${flag}` : ''}</div>
+        <div class="detail-company">${esc(lead.companyName)}${flag ? ` ${flag}` : ''}</div>
         <div class="detail-meta">
           ${nicheBadge(lead.niche)}
           <span class="text-secondary"><i class="ti ti-map-pin"></i> ${lead.location || '—'}</span>
@@ -7744,7 +7744,7 @@ async function submitInvoice(leadId) {
       <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
     </div>
     <div style="padding:20px 24px;display:flex;flex-direction:column;gap:14px">
-      <p class="text-secondary">Stuur deze link naar <strong>${lead?.companyName}</strong>:</p>
+      <p class="text-secondary">Stuur deze link naar <strong>${esc(lead?.companyName)}</strong>:</p>
       <div class="stripe-link-box">
         <a href="${data.url}" target="_blank" class="link" style="word-break:break-all">${data.url}</a>
       </div>

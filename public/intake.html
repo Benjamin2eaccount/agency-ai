@@ -249,6 +249,7 @@
 
   <script>
     const [, , leadId, token] = window.location.pathname.split('/');
+    const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
     async function loadIntake() {
       const res = await fetch(`/api/intake/${leadId}/${token}`);
@@ -264,8 +265,8 @@
         return;
       }
 
-      document.getElementById('agencyName').textContent = data.agencyName;
-      document.getElementById('agencyFooter').textContent = data.agencyName;
+      document.getElementById('agencyName').textContent = data.agencyName || 'Agency AI';
+      document.getElementById('agencyFooter').textContent = data.agencyName || 'Agency AI';
 
       if (data.submitted) {
         showSuccess(data.companyName);
@@ -279,26 +280,26 @@
       window._intakeQuestions = data.questions || [];
 
       const servicesHTML = data.services.length
-        ? data.services.map(s => `<span class="service-badge">${s}</span>`).join('')
+        ? data.services.map(s => `<span class="service-badge">${esc(s)}</span>`).join('')
         : '';
 
       const questionsHTML = (data.questions || []).map((q, i) => {
         let input = '';
         if (q.type === 'select' && q.options?.length) {
-          input = `<select id="q_${q.id}" ${q.required ? 'required' : ''}>
+          input = `<select id="q_${esc(q.id)}" ${q.required ? 'required' : ''}>
             <option value="">Kies een optie...</option>
-            ${q.options.map(o => `<option value="${o}">${o}</option>`).join('')}
+            ${q.options.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('')}
           </select>`;
         } else if (q.type === 'textarea') {
-          input = `<textarea id="q_${q.id}" placeholder="${q.placeholder || ''}" rows="3" ${q.required ? 'required' : ''}></textarea>`;
+          input = `<textarea id="q_${esc(q.id)}" placeholder="${esc(q.placeholder || '')}" rows="3" ${q.required ? 'required' : ''}></textarea>`;
         } else {
-          input = `<input type="${q.type === 'url' ? 'url' : 'text'}" id="q_${q.id}" placeholder="${q.placeholder || ''}" ${q.required ? 'required' : ''}>`;
+          input = `<input type="${q.type === 'url' ? 'url' : 'text'}" id="q_${esc(q.id)}" placeholder="${esc(q.placeholder || '')}" ${q.required ? 'required' : ''}>`;
         }
         return `
           <div class="form-group">
             <label>
               <span class="question-num">${i + 1}</span>
-              ${q.label}${q.required ? '<span class="req">*</span>' : ''}
+              ${esc(q.label)}${q.required ? '<span class="req">*</span>' : ''}
             </label>
             ${input}
           </div>`;
@@ -307,7 +308,7 @@
       document.getElementById('mainContent').innerHTML = `
         <div class="hero-card">
           <div class="hero-label">Intake formulier</div>
-          <div class="hero-company">${data.companyName}</div>
+          <div class="hero-company">${esc(data.companyName)}</div>
           <div class="hero-sub">Welkom! Vul onderstaande vragen in zodat we zo goed mogelijk van start kunnen gaan.</div>
           ${servicesHTML ? `<div class="services-row">${servicesHTML}</div>` : ''}
         </div>
@@ -391,7 +392,7 @@
           </div>
           <div class="success-title">Bedankt!</div>
           <div class="success-sub">
-            We gaan direct aan de slag${company ? ' voor ' + company : ''}.<br><br>
+            We gaan direct aan de slag${company ? ' voor ' + esc(company) : ''}.<br><br>
             U hoort binnen 24 uur van ons.
           </div>
         </div>`;

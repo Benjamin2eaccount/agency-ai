@@ -3939,8 +3939,14 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
 /* Alert banners */
 [data-theme="dark"] .alert-banner,
 [data-theme="dark"] .alert-banner-amber { background: #2d1e05; border-color: #78350f; color: #fcd34d; }
+[data-theme="dark"] .alert-banner-title { color: #fcd34d; }
+[data-theme="dark"] .alert-banner-sub   { color: #f9a849; }
 [data-theme="dark"] .alert-banner-red   { background: #2d1515; border-color: #7f1d1d; color: #fca5a5; }
 [data-theme="dark"] .alert-banner-blue  { background: #1e2e5c; border-color: #1d4ed8; color: #93c5fd; }
+
+/* Inbox problem tags/pills */
+[data-theme="dark"] .inbox-problem-tag  { background: #2d1e05; color: #fcd34d; border-color: #78350f; }
+[data-theme="dark"] .inbox-problem-pill { background: #2d1e05; color: #fcd34d; border-color: #78350f; }
 
 /* Filter chips/tabs (active state) */
 [data-theme="dark"] .filter-chip { background: var(--surface); border-color: var(--border); color: var(--text-secondary); }
