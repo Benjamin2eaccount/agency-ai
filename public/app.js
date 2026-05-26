@@ -1,5 +1,5 @@
-// ─── Auth guard — runs before anything else ───────────────────────────────────
-(async function checkAuth() {
+// ─── Auth guard — runs after DOM is ready so localStorage is fully committed ──
+document.addEventListener('DOMContentLoaded', async () => {
   if (!window.location.pathname.startsWith('/app')) return;
   const token = localStorage.getItem('agencyToken');
   if (!token) {
@@ -18,7 +18,7 @@
   } catch {
     // If server unreachable, allow offline PWA use
   }
-})();
+});
 
 // ─── State ────────────────────────────────────────────────────────────────────
 const state = {

@@ -347,6 +347,9 @@
       window.location.href = '/app';
     }
 
+    // Guard against double-submit / re-click during the redirect window
+    let _redirecting = false;
+
     // ── Portal form ──────────────────────────────────────────────────────────
     const portalForm  = document.getElementById('portalForm');
     const portalInput = document.getElementById('portalCode');
@@ -407,6 +410,8 @@
 
     staffForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (_redirecting) return; // already heading to /app — ignore extra clicks
+
       const username = userInput.value.trim();
       const password = passInput.value;
 
@@ -444,16 +449,20 @@
         localStorage.setItem('myName', data.myName);
         localStorage.setItem('agencyRole', data.role || 'admin');
 
+        _redirecting = true; // block any further submits
         staffBtn.style.background = '#10b981';
         staffBtn.querySelector('.btn-text').textContent = '✓ Ingelogd';
-        setTimeout(() => { window.location.href = '/app'; }, 400);
+        setTimeout(() => { window.location.href = '/app'; }, 100);
 
       } catch {
         staffError.textContent = 'Kan geen verbinding maken met de server.';
         staffError.classList.add('visible');
       } finally {
-        staffBtn.classList.remove('loading');
-        staffBtn.disabled = false;
+        // Only restore button if we're NOT about to navigate away
+        if (!_redirecting) {
+          staffBtn.classList.remove('loading');
+          staffBtn.disabled = false;
+        }
       }
     });
 
