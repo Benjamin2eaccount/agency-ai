@@ -3511,8 +3511,8 @@ async function renderProjectPage() {
     ` : '';
 
     // Live progress cards (during build)
-    const liveCards = running && progress.length ? progress.map(p => {
-      const slug = p.service.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const liveCards = running && progress.length ? progress.filter(p => p && p.service).map(p => {
+      const slug = (p.service || '').toLowerCase().replace(/[^a-z0-9]/g, '-');
       const borderColor = p.status === 'building' ? 'var(--accent)' : p.status === 'done' ? 'var(--success)' : p.status === 'error' ? 'var(--danger)' : 'var(--border)';
       const statusHtml = p.status === 'waiting'
         ? `<span style="font-size:12px;color:var(--text-muted)"><i class="ti ti-clock"></i> Wachten</span>`
@@ -4521,6 +4521,7 @@ window.buildAllServicesForLead = async function(leadId) {
     const item = prog.find(p => p.service === serviceName);
     if (item) Object.assign(item, updates);
 
+    if (!serviceName) return;
     const slug = serviceName.toLowerCase().replace(/[^a-z0-9]/g, '-');
     const card = document.getElementById(`build-card-${leadId}-${slug}`);
     if (!card) return;

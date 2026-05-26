@@ -4211,6 +4211,16 @@ app.post('/api/leads/:id/build-all-services', requireAdmin, async (req, res) => 
       services = (lead.services || []).filter(s => names.includes(typeof s === 'string' ? s : s.name));
       if (!services.length) services = names.map(n => ({ name: n }));
     }
+
+    // Normalize: convert strings → objects, filter out null/undefined entries
+    services = services
+      .filter(s => s && (typeof s === 'string' ? s.trim() : s.name || s.service))
+      .map(s => typeof s === 'string' ? { name: s.trim() } : { ...s, name: (s.name || s.service || '').trim() })
+      .filter(s => s.name);
+
+    console.log('[Build] Services to build:', JSON.stringify(services.map(s => s.name)));
+    console.log('[Build] Selected problems:', JSON.stringify(lead.selectedProblems || []));
+
     if (!services.length) { sse({ type: 'error', service: '', message: 'Geen diensten ingesteld op dit project' }); res.end(); return; }
 
     const BASE = process.env.BASE_URL || 'http://localhost:3000';
@@ -4249,22 +4259,27 @@ Website: ${lead.websiteUrl || ''}`;
 
     for (let i = 0; i < services.length; i++) {
       const svc = services[i];
-      sse({ type: 'start', service: svc.name, index: i, total: services.length });
+      const serviceName = (svc.name || '').trim();
+      if (!serviceName) {
+        console.log('[Build] Skipping undefined service at index', i);
+        continue;
+      }
+      sse({ type: 'start', service: serviceName, index: i, total: services.length });
 
       try {
-        const nameL = svc.name.toLowerCase();
+        const nameL = serviceName.toLowerCase();
         const typeSlug = nameL.replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'levering';
 
         const styleLine = `\nMatch the visual style of ${lead.websiteUrl || lead.companyName}. Primary color: ${style.color}. Font: ${style.font}.`;
 
         let deliverable;
 
-        if (HTML_KEYWORDS.test(svc.name)) {
+        if (HTML_KEYWORDS.test(serviceName)) {
           // ── HTML build ──────────────────────────────────────────────────────
-          console.log(`[Build] Type: HTML_BUILD | Service: ${svc.name}`);
-          sse({ type: 'progress', service: svc.name, percent: 20 });
+          console.log(`[Build] Type: HTML_BUILD | Service: ${serviceName}`);
+          sse({ type: 'progress', service: serviceName, percent: 20 });
 
-          const isBooking = /booking|reserv|afspra|agenda/i.test(svc.name);
+          const isBooking = /booking|reserv|afspra|agenda/i.test(serviceName);
           let prompt;
           if (isBooking) {
             prompt = `${BUILD_HTML_RULES}Build a complete HTML booking page for ${lead.companyName} in ${lead.location || ''}.
@@ -4272,29 +4287,29 @@ ${intakeContext}${styleLine}
 
 MUST include in <body>: header with company name, service selection cards, Mon-Fri calendar (past days disabled), time slot picker (09:00-17:00), contact form (naam/email/tel), submit with loading state, success screen.
 Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile responsive.`;
-          } else if (/chatbot|faq.*assistent|kennisbank/i.test(svc.name)) {
+          } else if (/chatbot|faq.*assistent|kennisbank/i.test(serviceName)) {
             prompt = `${BUILD_HTML_RULES}Build a complete HTML chatbot / FAQ assistant page for ${lead.companyName}.
 ${intakeContext}${styleLine}
 
 MUST include in <body>: clean chat interface, 15+ pre-programmed Q&A pairs relevant to their niche (${lead.niche || ''}), floating chat widget with open/close, message bubbles, typing indicator, lead capture form when user asks to contact.
 Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile responsive.`;
-          } else if (/dashboard/i.test(svc.name)) {
+          } else if (/dashboard/i.test(serviceName)) {
             prompt = `${BUILD_HTML_RULES}Build a complete HTML analytics dashboard for ${lead.companyName}.
 ${intakeContext}${styleLine}
 
 MUST include in <body>: KPI cards (revenue, visitors, conversions, engagement), chart placeholders with realistic demo data, sidebar nav, date filter, data table, responsive grid layout.
 Style: white bg, ${style.color} accent, ${style.font}, mobile responsive.`;
           } else {
-            prompt = `${BUILD_HTML_RULES}Build a complete HTML ${svc.name} page for ${lead.companyName}.
+            prompt = `${BUILD_HTML_RULES}Build a complete HTML ${serviceName} page for ${lead.companyName}.
 ${intakeContext}${styleLine}
 
-MUST include in <body>: professional header, rich body content relevant to ${svc.name}, interactive elements, clear CTA section, footer.
+MUST include in <body>: professional header, rich body content relevant to ${serviceName}, interactive elements, clear CTA section, footer.
 Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile responsive. Minimum 500 words visible content.`;
           }
 
-          sse({ type: 'progress', service: svc.name, percent: 50 });
+          sse({ type: 'progress', service: serviceName, percent: 50 });
           const html = await aiCallBuild(prompt);
-          sse({ type: 'progress', service: svc.name, percent: 80 });
+          sse({ type: 'progress', service: serviceName, percent: 80 });
           { const bm = html.match(/<body[^>]*>([\s\S]*)<\/body>/i); console.log(`[Build] Body length: ${(bm?.[1]?.trim()||'').length} | Success: true`); }
 
           const sitesDir = path.join(__dirname, 'public', 'sites', companySlug);
@@ -4303,17 +4318,17 @@ Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile 
           fs.writeFileSync(path.join(sitesDir, filename), html, 'utf8');
           const url = `${BASE}/sites/${companySlug}/${filename}`;
 
-          const todoText = await aiCall(`Schrijf max 5 concrete stappen voor de klant om "${svc.name}" te activeren op hun website. Live URL: ${url}. Embed code: <iframe src="${url}" width="100%" height="600" frameborder="0"></iframe>. Stap-voor-stap, in het Nederlands.`).catch(() => '');
+          const todoText = await aiCall(`Schrijf max 5 concrete stappen voor de klant om "${serviceName}" te activeren op hun website. Live URL: ${url}. Embed code: <iframe src="${url}" width="100%" height="600" frameborder="0"></iframe>. Stap-voor-stap, in het Nederlands.`).catch(() => '');
 
           const id = Date.now().toString(36) + i;
-          deliverable = { id, service: svc.name, type: 'code', status: 'wacht_op_goedkeuring', html, url, todoText, builtAt: new Date().toISOString() };
-          sse({ type: 'done', service: svc.name, index: i, total: services.length, deliverableType: 'code', url, deliverableId: id });
+          deliverable = { id, service: serviceName, type: 'code', status: 'wacht_op_goedkeuring', html, url, todoText, builtAt: new Date().toISOString() };
+          sse({ type: 'done', service: serviceName, index: i, total: services.length, deliverableType: 'code', url, deliverableId: id });
 
-        } else if (STRAT_KEYWORDS.test(svc.name)) {
+        } else if (STRAT_KEYWORDS.test(serviceName)) {
           // ── Strategy / report document ────────────────────────────────────
-          console.log(`[Build] Type: STRATEGY_DOCUMENT | Service: ${svc.name}`);
-          sse({ type: 'progress', service: svc.name, percent: 30 });
-          const content = await aiCall(`Schrijf een professioneel "${svc.name}" rapport voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).
+          console.log(`[Build] Type: STRATEGY_DOCUMENT | Service: ${serviceName}`);
+          sse({ type: 'progress', service: serviceName, percent: 30 });
+          const content = await aiCall(`Schrijf een professioneel "${serviceName}" rapport voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).
 ${intakeContext}
 
 Structuur:
@@ -4325,17 +4340,17 @@ Structuur:
 6. Aanbevolen volgende stap
 
 Schrijf in professioneel Nederlands, maximaal 600 woorden. Wees concreet en specifiek voor hun niche/locatie.`);
-          sse({ type: 'progress', service: svc.name, percent: 80 });
+          sse({ type: 'progress', service: serviceName, percent: 80 });
 
           const id = Date.now().toString(36) + i;
-          deliverable = { id, service: svc.name, type: 'strategy', status: 'wacht_op_goedkeuring', content, builtAt: new Date().toISOString() };
-          sse({ type: 'done', service: svc.name, index: i, total: services.length, deliverableType: 'strategy', deliverableId: id });
+          deliverable = { id, service: serviceName, type: 'strategy', status: 'wacht_op_goedkeuring', content, builtAt: new Date().toISOString() };
+          sse({ type: 'done', service: serviceName, index: i, total: services.length, deliverableType: 'strategy', deliverableId: id });
 
         } else {
           // ── Text document (content, copy, scripts) ────────────────────────
-          console.log(`[Build] Type: TEXT_DOCUMENT | Service: ${svc.name}`);
-          sse({ type: 'progress', service: svc.name, percent: 30 });
-          const content = await aiCall(`Lever de dienst "${svc.name}" voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).
+          console.log(`[Build] Type: TEXT_DOCUMENT | Service: ${serviceName}`);
+          sse({ type: 'progress', service: serviceName, percent: 30 });
+          const content = await aiCall(`Lever de dienst "${serviceName}" voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).
 ${intakeContext}
 
 Schrijf complete, direct bruikbare inhoud in professioneel Nederlands:
@@ -4343,19 +4358,19 @@ Schrijf complete, direct bruikbare inhoud in professioneel Nederlands:
 - Klaar om te gebruiken (geen placeholders zoals [naam] of [bedrijf])
 - Minimum 300 woorden aan bruikbare content
 
-Dienst: ${svc.description || svc.name}`);
-          sse({ type: 'progress', service: svc.name, percent: 80 });
+Dienst: ${svc.description || serviceName}`);
+          sse({ type: 'progress', service: serviceName, percent: 80 });
 
           const id = Date.now().toString(36) + i;
-          deliverable = { id, service: svc.name, type: 'document', status: 'wacht_op_goedkeuring', content, builtAt: new Date().toISOString() };
-          sse({ type: 'done', service: svc.name, index: i, total: services.length, deliverableType: 'document', deliverableId: id });
+          deliverable = { id, service: serviceName, type: 'document', status: 'wacht_op_goedkeuring', content, builtAt: new Date().toISOString() };
+          sse({ type: 'done', service: serviceName, index: i, total: services.length, deliverableType: 'document', deliverableId: id });
         }
 
         deliverables.push(deliverable);
       } catch (err) {
         const id = Date.now().toString(36) + i;
-        deliverables.push({ id, service: svc.name, type: 'unknown', status: 'error', error: err.message, builtAt: new Date().toISOString() });
-        sse({ type: 'error', service: svc.name, index: i, total: services.length, message: err.message });
+        deliverables.push({ id, service: serviceName, type: 'unknown', status: 'error', error: err.message, builtAt: new Date().toISOString() });
+        sse({ type: 'error', service: serviceName, index: i, total: services.length, message: err.message });
       }
     }
 
