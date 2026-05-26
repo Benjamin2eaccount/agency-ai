@@ -10349,7 +10349,20 @@ async function testAllServices() {
   `);
 
   try {
-    const res = await api('/api/test-all-services');
+    // Use raw fetch with a 15-minute AbortController — the api() wrapper has no
+    // explicit timeout and browsers/proxies can drop long-lived connections early.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 900000); // 15 minutes
+    let res;
+    try {
+      res = await fetch('/api/test-all-services', {
+        headers: { 'Authorization': 'Bearer ' + getToken() },
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (res.status === 401) { logout(); return; }
     const data = await res.json();
 
     const typeIcon = t => t === 'HTML_BUILD' ? '💻' : t === 'STRATEGY_DOCUMENT' ? '📊' : '📄';

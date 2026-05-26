@@ -9741,6 +9741,16 @@ app.get('/sites/:siteSlug', (req, res) => {
   res.sendFile(sitePath);
 });
 
+// ─── test-results.json — explicit route so SPA fallback doesn't intercept it ──
+app.get('/test-results.json', (req, res) => {
+  const p = path.join(__dirname, 'public', 'test-results.json');
+  if (!fs.existsSync(p)) {
+    return res.status(404).json({ error: 'Nog geen testresultaten. Voer eerst een test uit via Settings → Diensten.' });
+  }
+  res.setHeader('Content-Type', 'application/json');
+  res.sendFile(p);
+});
+
 // ─── SPA fallback ─────────────────────────────────────────────────────────────
 
 app.get('*', (req, res) => {
