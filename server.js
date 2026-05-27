@@ -1052,22 +1052,55 @@ app.get('/api/intake/:leadId/:token', async (req, res) => {
 
   // Generate questions with AI if not yet cached
   if (!lead.intakeQuestions) {
-    const serviceNames = (lead.services || []).map(s => s.name).join(', ') || 'AI-marketingdiensten';
+    const serviceNames = (lead.services || []).map(s => typeof s === 'string' ? s : s.name).filter(Boolean).join('\n- ') || 'AI-marketingdiensten';
+    const problemsList = (lead.selectedProblems || lead.problems || []).map(p => typeof p === 'string' ? p : p.text).filter(Boolean).join('\n- ');
+    const ourEmail = lead.emailA?.body || lead.email?.body || '';
+    const theirReply = (lead.replyHistory || []).map(r => r.body || r.text || '').filter(Boolean).join('\n') || '';
+    const langNote = (lead.language && lead.language !== 'nl') ? 'English' : 'Dutch (Nederlands)';
     try {
-      const questions = await aiJSON(`Je bent een projectmanager bij een AI marketing bureau.
-Genereer een intake vragenlijst voor een nieuw klant: ${lead.companyName} (${lead.niche}, ${lead.location}).
-Diensten waarvoor we gaan starten: ${serviceNames}.
-Maak 6-8 gerichte vragen die echt nuttig zijn voor de uitvoering. Mix van korte antwoorden en langere tekstvelden.
-Antwoord ALLEEN als JSON: { "questions": [{ "id": "q1", "label": "vraag tekst", "type": "text|textarea|select|url", "placeholder": "...", "options": ["optie1","optie2"] (alleen bij type select), "required": true/false }] }`);
+      const questions = await aiJSON(`You are a project manager at an AI marketing agency generating a client intake form.
+
+COMPANY: ${lead.companyName}
+LOCATION: ${lead.location || ''}
+NICHE: ${lead.niche || ''}
+WEBSITE: ${lead.websiteUrl || ''}
+LANGUAGE: ${langNote}
+
+PROBLEMS WE WILL SOLVE:
+${problemsList ? `- ${problemsList}` : '(not specified)'}
+
+SERVICES PURCHASED:
+- ${serviceNames}
+
+EMAIL CONVERSATION SO FAR:
+Our outreach email: ${ourEmail ? ourEmail.substring(0, 600) : '(none)'}
+Their reply: ${theirReply ? theirReply.substring(0, 400) : '(no reply yet)'}
+
+Generate 6-8 intake questions that are SPECIFIC to the problems we will solve and what was discussed.
+
+Rules:
+1. Each question must be directly useful to BUILD the deliverable (not generic)
+2. Reference the specific problems and services, not general marketing goals
+3. For any booking/website/chatbot build: ask exactly what content, services, prices, times are needed
+4. Ask about brand style (colors, tone, examples they like) — this is always useful
+5. Ask about their target audience specifically (not "who is your audience?" — be specific to their niche)
+6. Reference the email conversation naturally where relevant
+7. Write ALL questions in ${langNote}
+
+BAD question: "What are your goals?"
+GOOD question: "Welke 3 diensten moeten er in het boekingssysteem staan, en wat is de prijs en duur van elk?"
+
+Return ONLY valid JSON (no markdown):
+{ "questions": [{ "id": "q1", "label": "vraag tekst", "type": "text|textarea|select|url", "placeholder": "...", "options": ["optie1","optie2"] (only for type select, else null), "required": true }] }`);
       lead.intakeQuestions = questions?.questions || [];
     } catch {
       lead.intakeQuestions = [
-        { id: 'q1', label: 'Wat is de website URL van je bedrijf?', type: 'url', placeholder: 'https://...', required: false },
-        { id: 'q2', label: 'Wie is jullie doelgroep?', type: 'textarea', placeholder: 'Beschrijf je ideale klant...', required: true },
-        { id: 'q3', label: 'Wat is jullie maandelijkse marketingbudget?', type: 'select', options: ['< €500', '€500–€1.000', '€1.000–€2.500', '€2.500+'], required: true },
-        { id: 'q4', label: 'Op welke platforms zijn jullie al actief?', type: 'textarea', placeholder: 'Instagram, Facebook, LinkedIn...', required: false },
-        { id: 'q5', label: 'Wat is het belangrijkste doel voor de komende 3 maanden?', type: 'textarea', placeholder: 'Meer leads, meer volgers, betere website...', required: true },
-        { id: 'q6', label: 'Zijn er al bestaande campagnes of advertentieaccounts?', type: 'text', placeholder: 'Ja / nee + toelichting', required: false },
+        { id: 'q1', label: lead.language !== 'nl' ? 'What is the URL of your website?' : 'Wat is de URL van jullie website?', type: 'url', placeholder: 'https://...', required: false },
+        { id: 'q2', label: lead.language !== 'nl' ? 'Who is your target audience?' : 'Wie is jullie doelgroep?', type: 'textarea', placeholder: lead.language !== 'nl' ? 'Describe your ideal customer...' : 'Beschrijf je ideale klant...', required: true },
+        { id: 'q3', label: lead.language !== 'nl' ? 'What are your brand colors?' : 'Wat zijn jullie merkkleur(en)?', type: 'text', placeholder: '#2563eb, donkerblauw...', required: false },
+        { id: 'q4', label: lead.language !== 'nl' ? 'Tone of voice: formal or informal?' : 'Toon van communicatie: formeel of informeel?', type: 'select', options: lead.language !== 'nl' ? ['Informal (you/your)', 'Formal (you/your — formal)'] : ['Informeel (jij/je/jouw)', 'Formeel (u/uw)'], required: true },
+        { id: 'q5', label: lead.language !== 'nl' ? 'What is the most important result for the next 3 months?' : 'Wat is het belangrijkste resultaat voor de komende 3 maanden?', type: 'textarea', placeholder: lead.language !== 'nl' ? 'More leads, more bookings...' : 'Meer leads, meer boekingen...', required: true },
+        { id: 'q6', label: lead.language !== 'nl' ? 'Are there examples of websites or brands you like?' : 'Zijn er websites of merken waarvan jullie de stijl mooi vinden?', type: 'textarea', placeholder: 'https://voorbeeld.nl, ...', required: false },
       ];
     }
     const idx = leads.findIndex(l => l.id === lead.id);
