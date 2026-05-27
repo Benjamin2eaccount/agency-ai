@@ -145,7 +145,7 @@ if (!readJSON('settings.json')) {
     gmailAddress: '', gmailPassword: '', linkedinUrl: '', stripeSecretKey: '',
     mollieApiKey: '', paypalMe: '', preferredPaymentMethod: 'bank_transfer',
     bankTransferIban: '', bankTransferName: '', bankTransferBic: '', paymentTermDays: 14,
-    dailyRunTime: '09:00', leadsPerDay: 15, autoApproveScore: 8.0, automationPaused: false,
+    dailyRunTime: '09:00', leadsPerDay: 15, autoApproveScore: 8.0, automationPaused: false, autoArchiveEnabled: true, autoArchiveDays: 30,
     replyDetection: true, dailyBriefingEnabled: true, dailyBriefingTime: '08:45',
     smartAutoApprove: { enabled: false, scoreThreshold: 8.0, requireNoAds: true, minFollowers: 5000, requireWebsite: true },
     autoClientEmails: { welcome: true, intakeReceived: true, deliveryReady: true, weekComplete: true, monthlyUpdate: true, checkIn: true },
@@ -5119,6 +5119,8 @@ app.get('/api/settings', (req, res) => {
   safe.stripeConfigured = !!(s.stripeSecretKey);
   safe.mollieConfigured = !!(s.mollieApiKey);
   safe.paypalConfigured = !!(s.paypalMe);
+  safe.autoArchiveEnabled = s.autoArchiveEnabled !== undefined ? s.autoArchiveEnabled : true;
+  safe.autoArchiveDays    = s.autoArchiveDays    || 30;
   safe.bankTransferConfigured = !!(s.bankTransferIban);
   safe.bankTransferIban = s.bankTransferIban || '';
   safe.bankTransferName = s.bankTransferName || '';
@@ -5313,6 +5315,8 @@ app.patch('/api/settings/automation', requireAdmin, (req, res) => {
   if (req.body.weeklyUpdatesEnabled !== undefined) settings.weeklyUpdatesEnabled = req.body.weeklyUpdatesEnabled;
   if (req.body.targetNiches    !== undefined) settings.targetNiches    = req.body.targetNiches;
   if (req.body.targetSubNiches !== undefined) settings.targetSubNiches = req.body.targetSubNiches;
+  if (req.body.autoArchiveEnabled !== undefined) settings.autoArchiveEnabled = req.body.autoArchiveEnabled;
+  if (req.body.autoArchiveDays    !== undefined) settings.autoArchiveDays    = parseInt(req.body.autoArchiveDays) || 30;
   writeJSON('settings.json', settings);
   scheduleCron(); // re-schedule if run time changed
   scheduleBriefingCron(); // re-schedule briefing if time changed
@@ -9372,6 +9376,39 @@ function scheduleCron() {
 cron.schedule('0 10 * * *', () => {
   console.log('[Cron] Follow-up check gestart');
   runFollowUpJob().catch(err => logError('cron_followup', 'Follow-up cron mislukt', err.message));
+});
+
+async function runAutoArchive() {
+  const settings = readJSON('settings.json') || {};
+  if (!settings.autoArchiveEnabled) return;
+  const archiveDays = parseInt(settings.autoArchiveDays) || 30;
+  const leads = readJSON('leads.json') || [];
+  const now = Date.now();
+  let archived = 0;
+  for (const lead of leads) {
+    if (lead.status !== 'sent' && lead.status !== 'dead') continue;
+    if (lead.repliedAt) continue;
+    const lastSent = lead.followup2SentAt || lead.followup1SentAt || lead.sentAt || lead.approvedAt;
+    if (!lastSent) continue;
+    const daysSince = (now - new Date(lastSent).getTime()) / 86400000;
+    if (daysSince < archiveDays) continue;
+    lead.status = 'archived';
+    lead.archivedAt = new Date().toISOString();
+    lead.archiveReason = 'geen_reactie';
+    if (!lead.history) lead.history = [];
+    lead.history.push({ event: `Automatisch gearchiveerd na ${archiveDays} dagen zonder reactie`, at: new Date().toISOString() });
+    archived++;
+  }
+  if (archived > 0) {
+    writeJSON('leads.json', leads);
+    console.log(`[AutoArchive] ${archived} leads gearchiveerd`);
+  }
+}
+
+// Auto-archive cron: daily at 10:30
+cron.schedule('30 10 * * *', () => {
+  console.log('[Cron] Auto-archief check gestart');
+  runAutoArchive().catch(err => console.error('[Cron AutoArchive] Fout:', err.message));
 });
 
 let briefingCronJob = null;

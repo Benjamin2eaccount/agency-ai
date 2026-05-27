@@ -1973,8 +1973,12 @@ async function renderLeads() {
   function getFiltered() {
     let result = leads.filter(l => {
       const matchNiche  = activeNiche === 'all' || l.niche === activeNiche;
-      const matchStatus = activeStatus === 'all' || l.status === activeStatus ||
-        (activeStatus === 'sent' && ['sent','auto-approved','followup1','followup2'].includes(l.status));
+      const matchStatus = activeStatus === 'archived'
+        ? l.status === 'archived'
+        : activeStatus === 'all'
+          ? l.status !== 'archived'
+          : l.status === activeStatus ||
+            (activeStatus === 'sent' && ['sent','auto-approved','followup1','followup2'].includes(l.status));
       const matchScore  = activeScore === 'all' ||
         (activeScore === '8+' && (l.score || 0) >= 8) ||
         (activeScore === '6+' && (l.score || 0) >= 6);
@@ -2085,10 +2089,8 @@ async function renderLeads() {
             </div>
           </div>
           <div class="lc2-footer">
-            <span class="text-muted" style="font-size:11px">${relativeTime(l.createdAt)}</span>
-            <button class="lc2-open-btn" onclick="event.stopPropagation();openLeadDetail('${l.id}')">
-              Open ›
-            </button>
+            <span class="text-muted" style="font-size:11px">${l.status === 'archived' ? `<span style="color:var(--text-secondary);font-weight:600">Gearchiveerd</span>` : relativeTime(l.createdAt)}</span>
+            ${l.status === 'archived' && isAdmin() ? `<button class="btn btn-ghost btn-sm" style="font-size:11px;height:26px;padding:0 8px" onclick="event.stopPropagation();restoreArchivedLead('${l.id}','${esc(l.companyName)}')">Herstel</button>` : `<button class="lc2-open-btn" onclick="event.stopPropagation();openLeadDetail('${l.id}')">Open ›</button>`}
           </div>
         </div>
       `;
@@ -2114,6 +2116,18 @@ async function renderLeads() {
       toast(`${name} verwijderd.`, 'success');
     } else {
       toast('Verwijderen mislukt.', 'error');
+    }
+  };
+
+  window.restoreArchivedLead = async function(id, name) {
+    const r = await api(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'dead', archivedAt: null, archiveReason: null }) });
+    if (r?.ok) {
+      const lead = leads.find(l => l.id === id);
+      if (lead) { lead.status = 'dead'; delete lead.archivedAt; delete lead.archiveReason; }
+      renderGrid();
+      toast(`${name} hersteld`, 'success');
+    } else {
+      toast('Herstellen mislukt.', 'error');
     }
   };
 
@@ -2178,6 +2192,7 @@ async function renderLeads() {
           <button class="filter-chip" data-status="replied">Gereageerd</button>
           <button class="filter-chip" data-status="client">Klant</button>
           <button class="filter-chip" data-status="dead">Dead</button>
+          <button class="filter-chip" data-status="archived" style="color:var(--text-secondary)">Archief</button>
         </div>
       </div>
       <div class="leads-filter-group">
@@ -11193,6 +11208,27 @@ async function renderSettings() {
             </div>
           </div>
           <div id="backupList" style="margin-top:12px"></div>
+        </div>
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Auto-archivering</div>
+            <div class="stg-sub">Leads zonder reactie worden na X dagen automatisch gearchiveerd</div>
+          </div>
+          <div class="stg-grid" style="align-items:center">
+            <div class="stg-field">
+              <label class="stg-label">AUTO-ARCHIVERING</label>
+              <label class="toggle-label">
+                <input type="checkbox" id="autoArchiveEnabled" ${s.autoArchiveEnabled !== false ? 'checked' : ''}>
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                Ingeschakeld
+              </label>
+            </div>
+            <div class="stg-field">
+              <label class="stg-label">ARCHIVEER NA (DAGEN)</label>
+              <input class="stg-input" type="number" id="autoArchiveDays" value="${s.autoArchiveDays || 30}" min="7" max="365" style="width:100px">
+            </div>
+          </div>
+          <p class="stg-sub" style="margin-top:8px">Leads met status "Verstuurd" of "Dead" zonder reactie worden gearchiveerd. Ze zijn nog zichtbaar via de <strong>Archief</strong> filter op de Leads pagina en komen niet terug in toekomstige runs.</p>
           <button class="btn btn-primary stg-save-btn" id="saveAutomationBtn" style="margin-top:12px"><i class="ti ti-device-floppy"></i> Opslaan</button>
         </div>
       </div>
@@ -11746,8 +11782,10 @@ function attachSettingsHandlers(s) {
         maxCallsPerDay:    parseInt(document.getElementById('aiMaxPerDay')?.value  || 500),
         maxDailyCostUsd:   parseFloat(document.getElementById('aiMaxCostDay')?.value || 10)
       },
-      aiAutoReply:     document.getElementById('aiAutoReply')?.checked ?? true,
-      aiAutoReplySend: document.getElementById('aiAutoReplySend')?.checked ?? false,
+      aiAutoReply:        document.getElementById('aiAutoReply')?.checked ?? true,
+      aiAutoReplySend:    document.getElementById('aiAutoReplySend')?.checked ?? false,
+      autoArchiveEnabled: document.getElementById('autoArchiveEnabled')?.checked ?? true,
+      autoArchiveDays:    parseInt(document.getElementById('autoArchiveDays')?.value || 30),
     };
     const res = await api('/api/settings/automation', { method: 'PATCH', body: JSON.stringify(body) });
     if (res.ok) toast('Automatisering opgeslagen', 'success');
