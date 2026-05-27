@@ -81,6 +81,8 @@ const DEFAULT_SERVICES = [
   { name: 'AI persberichten',                     price: 195,  billing: 'maandelijks', description: '2 professionele persberichten per maand voor media outreach' },
   { name: 'Google Ads remarketing',               price: 295,  billing: 'maandelijks', description: 'Display remarketing campagnes voor websitebezoekers op Google' },
   { name: 'Facebook Pixel & conversies',          price: 295,  billing: 'maandelijks', description: 'Pixel optimalisatie, custom conversies en CAPI instellen' },
+  { name: 'AI offerte generator',                  price: 245,  billing: 'maandelijks', description: 'Offertes automatisch gegenereerd op basis van klantinformatie' },
+  { name: 'AI sales opvolging',                    price: 395,  billing: 'maandelijks', description: 'Automatische opvolging van leads via email en WhatsApp' },
   // ── Eenmalige projecten (26) ──────────────────────────────────────────────────
   { name: 'Professionele website bouwen',         price: 995,  billing: 'eenmalig',    description: 'Complete website op maat gebouwd, geoptimaliseerd en gelanceerd' },
   { name: 'Webshop opzetten',                     price: 795,  billing: 'eenmalig',    description: 'Complete webshop met betaling, producten en mobile-first design' },
@@ -108,6 +110,10 @@ const DEFAULT_SERVICES = [
   { name: 'Google Bedrijfsprofiel content',       price: 95,   billing: 'eenmalig',    description: 'Volledige optimalisatie teksten voor Google Maps profiel' },
   { name: 'Social media profiel optimalisatie',   price: 95,   billing: 'eenmalig',    description: 'Bio, links, highlights en visuele uitstraling optimaliseren' },
   { name: 'FAQ pagina schrijven',                 price: 95,   billing: 'eenmalig',    description: '20 veelgestelde vragen met uitgebreide antwoorden' },
+  { name: 'AI FAQ assistent',                      price: 145,  billing: 'eenmalig',    description: 'Dynamische FAQ sectie met AI antwoorden' },
+  { name: 'AI kennisbank systeem',                 price: 195,  billing: 'eenmalig',    description: 'Slimme interne kennisbank voor klanten of teams' },
+  { name: 'AI onboarding systeem',                 price: 245,  billing: 'eenmalig',    description: 'Automatische onboarding flow voor nieuwe klanten' },
+  { name: 'AI branding kit generatie',             price: 395,  billing: 'eenmalig',    description: 'Logo, kleuren, fonts en branding assets' },
 ];
 
 // Auto-create data directory (database.js handles SQLite init)

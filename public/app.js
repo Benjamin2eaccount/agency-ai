@@ -11673,7 +11673,7 @@ function attachSettingsHandlers(s) {
   });
 
   document.getElementById('loadDefaultServicesBtn').addEventListener('click', async () => {
-    if (!confirm('Huidige diensten vervangen door de standaard lijst van 60 diensten?')) return;
+    if (!confirm('Huidige diensten vervangen door de standaard lijst van 66 diensten?')) return;
     const defaults = await apiJSON('/api/settings/services/defaults');
     if (!defaults) return toast('Laden mislukt', 'error');
     const table = document.getElementById('servicesTable');
@@ -11690,7 +11690,7 @@ function attachSettingsHandlers(s) {
         <button class="btn btn-ghost btn-sm btn-icon" onclick="this.closest('.service-row').remove()"><i class="ti ti-trash"></i></button>
       </div>
     `).join('');
-    toast('60 standaard diensten geladen — klik Opslaan om te bewaren', 'info');
+    toast('66 standaard diensten geladen — klik Opslaan om te bewaren', 'info');
   });
 
   document.getElementById('saveServicesBtn').addEventListener('click', async () => {
