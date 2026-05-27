@@ -9274,6 +9274,31 @@ window.submitRetryEmail = async function(leadId) {
   openLeadDetail(leadId);
 };
 
+window.addFixedCostRow = function() {
+  const list = document.getElementById('fixedCostsList');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'fixed-cost-row';
+  row.style.cssText = 'display:flex;gap:8px;align-items:center';
+  row.innerHTML = `
+    <input type="text" class="stg-input fc-name" placeholder="Naam (bijv. Railway hosting)" style="flex:1" oninput="updateFixedCostTotal()">
+    <div style="display:flex;align-items:center;gap:4px">
+      <span style="color:var(--text-secondary);font-size:14px">€</span>
+      <input type="number" class="stg-input fc-amount" placeholder="0" value="0" min="0" step="0.01" style="width:90px" oninput="updateFixedCostTotal()">
+    </div>
+    <button class="btn btn-ghost btn-sm" style="padding:0 8px;height:36px;color:var(--danger)" onclick="this.closest('.fixed-cost-row').remove();updateFixedCostTotal()" title="Verwijder">×</button>
+  `;
+  list.appendChild(row);
+  row.querySelector('.fc-name').focus();
+};
+
+window.updateFixedCostTotal = function() {
+  const total = [...document.querySelectorAll('#fixedCostsList .fc-amount')]
+    .reduce((sum, el) => sum + (parseFloat(el.value) || 0), 0);
+  const el = document.getElementById('fixedCostTotal');
+  if (el) el.textContent = '€' + total.toFixed(2);
+};
+
 async function quickBlacklist(leadId, companyName) {
   if (!confirm(`${companyName} blacklisten? Dit bedrijf wordt voortaan overgeslagen.`)) return;
   const res = await api('/api/leads/' + leadId + '/blacklist', { method: 'POST', body: JSON.stringify({ reason: 'Geblacklist via pipeline' }) });
@@ -11310,14 +11335,21 @@ async function renderSettings() {
         <div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title">Vaste kosten (P&amp;L)</div>
-            <div class="stg-sub">Vaste maandelijkse kosten worden meegenomen in de Winst &amp; Verlies berekening</div>
+            <div class="stg-sub">Maandelijkse kosten worden meegenomen in de Winst &amp; Verlies berekening</div>
           </div>
-          <div class="stg-grid-2">
-            <div class="stg-field">
-              <label class="stg-label">MAANDELIJKSE HOSTING KOSTEN (€)</label>
-              <input type="number" class="stg-input" id="monthlyHostingCost" value="${s.monthlyHostingCost || 0}" min="0" step="0.01" placeholder="Bijv. 25 voor Railway">
-            </div>
+          <div id="fixedCostsList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+            ${(s.fixedCosts || []).map((c, i) => `
+            <div class="fixed-cost-row" style="display:flex;gap:8px;align-items:center">
+              <input type="text" class="stg-input fc-name" placeholder="Naam (bijv. Railway hosting)" value="${esc(c.name || '')}" style="flex:1" oninput="updateFixedCostTotal()">
+              <div style="display:flex;align-items:center;gap:4px">
+                <span style="color:var(--text-secondary);font-size:14px">€</span>
+                <input type="number" class="stg-input fc-amount" placeholder="0" value="${c.amount || 0}" min="0" step="0.01" style="width:90px" oninput="updateFixedCostTotal()">
+              </div>
+              <button class="btn btn-ghost btn-sm" style="padding:0 8px;height:36px;color:var(--danger)" onclick="this.closest('.fixed-cost-row').remove();updateFixedCostTotal()" title="Verwijder">×</button>
+            </div>`).join('')}
           </div>
+          <button class="btn btn-ghost btn-sm" style="margin-bottom:12px" onclick="addFixedCostRow()"><i class="ti ti-plus"></i> Kosten toevoegen</button>
+          <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:12px">Totaal: <span id="fixedCostTotal" style="color:var(--text-primary)">€${(s.fixedCosts || []).reduce((s,c) => s + (parseFloat(c.amount)||0), 0).toFixed(2)}</span> per maand</div>
           <button class="btn btn-ghost stg-save-btn" id="savePaymentsAutoBtn2" onclick="document.getElementById('savePaymentsAutoBtn')?.click()"><i class="ti ti-device-floppy"></i> Opslaan</button>
         </div>
 
@@ -11775,7 +11807,10 @@ function attachSettingsHandlers(s) {
       btwEnabled:  document.getElementById('btwEnabled')?.checked ?? false,
       btwRate:     parseInt(document.getElementById('btwRate')?.value || 21),
       btwNumber:   document.getElementById('btwNumber')?.value?.trim() || '',
-      monthlyHostingCost: parseFloat(document.getElementById('monthlyHostingCost')?.value || 0),
+      fixedCosts: [...document.querySelectorAll('#fixedCostsList .fixed-cost-row')].map(row => ({
+        name: row.querySelector('.fc-name')?.value.trim() || '',
+        amount: parseFloat(row.querySelector('.fc-amount')?.value) || 0
+      })).filter(c => c.name),
       aiRateLimits: {
         maxCallsPerMinute: parseInt(document.getElementById('aiMaxPerMin')?.value  || 10),
         maxCallsPerHour:   parseInt(document.getElementById('aiMaxPerHour')?.value || 100),

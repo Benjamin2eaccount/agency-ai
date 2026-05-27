@@ -150,6 +150,7 @@ if (!readJSON('settings.json')) {
     smartAutoApprove: { enabled: false, scoreThreshold: 8.0, requireNoAds: true, minFollowers: 5000, requireWebsite: true },
     autoClientEmails: { welcome: true, intakeReceived: true, deliveryReady: true, weekComplete: true, monthlyUpdate: true, checkIn: true },
     autoInvoiceEnabled: false, autoInvoiceDay: 1, paymentReminderDays: 7,
+    fixedCosts: [{ name: 'Railway hosting', amount: 5 }, { name: 'Claude API', amount: 15 }, { name: 'Domein', amount: 2 }, { name: 'Google Workspace', amount: 6 }],
     monthlyReports: true, webhookToken: '', webhookConfigured: false,
     backupEnabled: true, backupTime: '02:00', backupEmail: true,
     targetCompanySizes: ['small', 'medium'],
@@ -5127,6 +5128,9 @@ app.get('/api/settings', (req, res) => {
   safe.bankTransferBic  = s.bankTransferBic  || '';
   safe.paymentTermDays  = s.paymentTermDays  || 14;
   safe.preferredPaymentMethod = s.preferredPaymentMethod || 'bank_transfer';
+  safe.fixedCosts = s.fixedCosts && s.fixedCosts.length
+    ? s.fixedCosts
+    : (s.monthlyHostingCost ? [{ name: 'Hosting', amount: s.monthlyHostingCost }] : [{ name: 'Railway hosting', amount: 5 }, { name: 'Claude API', amount: 15 }, { name: 'Domein', amount: 2 }, { name: 'Google Workspace', amount: 6 }]);
   safe.autoInvoiceEnabled = s.autoInvoiceEnabled || false;
   safe.autoInvoiceDay = s.autoInvoiceDay || 1;
   safe.paymentReminderDays = s.paymentReminderDays || 7;
@@ -5310,6 +5314,7 @@ app.patch('/api/settings/automation', requireAdmin, (req, res) => {
   if (req.body.aiAutoReply          !== undefined) settings.aiAutoReply          = req.body.aiAutoReply;
   if (req.body.aiAutoReplySend      !== undefined) settings.aiAutoReplySend      = req.body.aiAutoReplySend;
   if (req.body.monthlyHostingCost   !== undefined) settings.monthlyHostingCost   = parseFloat(req.body.monthlyHostingCost) || 0;
+  if (req.body.fixedCosts !== undefined && Array.isArray(req.body.fixedCosts)) settings.fixedCosts = req.body.fixedCosts;
   if (req.body.instagramTargeting   !== undefined) settings.instagramTargeting   = req.body.instagramTargeting;
   if (req.body.googleMapsTargeting  !== undefined) settings.googleMapsTargeting  = req.body.googleMapsTargeting;
   if (req.body.weeklyUpdatesEnabled !== undefined) settings.weeklyUpdatesEnabled = req.body.weeklyUpdatesEnabled;
@@ -8504,7 +8509,10 @@ app.get('/api/stats/pnl', authMiddleware, (req, res) => {
   const activityLog = readJSON('activity.json') || [];
 
   const USD_TO_EUR     = 0.92;
-  const hostingPerMonth = parseFloat(settings.monthlyHostingCost || 0);
+  const fixedCostsList = settings.fixedCosts && settings.fixedCosts.length
+    ? settings.fixedCosts
+    : (settings.monthlyHostingCost ? [{ name: 'Hosting', amount: settings.monthlyHostingCost }] : []);
+  const hostingPerMonth = fixedCostsList.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
   const buckets = {};
   const getM = key => { if (!buckets[key]) buckets[key] = { revenue: 0, costs: 0 }; return buckets[key]; };
 
