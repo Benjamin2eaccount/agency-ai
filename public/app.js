@@ -10362,7 +10362,7 @@ function openServiceTestModal(serviceName) {
           <input id="stWensen" class="stg-input" style="width:100%" placeholder="Professionele online aanwezigheid">
         </div>
       </div>
-      <button class="btn btn-primary" style="width:100%" onclick="runServiceTest(${JSON.stringify(esc(serviceName))})">
+      <button class="btn btn-primary" style="width:100%" data-svc="${esc(serviceName)}" onclick="runServiceTest(this.dataset.svc)">
         <i class="ti ti-test-pipe"></i> Start test
       </button>
       <div id="stResult" style="margin-top:14px"></div>
