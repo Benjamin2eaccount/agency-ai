@@ -3862,6 +3862,26 @@ CRITICAL:
 Remember: Start your response with <!DOCTYPE html> and fill the body with complete, working content.
 
 `;
+      // Extract live brand style from client website
+      const chatStyle = await extractWebsiteStyle(lead.websiteUrl);
+      const chatIntakeRaw = { ...(lead.intakeAnswers || {}), ...(lead.intakeData || {}) };
+      const chatProblems = (lead.selectedProblems || []).map(p => (typeof p === 'string' ? p : p.text || p)).filter(Boolean);
+      const chatToneNote = chatStyle.tone === 'formal' ? 'Formal/Formeel — use "u"/"uw" (not "jij/je")' : 'Informal/Informeel — use "jij"/"je"/"jouw" (not "u/uw")';
+      const chatLang = (lead.language && lead.language !== 'nl') ? 'English' : 'Dutch (Nederlands)';
+      const chatIntakeLines = Object.entries(chatIntakeRaw).filter(([, v]) => v).map(([k, v]) => `  ${k}: ${v}`).join('\n');
+
+      const chatBrandCtx = `
+BRAND & STYLE — follow exactly:
+Company: ${lead.companyName} | Location: ${lead.location || ''} | Niche: ${lead.niche || ''}
+Primary color: ${chatStyle.color} — use as accent, buttons, headers (NOT indigo unless this IS the brand color)
+Font: ${chatStyle.font} — load from Google Fonts
+Tone: ${chatToneNote}
+Language: ${chatLang}
+${chatStyle.description ? `Brand description: ${chatStyle.description}` : ''}
+${chatProblems.length ? `Problems being solved:\n${chatProblems.map(p => `- ${p}`).join('\n')}` : ''}
+${chatIntakeLines ? `Client intake answers:\n${chatIntakeLines}` : ''}
+`.trim();
+
       const msgLower = (message || '').toLowerCase();
       const typeLower = (problemType || '').toLowerCase();
       const combined = msgLower + ' ' + typeLower;
@@ -3876,35 +3896,39 @@ Remember: Start your response with <!DOCTYPE html> and fill the body with comple
       if (isBooking) {
         buildPrompt = `${PREAMBLE}Build a complete HTML booking page for ${lead.companyName} in ${lead.location || ''}.
 
+${chatBrandCtx}
+
 MUST include in <body>:
 - Header with company name and tagline
-- Step 1: Choose service (clickable cards): ${message}
+- Step 1: Choose service (clickable cards) — use intake answers for actual services/prices if available: ${message}
 - Step 2: Pick date (Mon-Fri only calendar, past dates disabled)
 - Step 3: Pick time (09:00-17:00 slots, 1-hour intervals)
 - Step 4: Contact form (naam, bedrijf, email, telefoon)
 - Submit button with loading state
 - Success confirmation screen with booking summary
 
-Style: white bg, indigo #6366f1 accent, Plus Jakarta Sans from Google Fonts, mobile responsive.`;
+Use brand color ${chatStyle.color} for all accents. Load font "${chatStyle.font}" from Google Fonts. Mobile responsive.`;
       } else if (isDocument) {
         buildPrompt = `${PREAMBLE}Build a complete HTML report/document for ${lead.companyName}.
 
+${chatBrandCtx}
+
 Task: ${message}
-Company: ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''})
 
 MUST include in <body>:
 - Professional report header with title, company name, date
-- Executive summary section (3-5 key findings)
+- Executive summary section (3-5 key findings specific to ${lead.niche || 'their industry'})
 - Main content sections with headings, data tables, bullet lists
 - Recommendations section with numbered action items
-- Footer with agency branding
+- Footer
 
-Style: clean report layout, white bg, dark headers, Inter font from Google Fonts, print-friendly.`;
+Style: clean report layout, white bg, dark headers, ${chatStyle.font} from Google Fonts, print-friendly.`;
       } else if (isStrategy) {
         buildPrompt = `${PREAMBLE}Build a complete HTML strategy document for ${lead.companyName}.
 
+${chatBrandCtx}
+
 Task: ${message}
-Company: ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''})
 
 MUST include in <body>:
 - Strategy title and company context
@@ -3914,16 +3938,18 @@ MUST include in <body>:
 - KPIs and success metrics
 - Next steps and quick wins
 
-Style: modern strategy doc layout, indigo #6366f1 accent, structured sections, Inter font.`;
+Use brand color ${chatStyle.color} for section highlights. Load font "${chatStyle.font}" from Google Fonts.`;
       } else {
         buildPrompt = `${PREAMBLE}Build a complete, fully functional standalone HTML page for ${lead.companyName}.
 
+${chatBrandCtx}
+
 Task: ${message}
-Company: ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''})
 
 Requirements:
 - Rich content in <body> — headings, paragraphs, sections, interactive elements
-- White background, indigo #6366f1 accent colour
+- Use brand color ${chatStyle.color} as accent (NOT hardcoded indigo unless that is the brand color)
+- Load font "${chatStyle.font}" from Google Fonts
 - Mobile responsive layout`;
       }
 
@@ -4423,21 +4449,43 @@ Wees concreet: welke tools, welke stappen, welke instellingen.`);
 
 // ── Website style extraction helper ──────────────────────────────────────────
 async function extractWebsiteStyle(websiteUrl) {
-  if (!websiteUrl) return { color: '#6366f1', font: 'Plus Jakarta Sans' };
+  if (!websiteUrl) return { color: '#6366f1', font: 'Plus Jakarta Sans', tone: 'informal', description: '' };
   try {
-    const r = await fetch(websiteUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(5000) });
+    const r = await fetch(websiteUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) });
     const html = await r.text();
+
+    // Color: theme-color meta → CSS variable → background-color
     const colorMatch =
       html.match(/name=["']theme-color["'][^>]+content=["']([#][0-9a-fA-F]{3,6})["']/i) ||
       html.match(/content=["']([#][0-9a-fA-F]{3,6})["'][^>]+name=["']theme-color["']/i) ||
+      html.match(/--(?:primary|brand|accent|main|color)[^:]{0,40}:\s*(#[0-9a-fA-F]{6})/i) ||
       html.match(/background(?:-color)?:\s*(#[0-9a-fA-F]{6})/i);
-    const fontMatch = html.match(/font-family:\s*['"]?([A-Za-z][A-Za-z\s]+?)['"]?\s*[,;]/);
+
+    // Font: Google Fonts URL first (most reliable), then inline CSS
+    const gFontsRaw = html.match(/fonts\.googleapis\.com[^"'<\s]*family=([A-Za-z0-9+:,;|]+)/)?.[1];
+    const gFont = gFontsRaw?.split(/[|,;]/)[0].replace(/\+/g, ' ').split(':')[0].trim();
+    const cssFontMatch = html.match(/font-family:\s*['"]?([A-Za-z][A-Za-z\s]+?)['"]?\s*[,;]/);
+
+    // Tone: count je/jij (informal) vs u/uw (formal) in visible text
+    const textSample = html.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ').substring(0, 6000);
+    const informalCount = (textSample.match(/\b(jij|je|jouw|jou)\b/gi) || []).length;
+    const formalCount   = (textSample.match(/\b(u|uw)\b/g) || []).length;
+    const tone = (formalCount > informalCount * 1.5 && formalCount >= 3) ? 'formal' : 'informal';
+
+    // Brand description from meta
+    const description = (
+      html.match(/<meta\s+name=["']description["'][^>]+content=["']([^"']{10,200})["']/i)?.[1] ||
+      html.match(/content=["']([^"']{10,200})["'][^>]+name=["']description["']/i)?.[1] || ''
+    ).trim();
+
     return {
       color: colorMatch?.[1] || '#6366f1',
-      font: fontMatch?.[1]?.trim() || 'Plus Jakarta Sans',
+      font: gFont || cssFontMatch?.[1]?.trim() || 'Plus Jakarta Sans',
+      tone,
+      description,
     };
   } catch {
-    return { color: '#6366f1', font: 'Plus Jakarta Sans' };
+    return { color: '#6366f1', font: 'Plus Jakarta Sans', tone: 'informal', description: '' };
   }
 }
 
@@ -4525,6 +4573,25 @@ Website: ${lead.websiteUrl || ''}`;
     // Extract website style for brand-matching
     const style = await extractWebsiteStyle(lead.websiteUrl);
 
+    // Compose brandContext — injected into every build prompt
+    const problemsCtxList = (lead.selectedProblems || []).map(p => (typeof p === 'string' ? p : p.text || p)).filter(Boolean);
+    const toneNote = style.tone === 'formal' ? 'Formeel — gebruik "u" en "uw" (NIET jij/je)' : 'Informeel — gebruik "jij", "je", "jouw" (NIET u/uw)';
+    const langNote = (lead.language && lead.language !== 'nl') ? 'English' : 'Nederlands';
+    const intakeLines = Object.entries(intakeRaw).filter(([, v]) => v).map(([k, v]) => `  ${k}: ${v}`).join('\n');
+
+    const brandContext = `
+MERK & STIJL — volg dit exact:
+Bedrijf: ${lead.companyName} | Locatie: ${lead.location || ''} | Niche: ${lead.niche || ''}
+Website: ${lead.websiteUrl || ''}
+Primaire kleur: ${style.color} — gebruik als accent, knoppen en headers
+Lettertype: ${style.font} — laad via Google Fonts indien beschikbaar
+Toon: ${toneNote}
+Taal van alle teksten: ${langNote}
+${style.description ? `Merkbeschrijving: ${style.description}` : ''}
+${problemsCtxList.length ? `Problemen die we oplossen:\n${problemsCtxList.map(p => `- ${p}`).join('\n')}` : ''}
+${intakeLines ? `Intake antwoorden van klant:\n${intakeLines}` : ''}
+`.trim();
+
     // Service classification
     const HTML_KEYWORDS   = /website|boek|boeking|booking|chatbot|dashboard|landingspagina|landing.*page|faq.*assistent|kennisbank|offerte.*generator|onboarding/i;
     const STRAT_KEYWORDS  = /seo.*rapport|concurrentie|audit|crm|lead.*scoring|branding|heatmap|trend|keyword.*research/i;
@@ -4553,8 +4620,6 @@ Website: ${lead.websiteUrl || ''}`;
           return nameL.replace(/[^a-z]/g, '').substring(0, 20) || 'deliverable';
         })();
 
-        const styleLine = `\nMatch the visual style of ${lead.websiteUrl || lead.companyName}. Primary color: ${style.color}. Font: ${style.font}.`;
-
         let deliverable;
 
         // Text-writing services must NOT be classified as HTML builds even if
@@ -4570,28 +4635,32 @@ Website: ${lead.websiteUrl || ''}`;
           let prompt;
           if (isBooking) {
             prompt = `${BUILD_HTML_RULES}Build a complete HTML booking page for ${lead.companyName} in ${lead.location || ''}.
-${intakeContext}${styleLine}
+
+${brandContext}
 
 MUST include in <body>: header with company name, service selection cards, Mon-Fri calendar (past days disabled), time slot picker (09:00-17:00), contact form (naam/email/tel), submit with loading state, success screen.
-Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile responsive.`;
+Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" from Google Fonts. Mobile responsive.`;
           } else if (/chatbot|faq.*assistent|kennisbank/i.test(serviceName)) {
             prompt = `${BUILD_HTML_RULES}Build a complete HTML chatbot / FAQ assistant page for ${lead.companyName}.
-${intakeContext}${styleLine}
+
+${brandContext}
 
 MUST include in <body>: clean chat interface, 15+ pre-programmed Q&A pairs relevant to their niche (${lead.niche || ''}), floating chat widget with open/close, message bubbles, typing indicator, lead capture form when user asks to contact.
-Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile responsive.`;
+Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" from Google Fonts. Mobile responsive.`;
           } else if (/dashboard/i.test(serviceName)) {
             prompt = `${BUILD_HTML_RULES}Build a complete HTML analytics dashboard for ${lead.companyName}.
-${intakeContext}${styleLine}
+
+${brandContext}
 
 MUST include in <body>: KPI cards (revenue, visitors, conversions, engagement), chart placeholders with realistic demo data, sidebar nav, date filter, data table, responsive grid layout.
-Style: white bg, ${style.color} accent, ${style.font}, mobile responsive.`;
+Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" from Google Fonts. Mobile responsive.`;
           } else {
             prompt = `${BUILD_HTML_RULES}Build a complete HTML ${serviceName} page for ${lead.companyName}.
-${intakeContext}${styleLine}
+
+${brandContext}
 
 MUST include in <body>: professional header, rich body content relevant to ${serviceName}, interactive elements, clear CTA section, footer.
-Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile responsive. Minimum 500 words visible content.`;
+Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" from Google Fonts. Mobile responsive. Minimum 500 words visible content.`;
           }
 
           sse({ type: 'progress', service: serviceName, percent: 50 });
@@ -4616,7 +4685,8 @@ Style: white bg, ${style.color} accent, ${style.font} from Google Fonts, mobile 
           console.log(`[Build] Type: STRATEGY_DOCUMENT | Service: ${serviceName}`);
           sse({ type: 'progress', service: serviceName, percent: 30 });
           const content = await aiCall(`Schrijf een professioneel "${serviceName}" rapport voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).
-${intakeContext}
+
+${brandContext}
 
 Structuur:
 1. Managementsamenvatting (3-5 bevindingen)
@@ -4626,7 +4696,7 @@ Structuur:
 5. KPI's en succesmetrics
 6. Aanbevolen volgende stap
 
-Schrijf in professioneel Nederlands, maximaal 600 woorden. Wees concreet en specifiek voor hun niche/locatie.`);
+Schrijf in de toon en taal van het merk (zie boven). Maximaal 600 woorden. Concreet en specifiek voor niche/locatie.`);
           sse({ type: 'progress', service: serviceName, percent: 80 });
 
           const id = Date.now().toString(36) + i;
@@ -4638,11 +4708,14 @@ Schrijf in professioneel Nederlands, maximaal 600 woorden. Wees concreet en spec
           console.log(`[Build] Type: TEXT_DOCUMENT | Service: ${serviceName}`);
           sse({ type: 'progress', service: serviceName, percent: 30 });
           const content = await aiCall(`Lever de dienst "${serviceName}" voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).
-${intakeContext}
 
-Schrijf complete, direct bruikbare inhoud in professioneel Nederlands:
-- Specifiek voor hun niche en locatie
+${brandContext}
+
+Schrijf complete, direct bruikbare inhoud:
+- Gebruik de exacte toon en taal van het merk (zie boven — formeel/informeel)
+- Specifiek voor hun niche, locatie en de problemen die we oplossen
 - Klaar om te gebruiken (geen placeholders zoals [naam] of [bedrijf])
+- Schrijf ALS de copywriter van dit bedrijf, niet als externe partij
 - Minimum 300 woorden aan bruikbare content
 
 Dienst: ${svc.description || serviceName}`);
