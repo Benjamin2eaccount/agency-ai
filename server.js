@@ -7896,9 +7896,11 @@ function extractReplyText(rawBody) {
     return html
       .replace(/<style[\s\S]*?<\/style>/gi, '')
       .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<head[\s\S]*?<\/head>/gi, '')
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<\/p>/gi, '\n')
-      .replace(/<[^>]+>/g, ' ')
+      .replace(/<\/div>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
       .replace(/&nbsp;/g, ' ')
       .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
@@ -7906,6 +7908,8 @@ function extractReplyText(rawBody) {
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
       .replace(/&[a-z#0-9]+;/gi, ' ')
+      .replace(/\r\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
       .trim();
   }
 
@@ -7962,10 +7966,10 @@ function extractReplyText(rawBody) {
   // ── Fallback: if still raw MIME-looking blob, try stripping HTML ──────────
   if (!text) text = rawBody;
 
-  // ── Strip HTML if it slipped through ──────────────────────────────────────
-  if (isHtml || /<[a-z][\s\S]{0,40}>/i.test(text)) {
-    text = stripHtml(text);
-  }
+  // ── Always strip HTML — Outlook mobile mixes HTML into text/plain parts ──
+  text = stripHtml(text);
+  // Second pass: if tags still remain (e.g. encoded or nested), strip again
+  if (/<[a-z][^>]*>/i.test(text)) text = stripHtml(text);
 
   // ── Quoted-printable leftovers ────────────────────────────────────────────
   if (/=[A-F0-9]{2}/i.test(text)) text = decodeQP(text);
