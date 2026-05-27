@@ -7883,45 +7883,104 @@ function toImapDate(d) {
 
 function extractReplyText(rawBody) {
   if (!rawBody) return '';
-  let text = rawBody;
 
-  // Multipart MIME: extract text/plain part (handles Outlook/Exchange messages)
-  if (text.includes('Content-Type: text/plain')) {
-    const parts = text.split(/--[^\r\n]+/);
-    for (const part of parts) {
-      if (!part.includes('Content-Type: text/plain')) continue;
-      const bodyStart = part.indexOf('\r\n\r\n');
-      if (bodyStart !== -1) {
-        text = part.substring(bodyStart + 4);
-      } else {
-        const bodyStart2 = part.indexOf('\n\n');
-        if (bodyStart2 !== -1) text = part.substring(bodyStart2 + 2);
-      }
-      if (part.includes('Content-Transfer-Encoding: base64')) {
-        try { text = Buffer.from(text.replace(/\s/g, ''), 'base64').toString('utf-8'); } catch {}
-      } else if (part.includes('Content-Transfer-Encoding: quoted-printable')) {
-        text = text.replace(/=\r?\n/g, '').replace(/=([A-F0-9]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
-      }
-      break;
-    }
-  } else {
-    // Single-part: honour top-level transfer encoding if declared in raw body
-    const encMatch = rawBody.match(/Content-Transfer-Encoding:\s*(\S+)/i);
-    const enc = (encMatch?.[1] || '').toLowerCase();
-    if (enc === 'base64') {
-      const sep = rawBody.indexOf('\n\n');
-      const b64 = sep !== -1 ? rawBody.substring(sep + 2) : rawBody;
-      try { text = Buffer.from(b64.replace(/\s/g, ''), 'base64').toString('utf-8'); } catch {}
-    } else if (enc === 'quoted-printable') {
-      text = text.replace(/=\r?\n/g, '').replace(/=([A-F0-9]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
-    }
+  function decodeQP(s) {
+    return s.replace(/=\r?\n/g, '').replace(/=([A-F0-9]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
   }
 
-  // Strip quoted reply (everything after quote markers)
-  text = text.split(/\r?\n>|\r?\nOp |On .+ wrote:|Op .+ schreef:/)[0];
-  // Strip HTML tags and entities
-  text = text.replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ');
-  // Collapse whitespace
+  function decodeB64(s) {
+    try { return Buffer.from(s.replace(/\s/g, ''), 'base64').toString('utf-8'); } catch { return s; }
+  }
+
+  function stripHtml(html) {
+    return html
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&[a-z#0-9]+;/gi, ' ')
+      .trim();
+  }
+
+  function applyEncoding(content, partHeaders) {
+    const enc = (partHeaders.match(/Content-Transfer-Encoding:\s*(\S+)/i)?.[1] || '').toLowerCase().trim();
+    if (enc === 'base64') return decodeB64(content);
+    if (enc === 'quoted-printable') return decodeQP(content);
+    return content;
+  }
+
+  function bodyAfterHeaders(part) {
+    const crlfIdx = part.indexOf('\r\n\r\n');
+    if (crlfIdx !== -1) return [part.substring(0, crlfIdx), part.substring(crlfIdx + 4)];
+    const lfIdx = part.indexOf('\n\n');
+    if (lfIdx !== -1) return [part.substring(0, lfIdx), part.substring(lfIdx + 2)];
+    return [part, ''];
+  }
+
+  let text = '';
+  let isHtml = false;
+
+  // ── Multipart: find text/plain first, fall back to text/html ──────────────
+  const boundaryMatch = rawBody.match(/boundary=["']?([^"'\r\n;>]+)["']?/i);
+  if (boundaryMatch) {
+    const boundary = boundaryMatch[1].trim();
+    const escapedB = boundary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const parts = rawBody.split(new RegExp(`--${escapedB}(?:--)?`));
+    let htmlFallback = '';
+
+    for (const part of parts) {
+      const [hdr, body] = bodyAfterHeaders(part);
+      const ct = (hdr.match(/Content-Type:\s*([^\r\n;]+)/i)?.[1] || '').toLowerCase().trim();
+      if (ct === 'text/plain') {
+        text = applyEncoding(body.trim(), hdr);
+        break;
+      }
+      if (ct === 'text/html' && !htmlFallback) {
+        htmlFallback = applyEncoding(body.trim(), hdr);
+      }
+    }
+
+    if (!text && htmlFallback) {
+      text = stripHtml(htmlFallback);
+      isHtml = false; // already stripped
+    }
+  } else {
+    // ── Single-part ───────────────────────────────────────────────────────────
+    const [hdr, body] = bodyAfterHeaders(rawBody);
+    const ct = (hdr.match(/Content-Type:\s*([^\r\n;]+)/i)?.[1] || '').toLowerCase().trim();
+    isHtml = ct.includes('text/html');
+    text = applyEncoding(body || rawBody, hdr);
+  }
+
+  // ── Fallback: if still raw MIME-looking blob, try stripping HTML ──────────
+  if (!text) text = rawBody;
+
+  // ── Strip HTML if it slipped through ──────────────────────────────────────
+  if (isHtml || /<[a-z][\s\S]{0,40}>/i.test(text)) {
+    text = stripHtml(text);
+  }
+
+  // ── Quoted-printable leftovers ────────────────────────────────────────────
+  if (/=[A-F0-9]{2}/i.test(text)) text = decodeQP(text);
+
+  // ── Attempt base64 decode if text still looks encoded (no real words) ─────
+  if (text.length > 20 && !/\s/.test(text.substring(0, 40)) && /^[A-Za-z0-9+/]+=*$/.test(text.replace(/\s/g, ''))) {
+    const decoded = decodeB64(text);
+    if (decoded.length > 10 && /[a-z ]{5}/i.test(decoded)) text = decoded;
+  }
+
+  // ── Strip quoted original (new content only) ──────────────────────────────
+  const quoteIdx = text.search(/\r?\n[ \t]*>[ \t]?|\r?\nOp .{5,100}schreef:|\r?\nOn .{5,100}wrote:|\r?\nVan:[ \t]|\r?\nFrom:[ \t]|\r?\n-{3,}.*[Oo]riginal|\r?\n_{5,}/);
+  if (quoteIdx > 20) text = text.substring(0, quoteIdx).trim();
+
+  // ── Final cleanup ─────────────────────────────────────────────────────────
   text = text.replace(/\s+/g, ' ').trim();
   return text.substring(0, 600);
 }
