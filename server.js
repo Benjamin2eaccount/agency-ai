@@ -1464,7 +1464,7 @@ app.get('/api/portal/:token', (req, res) => {
     documents:           (lead.documents || []).filter(d => d.visible !== false),
     portalWelcomeMessage: lead.portalWelcomeMessage || null,
     approvedDeliverables: (lead.agentDeliverables || [])
-      .filter(d => d.clientVisible === true || (d.clientVisible == null && d.status === 'approved'))
+      .filter(d => d.clientVisible === true)
       .map(d => ({ service: d.service, type: d.type, deliverableType: d.deliverableType, url: d.url, approvedAt: d.approvedAt, builtAt: d.builtAt })),
     sharedProjectFiles: (lead.projectFiles || [])
       .filter(f => f.sharedWithClient)
@@ -2065,6 +2065,14 @@ app.post('/api/leads/bulk-delete', requireAdmin, (req, res) => {
   writeJSON('leads.json', leads.filter(l => !ids.includes(l.id)));
   writeJSON('inbox.json', inbox.filter(i => !ids.includes(i.id)));
   res.json({ ok: true, deleted: ids.length });
+});
+
+app.get('/api/leads/unread-portal-count', authMiddleware, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const count = leads.filter(l =>
+    (l.portalChat || []).some(m => m.from === 'client' && !m.readAt)
+  ).length;
+  res.json({ count });
 });
 
 app.get('/api/leads/check-duplicate', (req, res) => {
@@ -4330,6 +4338,7 @@ Geef max 5 stappen in het Nederlands. Verwerk de embed code als letterlijk codeb
             service: svc.name,
             type: 'code',
             status: 'wacht_op_goedkeuring',
+            clientVisible: false,
             html,
             url,
             todoText,
@@ -4348,6 +4357,7 @@ Wees concreet: welke tools, welke stappen, welke instellingen.`);
             service: svc.name,
             type: 'manual',
             status: 'wacht_op_goedkeuring',
+            clientVisible: false,
             instructions,
             builtAt: new Date().toISOString()
           });
@@ -4683,7 +4693,7 @@ app.post('/api/leads/:id/deliverables/:dIdx/approve', requireAdmin, async (req, 
 
   leads[li].agentDeliverables[dIdx].status = 'approved';
   leads[li].agentDeliverables[dIdx].approvedAt = new Date().toISOString();
-  leads[li].agentDeliverables[dIdx].clientVisible = true;
+  leads[li].agentDeliverables[dIdx].clientVisible = false; // admin must manually toggle eye to share
 
   // Email client — rich HTML for HTML deliverables, custom body for manual, generic fallback
   const lead = leads[li];

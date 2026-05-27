@@ -3832,7 +3832,7 @@ async function renderProjectPage() {
 
   // Deliverable visibility list (for section 3)
   const delivVis = (lead.agentDeliverables || []).map((d, i) => {
-    const isVisible = d.clientVisible === true || (d.clientVisible == null && d.status === 'approved');
+    const isVisible = d.clientVisible === true;
     const typeIcon = d.type === 'code' ? '💻' : (d.deliverableType === 'strategy' ? '📊' : '📄');
     return `
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:var(--surface-2);margin-bottom:6px;gap:8px;flex-wrap:wrap">
@@ -4115,8 +4115,8 @@ function renderAgentChatHistory(leadId, key) {
           <div style="font-size:13px;font-weight:700;color:var(--success);margin-bottom:6px"><i class="ti ti-check"></i> Gebouwd!</div>
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Bekijk op:</div>
           <a href="${m.builtUrl}" target="_blank" style="font-size:12px;color:var(--accent);word-break:break-all;display:block;margin-bottom:10px">${m.builtUrl}</a>
-          <button class="btn btn-primary btn-sm" style="font-size:12px" onclick="navigator.clipboard.writeText('${m.builtUrl}').then(()=>toast('URL gekopieerd!','success'))">
-            <i class="ti ti-share"></i> Deel met klant
+          <button class="btn btn-ghost btn-sm" style="font-size:12px" onclick="navigator.clipboard.writeText('${m.builtUrl}').then(()=>toast('URL gekopieerd!','success'))">
+            <i class="ti ti-copy"></i> Kopieer URL
           </button>
         </div>
       </div>`;
@@ -6816,7 +6816,7 @@ function createPayment(leadId) {
             ${s.stripeConfigured ? '<option value="stripe">Stripe</option>' : ''}
             ${s.mollieConfigured ? '<option value="mollie">Mollie</option>' : ''}
             ${s.paypalConfigured ? '<option value="paypal">PayPal</option>' : ''}
-            ${s.bankTransferConfigured ? '<option value="bank_transfer">Bankoverschrijving</option>' : ''}
+            <option value="bank_transfer" ${!s.stripeConfigured && !s.mollieConfigured && !s.paypalConfigured ? 'selected' : ''}>Bankoverschrijving</option>
           </select>
         </div>
         <div class="form-group">
@@ -7962,8 +7962,8 @@ function createInvoice(leadId) {
     { value: 'stripe',        label: 'Stripe',         icon: 'ti-brand-stripe',   enabled: s.stripeConfigured },
     { value: 'mollie',        label: 'Mollie',         icon: 'ti-credit-card',    enabled: s.mollieConfigured },
     { value: 'paypal',        label: 'PayPal',         icon: 'ti-brand-paypal',   enabled: s.paypalConfigured },
-    { value: 'bank_transfer', label: 'Overboeking',    icon: 'ti-building-bank',  enabled: s.bankTransferConfigured },
-  ].filter(m => m.enabled || m.value === preferred);
+    { value: 'bank_transfer', label: 'Overboeking',    icon: 'ti-building-bank',  enabled: true }, // always available
+  ].filter(m => m.enabled);
 
   openModal(`
     <div class="modal-header">
@@ -11954,6 +11954,19 @@ async function fetchNotifications() {
   if (!data) return;
   updateNotificationBadge(data.unread);
   fetchContactsBadge();
+  fetchPipelineBadge();
+}
+
+async function fetchPipelineBadge() {
+  const data = await apiJSON('/api/leads/unread-portal-count');
+  if (!data) return;
+  const count = data.count || 0;
+  ['pipelineBadge', 'pipelineBadgeMobile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = count > 9 ? '9+' : count;
+    el.style.display = count > 0 ? '' : 'none';
+  });
 }
 
 async function fetchContactsBadge() {
