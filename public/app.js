@@ -10378,11 +10378,19 @@ async function runServiceTest(serviceName) {
   const resultEl = document.getElementById('stResult');
   if (!resultEl) return;
 
+  // Disable the Start test button immediately
+  const startBtn = resultEl.closest('div[style]')?.querySelector('button.btn-primary');
+  if (startBtn) { startBtn.disabled = true; startBtn.style.opacity = '0.6'; startBtn.style.cursor = 'not-allowed'; }
+
   resultEl.innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface-2);border-radius:8px">
-      <div class="spinner" style="width:16px;height:16px;border-width:2px;flex-shrink:0"></div>
-      <span style="font-size:13px;color:var(--text-secondary)">Bezig met genereren…</span>
-    </div>`;
+    <div style="padding:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px">
+      <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px">⚡ Bezig met genereren…</div>
+      <div style="width:100%;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;margin-bottom:8px">
+        <div style="height:100%;background:#6366f1;width:40%;animation:stSlide 1.5s infinite;border-radius:3px"></div>
+      </div>
+      <div style="font-size:12px;color:var(--text-secondary)">Claude is aan het werk — dit duurt ~1-2 minuten</div>
+    </div>
+    <style>@keyframes stSlide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}</style>`;
 
   try {
     const res = await fetch('/api/test-service', {

@@ -5748,6 +5748,8 @@ app.post('/api/test-service', requireAdmin, async (req, res) => {
   const { serviceName, companyName = 'Test Bedrijf BV', location = 'Amsterdam', niche = 'bedrijf', wishes = '' } = req.body;
   if (!serviceName) return res.status(400).json({ error: 'serviceName vereist' });
 
+  console.log('[TestService] Starting test for:', serviceName, `(${companyName}, ${location}, ${niche})`);
+
   const HTML_KW   = /website|boek|boeking|booking|chatbot|dashboard|landingspagina|landing.*page|faq.*assistent|kennisbank|offerte.*generator|onboarding/i;
   const STRAT_KW  = /seo.*rapport|concurrentie|audit|crm|lead.*scoring|branding|heatmap|trend|keyword.*research/i;
   const FORCE_TXT = /\bteksten\b/i;
@@ -5773,7 +5775,7 @@ app.post('/api/test-service', requireAdmin, async (req, res) => {
       const bodyLength = (bodyMatch?.[1]?.trim() || '').length;
       const htmlLength = html.length;
       const success = bodyLength >= 200;
-      console.log(`[TestService] ${success ? '✓' : '✗'} ${serviceName} (HTML_BUILD) — body: ${bodyLength} tekens`);
+      console.log('[TestService] Done:', serviceName, success ? '✓' : '✗', `— body: ${bodyLength} tekens`);
       return res.json({ success, type, html, htmlLength, bodyLength, testedAt: new Date().toISOString(), ...(!success ? { error: `HTML body te kort: ${bodyLength} tekens` } : {}) });
 
     } else if (STRAT_KW.test(serviceName)) {
@@ -5781,7 +5783,7 @@ app.post('/api/test-service', requireAdmin, async (req, res) => {
       const content = await aiCall(`Schrijf een professioneel "${serviceName}" document voor ${companyName} (${niche}, ${location}).${intakeCtx}\n\nStructuur:\n1. Managementsamenvatting\n2. Huidige situatie\n3. Verbeterpunten (min 5)\n4. Stappenplan Q1-Q4\n5. KPI's\n6. Volgende stap\n\nMin 400 woorden Nederlands.`);
       const contentLength = content.length;
       const success = contentLength >= 200;
-      console.log(`[TestService] ${success ? '✓' : '✗'} ${serviceName} (STRATEGY_DOCUMENT) — ${contentLength} tekens`);
+      console.log('[TestService] Done:', serviceName, success ? '✓' : '✗', `— ${contentLength} tekens`);
       return res.json({ success, type, content, contentLength, testedAt: new Date().toISOString(), ...(!success ? { error: `Content te kort: ${contentLength} tekens` } : {}) });
 
     } else {
@@ -5789,11 +5791,11 @@ app.post('/api/test-service', requireAdmin, async (req, res) => {
       const content = await aiCall(`Lever de dienst "${serviceName}" volledig op voor ${companyName} (${niche}, ${location}).${intakeCtx}\n\nSchrijf direct bruikbare Nederlandse inhoud, minimaal 300 woorden, geen placeholders.`);
       const contentLength = content.length;
       const success = contentLength >= 200;
-      console.log(`[TestService] ${success ? '✓' : '✗'} ${serviceName} (TEXT_DOCUMENT) — ${contentLength} tekens`);
+      console.log('[TestService] Done:', serviceName, success ? '✓' : '✗', `— ${contentLength} tekens`);
       return res.json({ success, type, content, contentLength, testedAt: new Date().toISOString(), ...(!success ? { error: `Content te kort: ${contentLength} tekens` } : {}) });
     }
   } catch (err) {
-    console.error(`[TestService] ✗ ${serviceName} — ${err.message}`);
+    console.log('[TestService] Done:', serviceName, '✗', `— ${err.message}`);
     return res.status(500).json({ success: false, type, error: err.message, testedAt: new Date().toISOString() });
   }
 });
