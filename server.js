@@ -143,8 +143,8 @@ if (!readJSON('settings.json')) {
     username: 'admin', password: hash,
     agencyName: 'Agency AI', myName: 'Admin', myTitle: 'AI Growth Specialist',
     gmailAddress: '', gmailPassword: '', linkedinUrl: '', stripeSecretKey: '',
-    mollieApiKey: '', paypalMe: '', preferredPaymentMethod: 'stripe',
-    bankTransferIban: '', bankTransferName: '', bankTransferBic: '',
+    mollieApiKey: '', paypalMe: '', preferredPaymentMethod: 'bank_transfer',
+    bankTransferIban: '', bankTransferName: '', bankTransferBic: '', paymentTermDays: 14,
     dailyRunTime: '09:00', leadsPerDay: 15, autoApproveScore: 8.0, automationPaused: false,
     replyDetection: true, dailyBriefingEnabled: true, dailyBriefingTime: '08:45',
     smartAutoApprove: { enabled: false, scoreThreshold: 8.0, requireNoAds: true, minFollowers: 5000, requireWebsite: true },
@@ -5017,7 +5017,8 @@ app.get('/api/settings', (req, res) => {
   safe.bankTransferIban = s.bankTransferIban || '';
   safe.bankTransferName = s.bankTransferName || '';
   safe.bankTransferBic  = s.bankTransferBic  || '';
-  safe.preferredPaymentMethod = s.preferredPaymentMethod || 'stripe';
+  safe.paymentTermDays  = s.paymentTermDays  || 14;
+  safe.preferredPaymentMethod = s.preferredPaymentMethod || 'bank_transfer';
   safe.autoInvoiceEnabled = s.autoInvoiceEnabled || false;
   safe.autoInvoiceDay = s.autoInvoiceDay || 1;
   safe.paymentReminderDays = s.paymentReminderDays || 7;
@@ -5299,7 +5300,7 @@ app.post('/api/settings/test-imap', requireAdmin, async (req, res) => {
 
 app.patch('/api/settings/stripe', requireAdmin, (req, res) => {
   const settings = readJSON('settings.json');
-  const { stripeSecretKey, mollieApiKey, paypalMe, preferredPaymentMethod, bankTransferIban, bankTransferName, bankTransferBic } = req.body;
+  const { stripeSecretKey, mollieApiKey, paypalMe, preferredPaymentMethod, bankTransferIban, bankTransferName, bankTransferBic, paymentTermDays } = req.body;
   if (stripeSecretKey !== undefined) settings.stripeSecretKey = stripeSecretKey;
   if (mollieApiKey !== undefined) settings.mollieApiKey = mollieApiKey;
   if (paypalMe !== undefined) settings.paypalMe = paypalMe;
@@ -5307,6 +5308,7 @@ app.patch('/api/settings/stripe', requireAdmin, (req, res) => {
   if (bankTransferIban !== undefined) settings.bankTransferIban = bankTransferIban;
   if (bankTransferName !== undefined) settings.bankTransferName = bankTransferName;
   if (bankTransferBic  !== undefined) settings.bankTransferBic  = bankTransferBic;
+  if (paymentTermDays  !== undefined) settings.paymentTermDays  = parseInt(paymentTermDays) || 14;
   writeJSON('settings.json', settings);
   res.json({ ok: true });
 });
@@ -5567,7 +5569,8 @@ app.post('/api/leads/:id/payments/:payId/remind', requireAdmin, async (req, res)
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet geconfigureerd' });
 
   try {
-    const payLinkLine = pay.paymentUrl ? `Betaallink: ${pay.paymentUrl}` : (pay.bankDetails ? `Bankoverschrijving naar IBAN: ${pay.bankDetails.iban}` : '');
+    const termDays = settings.paymentTermDays || 14;
+    const payLinkLine = pay.paymentUrl ? `Betaallink: ${pay.paymentUrl}\nBetalingstermijn: ${termDays} dagen` : (pay.bankDetails ? `Betaling via overboeking:\nIBAN: ${pay.bankDetails.iban}\nTenaamstelling: ${pay.bankDetails.name || settings.bankTransferName || settings.agencyName || ''}\nBetalingstermijn: ${termDays} dagen` : '');
     const reminderEmail = await aiJSON(`Schrijf een vriendelijke maar dringende betalingsherinnering.
 Klant: ${lead.companyName}. Bureau: ${settings.agencyName}, ${settings.myName}.
 Bedrag: €${pay.amount}. Omschrijving: ${pay.description}. ${payLinkLine}
@@ -9404,8 +9407,9 @@ cron.schedule('0 9 * * *', async () => {
           writeJSON('leads.json', freshLeads);
         }
         if (lead.contactEmail && isResendReady(settings)) {
-          const invoiceLinkLine = url ? `Betaallink: ${url}` : (settings.bankTransferIban ? `Bankoverschrijving naar IBAN: ${settings.bankTransferIban}` : '');
-          await sendEmail({ to: lead.contactEmail, subject: `Factuur ${today.toLocaleDateString('nl-NL', {month:'long'})} — ${settings.agencyName}`, body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder de factuur voor deze maand:\n\n${desc}\nBedrag: €${total}\n${invoiceLinkLine}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`, settings });
+          const termDays = settings.paymentTermDays || 14;
+          const invoicePayBlock = url ? `Betaallink: ${url}\nBetalingstermijn: ${termDays} dagen` : (settings.bankTransferIban ? `Betaling via overboeking:\nIBAN: ${settings.bankTransferIban}\nTenaamstelling: ${settings.bankTransferName || settings.agencyName || ''}\nBetalingstermijn: ${termDays} dagen` : '');
+          await sendEmail({ to: lead.contactEmail, subject: `Factuur ${today.toLocaleDateString('nl-NL', {month:'long'})} — ${settings.agencyName}`, body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder de factuur voor deze maand:\n\n${desc}\nBedrag: €${total}\n\n${invoicePayBlock}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`, settings });
         }
         console.log(`[AutoInvoice] €${total} → ${lead.companyName}`);
       } catch (err) { console.error(`[AutoInvoice] Fout voor ${lead.companyName}:`, err.message); }

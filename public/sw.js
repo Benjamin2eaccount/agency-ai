@@ -1,4 +1,4 @@
-const CACHE = 'agency-ai-v3';
+const CACHE = 'agency-ai-v4';
 const SHELL = [
   '/app',
   '/app.js',

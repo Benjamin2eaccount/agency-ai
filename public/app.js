@@ -6813,10 +6813,7 @@ function createPayment(leadId) {
         <div class="form-group">
           <label>Betaalmethode</label>
           <select id="payMethod">
-            ${s.stripeConfigured ? '<option value="stripe">Stripe</option>' : ''}
-            ${s.mollieConfigured ? '<option value="mollie">Mollie</option>' : ''}
-            ${s.paypalConfigured ? '<option value="paypal">PayPal</option>' : ''}
-            <option value="bank_transfer" ${!s.stripeConfigured && !s.mollieConfigured && !s.paypalConfigured ? 'selected' : ''}>Bankoverschrijving</option>
+            <option value="bank_transfer" selected>Bankoverschrijving</option>
           </select>
         </div>
         <div class="form-group">
@@ -6848,7 +6845,7 @@ function updatePayTypeUI() {
 async function savePayment(leadId) {
   const amountExcl = parseFloat(document.getElementById('payAmount')?.value || 0);
   const desc    = document.getElementById('payDesc')?.value?.trim();
-  const method  = document.getElementById('payMethod')?.value || 'stripe';
+  const method  = document.getElementById('payMethod')?.value || 'bank_transfer';
   const dueDate = document.getElementById('payDue')?.value;
   const type    = document.querySelector('input[name="payType"]:checked')?.value || 'subscription';
   const splitParts = parseInt(document.getElementById('splitParts')?.value || 2);
@@ -7954,16 +7951,13 @@ function createInvoice(leadId) {
   if (!lead) return;
 
   const s = state.settings || {};
-  const preferred = s.preferredPaymentMethod || 'stripe';
+  const preferred = 'bank_transfer';
   const defaultDesc = lead.services?.map(sv => sv.name).join(', ') || 'AI-marketingdiensten';
   const defaultBilling = lead.services?.[0]?.billing || 'maandelijks';
 
   const methodOpts = [
-    { value: 'stripe',        label: 'Stripe',         icon: 'ti-brand-stripe',   enabled: s.stripeConfigured },
-    { value: 'mollie',        label: 'Mollie',         icon: 'ti-credit-card',    enabled: s.mollieConfigured },
-    { value: 'paypal',        label: 'PayPal',         icon: 'ti-brand-paypal',   enabled: s.paypalConfigured },
-    { value: 'bank_transfer', label: 'Overboeking',    icon: 'ti-building-bank',  enabled: true }, // always available
-  ].filter(m => m.enabled);
+    { value: 'bank_transfer', label: 'Bankoverschrijving', icon: 'ti-building-bank', enabled: true },
+  ];
 
   openModal(`
     <div class="modal-header">
@@ -8070,7 +8064,7 @@ async function submitInvoice(leadId) {
   const lead    = state.leads.find(l => l.id === leadId);
   const desc    = document.getElementById('invoiceDesc')?.value || '';
   const amount  = parseInt(document.getElementById('invoiceAmount')?.value || 0);
-  const method  = document.querySelector('input[name="invoiceMethod"]:checked')?.value || 'stripe';
+  const method  = document.querySelector('input[name="invoiceMethod"]:checked')?.value || 'bank_transfer';
   const billing = document.querySelector('input[name="invoiceBilling"]:checked')?.value || 'maandelijks';
   const btn     = document.getElementById('createInvoiceBtn');
 
@@ -8087,7 +8081,7 @@ async function submitInvoice(leadId) {
   btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...';
 
   const endpointMap = { stripe: '/api/stripe/invoice', mollie: '/api/mollie/invoice', paypal: '/api/paypal/invoice' };
-  const endpoint = endpointMap[method] || '/api/stripe/invoice';
+  const endpoint = method === 'bank_transfer' ? `/api/leads/${leadId}/payments` : (endpointMap[method] || '/api/stripe/invoice');
 
   const resetBtn = () => {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-link"></i> Maak betaallink'; }
@@ -8097,9 +8091,12 @@ async function submitInvoice(leadId) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
+    const bodyPayload = method === 'bank_transfer'
+      ? { method: 'bank_transfer', amount: amountIncl, description: descWithBtw, billing, type: billing === 'maandelijks' ? 'subscription' : 'eenmalig', dueDate: new Date(Date.now() + ((state.settings?.paymentTermDays || 14) * 86400000)).toISOString() }
+      : { companyName: lead?.companyName, description: descWithBtw, amount: amountIncl, billing };
     const res = await api(endpoint, {
       method: 'POST',
-      body: JSON.stringify({ companyName: lead?.companyName, description: descWithBtw, amount: amountIncl, billing }),
+      body: JSON.stringify(bodyPayload),
       signal: controller.signal
     });
     clearTimeout(timeout);
@@ -8139,7 +8136,32 @@ async function submitInvoice(leadId) {
     return;
   }
 
-  // Save URL to lead for reference
+  if (method === 'bank_transfer') {
+    const s2 = state.settings || {};
+    const termDays2 = s2.paymentTermDays || 14;
+    openModal(`
+      <div class="modal-header">
+        <h3><i class="ti ti-check" style="color:var(--success)"></i> Factuur aangemaakt!</h3>
+        <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+      </div>
+      <div style="padding:20px 24px;display:flex;flex-direction:column;gap:14px">
+        <p class="text-secondary">Factuur aangemaakt voor <strong>${esc(lead?.companyName)}</strong>. Een betalingsverzoek is automatisch verzonden naar de klant.</p>
+        ${s2.bankTransferIban ? `<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:13px;line-height:1.8">
+          <strong style="display:block;margin-bottom:6px;color:var(--text-primary)">Overboekingsgegevens</strong>
+          <div>IBAN: <code style="color:var(--accent)">${esc(s2.bankTransferIban)}</code></div>
+          ${s2.bankTransferName ? `<div>Tenaamstelling: ${esc(s2.bankTransferName)}</div>` : ''}
+          ${s2.bankTransferBic ? `<div>BIC: ${esc(s2.bankTransferBic)}</div>` : ''}
+          <div>Betalingstermijn: ${termDays2} dagen</div>
+        </div>` : ''}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="closeModal()">Sluiten</button>
+      </div>
+    `);
+    return;
+  }
+
+  // Save URL to lead for reference (Stripe/Mollie/PayPal)
   await api(`/api/leads/${leadId}`, {
     method: 'PATCH',
     body: JSON.stringify({ stripeUrl: data.url })
@@ -11183,46 +11205,22 @@ async function renderSettings() {
             <div class="stg-sub">Koppel betaalmethoden om automatisch factuurlinks te genereren voor klanten</div>
           </div>
           <div style="margin-bottom:18px">
-            <label class="stg-label">STANDAARD BETAALMETHODE</label>
+            <label class="stg-label">BETAALMETHODE</label>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-              <label class="radio-card ${s.preferredPaymentMethod === 'stripe' ? 'radio-card-active' : ''}">
-                <input type="radio" name="preferredPayment" value="stripe" ${s.preferredPaymentMethod === 'stripe' || !s.preferredPaymentMethod ? 'checked' : ''}><i class="ti ti-brand-stripe"></i> Stripe${s.stripeConfigured ? ' <span class="stg-status-badge stg-badge-green">✓</span>' : ''}
+              <label class="radio-card radio-card-active">
+                <input type="radio" name="preferredPayment" value="bank_transfer" checked style="display:none"><i class="ti ti-building-bank"></i> Bankoverschrijving <span class="stg-status-badge stg-badge-green">Actief</span>
               </label>
-              <label class="radio-card ${s.preferredPaymentMethod === 'mollie' ? 'radio-card-active' : ''}">
-                <input type="radio" name="preferredPayment" value="mollie" ${s.preferredPaymentMethod === 'mollie' ? 'checked' : ''}><i class="ti ti-credit-card"></i> Mollie${s.mollieConfigured ? ' <span class="stg-status-badge stg-badge-green">✓</span>' : ''}
-              </label>
-              <label class="radio-card ${s.preferredPaymentMethod === 'paypal' ? 'radio-card-active' : ''}">
-                <input type="radio" name="preferredPayment" value="paypal" ${s.preferredPaymentMethod === 'paypal' ? 'checked' : ''}><i class="ti ti-brand-paypal"></i> PayPal${s.paypalConfigured ? ' <span class="stg-status-badge stg-badge-green">✓</span>' : ''}
-              </label>
-              <label class="radio-card ${s.preferredPaymentMethod === 'bank_transfer' ? 'radio-card-active' : ''}">
-                <input type="radio" name="preferredPayment" value="bank_transfer" ${s.preferredPaymentMethod === 'bank_transfer' ? 'checked' : ''}><i class="ti ti-building-bank"></i> Overboeking${s.bankTransferConfigured ? ' <span class="stg-status-badge stg-badge-green">✓</span>' : ''}
-              </label>
+              <div style="display:flex;align-items:center;gap:6px;padding:8px 14px;border:1.5px solid var(--border);border-radius:var(--radius);opacity:.5;font-size:13px;font-weight:600;color:var(--text-secondary);pointer-events:none">
+                <i class="ti ti-brand-stripe"></i> Stripe <span style="font-size:11px;background:var(--surface-2);padding:2px 6px;border-radius:4px;margin-left:2px">Binnenkort</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;padding:8px 14px;border:1.5px solid var(--border);border-radius:var(--radius);opacity:.5;font-size:13px;font-weight:600;color:var(--text-secondary);pointer-events:none">
+                <i class="ti ti-credit-card"></i> Mollie <span style="font-size:11px;background:var(--surface-2);padding:2px 6px;border-radius:4px;margin-left:2px">Binnenkort</span>
+              </div>
             </div>
           </div>
           <div class="stg-grid-2">
             <div class="stg-field">
-              <label class="stg-label">STRIPE SECRET KEY</label>
-              <input type="password" class="stg-input" id="stripeSecretKey" placeholder="sk_live_... of sk_test_...">
-              ${s.stripeConfigured ? '<p class="stg-configured-note"><i class="ti ti-check"></i> Stripe ingesteld</p>' : ''}
-            </div>
-            <div class="stg-field">
-              <label class="stg-label">MOLLIE API SLEUTEL</label>
-              <input type="password" class="stg-input" id="mollieApiKey" placeholder="live_... of test_...">
-              ${s.mollieConfigured ? '<p class="stg-configured-note"><i class="ti ti-check"></i> Mollie ingesteld</p>' : ''}
-            </div>
-            <div class="stg-field">
-              <label class="stg-label">PAYPAL.ME GEBRUIKERSNAAM</label>
-              <input type="text" class="stg-input" id="paypalMe" value="${esc(s.paypalMe || '')}" placeholder="jouwnaam (zonder paypal.me/)">
-              ${s.paypalConfigured ? '<p class="stg-configured-note"><i class="ti ti-check"></i> PayPal ingesteld</p>' : ''}
-            </div>
-          </div>
-
-          <div style="margin-top:18px;margin-bottom:8px">
-            <label class="stg-label">BANKOVERSCHRIJVING</label>
-          </div>
-          <div class="stg-grid-2">
-            <div class="stg-field">
-              <label class="stg-label">IBAN</label>
+              <label class="stg-label">IBAN NUMMER</label>
               <input type="text" class="stg-input" id="bankTransferIban" value="${esc(s.bankTransferIban || '')}" placeholder="NL00BANK0000000000">
             </div>
             <div class="stg-field">
@@ -11233,9 +11231,13 @@ async function renderSettings() {
               <label class="stg-label">BIC / SWIFT (optioneel)</label>
               <input type="text" class="stg-input" id="bankTransferBic" value="${esc(s.bankTransferBic || '')}" placeholder="INGBNL2A">
             </div>
+            <div class="stg-field">
+              <label class="stg-label">BETALINGSTERMIJN (DAGEN)</label>
+              <input type="number" class="stg-input" id="paymentTermDays" value="${s.paymentTermDays || 14}" min="1" max="90" placeholder="14">
+            </div>
           </div>
 
-          <button class="btn btn-primary stg-save-btn" id="saveStripeBtn"><i class="ti ti-device-floppy"></i> Betaalmethoden opslaan</button>
+          <button class="btn btn-primary stg-save-btn" id="saveStripeBtn"><i class="ti ti-device-floppy"></i> Betaalinstellingen opslaan</button>
         </div>
 
         <div class="stg-divider"></div>
@@ -11776,21 +11778,15 @@ function attachSettingsHandlers(s) {
   });
 
   document.getElementById('saveStripeBtn').addEventListener('click', async () => {
-    const stripeKey       = document.getElementById('stripeSecretKey').value;
-    const mollieKey       = document.getElementById('mollieApiKey').value;
-    const paypalMe        = document.getElementById('paypalMe').value.trim();
-    const bankIban        = document.getElementById('bankTransferIban').value.trim();
-    const bankName        = document.getElementById('bankTransferName').value.trim();
-    const bankBic         = document.getElementById('bankTransferBic').value.trim();
-    const preferred       = document.querySelector('input[name="preferredPayment"]:checked')?.value || 'stripe';
-    const body = { preferredPaymentMethod: preferred, paypalMe, bankTransferIban: bankIban, bankTransferName: bankName, bankTransferBic: bankBic };
-    if (stripeKey) body.stripeSecretKey = stripeKey;
-    if (mollieKey) body.mollieApiKey = mollieKey;
+    const bankIban    = document.getElementById('bankTransferIban').value.trim();
+    const bankName    = document.getElementById('bankTransferName').value.trim();
+    const bankBic     = document.getElementById('bankTransferBic').value.trim();
+    const termDays    = parseInt(document.getElementById('paymentTermDays')?.value || 14);
+    const body = { preferredPaymentMethod: 'bank_transfer', bankTransferIban: bankIban, bankTransferName: bankName, bankTransferBic: bankBic, paymentTermDays: termDays };
     const res = await api('/api/settings/stripe', { method: 'PATCH', body: JSON.stringify(body) });
     if (res.ok) {
-      toast('Betalingen opgeslagen', 'success');
-      document.getElementById('stripeSecretKey').value = '';
-      document.getElementById('mollieApiKey').value = '';
+      toast('Betaalinstellingen opgeslagen', 'success');
+      state.settings = { ...(state.settings || {}), bankTransferIban: bankIban, bankTransferName: bankName, bankTransferBic: bankBic, paymentTermDays: termDays, preferredPaymentMethod: 'bank_transfer', bankTransferConfigured: !!bankIban };
     } else {
       toast('Opslaan mislukt', 'error');
     }
