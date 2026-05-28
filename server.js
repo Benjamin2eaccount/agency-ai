@@ -20,6 +20,7 @@ const Stripe = require('stripe');
 const webpush = require('web-push');
 const { readJSON, writeJSON, pgInitPromise } = require('./database');
 const dnsPromises = require('dns').promises;
+const PDFDocument = require('pdfkit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -828,7 +829,272 @@ function sanitizeSubject(s) {
     .trim();
 }
 
-async function sendEmail({ to, subject, body, html, settings: _settings = {}, trackingToken, noCalendly = false }) {
+function buildInvoiceEmailHTML({ invoiceNr, invoiceDate, dueDate, lead, services, amount, settings }) {
+  const s = settings || {};
+  const agencyName  = s.agencyName || 'Agency AI';
+  const myName      = s.myName || '';
+  const myEmail     = s.gmailAddress || s.resendFromAddress || '';
+  const agencyWeb   = s.agencyWebsite || BASE_URL || '';
+  const iban        = s.bankTransferIban || '';
+  const tenaam      = s.bankTransferName || agencyName;
+  const bic         = s.bankTransferBic  || '';
+  const btwEnabled  = s.btwEnabled === true;
+  const btwRate     = parseFloat(s.btwRate) || 21;
+  const logoUrl     = s.agencyLogo ? `${BASE_URL}/api/logo` : '';
+  const companyName = lead.companyName || lead.contactName || 'Klant';
+  const location    = lead.location || lead.city || '';
+
+  const dueFmt      = new Date(dueDate).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+  const invFmt      = new Date(invoiceDate).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  const svcs = Array.isArray(services) && services.length ? services : [{ name: lead.services?.[0] || 'AI-diensten', price: amount, billing: 'eenmalig' }];
+
+  let subtotal = 0;
+  const rows = svcs.map(svc => {
+    const price = parseFloat(svc.price) || (amount / svcs.length);
+    subtotal += price;
+    const btwAmt   = btwEnabled ? price * btwRate / 100 : 0;
+    const totalRow = btwEnabled ? price + btwAmt : price;
+    return `
+      <tr style="border-bottom:1px solid #f0f0f0">
+        <td style="padding:12px 16px;font-size:14px;color:#111">${esc(svc.name || 'Dienst')}${svc.billing === 'maandelijks' ? ' <span style="font-size:11px;color:#888">/mnd</span>' : ''}</td>
+        <td style="padding:12px 16px;font-size:14px;color:#111;text-align:right">€${price.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
+        ${btwEnabled ? `<td style="padding:12px 16px;font-size:14px;color:#666;text-align:right">€${btwAmt.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>` : ''}
+        <td style="padding:12px 16px;font-size:14px;color:#111;text-align:right">€${totalRow.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
+      </tr>`;
+  }).join('');
+
+  const totalBtw  = btwEnabled ? subtotal * btwRate / 100 : 0;
+  const totalIncl = btwEnabled ? subtotal + totalBtw : subtotal;
+
+  const payBlock = iban
+    ? `<tr><td colspan="2" style="padding:6px 0;font-size:13px;color:#555">IBAN</td><td colspan="2" style="padding:6px 0;font-size:13px;color:#111;font-weight:600">${esc(iban)}</td></tr>
+       <tr><td colspan="2" style="padding:6px 0;font-size:13px;color:#555">Tenaamstelling</td><td colspan="2" style="padding:6px 0;font-size:13px;color:#111">${esc(tenaam)}</td></tr>
+       ${bic ? `<tr><td colspan="2" style="padding:6px 0;font-size:13px;color:#555">BIC</td><td colspan="2" style="padding:6px 0;font-size:13px;color:#111">${esc(bic)}</td></tr>` : ''}
+       <tr><td colspan="2" style="padding:6px 0;font-size:13px;color:#555">Omschrijving</td><td colspan="2" style="padding:6px 0;font-size:13px;color:#111">${esc(companyName)} / ${esc(invoiceNr)}</td></tr>
+       <tr><td colspan="2" style="padding:6px 0;font-size:13px;color:#555">Betalen voor</td><td colspan="2" style="padding:6px 0;font-size:13px;color:#111;font-weight:600">${dueFmt}</td></tr>`
+    : `<tr><td colspan="4" style="padding:6px 0;font-size:13px;color:#555">Zie betaallink in bovenstaand bericht.</td></tr>`;
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 0">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">
+
+  <!-- HEADER -->
+  <tr><td style="background:#0A0A0F;padding:28px 32px">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td>${logoUrl ? `<img src="${logoUrl}" height="36" style="display:block;border-radius:4px" alt="${esc(agencyName)}">` : `<span style="color:#fff;font-size:20px;font-weight:700">${esc(agencyName)}</span>`}</td>
+      <td align="right"><span style="color:#fff;font-size:26px;font-weight:800;letter-spacing:2px">FACTUUR</span></td>
+    </tr></table>
+  </td></tr>
+
+  <!-- META ROW -->
+  <tr><td style="background:#18181f;padding:16px 32px">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td style="color:#aaa;font-size:12px">FACTUURNUMMER<br><span style="color:#fff;font-size:14px;font-weight:600">${esc(invoiceNr)}</span></td>
+      <td align="center" style="color:#aaa;font-size:12px">FACTUURDATUM<br><span style="color:#fff;font-size:14px">${invFmt}</span></td>
+      <td align="right" style="color:#aaa;font-size:12px">VERVALDATUM<br><span style="color:#fff;font-size:14px;font-weight:600">${dueFmt}</span></td>
+    </tr></table>
+  </td></tr>
+
+  <!-- KLANTGEGEVENS -->
+  <tr><td style="padding:24px 32px 16px">
+    <p style="margin:0 0 4px;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px">Aan</p>
+    <p style="margin:0;font-size:16px;font-weight:700;color:#111">${esc(companyName)}</p>
+    ${location ? `<p style="margin:2px 0 0;font-size:13px;color:#555">${esc(location)}</p>` : ''}
+  </td></tr>
+
+  <!-- SERVICES TABLE -->
+  <tr><td style="padding:0 24px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e8e8e8;border-radius:8px;overflow:hidden">
+      <thead>
+        <tr style="background:#f9f9f9">
+          <th style="padding:11px 16px;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;text-align:left;font-weight:600">Dienst</th>
+          <th style="padding:11px 16px;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;text-align:right;font-weight:600">Excl. BTW</th>
+          ${btwEnabled ? `<th style="padding:11px 16px;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;text-align:right;font-weight:600">BTW ${btwRate}%</th>` : ''}
+          <th style="padding:11px 16px;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;text-align:right;font-weight:600">Totaal</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+        <tr style="background:#f9f9f9;border-top:1px solid #e8e8e8">
+          <td colspan="${btwEnabled ? '2' : '1'}" style="padding:10px 16px;font-size:13px;color:#555">Subtotaal</td>
+          ${btwEnabled ? `<td style="padding:10px 16px;font-size:13px;color:#555;text-align:right"></td>` : ''}
+          <td style="padding:10px 16px;font-size:13px;color:#111;text-align:right">€${subtotal.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
+        </tr>
+        ${btwEnabled ? `<tr style="background:#f9f9f9">
+          <td colspan="2" style="padding:8px 16px;font-size:13px;color:#555">BTW ${btwRate}%</td>
+          <td style="padding:8px 16px;font-size:13px;color:#555;text-align:right"></td>
+          <td style="padding:8px 16px;font-size:13px;color:#555;text-align:right">€${totalBtw.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
+        </tr>` : `<tr><td colspan="2" style="padding:8px 16px 4px;font-size:11px;color:#999">Vrijgesteld van BTW</td></tr>`}
+        <tr style="background:#1a56db">
+          <td colspan="${btwEnabled ? '2' : '1'}" style="padding:14px 16px;font-size:14px;font-weight:700;color:#fff">TOTAAL TE BETALEN</td>
+          ${btwEnabled ? `<td style="padding:14px 16px;text-align:right"></td>` : ''}
+          <td style="padding:14px 16px;font-size:18px;font-weight:800;color:#fff;text-align:right">€${totalIncl.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
+        </tr>
+      </tbody>
+    </table>
+  </td></tr>
+
+  <!-- BETAALINFORMATIE -->
+  ${iban ? `<tr><td style="padding:24px 32px 8px">
+    <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#111;text-transform:uppercase;letter-spacing:1px">Betaalinformatie</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e8e8e8;border-radius:8px;padding:16px;background:#f9f9ff">
+      ${payBlock}
+    </table>
+  </td></tr>` : ''}
+
+  <!-- FOOTER -->
+  <tr><td style="padding:24px 32px;border-top:1px solid #f0f0f0;text-align:center">
+    <p style="margin:0 0 6px;font-size:13px;color:#555">${esc(agencyName)}${myEmail ? ` · ${esc(myEmail)}` : ''}${agencyWeb ? ` · ${esc(agencyWeb)}` : ''}</p>
+    <p style="margin:0;font-size:13px;color:#888">Bedankt voor uw vertrouwen</p>
+  </td></tr>
+
+</table>
+</td></tr></table>
+</body></html>`;
+}
+
+async function generateInvoicePDF({ invoiceNr, invoiceDate, dueDate, lead, services, amount, settings }) {
+  return new Promise((resolve, reject) => {
+    const s = settings || {};
+    const agencyName  = s.agencyName || 'Agency AI';
+    const myName      = s.myName || '';
+    const myEmail     = s.gmailAddress || s.resendFromAddress || '';
+    const iban        = s.bankTransferIban || '';
+    const tenaam      = s.bankTransferName || agencyName;
+    const bic         = s.bankTransferBic  || '';
+    const btwEnabled  = s.btwEnabled === true;
+    const btwRate     = parseFloat(s.btwRate) || 21;
+    const companyName = lead.companyName || lead.contactName || 'Klant';
+    const location    = lead.location || lead.city || '';
+    const dueFmt      = new Date(dueDate).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+    const invFmt      = new Date(invoiceDate).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    const svcs = Array.isArray(services) && services.length ? services : [{ name: 'AI-diensten', price: amount, billing: 'eenmalig' }];
+
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const accent = '#1a56db';
+
+    // Header background
+    doc.rect(0, 0, doc.page.width, 90).fill('#0A0A0F');
+    doc.fill('#ffffff').font('Helvetica-Bold').fontSize(22).text(agencyName, 50, 28);
+    doc.fill('#ffffff').font('Helvetica-Bold').fontSize(28).text('FACTUUR', 0, 24, { align: 'right' });
+
+    // Invoice meta bar
+    doc.rect(0, 90, doc.page.width, 42).fill('#18181f');
+    doc.fill('#aaaaaa').font('Helvetica').fontSize(9).text('FACTUURNUMMER', 50, 98);
+    doc.fill('#ffffff').font('Helvetica-Bold').fontSize(11).text(invoiceNr, 50, 109);
+    doc.fill('#aaaaaa').font('Helvetica').fontSize(9).text('FACTUURDATUM', doc.page.width / 2 - 60, 98, { width: 120, align: 'center' });
+    doc.fill('#ffffff').font('Helvetica').fontSize(11).text(invFmt, doc.page.width / 2 - 60, 109, { width: 120, align: 'center' });
+    doc.fill('#aaaaaa').font('Helvetica').fontSize(9).text('VERVALDATUM', 0, 98, { align: 'right' });
+    doc.fill('#ffffff').font('Helvetica-Bold').fontSize(11).text(dueFmt, 0, 109, { align: 'right' });
+
+    let y = 156;
+
+    // Klant
+    doc.fill('#888888').font('Helvetica').fontSize(9).text('AAN', 50, y);
+    y += 14;
+    doc.fill('#111111').font('Helvetica-Bold').fontSize(14).text(companyName, 50, y);
+    y += 18;
+    if (location) { doc.fill('#555555').font('Helvetica').fontSize(11).text(location, 50, y); y += 16; }
+    y += 16;
+
+    // Table header
+    const cols = btwEnabled
+      ? [50, 300, 390, 480]
+      : [50, 360, 480];
+    const tableWidth = doc.page.width - 100;
+    doc.rect(50, y, tableWidth, 26).fill('#f9f9f9');
+    doc.rect(50, y, tableWidth, 26).stroke('#e8e8e8');
+    doc.fill('#888888').font('Helvetica-Bold').fontSize(9);
+    doc.text('DIENST', cols[0] + 8, y + 9);
+    doc.text('EXCL. BTW', cols[1], y + 9, { width: 80, align: 'right' });
+    if (btwEnabled) doc.text(`BTW ${btwRate}%`, cols[2], y + 9, { width: 80, align: 'right' });
+    doc.text('TOTAAL', cols[cols.length - 1], y + 9, { width: 80, align: 'right' });
+    y += 26;
+
+    let subtotal = 0;
+    svcs.forEach((svc, idx) => {
+      const price    = parseFloat(svc.price) || (amount / svcs.length);
+      subtotal      += price;
+      const btwAmt   = btwEnabled ? price * btwRate / 100 : 0;
+      const totalRow = btwEnabled ? price + btwAmt : price;
+
+      if (idx % 2 === 1) doc.rect(50, y, tableWidth, 24).fill('#fafafa');
+      doc.rect(50, y, tableWidth, 24).stroke('#f0f0f0');
+
+      doc.fill('#111111').font('Helvetica').fontSize(11).text((svc.name || 'Dienst') + (svc.billing === 'maandelijks' ? ' /mnd' : ''), cols[0] + 8, y + 7, { width: 220, ellipsis: true });
+      doc.text(`€${price.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}`, cols[1], y + 7, { width: 80, align: 'right' });
+      if (btwEnabled) doc.fill('#666666').text(`€${btwAmt.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}`, cols[2], y + 7, { width: 80, align: 'right' });
+      doc.fill('#111111').text(`€${totalRow.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}`, cols[cols.length - 1], y + 7, { width: 80, align: 'right' });
+      y += 24;
+    });
+
+    // Subtotal / BTW / Total rows
+    const totalBtw  = btwEnabled ? subtotal * btwRate / 100 : 0;
+    const totalIncl = btwEnabled ? subtotal + totalBtw : subtotal;
+
+    doc.rect(50, y, tableWidth, 24).fill('#f9f9f9').stroke('#e8e8e8');
+    doc.fill('#555555').font('Helvetica').fontSize(11).text('Subtotaal', cols[0] + 8, y + 7);
+    doc.fill('#111111').text(`€${subtotal.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}`, cols[cols.length - 1], y + 7, { width: 80, align: 'right' });
+    y += 24;
+
+    if (btwEnabled) {
+      doc.rect(50, y, tableWidth, 22).fill('#f9f9f9').stroke('#f0f0f0');
+      doc.fill('#555555').font('Helvetica').fontSize(11).text(`BTW ${btwRate}%`, cols[0] + 8, y + 6);
+      doc.fill('#555555').text(`€${totalBtw.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}`, cols[cols.length - 1], y + 6, { width: 80, align: 'right' });
+      y += 22;
+    } else {
+      doc.fill('#999999').font('Helvetica').fontSize(10).text('Vrijgesteld van BTW', cols[0] + 8, y + 4);
+      y += 18;
+    }
+
+    // Total row (accent)
+    doc.rect(50, y, tableWidth, 32).fill(accent);
+    doc.fill('#ffffff').font('Helvetica-Bold').fontSize(13).text('TOTAAL TE BETALEN', cols[0] + 8, y + 10);
+    doc.fill('#ffffff').font('Helvetica-Bold').fontSize(16).text(`€${totalIncl.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}`, cols[cols.length - 1], y + 8, { width: 80, align: 'right' });
+    y += 44;
+
+    // Payment info
+    if (iban) {
+      doc.fill('#111111').font('Helvetica-Bold').fontSize(12).text('BETAALINFORMATIE', 50, y);
+      y += 18;
+      doc.rect(50, y, tableWidth, 1).fill('#e8e8e8');
+      y += 10;
+
+      const payRows = [
+        ['IBAN', iban],
+        ['Tenaamstelling', tenaam],
+        ...(bic ? [['BIC', bic]] : []),
+        ['Omschrijving', `${companyName} / ${invoiceNr}`],
+        ['Betalen voor', dueFmt],
+      ];
+      payRows.forEach(([label, val]) => {
+        doc.fill('#888888').font('Helvetica').fontSize(10).text(label, 50, y, { width: 160 });
+        doc.fill('#111111').font('Helvetica').fontSize(10).text(val, 210, y, { width: 340 });
+        y += 18;
+      });
+    }
+
+    // Footer
+    const footerY = doc.page.height - 60;
+    doc.rect(0, footerY - 1, doc.page.width, 1).fill('#f0f0f0');
+    const footerParts = [agencyName, myEmail, BASE_URL].filter(Boolean).join('  ·  ');
+    doc.fill('#888888').font('Helvetica').fontSize(10).text(footerParts, 50, footerY + 8, { align: 'center', width: doc.page.width - 100 });
+    doc.fill('#aaaaaa').font('Helvetica').fontSize(9).text('Bedankt voor uw vertrouwen', 50, footerY + 24, { align: 'center', width: doc.page.width - 100 });
+
+    doc.end();
+  });
+}
+
+async function sendEmail({ to, subject, body, html, settings: _settings = {}, trackingToken, noCalendly = false, attachments = [] }) {
   // Normalise "to" — Resend requires a clean plain string
   const toStr = Array.isArray(to) ? to[0] : to;
   const toRaw = (typeof toStr === 'string' ? toStr : String(toStr || ''));
@@ -868,7 +1134,7 @@ async function sendEmail({ to, subject, body, html, settings: _settings = {}, tr
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: `"${agencyName}" <${fromAddress}>`, to: toFinal, reply_to: s.gmailAddress ? `${myName} <${s.gmailAddress}>` : undefined, subject: cleanSubject, html: htmlBody, text: body || '' }),
+    body: JSON.stringify({ from: `"${agencyName}" <${fromAddress}>`, to: toFinal, reply_to: s.gmailAddress ? `${myName} <${s.gmailAddress}>` : undefined, subject: cleanSubject, html: htmlBody, text: body || '', ...(attachments.length ? { attachments } : {}) }),
     signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
   });
   const d = await r.json();
@@ -5629,25 +5895,53 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
     addLeadHistory(leads, leads[idx].id, { event: 'paymentCreated', label: `${newPayments.length > 1 ? `Gesplitste betaling (${splitParts} delen)` : type || 'Betaallink'}: €${amount}` });
     writeJSON('leads.json', leads);
 
-    // Auto-send payment email to client
+    // Auto-send professional invoice email with PDF to client
     const lead = leads[idx];
     const payEmailTo = (lead.contactEmail || '').trim();
     if (payEmailTo && isResendReady(settings)) {
       try {
-        let paymentInfo;
-        if (effectiveMethod === 'bank_transfer' && bankDetails) {
-          const ref = `INV-${Date.now().toString(36).toUpperCase()}`;
-          paymentInfo = `Gelieve het bedrag over te maken via bankoverschrijving:\n\nIBAN:       ${bankDetails.iban}\nTenaamstelling: ${bankDetails.name}${bankDetails.bic ? `\nBIC:        ${bankDetails.bic}` : ''}\nBedrag:     €${amount}\nOmschrijving: ${description || 'AI-diensten'} / ${ref}`;
-        } else {
-          paymentInfo = newPayments.map((p, i) => `${newPayments.length > 1 ? `Deel ${i+1}/${newPayments.length}: ` : ''}€${p.amount} → ${p.paymentUrl}`).join('\n');
+        const invoiceNr  = `INV-${Date.now().toString(36).toUpperCase()}`;
+        const invoiceDate = new Date().toISOString();
+        const termDays   = settings.paymentTermDays || 14;
+        const dueDateISO = new Date(Date.now() + termDays * 86400000).toISOString();
+
+        // Build services list from lead.projectServices or lead.services
+        const svcsRaw = lead.projectServices && lead.projectServices.length
+          ? lead.projectServices : (lead.services || []);
+        const svcsForInvoice = svcsRaw.length
+          ? svcsRaw.map(s => typeof s === 'string' ? { name: s, price: amount / svcsRaw.length, billing: 'eenmalig' } : s)
+          : [{ name: description || 'AI-diensten', price: amount, billing: billing || 'eenmalig' }];
+
+        const invoiceHtml = buildInvoiceEmailHTML({ invoiceNr, invoiceDate, dueDate: dueDateISO, lead, services: svcsForInvoice, amount, settings });
+
+        // Add payment link(s) block after table if online payment
+        let payLinkHtml = '';
+        if (effectiveMethod !== 'bank_transfer') {
+          const links = newPayments.filter(p => p.paymentUrl).map((p, i) =>
+            `<a href="${p.paymentUrl}" style="display:inline-block;margin:4px 0;padding:12px 28px;background:#1a56db;color:#fff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">${newPayments.length > 1 ? `Betaal deel ${i+1}/${newPayments.length} — €${p.amount}` : `Factuur betalen — €${amount}`}</a>`
+          ).join('<br>');
+          payLinkHtml = links
+            ? `<div style="padding:20px 32px;text-align:center;background:#f5f8ff;border-top:1px solid #e8eef8">${links}</div>`
+            : '';
         }
+        const finalHtml = payLinkHtml
+          ? invoiceHtml.replace('</body></html>', `${payLinkHtml}</body></html>`)
+          : invoiceHtml;
+
+        // Generate PDF
+        const pdfBuffer = await generateInvoicePDF({ invoiceNr, invoiceDate, dueDate: dueDateISO, lead, services: svcsForInvoice, amount, settings });
+        const safeCompany = (lead.companyName || 'klant').replace(/[^a-zA-Z0-9]/g, '-');
+
         await sendEmail({
           to: payEmailTo,
-          subject: `Factuur ${description || 'AI-diensten'} — ${settings.agencyName}`,
-          body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder vind je de betaalinformatie voor ${description || 'onze diensten'}:\n\n${paymentInfo}\n\nHeb je vragen? Neem gerust contact op.\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`,
-          settings
+          subject: `Factuur ${invoiceNr} — ${settings.agencyName || 'Agency AI'}`,
+          body: `Beste ${lead.contactName || lead.companyName},\n\nBijgevoegd vindt u uw factuur ${invoiceNr}.\n\nMet vriendelijke groet,\n${settings.myName || ''}\n${settings.agencyName || 'Agency AI'}`,
+          html: finalHtml,
+          settings,
+          noCalendly: true,
+          attachments: [{ filename: `Factuur-${invoiceNr}-${safeCompany}.pdf`, content: pdfBuffer.toString('base64') }]
         });
-      } catch { /* optional */ }
+      } catch (emailErr) { console.error('[Invoice email]', emailErr.message); }
     }
 
     res.json(newPayments);
@@ -9634,9 +9928,19 @@ cron.schedule('0 9 * * *', async () => {
           writeJSON('leads.json', freshLeads);
         }
         if (lead.contactEmail && isResendReady(settings)) {
-          const termDays = settings.paymentTermDays || 14;
-          const invoicePayBlock = url ? `Betaallink: ${url}\nBetalingstermijn: ${termDays} dagen` : (settings.bankTransferIban ? `Betaling via overboeking:\nIBAN: ${settings.bankTransferIban}\nTenaamstelling: ${settings.bankTransferName || settings.agencyName || ''}\nBetalingstermijn: ${termDays} dagen` : '');
-          await sendEmail({ to: lead.contactEmail, subject: `Factuur ${today.toLocaleDateString('nl-NL', {month:'long'})} — ${settings.agencyName}`, body: `Beste ${lead.contactName || lead.companyName},\n\nHieronder de factuur voor deze maand:\n\n${desc}\nBedrag: €${total}\n\n${invoicePayBlock}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.agencyName}`, settings });
+          const termDays    = settings.paymentTermDays || 14;
+          const invoiceNr   = `INV-${Date.now().toString(36).toUpperCase()}`;
+          const dueDateISO  = new Date(today.getTime() + termDays * 86400000).toISOString();
+          const svcsForInv  = monthlyServices.map(s => ({ name: s.name || 'Dienst', price: s.price || 0, billing: 'maandelijks' }));
+          const invoiceHtml = buildInvoiceEmailHTML({ invoiceNr, invoiceDate: today.toISOString(), dueDate: dueDateISO, lead, services: svcsForInv, amount: total, settings });
+          let finalHtml = invoiceHtml;
+          if (url) {
+            const btn = `<div style="padding:20px 32px;text-align:center;background:#f5f8ff;border-top:1px solid #e8eef8"><a href="${url}" style="display:inline-block;padding:12px 28px;background:#1a56db;color:#fff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Factuur betalen — €${total}</a></div>`;
+            finalHtml = invoiceHtml.replace('</body></html>', `${btn}</body></html>`);
+          }
+          const pdfBuf = await generateInvoicePDF({ invoiceNr, invoiceDate: today.toISOString(), dueDate: dueDateISO, lead, services: svcsForInv, amount: total, settings });
+          const safeCompany = (lead.companyName || 'klant').replace(/[^a-zA-Z0-9]/g, '-');
+          await sendEmail({ to: lead.contactEmail, subject: `Factuur ${invoiceNr} — ${settings.agencyName}`, body: `Beste ${lead.contactName || lead.companyName},\n\nBijgevoegd vindt u uw factuur ${invoiceNr}.\n\nMet vriendelijke groet,\n${settings.myName || ''}\n${settings.agencyName}`, html: finalHtml, settings, noCalendly: true, attachments: [{ filename: `Factuur-${invoiceNr}-${safeCompany}.pdf`, content: pdfBuf.toString('base64') }] });
         }
         console.log(`[AutoInvoice] €${total} → ${lead.companyName}`);
       } catch (err) { console.error(`[AutoInvoice] Fout voor ${lead.companyName}:`, err.message); }
