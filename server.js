@@ -4502,9 +4502,14 @@ app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
 // ─── Agent Chat (project page AI agent) ──────────────────────────────────────
 
 app.post('/api/leads/:id/agent-chat', requireAdmin, async (req, res) => {
-  const { problemType, message, action } = req.body || {};
+  const { problemType, message, action, deliverableIdx } = req.body || {};
+  const leadId = req.params.id;
+  console.log('[AgentChat] leadId:', leadId);
+  console.log('[AgentChat] message:', message?.slice(0, 50));
+  console.log('[AgentChat] action:', action, '| deliverableIdx:', deliverableIdx);
+
   const leads = readJSON('leads.json') || [];
-  const idx   = leads.findIndex(l => l.id === req.params.id);
+  const idx   = leads.findIndex(l => l.id === leadId);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead     = leads[idx];
   const settings = readJSON('settings.json') || {};
@@ -4678,7 +4683,19 @@ Requirements:
 
       if (!leads[idx].agentBuilds) leads[idx].agentBuilds = [];
       leads[idx].agentBuilds.push({ type: typeSlug, url, filename, builtAt: new Date().toISOString() });
-      addLeadHistory(leads, req.params.id, { event: 'agentBuild', label: `Agent bouwde: ${typeSlug}` });
+
+      // If this was a deliverable adjustment, update the existing deliverable record
+      const dIdx = parseInt(deliverableIdx);
+      if (!isNaN(dIdx) && leads[idx].agentDeliverables?.[dIdx]) {
+        leads[idx].agentDeliverables[dIdx].html   = html;
+        leads[idx].agentDeliverables[dIdx].url    = url;
+        leads[idx].agentDeliverables[dIdx].builtAt = new Date().toISOString();
+        leads[idx].agentDeliverables[dIdx].status  = 'wacht_op_goedkeuring';
+        leads[idx].agentDeliverables[dIdx].clientVisible = false;
+        console.log('[AgentChat] Updated agentDeliverables[' + dIdx + '] with new build');
+      }
+
+      addLeadHistory(leads, leadId, { event: 'agentBuild', label: `Agent bouwde: ${typeSlug}` });
       writeJSON('leads.json', leads);
 
       return res.json({ built: true, url, typeSlug, companySlug, response: `✓ Gebouwd! Beschikbaar op: ${url}` });

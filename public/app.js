@@ -4897,14 +4897,30 @@ window.sendDeliverableAdjust = async function(leadId, dIdx) {
 
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-send"></i> Aanpassing sturen'; }
 
-  if (res?.reply) {
-    toast('Aanpassing ontvangen — herlaad de pagina om het resultaat te zien', 'success');
+  if (res?.error) {
+    toast(res.error, 'error');
+  } else if (res?.built) {
+    toast('Aanpassing gebouwd — pagina wordt herladen', 'success');
     if (input) input.value = '';
     const freshLeads = await apiJSON('/api/leads');
     if (freshLeads) state.leads = freshLeads;
     renderProjectPage().then(() => switchProjectTab('building'));
+  } else if (res?.response) {
+    // Chat path: show AI reply in the panel
+    const panel = document.getElementById(`delivChat-${leadId}-${dIdx}`);
+    if (panel) {
+      let replyDiv = panel.querySelector('.ai-reply');
+      if (!replyDiv) {
+        replyDiv = document.createElement('div');
+        replyDiv.className = 'ai-reply';
+        replyDiv.style.cssText = 'font-size:13px;color:var(--text-primary);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;white-space:pre-wrap;line-height:1.6';
+        panel.insertBefore(replyDiv, panel.querySelector('textarea'));
+      }
+      replyDiv.textContent = res.response;
+    }
+    toast('AI antwoord ontvangen', 'success');
   } else {
-    toast(res?.error || 'Aanpassing mislukt', 'error');
+    toast('Geen reactie ontvangen', 'error');
   }
 };
 
