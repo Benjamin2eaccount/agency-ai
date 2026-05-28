@@ -7142,13 +7142,30 @@ function _doStartProject(leadId) {
       ].join('');
       const localLead = state.leads.find(l => l.id === leadId);
       if (localLead) { localLead.status = 'client'; localLead.projectStartedAt = new Date().toISOString(); }
-      // Update inbox reply card if this project was started from inbox
+      // Remove inbox card and show success toast if project was started from inbox
       if (window._inboxProjectStart?.leadId === leadId) {
-        const startBtn = document.querySelector(`#card-${window._inboxProjectStart.itemId} [onclick*="startProjectFromInbox"]`);
-        if (startBtn) {
-          const wrapper = startBtn.parentElement;
-          if (wrapper) wrapper.innerHTML = `<span style="font-size:12px;background:#dcfce7;color:#166534;border-radius:6px;padding:4px 10px;font-weight:600">✓ Project gestart</span>`;
+        const { itemId } = window._inboxProjectStart;
+        const companyName = localLead?.companyName || '';
+        // Remove the card with a fade-out
+        const card = document.getElementById(`card-${itemId}`);
+        if (card) {
+          card.style.transition = 'opacity 0.3s';
+          card.style.opacity = '0';
+          setTimeout(() => {
+            card.remove();
+            // Also remove from state.inbox so empty-state check is accurate
+            state.inbox = (state.inbox || []).filter(i => i.id !== itemId);
+            // Show empty state if inbox is now empty
+            const container = document.getElementById('inboxCards');
+            if (container && !container.querySelector('.inbox-card')) {
+              container.innerHTML = `<div class="empty-state" style="padding:40px 0">
+                <i class="ti ti-inbox" style="font-size:32px;color:var(--text-muted)"></i>
+                <p>Inbox is leeg</p>
+              </div>`;
+            }
+          }, 300);
         }
+        toast(`✓ Project gestart — ${companyName} is nu een klant`, 'success');
         window._inboxProjectStart = null;
       }
     }
