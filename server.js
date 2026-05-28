@@ -1982,15 +1982,23 @@ app.get('/api/portal/:token/download/:filename', (req, res) => {
 
 // Public route — client uploaded files served from built websites (no auth required)
 app.get('/api/sites/:siteSlug/uploads/:filename', (req, res) => {
+  console.log('[PublicUpload] hit');
+  console.log('[PublicUpload] siteSlug:', req.params.siteSlug);
+  console.log('[PublicUpload] filename:', req.params.filename);
   if (!/^[a-z0-9-]+$/.test(req.params.siteSlug)) return res.status(404).json({ error: 'Niet gevonden' });
   const leads = readJSON('leads.json') || [];
+  console.log('[PublicUpload] leads count:', leads.length);
   const slug = req.params.siteSlug;
   const lead = leads.find(l =>
+    l.siteSlug === slug ||
     l.generatedSite?.siteSlug === slug ||
     generateSiteSlug(l.companyName) === slug
   );
+  console.log('[PublicUpload] lead found:', lead ? lead.companyName : 'NOT FOUND');
   if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
+  console.log('[PublicUpload] clientUploads count:', lead.clientUploads?.length || 0);
   const upload = _findUpload(lead.clientUploads, req.params.filename);
+  console.log('[PublicUpload] upload found:', upload ? 'yes, content length: ' + upload.content?.length : 'NOT FOUND');
   if (!upload) return res.status(404).json({ error: 'Bestand niet gevonden' });
   _serveUpload(upload, res);
 });
@@ -4680,7 +4688,7 @@ Remember: Start your response with <!DOCTYPE html> and fill the body with comple
       const _chatHasImages = _chatUploadedFiles.some(f => f.mimeType.startsWith('image/'));
       const chatUploadsCtx = `\nUPLOADED FILES BY CLIENT:\n${_chatUploadedFiles.length > 0
         ? _chatUploadedFiles.map(f => `- ${f.filename} (${f.mimeType}) → ${f.url}`).join('\n')
-        : 'No files uploaded yet'}${_chatHasImages ? `\nIMPORTANT — client has uploaded images. Use their direct URLs in HTML:\n- Logo file (name contains "logo"): use as <img> in header/nav\n- Banner/header image: use as hero background\n- All other images: embed contextually using the URL above\n- Do NOT use placeholder images when real client files are available` : ''}`;
+        : 'No files uploaded yet'}${_chatUploadedFiles.length > 0 ? `\n\nUSE THESE EXACT IMAGE URLs (no auth needed, publicly accessible):\n${_chatUploadedFiles.map(f => `${f.filename}: ${f.url}`).join('\n')}` : ''}${_chatHasImages ? `\nIMPORTANT — client has uploaded images. Use their direct URLs in HTML:\n- Logo file (name contains "logo"): use as <img> in header/nav\n- Banner/header image: use as hero background\n- All other images: embed contextually using the URL above\n- Do NOT use placeholder images when real client files are available\n- IMPORTANT: Copy the URL exactly as shown — these URLs work without any login` : ''}`;
 
       const chatBrandCtx = `
 BRAND & STYLE — follow exactly:
@@ -5450,11 +5458,12 @@ Website: ${lead.websiteUrl || ''}`;
     const uploadsCtx = `\n\nUPLOADED FILES BY CLIENT:
 ${_uploadedFiles.length > 0
   ? _uploadedFiles.map(f => `- ${f.filename} (${f.mimeType}) → ${f.url}`).join('\n')
-  : 'No files uploaded yet'}${_hasUploadedImages ? `\n\nIMPORTANT — client has uploaded images. When building HTML deliverables:
+  : 'No files uploaded yet'}${_uploadedFiles.length > 0 ? `\n\nUSE THESE EXACT IMAGE URLs (no auth needed, publicly accessible):\n${_uploadedFiles.map(f => `${f.filename}: ${f.url}`).join('\n')}` : ''}${_hasUploadedImages ? `\n\nIMPORTANT — client has uploaded images. When building HTML deliverables:
 - If a file with "logo" in the name exists, use it as the company logo: <img src="[url]" alt="${lead.companyName} logo" style="height:48px">
 - If a file with "banner" or "header" in the name exists, use it as the hero background or header image
-- Embed images using their direct URL shown above — do NOT use placeholder or stock images when real client files are available
-- If none of those patterns match, still consider using the uploaded images contextually` : ''}`;
+- Embed images using their EXACT URL shown above — do NOT use placeholder or stock images when real client files are available
+- If none of those patterns match, still consider using the uploaded images contextually
+- IMPORTANT: Copy the URL exactly as shown — these URLs work without any login` : ''}`;
 
     const brandContext = `
 MERK & STIJL — volg dit exact:
