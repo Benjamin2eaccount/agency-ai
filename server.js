@@ -6395,9 +6395,10 @@ app.post('/api/settings/test-email', requireAdmin, async (req, res) => {
   const s = readJSON('settings.json') || {};
   const resendKey   = s.resendApiKey || process.env.RESEND_API_KEY;
   const fromAddress = s.resendFromAddress || process.env.RESEND_FROM_ADDRESS || 'noreply@agencyai.info';
-  const toAddress   = s.gmailAddress || process.env.GMAIL_ADDRESS || fromAddress;
+  const testRecipient = 'benjamin.van.hemert2@gmail.com';
 
-  console.log('[TestMail] Key set:', !!resendKey, '| From:', fromAddress, '| To:', toAddress);
+  console.log('[TestEmail] Sending to:', testRecipient);
+  console.log('[TestMail] Key set:', !!resendKey, '| From:', fromAddress, '| To:', testRecipient);
 
   if (!resendKey) {
     console.log('[TestMail] No RESEND_API_KEY — aborting');
@@ -6412,7 +6413,7 @@ app.post('/api/settings/test-email', requireAdmin, async (req, res) => {
       headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         from: `"${s.agencyName || 'Agency AI'}" <${fromAddress}>`,
-        to: toAddress,
+        to: testRecipient,
         subject: 'Agency AI — Testmail ✓',
         html: buildEmailHTML(
           `Beste ${s.myName || 'Admin'},\n\nDit is een testmail om te bevestigen dat Resend correct is ingesteld en dat Agency AI emails kan versturen namens ${s.agencyName || 'Agency AI'}.\n\nDit is het nieuwe professionele email-template dat gebruikt wordt voor alle outreach.`,
@@ -6430,8 +6431,9 @@ app.post('/api/settings/test-email', requireAdmin, async (req, res) => {
       console.error('[TestMail] Resend rejected:', JSON.stringify(d));
       return res.status(500).json({ success: false, error: d.message || d.error || `Resend fout ${r.status}` });
     }
-    console.log('[TestMail] Success, id:', d.id, '→', toAddress);
-    return res.json({ success: true, ok: true, message: `Testmail verstuurd naar ${toAddress}` });
+    console.log('[TestEmail] Resend response:', JSON.stringify(d));
+    console.log('[TestMail] Success, id:', d.id, '→', testRecipient);
+    return res.json({ success: true, ok: true, message: `Testmail verstuurd naar ${testRecipient}` });
   } catch (err) {
     console.error('[TestMail] Exception:', err.message);
     return res.status(500).json({ success: false, error: err.message });
