@@ -869,9 +869,9 @@ function buildAiReplyCard(item) {
 
 window.startProjectFromInbox = function(itemId, leadId) {
   console.log('[InboxStart] clicked, leadId:', leadId);
-  console.log('[InboxStart] modal fn:', typeof window.openProjectConfigModal);
+  console.log('[InboxStart] modal fn:', typeof openProjectConfigModal);
   window._inboxProjectStart = { itemId, leadId };
-  window.openProjectConfigModal(leadId, false);
+  openProjectConfigModal(leadId, false);
 };
 
 
@@ -6839,7 +6839,6 @@ async function sendUpsellEmail(leadId) {
 
 function startProject(leadId) { openProjectConfigModal(leadId, false); }
 function editProjectConfig(leadId) { openProjectConfigModal(leadId, true); }
-window.openProjectConfigModal = function(leadId, editMode) { openProjectConfigModal(leadId, editMode); };
 
 function openProjectConfigModal(leadId, editMode) {
   const lead = state.leads.find(l => l.id === leadId);
@@ -6979,6 +6978,7 @@ function openProjectConfigModal(leadId, editMode) {
   updateProjectTotal();
   updateProjectEndDate();
 }
+window.openProjectConfigModal = openProjectConfigModal;
 
 function updateProjectTotal() {
   const checked = [...document.querySelectorAll('#projServicesList input[name="svc"]:checked')];
