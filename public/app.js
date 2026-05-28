@@ -11630,38 +11630,28 @@ async function renderSettings() {
 
         <div class="stg-section">
           <div class="stg-section-header">
-            <div class="stg-title">Gmail IMAP — reply detectie
+            <div class="stg-title">IMAP — reply detectie
               ${s.gmailConfigured ? `<span class="stg-status-badge stg-badge-green"><i class="ti ti-check"></i> Ingesteld</span>` : `<span class="stg-status-badge stg-badge-amber"><i class="ti ti-alert-triangle"></i> Niet ingesteld</span>`}
             </div>
-            <div class="stg-sub">Gmail wordt <strong>niet</strong> gebruikt voor verzenden — alleen voor het detecteren van antwoorden van prospects</div>
+            <div class="stg-sub">Verbind uw inbox om antwoorden van prospects automatisch te detecteren. Gebruik uw <strong>info@agencyai.info</strong> gegevens (Soverin — imap.soverin.net:993).</div>
           </div>
           <div class="stg-grid-2">
             <div class="stg-field">
-              <label class="stg-label">GMAIL ADRES</label>
-              <input type="email" class="stg-input" id="gmailAddress" value="${s.gmailAddress || ''}" placeholder="jouw@gmail.com">
+              <label class="stg-label">E-MAILADRES</label>
+              <input type="email" class="stg-input" id="gmailAddress" value="${s.gmailAddress || 'info@agencyai.info'}" placeholder="info@agencyai.info">
             </div>
             <div class="stg-field">
-              <label class="stg-label">APP-WACHTWOORD ${s.gmailPasswordSet ? '<span class="stg-status-badge stg-badge-green" style="font-size:10px">Ingesteld</span>' : ''}</label>
-              <input type="password" class="stg-input" id="gmailPassword" placeholder="${s.gmailPasswordSet ? '(laat leeg om ongewijzigd te laten)' : 'xxxx xxxx xxxx xxxx'}">
+              <label class="stg-label">WACHTWOORD ${s.gmailPasswordSet ? '<span class="stg-status-badge stg-badge-green" style="font-size:10px">Ingesteld</span>' : ''}</label>
+              <input type="password" class="stg-input" id="gmailPassword" placeholder="${s.gmailPasswordSet ? '(laat leeg om ongewijzigd te laten)' : 'Wachtwoord van info@agencyai.info'}">
             </div>
           </div>
-          <details class="stg-details" style="margin-bottom:14px">
-            <summary><i class="ti ti-info-circle" style="color:var(--accent)"></i> Hoe maak ik een app-wachtwoord aan?</summary>
-            <div class="stg-details-body">
-              <ol>
-                <li>Ga naar Gmail → Tandwiel → <strong>Alle instellingen</strong> → tabblad <strong>Doorsturen en POP/IMAP</strong> → zet IMAP aan</li>
-                <li>Ga naar <strong>myaccount.google.com → Beveiliging → 2-stapsverificatie → App-wachtwoorden</strong></li>
-                <li>Kies <em>E-mail + Windows/Mac</em> en kopieer het 16-cijferige wachtwoord</li>
-              </ol>
-            </div>
-          </details>
           <div class="stg-toggle-row">
             <label class="toggle-wrap">
               <input type="checkbox" id="replyDetection" ${s.replyDetection !== false ? 'checked' : ''}>
               <span class="toggle"></span>
               <span class="toggle-label">Reply detectie inschakelen</span>
             </label>
-            <p class="toggle-hint">Controleert elke 2 uur je Gmail inbox op antwoorden van prospects</p>
+            <p class="toggle-hint">Controleert elke 2 uur uw inbox (imap.soverin.net) op antwoorden van prospects</p>
           </div>
           <div class="stg-toggle-row">
             <label class="toggle-wrap">
@@ -11701,7 +11691,7 @@ async function renderSettings() {
             </details>
           </div>
           <div style="display:flex;gap:8px;margin-top:14px">
-            <button class="btn btn-ghost btn-sm" id="saveGmailBtn"><i class="ti ti-device-floppy"></i> Gmail opslaan</button>
+            <button class="btn btn-ghost btn-sm" id="saveGmailBtn"><i class="ti ti-device-floppy"></i> Opslaan</button>
             <button class="btn btn-ghost btn-sm" id="testImapBtn" onclick="testImapConnection()"><i class="ti ti-plug-connected"></i> Test IMAP verbinding</button>
           </div>
           <div id="gmailTestResult" style="margin-top:10px;display:none"></div>
@@ -12420,7 +12410,7 @@ function attachSettingsHandlers(s) {
     if (pwVal) body.gmailPassword = pwVal;
     const res = await api('/api/settings/gmail', { method: 'PATCH', body: JSON.stringify(body) });
     btn.disabled = false;
-    btn.innerHTML = '<i class="ti ti-device-floppy"></i> Gmail opslaan';
+    btn.innerHTML = '<i class="ti ti-device-floppy"></i> Opslaan';
     if (res.ok) toast('Gmail opgeslagen', 'success');
     else toast('Opslaan mislukt', 'error');
   });
