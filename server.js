@@ -1438,6 +1438,32 @@ Return ONLY valid JSON (no markdown):
         { id: 'q6', label: lead.language !== 'nl' ? 'Are there examples of websites or brands you like?' : 'Zijn er websites of merken waarvan jullie de stijl mooi vinden?', type: 'textarea', placeholder: 'https://voorbeeld.nl, ...', required: false },
       ];
     }
+    // Always append the two fixed file-upload prompt questions
+    const isNl = lead.language === 'nl' || !lead.language;
+    lead.intakeQuestions.push(
+      {
+        id: 'q_logo',
+        label: isNl
+          ? 'Heeft u een logo, huisstijl of merkrichtlijnen beschikbaar?'
+          : 'Do you have a logo, brand style or brand guidelines available?',
+        type: 'select',
+        options: isNl
+          ? ['Ja, ik upload het bij Bestanden', 'Nee, jullie mogen een stijl kiezen', 'Ik heb alleen een logo (geen huisstijl)']
+          : ['Yes, I will upload it under Files', 'No, you may choose a style', 'I only have a logo (no brand guidelines)'],
+        required: true
+      },
+      {
+        id: 'q_photos',
+        label: isNl
+          ? "Heeft u foto's van uw bedrijf, producten of diensten die op de website moeten?"
+          : 'Do you have photos of your business, products or services for the website?',
+        type: 'select',
+        options: isNl
+          ? ["Ja, ik upload ze bij Bestanden", 'Nee, gebruik stockfoto\'s of placeholders', 'Deels — ik upload wat ik heb']
+          : ['Yes, I will upload them under Files', 'No, use stock photos or placeholders', 'Partly — I will upload what I have'],
+        required: true
+      }
+    );
     const idx = leads.findIndex(l => l.id === lead.id);
     leads[idx] = lead;
     writeJSON('leads.json', leads);
@@ -4690,11 +4716,11 @@ Remember: Start your response with <!DOCTYPE html> and fill the body with comple
       const chatLang = (lead.language && lead.language !== 'nl') ? 'English' : 'Dutch (Nederlands)';
       const chatIntakeLines = Object.entries(chatIntakeRaw).filter(([, v]) => v).map(([k, v]) => `  ${k}: ${v}`).join('\n');
 
-      const _chatSiteSlug = lead.generatedSite?.siteSlug || generateSiteSlug(lead.companyName);
+      const _chatBaseSiteSlug = (lead.companyName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
       const _chatUploadedFiles = (lead.clientUploads || []).map(u => ({
         filename: u.filename,
         mimeType: u.mimeType || 'application/octet-stream',
-        url: `${BASE_URL}/api/sites/${_chatSiteSlug}/uploads/${encodeURIComponent(u.filename)}`
+        url: `${BASE_URL}/api/sites/${_chatBaseSiteSlug}/uploads/${encodeURIComponent(u.filename)}`
       }));
       const _chatHasImages = _chatUploadedFiles.some(f => f.mimeType.startsWith('image/'));
       const chatUploadsCtx = `\nUPLOADED FILES BY CLIENT:\n${_chatUploadedFiles.length > 0
@@ -5458,12 +5484,12 @@ Website: ${lead.websiteUrl || ''}`;
     const langNote = (lead.language && lead.language !== 'nl') ? 'English' : 'Nederlands';
     const intakeLines = Object.entries(intakeRaw).filter(([, v]) => v).map(([k, v]) => `  ${k}: ${v}`).join('\n');
 
-    const _leadSiteSlug = lead.generatedSite?.siteSlug || generateSiteSlug(lead.companyName);
+    const _baseSiteSlug = (lead.companyName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const _uploadedFiles = (lead.clientUploads || []).map(u => ({
       filename: u.filename,
       mimeType: u.mimeType || 'application/octet-stream',
       size: u.size,
-      url: `${BASE_URL}/api/sites/${_leadSiteSlug}/uploads/${encodeURIComponent(u.filename)}`
+      url: `${BASE_URL}/api/sites/${_baseSiteSlug}/uploads/${encodeURIComponent(u.filename)}`
     }));
     const _hasUploadedImages = _uploadedFiles.some(f => f.mimeType.startsWith('image/'));
     const uploadsCtx = `\n\nUPLOADED FILES BY CLIENT:
