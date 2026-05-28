@@ -425,7 +425,7 @@
       document.title = 'Projectstatus – ' + (data.companyName || '');
       const cur      = data.currentPhase || 1;
       const pct      = Math.round(((cur - 1) / (PHASES.length - 1)) * 100);
-      const svcs     = data.services  || [];
+      const svcs     = (data.projectServices && data.projectServices.length) ? data.projectServices : (data.services || []);
       const payments = data.payments  || [];
       const messages = data.messages  || [];
 
@@ -455,7 +455,11 @@
             (monthlyTotal > 0 ? `<div class="svc-total"><span>Totaal per maand</span><span>€${monthlyTotal.toLocaleString('nl-NL')}</span></div>` : '') +
             (onceTotal > 0   ? `<div class="svc-total"><span>Totaal eenmalig</span><span>€${onceTotal.toLocaleString('nl-NL')}</span></div>` : '')
           ) : ''}
-        </div>` : '';
+        </div>`
+      : `<div class="inner-section">
+          <div class="inner-label">Diensten &amp; Investering</div>
+          <p style="font-size:13px;color:#6b7280;margin:0">Wordt binnenkort geconfigureerd.</p>
+        </div>`;
 
       const calendlyHtml = data.calendlyUrl ? `
         <div class="inner-section">

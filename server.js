@@ -1470,10 +1470,15 @@ app.get('/api/portal/:token', (req, res) => {
   if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd. Neem contact op met uw accountmanager.' });
   const settings = readJSON('settings.json') || {};
   const settingsSvcs = settings.services || [];
-  const enrichedSvcs = (lead.services || []).map(s => {
-    const match = settingsSvcs.find(ss => ss.name === s.name);
-    return { ...s, description: match?.description || '' };
-  });
+  const rawSvcs = (lead.projectServices && lead.projectServices.length)
+    ? lead.projectServices : (lead.services || []);
+  const enrichedSvcs = rawSvcs.map(s => {
+    const sName   = typeof s === 'string' ? s : (s.name || '');
+    const match   = settingsSvcs.find(ss => ss.name === sName);
+    const price   = typeof s === 'object' ? (parseFloat(s.price)   || 0) : (parseFloat(match?.price)   || 0);
+    const billing = typeof s === 'object' ? (s.billing || 'maandelijks') : (match?.billing || 'maandelijks');
+    return { name: sName, price, billing, description: match?.description || '' };
+  }).filter(s => s.name);
   res.json({
     companyName:         lead.companyName,
     agencyName:          settings.agencyName || 'Agency AI',
@@ -1502,7 +1507,8 @@ app.get('/api/portal/:token', (req, res) => {
       .map(d => ({ service: d.service, type: d.type, deliverableType: d.deliverableType, url: d.url, approvedAt: d.approvedAt, builtAt: d.builtAt })),
     sharedProjectFiles: (lead.projectFiles || [])
       .filter(f => f.sharedWithClient)
-      .map(f => ({ id: f.id, name: f.name, type: f.type, url: f.url, fullUrl: f.fullUrl, createdAt: f.createdAt }))
+      .map(f => ({ id: f.id, name: f.name, type: f.type, url: f.url, fullUrl: f.fullUrl, createdAt: f.createdAt })),
+    projectServices: enrichedSvcs
   });
 });
 

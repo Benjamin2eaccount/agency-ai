@@ -2764,6 +2764,9 @@ function switchProjectTab(tab) {
     const f = document.getElementById(`contractFrame-${lead.id}`);
     if (f && lead.contract) f.srcdoc = lead.contract;
   }
+  if (tab === 'portaal') {
+    initPortalServices(lead.id);
+  }
 }
 
 async function renderProjectPage() {
@@ -3950,6 +3953,26 @@ async function renderProjectPage() {
         <div style="font-size:12px;color:var(--text-muted);margin-top:8px">De klant ziet de huidige fase direct in zijn portaal.</div>
       </div>
 
+      <!-- SECTIE: Diensten & Investering (wat klant ziet in Overzicht) -->
+      <div style="margin-bottom:20px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)">
+        <div class="project-section-title" style="margin-bottom:4px">Diensten &amp; Investering</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Wat de klant ziet in het Overzicht tab van het portaal.</div>
+        <div id="portalServicesList-${esc(lead.id)}" style="margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select id="portalServiceAdd-${esc(lead.id)}" class="form-input" style="flex:1;min-width:160px;max-width:260px;font-size:13px">
+            <option value="">— Selecteer dienst —</option>
+            ${(state.settings?.services || []).map(s => {
+              const nm = typeof s === 'string' ? s : (s.name || '');
+              const pr = typeof s === 'object' ? (parseFloat(s.price) || 0) : 0;
+              const bl = typeof s === 'object' ? (s.billing || 'maandelijks') : 'maandelijks';
+              return `<option value="${esc(nm)}" data-price="${pr}" data-billing="${esc(bl)}">${esc(nm)} — €${pr.toLocaleString('nl-NL')}${bl==='eenmalig'?' eenm.':'/mnd'}</option>`;
+            }).join('')}
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="addPortalService('${esc(lead.id)}')"><i class="ti ti-plus"></i> Toevoegen</button>
+          <button class="btn btn-primary btn-sm" onclick="savePortalServices('${esc(lead.id)}')"><i class="ti ti-check"></i> Opslaan</button>
+        </div>
+      </div>
+
       <!-- SECTIE 3: Zichtbare builds -->
       <div style="margin-bottom:20px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
@@ -4113,6 +4136,11 @@ async function renderProjectPage() {
   // Init: select first problem card if any
   if (lead.problems?.length) {
     selectProblemCard(0, lead.id);
+  }
+
+  // Init portal services list if portaal tab is active
+  if (activeTab === 'portaal') {
+    initPortalServices(lead.id);
   }
 }
 
@@ -5025,6 +5053,69 @@ async function markPortalChatRead(leadId) {
   if (lead?.portalChat) lead.portalChat.filter(m => m.from === 'client').forEach(m => { m.readAt = new Date().toISOString(); });
   renderProjectPage();
 }
+
+window._portalSvcs = window._portalSvcs || {};
+
+function initPortalServices(leadId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead) return;
+  const raw = (lead.projectServices && lead.projectServices.length) ? lead.projectServices : (lead.services || []);
+  window._portalSvcs[leadId] = raw.map(s =>
+    typeof s === 'string'
+      ? { name: s, price: 0, billing: 'maandelijks' }
+      : { name: s.name || '', price: parseFloat(s.price) || 0, billing: s.billing || 'maandelijks' }
+  ).filter(s => s.name);
+  renderPortalServicesRows(leadId);
+}
+
+function renderPortalServicesRows(leadId) {
+  const svcs = window._portalSvcs[leadId] || [];
+  const el = document.getElementById(`portalServicesList-${leadId}`);
+  if (!el) return;
+  el.innerHTML = svcs.length
+    ? svcs.map((s, i) => `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px">
+          <span style="flex:1;font-size:13px;font-weight:500">${esc(s.name)}</span>
+          <span style="font-size:12px;color:var(--text-muted)">€${(s.price||0).toLocaleString('nl-NL')}${s.billing==='eenmalig'?' eenm.':'/mnd'}</span>
+          <button class="btn btn-ghost btn-xs" onclick="removePortalService('${esc(leadId)}',${i})" style="color:var(--danger);padding:2px 6px"><i class="ti ti-x"></i></button>
+        </div>`).join('')
+    : '<div style="font-size:13px;color:var(--text-muted);padding:4px 0">Nog geen diensten. Voeg toe via het dropdown hieronder.</div>';
+}
+
+window.addPortalService = function(leadId) {
+  const sel = document.getElementById(`portalServiceAdd-${leadId}`);
+  if (!sel || !sel.value) return;
+  const opt = sel.options[sel.selectedIndex];
+  const svc = { name: sel.value, price: parseFloat(opt.dataset.price) || 0, billing: opt.dataset.billing || 'maandelijks' };
+  const existing = window._portalSvcs[leadId] || [];
+  if (!existing.some(s => s.name === svc.name)) {
+    window._portalSvcs[leadId] = [...existing, svc];
+    renderPortalServicesRows(leadId);
+  }
+  sel.value = '';
+};
+
+window.removePortalService = function(leadId, idx) {
+  if (!window._portalSvcs[leadId]) return;
+  window._portalSvcs[leadId].splice(idx, 1);
+  renderPortalServicesRows(leadId);
+};
+
+window.savePortalServices = async function(leadId) {
+  const svcs = window._portalSvcs[leadId] || [];
+  const res = await api(`/api/leads/${leadId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectServices: svcs })
+  });
+  if (res?.ok) {
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead) lead.projectServices = [...svcs];
+    toast('Diensten opgeslagen', 'success');
+  } else {
+    toast('Opslaan mislukt', 'error');
+  }
+};
 
 async function savePortalPhase(leadId) {
   const phase = parseInt(document.getElementById('portalPhaseSelect')?.value || '1');
@@ -6638,8 +6729,13 @@ async function confirmStartProject(leadId, editMode) {
   const lead = state.leads.find(l => l.id === leadId);
   if (!lead) return;
 
-  const checkedBoxes = [...document.querySelectorAll('#projServicesList input[name="svc"]:checked')].map(el => el.value);
-  const services  = checkedBoxes.length ? checkedBoxes : (lead.services || []);
+  const checkedEls = [...document.querySelectorAll('#projServicesList input[name="svc"]:checked')];
+  const projectServices = checkedEls.map(el => ({
+    name: el.value,
+    price: parseFloat(el.dataset.price) || 0,
+    billing: el.dataset.billing || 'maandelijks'
+  }));
+  const services = projectServices.length ? projectServices : (lead.services || []);
   const selectedProblems = [...document.querySelectorAll('#projProblemsList input[name="prob"]:checked')].map(el => el.value);
   const price     = parseFloat(document.getElementById('projPrice')?.value) || 0;
   const billing   = document.getElementById('projBilling')?.value || 'maandelijks';
@@ -6654,6 +6750,7 @@ async function confirmStartProject(leadId, editMode) {
     projectStartDate: startDate, projectEndDate: endDate,
     projectNotes: notes,
     selectedProblems: selectedProblems,
+    projectServices: projectServices,
   };
   if (services.length) patch.services = services;
 
