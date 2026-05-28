@@ -1916,7 +1916,8 @@ app.post('/api/portal/:token/upload', express.json({ limit: '15mb' }), async (re
     usedInBuild: false
   };
   leads[li].clientUploads = leads[li].clientUploads || [];
-  leads[li].clientUploads.push(fileInfo);
+  const alreadyExists = leads[li].clientUploads.some(u => u.filename === fileInfo.filename);
+  if (!alreadyExists) leads[li].clientUploads.push(fileInfo);
   writeJSON('leads.json', leads);
 
   addNotification('client_question', `📎 Bestand geüpload: ${safeName}`, `${leads[li].companyName} heeft een bestand geüpload`, leads[li].id, `project:${leads[li].id}`);

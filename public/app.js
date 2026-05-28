@@ -407,7 +407,9 @@ async function renderDashboard() {
   const weekLabels = getLast7Days();
   const weekCounts = getWeekCounts(stats.weeklyData || [], weekLabels);
 
-  document.getElementById('dashboardContent').innerHTML = `
+  const dashboardContent = document.getElementById('dashboardContent');
+  if (!dashboardContent) return;
+  dashboardContent.innerHTML = `
     ${!settings?.resendConfigured ? `
       <div class="alert-banner alert-banner-amber" onclick="setView('settings');setTimeout(()=>document.querySelector('[data-tab=email]')?.click(),100)" style="cursor:pointer;margin-bottom:16px">
         <i class="ti ti-mail-off" style="font-size:16px"></i>
@@ -1932,6 +1934,26 @@ async function generateProposal(leadId) {
     toast('Voorstel genereren mislukt: ' + err.message, 'error');
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-file-text"></i> Genereer voorstel'; }
     if (prog) prog.style.display = 'none';
+  }
+}
+
+async function downloadClientUpload(leadId, filename) {
+  const url = `/api/leads/${encodeURIComponent(leadId)}/client-uploads/${encodeURIComponent(filename)}`;
+  console.log('[DownloadBtn] URL:', url);
+  try {
+    const res = await api(url);
+    if (!res.ok) { toast('Download mislukt (' + res.status + ')', 'error'); return; }
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(blobUrl); a.remove(); }, 1000);
+  } catch (e) {
+    console.error('[DownloadBtn] Error:', e);
+    toast('Download mislukt', 'error');
   }
 }
 
@@ -4324,7 +4346,7 @@ async function renderProjectPage() {
                   <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><i class="ti ti-paperclip" style="margin-right:4px;color:var(--accent)"></i>${esc(f.filename)}</div>
                   <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(f.mimeType||'')} · ${fmtSize} KB${fmtDate ? ' · ' + fmtDate : ''}</div>
                 </div>
-                <a href="/api/leads/${esc(lead.id)}/client-uploads/${encodeURIComponent(f.filename)}" download="${esc(f.filename)}" class="btn btn-ghost btn-xs" style="flex-shrink:0"><i class="ti ti-download"></i> Download</a>
+                <button class="btn btn-ghost btn-xs" style="flex-shrink:0" onclick="downloadClientUpload('${esc(lead.id)}','${esc(f.filename)}')"><i class="ti ti-download"></i> Download</button>
               </div>`;
             }).join('')
           : `<div style="font-size:13px;color:var(--text-muted)">De klant heeft nog geen bestanden geüpload.</div>`
@@ -6726,7 +6748,7 @@ function buildPortalTab(lead) {
                 <div style="font-size:13px;font-weight:600">${esc(f.filename)}</div>
                 <div style="font-size:11px;color:var(--text-muted)">${esc(f.mimeType||'')} · ${((f.size||0)/1024).toFixed(1)} KB · ${f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString('nl-NL') : ''}</div>
               </div>
-              <a href="/api/leads/${esc(lead.id)}/client-uploads/${encodeURIComponent(f.filename)}" download="${esc(f.filename)}" class="btn btn-ghost btn-xs"><i class="ti ti-download"></i> Download</a>
+              <button class="btn btn-ghost btn-xs" onclick="downloadClientUpload('${esc(lead.id)}','${esc(f.filename)}')"><i class="ti ti-download"></i> Download</button>
             </div>`;
           }).join('')
         : '<p class="text-secondary" style="font-size:13px">Nog geen bestanden geüpload door klant.</p>'
