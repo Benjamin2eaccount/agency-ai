@@ -629,6 +629,7 @@
             const typeIcon = d.type === 'code' ? '💻' : d.deliverableType === 'strategy' ? '📊' : '📄';
             const typeLabel = d.type === 'code' ? 'Interactieve pagina' : d.deliverableType === 'strategy' ? 'Strategiedocument' : 'Document';
             const absUrl = _absUrl(d.url);
+            const embedCode = absUrl ? `&lt;iframe src="${absUrl.replace(/"/g,'&quot;')}" width="100%" height="700" frameborder="0" style="border:none;border-radius:8px"&gt;&lt;/iframe&gt;` : '';
             return `<div style="padding:12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;background:#f9fafb">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${absUrl && d.type==='code'?'10px':'0'}">
                 <div>
@@ -642,6 +643,22 @@
                 <iframe src="${absUrl.replace(/"/g,'&quot;')}" style="width:100%;height:300px;border:none;display:block" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"></iframe>
                 <div style="display:none;padding:20px;text-align:center;font-size:13px;color:#6b7280;background:#f9fafb">Preview niet beschikbaar — <a href="${absUrl.replace(/"/g,'&quot;')}" target="_blank" rel="noopener" style="color:#6366f1;text-decoration:underline;margin-left:4px">open pagina in nieuw tabblad →</a></div>
               </div>` : ''}
+              ${absUrl && d.type==='code' ? `
+              <details style="margin-top:10px">
+                <summary style="font-size:12px;font-weight:600;color:#6366f1;cursor:pointer;padding:6px 0;user-select:none">🔧 Installatie instructies — Zo plaatst u dit op uw website</summary>
+                <div style="margin-top:8px;padding:12px;background:#f0f4ff;border-radius:8px;border:1px solid #c7d2fe">
+                  <div style="font-size:12px;color:#3730a3;line-height:1.7">
+                    <strong>WordPress / Elementor</strong><br>
+                    Voeg een 'Aangepaste HTML'-blok toe en plak:<br>
+                    <code style="display:block;background:#e0e7ff;padding:6px 8px;border-radius:4px;font-size:11px;margin:4px 0;word-break:break-all">${embedCode}</code>
+                    <strong>Webflow</strong> — Voeg een Embed-element toe en plak bovenstaande code.<br>
+                    <strong>Shopify</strong> — Online Store → Thema aanpassen → Aangepaste HTML-sectie.<br>
+                    <strong>Wix</strong> — + → Meer → HTML-iframe → Coderen.<br>
+                    <strong>Directe link</strong> — Deel de URL direct: <a href="${absUrl.replace(/"/g,'&quot;')}" target="_blank" style="color:#6366f1">${absUrl.replace(/"/g,'&quot;')}</a>
+                  </div>
+                  <button onclick="navigator.clipboard.writeText('<iframe src=\\'${absUrl.replace(/'/g,"\\'")}\\'  width=\\'100%\\' height=\\'700\\' frameborder=\\'0\\' style=\\'border:none;border-radius:8px\\'></iframe>').then(()=>this.textContent='Gekopieerd! ✓').catch(()=>{})" style="margin-top:8px;font-size:11px;padding:5px 12px;background:#6366f1;color:#fff;border:none;border-radius:5px;cursor:pointer">Kopieer embedcode</button>
+                </div>
+              </details>` : ''}
             </div>`;
           }).join('')}
         </div>` : '';
@@ -814,7 +831,25 @@
               </div>` : ''}
             ${svcsHtml}
             ${calendlyHtml}
-            ${!data.portalWelcomeMessage && !svcsHtml && !calendlyHtml ? '<div class="empty-state"><p>Nog geen projectinformatie beschikbaar.</p></div>' : ''}
+            ${(() => {
+              const subs = data.contactSubmissions || [];
+              if (!subs.length) return '';
+              const fmt2 = iso => { try { return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
+              return `<div class="inner-section" style="margin-top:14px">
+                <div class="inner-label" style="margin-bottom:8px">📩 Binnengekomen berichten via uw website</div>
+                ${subs.map(s => `<div style="padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;background:#f9fafb">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+                    <div>
+                      <div style="font-size:13px;font-weight:600;color:#111">${e(s.name)}${s.email ? ` <span style="font-weight:400;color:#6b7280">&lt;${e(s.email)}&gt;</span>` : ''}</div>
+                      ${s.service ? `<div style="font-size:12px;color:#6366f1;margin-top:2px">${e(s.service)}</div>` : ''}
+                      ${s.message ? `<div style="font-size:12px;color:#374151;margin-top:4px;line-height:1.5">${e(s.message.substring(0,140))}${s.message.length>140?'…':''}</div>` : ''}
+                    </div>
+                    <div style="font-size:11px;color:#9ca3af;white-space:nowrap;flex-shrink:0">${fmt2(s.submittedAt)}</div>
+                  </div>
+                </div>`).join('')}
+              </div>`;
+            })()}
+            ${!data.portalWelcomeMessage && !svcsHtml && !calendlyHtml && !(data.contactSubmissions||[]).length ? '<div class="empty-state"><p>Nog geen projectinformatie beschikbaar.</p></div>' : ''}
           </div>
 
           <div class="tab-pane" data-pane="leveringen">

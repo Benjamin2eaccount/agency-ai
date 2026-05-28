@@ -829,6 +829,47 @@ function sanitizeSubject(s) {
     .trim();
 }
 
+function buildIntegrationGuide(settings) {
+  const s = settings || {};
+  const agencyName = s.agencyName || 'Agency AI';
+  const agencyEmail = s.gmailAddress || '';
+  return `
+<!--
+═══════════════════════════════════════════════════════════
+  INTEGRATIE INSTRUCTIES — ${agencyName}
+  Heeft u vragen? ${agencyEmail || 'Neem contact op met uw accountmanager'}
+═══════════════════════════════════════════════════════════
+
+OPTIE 1 — WordPress / Elementor / Divi
+  1. Ga naar uw WordPress dashboard → Pagina's → Nieuwe pagina
+  2. Klik op '+ Blok toevoegen' → zoek 'Aangepaste HTML'
+  3. Plak de volgende embedcode:
+     <iframe src="[UW-URL]" width="100%" height="700" frameborder="0" style="border:none;border-radius:8px"></iframe>
+  4. Publiceer de pagina en controleer op uw website
+
+OPTIE 2 — Webflow
+  1. Open de pagina in Webflow Designer
+  2. Voeg een 'Embed' element toe (HTML-blok)
+  3. Plak dezelfde embedcode als hierboven
+  4. Publiceer de site
+
+OPTIE 3 — Shopify
+  1. Online Store → Thema's → Thema aanpassen
+  2. Voeg een 'Aangepaste HTML'-sectie toe
+  3. Plak de embedcode
+
+OPTIE 4 — Wix
+  1. Klik op '+' → Meer → HTML-iframe
+  2. Klik op 'Coderen' en plak de embedcode
+
+OPTIE 5 — Directe link
+  Deel de URL direct met uw klanten of zet hem in uw email-handtekening.
+
+Bouwtijd: ${new Date().toLocaleDateString('nl-NL')} | Door: ${agencyName}
+═══════════════════════════════════════════════════════════
+-->`;
+}
+
 function buildInvoiceEmailHTML({ invoiceNr, invoiceDate, dueDate, lead, services, amount, settings }) {
   const s = settings || {};
   const agencyName  = s.agencyName || 'Agency AI';
@@ -1776,7 +1817,8 @@ app.get('/api/portal/:token', (req, res) => {
     sharedProjectFiles: (lead.projectFiles || [])
       .filter(f => f.sharedWithClient)
       .map(f => ({ id: f.id, name: f.name, type: f.type, url: f.url, fullUrl: f.fullUrl, createdAt: f.createdAt })),
-    projectServices: enrichedSvcs
+    projectServices: enrichedSvcs,
+    contactSubmissions: (lead.contactSubmissions || []).slice(0, 20)
   });
 });
 
@@ -2002,6 +2044,52 @@ app.post('/api/booking/:client', async (req, res) => {
 app.get('/api/services', (req, res) => {
   const settings = readJSON('settings.json') || {};
   res.json(settings.services || DEFAULT_SERVICES);
+});
+
+// Contact form submissions from built client sites — public, no auth
+app.post('/api/sites/:siteSlug/contact', async (req, res) => {
+  if (!/^[a-z0-9-]+$/.test(req.params.siteSlug)) return res.status(404).json({ error: 'Niet gevonden' });
+  const { name, email, phone, message, service } = req.body;
+  if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
+
+  const siteSlug = req.params.siteSlug;
+  const leads = readJSON('leads.json') || [];
+  const settings = readJSON('settings.json') || {};
+
+  // Find lead whose generated site matches this slug
+  const lead = leads.find(l => {
+    if (l.generatedSite?.siteSlug === siteSlug) return true;
+    if ((l.agentBuilds || []).some(b => (b.url || '').includes(`/sites/${siteSlug}/`))) return true;
+    const compSlug = (l.companyName || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    return compSlug === siteSlug;
+  });
+
+  const submission = {
+    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+    name, email, phone: phone || '', message: message || '', service: service || '',
+    siteSlug, submittedAt: new Date().toISOString()
+  };
+
+  if (lead) {
+    if (!lead.contactSubmissions) lead.contactSubmissions = [];
+    lead.contactSubmissions.unshift(submission);
+    addLeadHistory(leads, lead.id, { event: 'contactFormSubmission', label: `Contactformulier ingevuld door ${name} via gebouwde website` });
+    writeJSON('leads.json', leads);
+
+    // Notify lead's contact email
+    if (lead.contactEmail && isResendReady(settings)) {
+      const bodyText = `Hallo,\n\nEr is een nieuw bericht via uw website:\n\nNaam: ${name}\nEmail: ${email}${phone ? `\nTelefoon: ${phone}` : ''}${service ? `\nDienst: ${service}` : ''}\n\nBericht:\n${message || '(geen bericht)'}\n\nU kunt reageren via uw portaal.\n\nMet vriendelijke groet,\n${settings.agencyName || 'Agency AI'}`;
+      sendEmail({ to: lead.contactEmail, subject: `Nieuw contactbericht via uw website — ${name}`, body: bodyText, settings, noCalendly: true }).catch(e => console.error('[Site contact email]', e.message));
+    }
+    addNotification('client_question', `Contactformulier: ${lead.companyName}`, `${name}: ${(message || service || '').substring(0, 80)}`, lead.id, `project:${lead.id}`);
+  } else {
+    // Save as generic contact if lead not found
+    const contacts = readJSON('contacts.json') || [];
+    contacts.unshift({ ...submission, type: 'site_contact', source: siteSlug });
+    writeJSON('contacts.json', contacts);
+  }
+
+  res.json({ success: true });
 });
 
 app.use('/api', authMiddleware);
@@ -4461,6 +4549,7 @@ ${chatIntakeLines ? `Client intake answers:\n${chatIntakeLines}` : ''}
 
       // Detect which of 4 build categories applies
       const isBooking  = /boek|reserv|afspra|agenda|appointment|calendar/.test(combined);
+      const isChatbot  = /chatbot|chat.*bot|faq.*assistent|kennisbank|support.*bot/.test(combined);
       const isDocument = /rapport|audit|analyse|report|seo rapport|concurrentie|keyword|onderzoek|strateg/.test(combined) && !isBooking;
       const isStrategy = /crm|automatiser|lead scoring|a\/b|funnel|stappenplan|roadmap/.test(combined) && !isBooking;
       const isHtml     = !isDocument && !isStrategy; // website, chatbot, booking, dashboard, landing → full HTML
@@ -4512,6 +4601,21 @@ MUST include in <body>:
 - Next steps and quick wins
 
 Use brand color ${chatStyle.color} for section highlights. Load font "${chatStyle.font}" from Google Fonts.`;
+      } else if (isChatbot) {
+        buildPrompt = `${PREAMBLE}Build a complete HTML chatbot / FAQ assistant page for ${lead.companyName}.
+
+${chatBrandCtx}
+
+Task: ${message}
+
+Requirements:
+- Chat widget with open/close toggle, message bubbles, typing indicator
+- 15+ pre-programmed Q&A pairs relevant to their niche and services
+- Lead capture form when user asks to contact
+- IMPORTANT: when no matching answer found, display fallback: "Ik kan u helaas niet verder helpen met deze vraag. Neem contact op via ${lead.contactEmail || '[email]'} of bel ons voor directe hulp."
+- Use brand color ${chatStyle.color} as accent (NOT hardcoded indigo unless that is the brand color)
+- Load font "${chatStyle.font}" from Google Fonts
+- Mobile responsive layout`;
       } else {
         buildPrompt = `${PREAMBLE}Build a complete, fully functional standalone HTML page for ${lead.companyName}.
 
@@ -4527,7 +4631,11 @@ Requirements:
       }
 
       // aiCallBuild() now handles markdown stripping + body validation internally
-      const html = await aiCallBuild(buildPrompt);
+      let html = await aiCallBuild(buildPrompt);
+
+      // Append integration guide as HTML comment before </body>
+      const _integGuide = buildIntegrationGuide(settings);
+      html = html.includes('</body>') ? html.replace('</body>', `${_integGuide}\n</body>`) : html + _integGuide;
 
       const companySlug = lead.companyName
         .toLowerCase()
@@ -5219,6 +5327,7 @@ Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" 
 ${brandContext}
 
 MUST include in <body>: clean chat interface, 15+ pre-programmed Q&A pairs relevant to their niche (${lead.niche || ''}), floating chat widget with open/close, message bubbles, typing indicator, lead capture form when user asks to contact.
+IMPORTANT: when no matching answer found, the chatbot MUST display: "Ik kan u helaas niet verder helpen met deze vraag. Neem contact op via ${lead.contactEmail || '[email]'} of bel ons voor directe hulp."
 Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" from Google Fonts. Mobile responsive.`;
           } else if (/dashboard/i.test(serviceName)) {
             prompt = `${BUILD_HTML_RULES}Build a complete HTML analytics dashboard for ${lead.companyName}.
@@ -5237,9 +5346,13 @@ Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" 
           }
 
           sse({ type: 'progress', service: serviceName, percent: 50 });
-          const html = await aiCallBuild(prompt);
+          let html = await aiCallBuild(prompt);
           sse({ type: 'progress', service: serviceName, percent: 80 });
           { const bm = html.match(/<body[^>]*>([\s\S]*)<\/body>/i); console.log(`[Build] Body length: ${(bm?.[1]?.trim()||'').length} | Success: true`); }
+
+          // Append integration guide as HTML comment before </body>
+          const integGuide = buildIntegrationGuide(settings);
+          html = html.includes('</body>') ? html.replace('</body>', `${integGuide}\n</body>`) : html + integGuide;
 
           const sitesDir = path.join(__dirname, 'public', 'sites', companySlug);
           fs.mkdirSync(sitesDir, { recursive: true });
@@ -6204,6 +6317,7 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
     // Auto-send professional invoice email with PDF to client
     const lead = leads[idx];
     const payEmailTo = (lead.contactEmail || '').trim();
+    console.log('[Invoice] Sending to:', payEmailTo || '(no email)');
     if (payEmailTo && isResendReady(settings)) {
       try {
         const invoiceNr  = `INV-${Date.now().toString(36).toUpperCase()}`;
@@ -6234,8 +6348,13 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
           ? invoiceHtml.replace('</body></html>', `${payLinkHtml}</body></html>`)
           : invoiceHtml;
 
-        // Generate PDF
-        const pdfBuffer = await generateInvoicePDF({ invoiceNr, invoiceDate, dueDate: dueDateISO, lead, services: svcsForInvoice, amount, settings });
+        // Generate PDF (non-fatal — send email without attachment if PDF fails)
+        let pdfBuffer = null;
+        try {
+          pdfBuffer = await generateInvoicePDF({ invoiceNr, invoiceDate, dueDate: dueDateISO, lead, services: svcsForInvoice, amount, settings });
+        } catch (pdfErr) {
+          console.error('[Invoice PDF error]', pdfErr.message);
+        }
         const safeCompany = (lead.companyName || 'klant').replace(/[^a-zA-Z0-9]/g, '-');
 
         await sendEmail({
@@ -6245,8 +6364,9 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
           html: finalHtml,
           settings,
           noCalendly: true,
-          attachments: [{ filename: `Factuur-${invoiceNr}-${safeCompany}.pdf`, content: pdfBuffer.toString('base64') }]
+          attachments: pdfBuffer ? [{ filename: `Factuur-${invoiceNr}-${safeCompany}.pdf`, content: pdfBuffer.toString('base64') }] : []
         });
+        console.log('[Invoice] Email sent OK');
       } catch (emailErr) { console.error('[Invoice email]', emailErr.message); }
     }
 
