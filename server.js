@@ -1918,6 +1918,8 @@ app.post('/api/portal/:token/upload', express.json({ limit: '15mb' }), async (re
   leads[li].clientUploads = leads[li].clientUploads || [];
   const alreadyExists = leads[li].clientUploads.some(u => u.filename === fileInfo.filename);
   if (!alreadyExists) leads[li].clientUploads.push(fileInfo);
+  console.log('[Upload] Saving to lead:', leads[li].id, leads[li].companyName);
+  console.log('[Upload] clientUploads count:', leads[li].clientUploads.length);
   writeJSON('leads.json', leads);
 
   addNotification('client_question', `📎 Bestand geüpload: ${safeName}`, `${leads[li].companyName} heeft een bestand geüpload`, leads[li].id, `project:${leads[li].id}`);
@@ -1986,14 +1988,23 @@ app.get('/api/sites/:siteSlug/uploads/:filename', (req, res) => {
   console.log('[PublicUpload] siteSlug:', req.params.siteSlug);
   console.log('[PublicUpload] filename:', req.params.filename);
   if (!/^[a-z0-9-]+$/.test(req.params.siteSlug)) return res.status(404).json({ error: 'Niet gevonden' });
-  const leads = readJSON('leads.json') || [];
+  const leads = readJSON('leads.json') || []; // readJSON hits SQLite directly — always fresh
   console.log('[PublicUpload] leads count:', leads.length);
   const slug = req.params.siteSlug;
-  const lead = leads.find(l =>
-    l.siteSlug === slug ||
-    l.generatedSite?.siteSlug === slug ||
-    generateSiteSlug(l.companyName) === slug
-  );
+  console.log('[PublicUpload] All lead slugs:', leads.map(l => ({
+    name: l.companyName,
+    siteSlug: l.siteSlug,
+    generatedSlug: l.generatedSite?.siteSlug,
+    computed: (l.companyName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  })));
+  const lead = leads.find(l => {
+    const computed = (l.companyName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return l.siteSlug === slug ||
+      l.generatedSite?.siteSlug === slug ||
+      computed === slug ||
+      computed.includes(slug) ||
+      slug.includes(computed);
+  });
   console.log('[PublicUpload] lead found:', lead ? lead.companyName : 'NOT FOUND');
   if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
   console.log('[PublicUpload] clientUploads count:', lead.clientUploads?.length || 0);
