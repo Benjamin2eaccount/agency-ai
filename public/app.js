@@ -1604,7 +1604,252 @@ function copyText(text, msg) {
   navigator.clipboard.writeText(text).then(() => toast(msg || 'Gekopieerd!', 'success'));
 }
 
-// ─── Proposal generator ───────────────────────────────────────────────────────
+// ─── Proposal generator (new modal-based PDF system) ─────────────────────────
+
+window._proposalModalState = {};
+
+function openProposalModal(leadId) {
+  const lead    = state.leads.find(l => l.id === leadId);
+  if (!lead) return;
+  const allSvcs = (state.settings?.services || []);
+  const leadSvcNames = (lead.projectServices || lead.services || []).map(s => typeof s === 'string' ? s : (s.name || ''));
+  const validUntil   = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+
+  window._proposalModalState[leadId] = {
+    rows: allSvcs.map(svc => ({
+      name:        svc.name || '',
+      price:       parseFloat(svc.price) || 0,
+      billing:     svc.billing || 'maandelijks',
+      description: svc.description || '',
+      checked:     leadSvcNames.includes(svc.name)
+    })),
+    btwEnabled:          !!(state.settings?.btwEnabled),
+    btwRate:             parseFloat(state.settings?.btwRate) || 21,
+    generatedProposalId: null
+  };
+
+  const ms = window._proposalModalState[leadId];
+
+  openModal(`
+    <div style="padding:4px 0 8px">
+      <h3 style="margin:0 0 3px;font-size:17px;font-weight:700;color:var(--text-primary)"><i class="ti ti-file-text" style="color:var(--accent);margin-right:8px"></i>Voorstel genereren</h3>
+      <p style="margin:0 0 20px;font-size:13px;color:var(--text-secondary)">${esc(lead.companyName)}</p>
+
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Diensten selecteren</div>
+      <div id="proposalRows-${leadId}" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+        ${_buildProposalRowsHtml(leadId)}
+      </div>
+      <div style="display:flex;justify-content:flex-end;align-items:center;gap:16px;margin-top:10px;padding:10px 12px;background:var(--surface-2);border-radius:8px;font-size:13px;flex-wrap:wrap">
+        <span style="color:var(--text-secondary)">Subtotaal: <strong id="proposalSubtotal-${leadId}">€0,00</strong></span>
+        <span id="proposalBtwRow-${leadId}" style="color:var(--text-secondary);display:none">BTW: <strong id="proposalBtwAmt-${leadId}">€0,00</strong></span>
+        <span style="font-weight:700">Totaal: <strong id="proposalTotal-${leadId}" style="color:var(--accent)">€0,00</strong></span>
+      </div>
+
+      <div style="margin:18px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Geldig tot</label>
+          <input type="date" id="proposalValidUntil-${leadId}" value="${validUntil}" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--surface);color:var(--text-primary)">
+        </div>
+        <div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);padding-bottom:8px">
+            <input type="checkbox" id="proposalBtwToggle-${leadId}" ${ms.btwEnabled ? 'checked' : ''} onchange="_toggleProposalBtw('${leadId}')">
+            BTW ${ms.btwRate}% tonen op voorstel
+          </label>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px">
+        <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Persoonlijke notitie <span style="font-weight:400;text-transform:none">(optioneel)</span></label>
+        <textarea id="proposalNote-${leadId}" rows="2" placeholder="Bijv. 'Fijn dat we kennis hebben gemaakt — hierbij ons voorstel op maat.'" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;resize:vertical;background:var(--surface);color:var(--text-primary)"></textarea>
+      </div>
+
+      <div id="proposalSuccessState-${leadId}" style="display:none;margin-bottom:16px;padding:14px 16px;border:1.5px solid var(--success);border-radius:10px;background:var(--success-light)">
+        <div style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:4px">✅ Voorstel aangemaakt</div>
+        <div id="proposalSuccessNr-${leadId}" style="font-size:12px;color:var(--text-secondary);margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="proposalDownloadBtn-${leadId}" class="btn btn-ghost btn-sm"><i class="ti ti-download"></i> Download PDF</button>
+          <button id="proposalSendLaterBtn-${leadId}" class="btn btn-primary btn-sm" style="display:none" onclick="_sendGeneratedProposal('${leadId}')"><i class="ti ti-send"></i> Stuur naar klant</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-ghost btn-sm" style="margin-right:auto" onclick="closeModal()">Annuleren</button>
+        <button class="btn btn-outline btn-sm" id="proposalGenBtn-${leadId}" onclick="_generateProposal('${leadId}', false)">
+          <i class="ti ti-file-text"></i> Genereer voorstel
+        </button>
+        <button class="btn btn-primary btn-sm" id="proposalGenSendBtn-${leadId}" onclick="_generateProposal('${leadId}', true)">
+          <i class="ti ti-send"></i> Genereer &amp; stuur naar klant
+        </button>
+      </div>
+    </div>
+  `);
+
+  _calcProposalTotals(leadId);
+}
+
+function _buildProposalRowsHtml(leadId) {
+  const ms = window._proposalModalState?.[leadId];
+  if (!ms || !ms.rows.length) return '<div style="padding:16px;color:var(--text-muted);text-align:center;font-size:13px">Geen diensten gevonden — voeg diensten toe via Instellingen</div>';
+  return ms.rows.map((r, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);${i % 2 === 1 ? 'background:var(--surface-2)' : ''}">
+      <input type="checkbox" ${r.checked ? 'checked' : ''} onchange="window._proposalModalState['${leadId}'].rows[${i}].checked=this.checked;_calcProposalTotals('${leadId}')">
+      <span style="flex:1;font-size:13px;color:var(--text-primary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.name)}">${esc(r.name)}</span>
+      <input type="number" value="${r.price}" min="0" step="1"
+        style="width:72px;flex-shrink:0;border:1px solid var(--border);border-radius:6px;padding:4px 7px;font-size:13px;background:var(--surface);color:var(--text-primary);text-align:right"
+        onchange="window._proposalModalState['${leadId}'].rows[${i}].price=parseFloat(this.value)||0;_calcProposalTotals('${leadId}')">
+      <select onchange="window._proposalModalState['${leadId}'].rows[${i}].billing=this.value;_calcProposalTotals('${leadId}')"
+        style="flex-shrink:0;border:1px solid var(--border);border-radius:6px;padding:4px 5px;font-size:12px;background:var(--surface);color:var(--text-secondary)">
+        <option value="maandelijks" ${r.billing === 'maandelijks' ? 'selected' : ''}>/mnd</option>
+        <option value="eenmalig" ${r.billing === 'eenmalig' ? 'selected' : ''}>eenm.</option>
+      </select>
+    </div>`).join('');
+}
+
+function _calcProposalTotals(leadId) {
+  const ms = window._proposalModalState?.[leadId];
+  if (!ms) return;
+  const subtotal = ms.rows.filter(r => r.checked).reduce((s, r) => s + (r.price || 0), 0);
+  const btwAmt   = ms.btwEnabled ? subtotal * ms.btwRate / 100 : 0;
+  const total    = subtotal + btwAmt;
+  const fmt      = v => `€${v.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}`;
+  const el = id => document.getElementById(id);
+  if (el(`proposalSubtotal-${leadId}`)) el(`proposalSubtotal-${leadId}`).textContent = fmt(subtotal);
+  if (el(`proposalBtwRow-${leadId}`))   el(`proposalBtwRow-${leadId}`).style.display = ms.btwEnabled ? '' : 'none';
+  if (el(`proposalBtwAmt-${leadId}`))   el(`proposalBtwAmt-${leadId}`).textContent   = fmt(btwAmt);
+  if (el(`proposalTotal-${leadId}`))    el(`proposalTotal-${leadId}`).textContent     = fmt(total);
+}
+
+function _toggleProposalBtw(leadId) {
+  const ms = window._proposalModalState?.[leadId];
+  if (!ms) return;
+  ms.btwEnabled = document.getElementById(`proposalBtwToggle-${leadId}`)?.checked || false;
+  _calcProposalTotals(leadId);
+}
+
+async function _generateProposal(leadId, sendToClient) {
+  const ms = window._proposalModalState?.[leadId];
+  if (!ms) return;
+
+  const selected = ms.rows.filter(r => r.checked).map(r => ({ name: r.name, price: r.price, billing: r.billing, description: r.description || '' }));
+  if (!selected.length) { toast('Selecteer minimaal één dienst', 'error'); return; }
+
+  const validUntil = document.getElementById(`proposalValidUntil-${leadId}`)?.value || '';
+  const note       = document.getElementById(`proposalNote-${leadId}`)?.value || '';
+
+  const genBtn  = document.getElementById(`proposalGenBtn-${leadId}`);
+  const sendBtn = document.getElementById(`proposalGenSendBtn-${leadId}`);
+  if (genBtn)  { genBtn.disabled  = true; genBtn.innerHTML  = '<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Genereren...'; }
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Genereren...'; }
+
+  try {
+    const res = await api(`/api/leads/${leadId}/proposals`, {
+      method: 'POST',
+      body: JSON.stringify({ services: selected, validUntil, note, btwEnabled: ms.btwEnabled, btwRate: ms.btwRate, sendToClient })
+    });
+
+    if (!res.ok) { toast('Fout: ' + (res.error || 'onbekend'), 'error'); return; }
+
+    // Update lead in state
+    const lead = state.leads.find(l => l.id === leadId);
+    if (lead) { if (!lead.proposals) lead.proposals = []; lead.proposals.unshift(res.proposal); }
+
+    if (sendToClient) {
+      toast(`Voorstel ${res.proposalNr} verstuurd naar klant!`, 'success');
+      closeModal();
+      const onProj = document.querySelector(`[data-tab-content="voorstel"]`);
+      if (onProj) renderProjectPage().then(() => switchProjectTab('voorstel'));
+    } else {
+      const successDiv = document.getElementById(`proposalSuccessState-${leadId}`);
+      const successNr  = document.getElementById(`proposalSuccessNr-${leadId}`);
+      const dlBtn      = document.getElementById(`proposalDownloadBtn-${leadId}`);
+      const sendLater  = document.getElementById(`proposalSendLaterBtn-${leadId}`);
+
+      if (successDiv) successDiv.style.display = '';
+      if (successNr)  successNr.textContent = `${res.proposalNr} — ${selected.map(sv => sv.name).join(', ')}`;
+
+      if (dlBtn && res.pdfBase64) {
+        dlBtn.onclick = () => {
+          const bytes = Uint8Array.from(atob(res.pdfBase64), c => c.charCodeAt(0));
+          const blob  = new Blob([bytes], { type: 'application/pdf' });
+          const url   = URL.createObjectURL(blob);
+          const a     = document.createElement('a');
+          a.href = url; a.download = `Voorstel-${res.proposalNr}.pdf`; a.click();
+          URL.revokeObjectURL(url);
+        };
+      }
+
+      if (sendLater) {
+        const lead2 = state.leads.find(l => l.id === leadId);
+        if (lead2?.contactEmail) { sendLater.style.display = ''; sendLater.dataset.proposalId = res.proposalNr; }
+      }
+
+      ms.generatedProposalId = res.proposalNr;
+    }
+  } catch (err) {
+    toast('Fout bij genereren: ' + err.message, 'error');
+  } finally {
+    if (genBtn)  { genBtn.disabled  = false; genBtn.innerHTML  = '<i class="ti ti-file-text"></i> Genereer voorstel'; }
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '<i class="ti ti-send"></i> Genereer &amp; stuur naar klant'; }
+  }
+}
+
+async function _sendGeneratedProposal(leadId) {
+  const ms     = window._proposalModalState?.[leadId];
+  const btn    = document.getElementById(`proposalSendLaterBtn-${leadId}`);
+  const propId = btn?.dataset?.proposalId || ms?.generatedProposalId;
+  if (!propId) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Versturen...'; }
+  try {
+    const res = await api(`/api/leads/${leadId}/proposals/${propId}/send`, { method: 'POST' });
+    if (res.ok) { toast('Voorstel verstuurd!', 'success'); closeModal(); }
+    else toast('Fout: ' + (res.error || 'onbekend'), 'error');
+  } catch (err) { toast('Fout: ' + err.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-send"></i> Stuur naar klant'; } }
+}
+
+async function sendProposalById(leadId, proposalId) {
+  const lead = state.leads.find(l => l.id === leadId);
+  if (!lead?.contactEmail) { toast('Geen e-mailadres bekend', 'error'); return; }
+  if (!confirm(`Voorstel ${proposalId} versturen naar ${lead.contactEmail}?`)) return;
+  const res = await api(`/api/leads/${leadId}/proposals/${proposalId}/send`, { method: 'POST' });
+  if (res.ok) {
+    const p = (lead.proposals || []).find(p => p.id === proposalId);
+    if (p) { p.sentAt = new Date().toISOString(); p.status = 'sent'; }
+    toast('Voorstel verstuurd!', 'success');
+    const onProj = document.querySelector(`[data-tab-content="voorstel"]`);
+    if (onProj) renderProjectPage().then(() => switchProjectTab('voorstel'));
+  } else toast('Fout: ' + (res.error || 'onbekend'), 'error');
+}
+
+function _buildProposalsListHtml(lead) {
+  const proposals = lead.proposals || [];
+  if (!proposals.length) return '';
+  const statusColors = { sent: 'var(--success)', accepted: 'var(--accent)', declined: 'var(--danger)', draft: 'var(--text-muted)' };
+  const statusLabels = { sent: 'Verstuurd', accepted: 'Geaccepteerd', declined: 'Afgewezen', draft: 'Concept' };
+  return `
+    <div style="margin-bottom:18px">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Gegenereerde voorstellen</div>
+      ${proposals.map(p => {
+        const clr = statusColors[p.status] || statusColors.draft;
+        const lbl = statusLabels[p.status] || 'Concept';
+        const date = p.sentAt ? `Verstuurd ${new Date(p.sentAt).toLocaleDateString('nl-NL')}` : `Aangemaakt ${new Date(p.createdAt).toLocaleDateString('nl-NL')}`;
+        const svcNames = (p.services || []).slice(0, 3).map(s => esc(s.name)).join(', ');
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--surface-2);gap:8px;flex-wrap:wrap">
+          <div style="min-width:0">
+            <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${esc(p.proposalNr)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${svcNames}${p.services?.length > 3 ? ' +meer' : ''} — <strong>€${(p.total || 0).toLocaleString('nl-NL')}</strong></div>
+            <div style="font-size:11px;color:var(--text-muted)">${date}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+            <span style="font-size:11px;font-weight:600;color:${clr};padding:3px 8px;border:1px solid ${clr};border-radius:12px">${lbl}</span>
+            ${p.status !== 'sent' && isAdmin() ? `<button class="btn btn-ghost btn-sm" style="padding:4px 8px;font-size:12px" onclick="sendProposalById('${esc(lead.id)}','${esc(p.id)}')"><i class="ti ti-send" style="font-size:12px"></i></button>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+// ─── Legacy proposal SSE generator (kept for backward compat) ─────────────────
 async function generateProposal(leadId) {
   const onProjectPage = !!document.getElementById(`propProgress-proj-${leadId}`);
   const progId = onProjectPage ? `propProgress-proj-${leadId}` : `propProgress-${leadId}`;
@@ -3419,35 +3664,34 @@ async function renderProjectPage() {
       <div class="project-tab-content" data-tab-content="voorstel" style="${activeTab !== 'voorstel' ? 'display:none' : ''}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="project-section-title" style="margin:0"><i class="ti ti-file-text" style="color:var(--accent);margin-right:6px"></i>Offerte / voorstel</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            ${lead.proposal ? `
-              <button class="btn btn-ghost btn-sm" onclick="downloadProposal('${lead.id}')"><i class="ti ti-download"></i> Download</button>
-              <button class="btn btn-ghost btn-sm" onclick="sendProposalEmail('${lead.id}')"><i class="ti ti-mail"></i> Verstuur</button>
-            ` : ''}
-            ${isAdmin() ? `<button class="btn btn-primary btn-sm" onclick="generateProposal('${lead.id}')" id="propGenBtn-${lead.id}">
-              <i class="ti ti-file-text"></i> ${lead.proposal ? 'Regenereer' : 'Genereer voorstel'}
-            </button>` : ''}
-          </div>
+          ${isAdmin() ? `<button class="btn btn-primary btn-sm" id="propGenBtn-proj-${lead.id}" onclick="openProposalModal('${lead.id}')">
+            <i class="ti ti-plus"></i> Nieuw voorstel
+          </button>` : ''}
         </div>
-        ${lead.proposal ? `
-          <div class="proposal-preview">
-            <iframe id="proposalFrame-${lead.id}" sandbox="allow-same-origin" style="width:100%;border:none;min-height:480px"></iframe>
-          </div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:8px">Gegenereerd op ${new Date(lead.proposalGeneratedAt).toLocaleDateString('nl-NL')}</div>
-        ` : `
+
+        ${_buildProposalsListHtml(lead)}
+
+        ${lead.proposals?.length ? '' : `
           <div style="text-align:center;padding:32px">
             <i class="ti ti-file-description" style="font-size:36px;color:var(--text-muted);display:block;margin-bottom:10px"></i>
             <div style="color:var(--text-secondary);font-size:14px">Nog geen voorstel gegenereerd</div>
-            <div style="color:var(--text-muted);font-size:12px;margin-top:4px">Klik op "Genereer voorstel" om een professionele offerte te maken</div>
-          </div>
-        `}
-        <div id="propProgress-proj-${lead.id}" style="display:none">
-          <div class="proposal-progress">
-            <div id="propStep1-proj-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Lead data analyseren</div>
-            <div id="propStep2-proj-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Voorstel schrijven</div>
-            <div id="propStep3-proj-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Opslaan &amp; weergeven</div>
-          </div>
-        </div>
+            <div style="color:var(--text-muted);font-size:12px;margin-top:4px">Klik op "Nieuw voorstel" om een PDF-offerte op maat te maken</div>
+          </div>`}
+
+        ${lead.proposal ? `
+          <details style="margin-top:12px">
+            <summary style="font-size:12px;color:var(--text-muted);cursor:pointer;padding:6px 0">Oud AI-voorstel tonen</summary>
+            <div style="margin-top:8px">
+              <div style="display:flex;gap:8px;margin-bottom:8px">
+                <button class="btn btn-ghost btn-sm" onclick="downloadProposal('${lead.id}')"><i class="ti ti-download"></i> Download HTML</button>
+                <button class="btn btn-ghost btn-sm" onclick="sendProposalEmail('${lead.id}')"><i class="ti ti-mail"></i> Verstuur</button>
+              </div>
+              <div class="proposal-preview">
+                <iframe id="proposalFrame-${lead.id}" sandbox="allow-same-origin" style="width:100%;border:none;min-height:420px"></iframe>
+              </div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Gegenereerd op ${new Date(lead.proposalGeneratedAt).toLocaleDateString('nl-NL')}</div>
+            </div>
+          </details>` : ''}
       </div>`;
   }
 
@@ -4105,7 +4349,7 @@ async function renderProjectPage() {
           <button class="project-tab${activeTab==='emails'?' active':''}" data-tab="emails" onclick="switchProjectTab('emails')">Emails</button>
           ${lead.intakeToken ? `<button class="project-tab${activeTab==='intake'?' active':''}" data-tab="intake" onclick="switchProjectTab('intake')">${lead.intakeSubmittedAt ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Intake</button>` : ''}
           <button class="project-tab${activeTab==='betalingen'?' active':''}" data-tab="betalingen" onclick="switchProjectTab('betalingen')">${(lead.payments||[]).filter(p=>p.status==='sent').length > 0 ? `<i class="ti ti-coin" style="color:var(--warning);margin-right:3px"></i>` : ''}Betalingen</button>
-          <button class="project-tab${activeTab==='voorstel'?' active':''}" data-tab="voorstel" onclick="switchProjectTab('voorstel')">${lead.proposal ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Voorstel</button>
+          <button class="project-tab${activeTab==='voorstel'?' active':''}" data-tab="voorstel" onclick="switchProjectTab('voorstel')">${(lead.proposals?.length || lead.proposal) ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Voorstel</button>
           <button class="project-tab${activeTab==='contract'?' active':''}" data-tab="contract" onclick="switchProjectTab('contract')">${lead.contract ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Contract</button>
           <button class="project-tab${activeTab==='building'?' active':''}" data-tab="building" onclick="switchProjectTab('building')" style="${(lead.agentDeliverables||[]).some(d=>d.status==='wacht_op_goedkeuring') ? 'color:var(--warning);font-weight:700' : ''}">${(lead.agentDeliverables||[]).some(d=>d.status==='wacht_op_goedkeuring') ? '<i class="ti ti-clock" style="margin-right:3px;color:var(--warning)"></i>' : '<i class="ti ti-hammer" style="margin-right:3px"></i>'}Building${(lead.agentDeliverables||[]).filter(d=>d.status!=='error').length > 0 ? ` (${(lead.agentDeliverables||[]).filter(d=>d.status!=='error').length})` : ''}</button>
           <button class="project-tab${activeTab==='afspraken'?' active':''}" data-tab="afspraken" onclick="switchProjectTab('afspraken')">Afspraken</button>
@@ -5344,7 +5588,7 @@ function openLeadDetail(id) {
       <button class="detail-tab"        data-tab="reports"   onclick="switchDetailTab('reports')">Rapporten${lead.reports?.length > 0 ? `<span class="tab-badge">${lead.reports.length}</span>` : ''}</button>
       ${lead.intakeToken ? `<button class="detail-tab" data-tab="intake" onclick="switchDetailTab('intake')">${lead.intakeSubmittedAt ? '<i class="ti ti-clipboard-check" style="color:#10b981;margin-right:4px"></i>' : '<i class="ti ti-clipboard-list" style="margin-right:4px"></i>'}Intake</button>` : ''}
       ${lead.projectPlan ? `<button class="detail-tab" data-tab="project" onclick="switchDetailTab('project')"><i class="ti ti-rocket" style="margin-right:4px"></i>Project</button>` : ''}
-      <button class="detail-tab" data-tab="proposal"  onclick="switchDetailTab('proposal')">${lead.proposal  ? '<i class="ti ti-file-check" style="margin-right:4px;color:var(--success)"></i>' : '<i class="ti ti-file-text" style="margin-right:4px"></i>'}Voorstel</button>
+      <button class="detail-tab" data-tab="proposal"  onclick="switchDetailTab('proposal')">${(lead.proposals?.length || lead.proposal) ? '<i class="ti ti-file-check" style="margin-right:4px;color:var(--success)"></i>' : '<i class="ti ti-file-text" style="margin-right:4px"></i>'}Voorstel</button>
       <button class="detail-tab" data-tab="contract" onclick="switchDetailTab('contract')">${lead.contract  ? '<i class="ti ti-file-certificate" style="margin-right:4px;color:var(--success)"></i>' : '<i class="ti ti-file-certificate" style="margin-right:4px"></i>'}Contract</button>
     </div>
 
@@ -5939,39 +6183,33 @@ function openLeadDetail(id) {
       <div class="detail-section">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="detail-section-title" style="margin:0">Offerte / voorstel</div>
-          <div style="display:flex;gap:8px">
-            ${lead.proposal ? `
-              <button class="btn btn-ghost btn-sm" onclick="downloadProposal('${lead.id}')">
-                <i class="ti ti-download"></i> Download
-              </button>
-              <button class="btn btn-ghost btn-sm" onclick="sendProposalEmail('${lead.id}')">
-                <i class="ti ti-mail"></i> Verstuur
-              </button>
-            ` : ''}
-            ${isAdmin() ? `<button class="btn btn-primary btn-sm" onclick="generateProposal('${lead.id}')" id="propGenBtn-${lead.id}">
-              <i class="ti ti-file-text"></i> ${lead.proposal ? 'Regenereer' : 'Genereer voorstel'}
-            </button>` : ''}
-          </div>
+          ${isAdmin() ? `<button class="btn btn-primary btn-sm" id="propGenBtn-${lead.id}" onclick="openProposalModal('${lead.id}')">
+            <i class="ti ti-plus"></i> Nieuw voorstel
+          </button>` : ''}
         </div>
-        ${lead.proposal ? `
-          <div class="proposal-preview">
-            <iframe id="proposalFrame-${lead.id}" sandbox="allow-same-origin" style="width:100%;border:none;min-height:480px"></iframe>
-          </div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:8px">Gegenereerd op ${new Date(lead.proposalGeneratedAt).toLocaleDateString('nl-NL')}</div>
-        ` : `
-          <div class="empty-state" style="padding:32px 0;text-align:center">
+
+        ${_buildProposalsListHtml(lead)}
+
+        ${!(lead.proposals?.length) && !lead.proposal ? `
+          <div class="empty-state" style="padding:28px 0;text-align:center">
             <i class="ti ti-file-description" style="font-size:36px;color:var(--text-muted);display:block;margin-bottom:10px"></i>
             <div style="color:var(--text-secondary);font-size:14px">Nog geen voorstel gegenereerd</div>
-            <div style="color:var(--text-muted);font-size:12px;margin-top:4px">Klik op "Genereer voorstel" om een professionele offerte te maken</div>
-          </div>
-        `}
-        <div id="propProgress-${lead.id}" style="display:none">
-          <div class="proposal-progress">
-            <div id="propStep1-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Lead data analyseren</div>
-            <div id="propStep2-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Voorstel schrijven</div>
-            <div id="propStep3-${lead.id}" class="proposal-step pending"><i class="ti ti-circle"></i> Opslaan & weergeven</div>
-          </div>
-        </div>
+            <div style="color:var(--text-muted);font-size:12px;margin-top:4px">Klik op "Nieuw voorstel" om een PDF-offerte op maat te maken</div>
+          </div>` : ''}
+
+        ${lead.proposal ? `
+          <details style="margin-top:12px">
+            <summary style="font-size:12px;color:var(--text-muted);cursor:pointer;padding:6px 0">Oud AI-voorstel tonen</summary>
+            <div style="margin-top:8px">
+              <div style="display:flex;gap:8px;margin-bottom:8px">
+                <button class="btn btn-ghost btn-sm" onclick="downloadProposal('${lead.id}')"><i class="ti ti-download"></i> Download HTML</button>
+                <button class="btn btn-ghost btn-sm" onclick="sendProposalEmail('${lead.id}')"><i class="ti ti-mail"></i> Verstuur</button>
+              </div>
+              <div class="proposal-preview">
+                <iframe id="proposalFrame-${lead.id}" sandbox="allow-same-origin" style="width:100%;border:none;min-height:420px"></iframe>
+              </div>
+            </div>
+          </details>` : ''}
       </div>
     </div>
   `;

@@ -2762,7 +2762,313 @@ Antwoord ALLEEN als JSON: { "tasks": [{ "title": "string", "description": "strin
   res.end();
 });
 
-// ─── Proposal Generator (SSE 3-step) ────────────────────────────────────────
+// ─── Proposal PDF + Email builders ──────────────────────────────────────────
+
+function buildProposalEmailHTML({ proposalNr, lead, services, total, note, validUntil, settings }) {
+  const s           = settings || {};
+  const agencyName  = s.agencyName || 'Agency AI';
+  const myName      = s.myName || '';
+  const myEmail     = s.gmailAddress || s.resendFromAddress || '';
+  const logoUrl     = s.agencyLogo ? `${BASE_URL}/api/logo` : '';
+  const companyName = lead.companyName || 'Klant';
+  const contactName = lead.contactName || companyName;
+  const btwEnabled  = s.btwEnabled === true;
+  const btwRate     = parseFloat(s.btwRate) || 21;
+  const dueFmt      = validUntil ? new Date(validUntil).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+
+  const svcsHtml = services.map(svc => `
+    <tr>
+      <td style="padding:10px 16px;font-size:13px;color:#111;border-bottom:1px solid #f0f0f0">${esc(svc.name || '')}</td>
+      <td style="padding:10px 16px;font-size:13px;color:#555;border-bottom:1px solid #f0f0f0">${esc(svc.description || '')}</td>
+      <td style="padding:10px 16px;font-size:13px;color:#111;border-bottom:1px solid #f0f0f0;text-align:right;white-space:nowrap">€${parseFloat(svc.price || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2 })}${svc.billing === 'maandelijks' ? '<span style="font-size:11px;color:#888">/mnd</span>' : ''}</td>
+    </tr>`).join('');
+
+  const subtotal  = services.reduce((sum, sv) => sum + parseFloat(sv.price || 0), 0);
+  const btwAmt    = btwEnabled ? subtotal * btwRate / 100 : 0;
+  const totalIncl = btwEnabled ? subtotal + btwAmt : subtotal;
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 0">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">
+  <tr><td style="background:#0A0A0F;padding:28px 32px">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td>${logoUrl ? `<img src="${logoUrl}" height="36" alt="${esc(agencyName)}" style="border-radius:4px">` : `<span style="color:#fff;font-size:20px;font-weight:700">${esc(agencyName)}</span>`}</td>
+      <td align="right"><span style="color:#fff;font-size:26px;font-weight:800;letter-spacing:2px">VOORSTEL</span></td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="background:#18181f;padding:14px 32px">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td style="color:#aaa;font-size:11px">VOORSTELNNUMMER<br><span style="color:#fff;font-size:13px;font-weight:600">${esc(proposalNr)}</span></td>
+      ${dueFmt ? `<td align="right" style="color:#aaa;font-size:11px">GELDIG TOT<br><span style="color:#fff;font-size:13px;font-weight:600">${dueFmt}</span></td>` : ''}
+    </tr></table>
+  </td></tr>
+  <tr><td style="padding:28px 32px 16px">
+    <p style="margin:0 0 12px;font-size:15px;color:#111">Beste ${esc(contactName)},</p>
+    <p style="margin:0;font-size:14px;color:#374151;line-height:1.7">Bedankt voor uw interesse. Graag presenteren wij ons voorstel op maat voor <strong>${esc(companyName)}</strong>. Bijgevoegd vindt u de volledige PDF.</p>
+    ${note ? `<p style="margin:12px 0 0;font-size:14px;color:#374151;line-height:1.7;padding:12px 16px;background:#f9f9ff;border-left:3px solid #1a56db;border-radius:0 8px 8px 0">${esc(note)}</p>` : ''}
+  </td></tr>
+  <tr><td style="padding:0 24px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e8e8e8;border-radius:8px;overflow:hidden">
+      <thead><tr style="background:#f9f9f9">
+        <th style="padding:10px 16px;font-size:11px;color:#888;text-transform:uppercase;text-align:left;font-weight:600">Dienst</th>
+        <th style="padding:10px 16px;font-size:11px;color:#888;text-transform:uppercase;text-align:left;font-weight:600">Omschrijving</th>
+        <th style="padding:10px 16px;font-size:11px;color:#888;text-transform:uppercase;text-align:right;font-weight:600">Prijs</th>
+      </tr></thead>
+      <tbody>
+        ${svcsHtml}
+        <tr style="background:#f9f9f9;border-top:1px solid #e8e8e8">
+          <td colspan="2" style="padding:10px 16px;font-size:13px;color:#555">Subtotaal</td>
+          <td style="padding:10px 16px;font-size:13px;color:#111;text-align:right">€${subtotal.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
+        </tr>
+        ${btwEnabled ? `<tr style="background:#f9f9f9"><td colspan="2" style="padding:8px 16px;font-size:13px;color:#555">BTW ${btwRate}%</td><td style="padding:8px 16px;font-size:13px;color:#555;text-align:right">€${btwAmt.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td></tr>` : ''}
+        <tr style="background:#1a56db">
+          <td colspan="2" style="padding:14px 16px;font-size:14px;font-weight:700;color:#fff">TOTAAL${btwEnabled ? ' INCL. BTW' : ''}</td>
+          <td style="padding:14px 16px;font-size:18px;font-weight:800;color:#fff;text-align:right">€${totalIncl.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
+        </tr>
+      </tbody>
+    </table>
+  </td></tr>
+  <tr><td style="padding:24px 32px;text-align:center">
+    <p style="margin:0 0 8px;font-size:14px;color:#374151">Vragen? Reageer direct op deze e-mail.</p>
+    <p style="margin:0;font-size:14px;color:#555">Met vriendelijke groet,<br><strong>${esc(myName || agencyName)}</strong>${myEmail ? `<br><a href="mailto:${esc(myEmail)}" style="color:#1a56db">${esc(myEmail)}</a>` : ''}</p>
+  </td></tr>
+  <tr><td style="padding:16px 32px;border-top:1px solid #f0f0f0;text-align:center">
+    <p style="margin:0;font-size:12px;color:#aaa">${esc(agencyName)} — Bedankt voor uw vertrouwen</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+}
+
+async function generateProposalPDF({ proposalNr, lead, services, validUntil, note, btwEnabled, btwRate, settings }) {
+  return new Promise((resolve, reject) => {
+    const s           = settings || {};
+    const agencyName  = s.agencyName || 'Agency AI';
+    const myName      = s.myName || '';
+    const myEmail     = s.gmailAddress || s.resendFromAddress || '';
+    const companyName = lead.companyName || 'Klant';
+    const location    = lead.location || lead.city || '';
+    const btwR        = parseFloat(btwRate) || 21;
+    const btwE        = btwEnabled === true;
+    const validFmt    = validUntil ? new Date(validUntil).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
+    const todayFmt    = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+    const problems    = (lead.selectedProblems || lead.problems || []).slice(0, 3);
+
+    const doc    = new PDFDocument({ margin: 50, size: 'A4' });
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const accent = '#1a56db';
+    const pageW  = doc.page.width;
+    const tableW = pageW - 100;
+
+    // ── Header ──
+    doc.rect(0, 0, pageW, 90).fill('#0A0A0F');
+    doc.fill('#ffffff').font('Helvetica-Bold').fontSize(20).text(agencyName, 50, 28);
+    doc.fill('#ffffff').font('Helvetica-Bold').fontSize(28).text('VOORSTEL', 0, 24, { align: 'right' });
+
+    // ── Meta bar ──
+    doc.rect(0, 90, pageW, 42).fill('#18181f');
+    doc.fill('#aaaaaa').font('Helvetica').fontSize(9).text('VOORSTELNNUMMER', 50, 98);
+    doc.fill('#ffffff').font('Helvetica-Bold').fontSize(11).text(proposalNr, 50, 109);
+    doc.fill('#aaaaaa').font('Helvetica').fontSize(9).text('DATUM', pageW / 2 - 60, 98, { width: 120, align: 'center' });
+    doc.fill('#ffffff').font('Helvetica').fontSize(11).text(todayFmt, pageW / 2 - 60, 109, { width: 120, align: 'center' });
+    doc.fill('#aaaaaa').font('Helvetica').fontSize(9).text('GELDIG TOT', 0, 98, { align: 'right' });
+    doc.fill('#ffffff').font('Helvetica-Bold').fontSize(11).text(validFmt, 0, 109, { align: 'right' });
+
+    let y = 152;
+
+    // ── VOOR ──
+    doc.fill('#888888').font('Helvetica').fontSize(9).text('VOOR', 50, y);
+    y += 14;
+    doc.fill('#111111').font('Helvetica-Bold').fontSize(14).text(companyName, 50, y);
+    y += 18;
+    if (location) { doc.fill('#555555').font('Helvetica').fontSize(11).text(location, 50, y); y += 16; }
+    y += 10;
+
+    // ── WAT WE VOOR JOU GAAN DOEN ──
+    if (problems.length) {
+      doc.rect(50, y, tableW, 1).fill('#e8e8e8'); y += 14;
+      doc.fill('#111111').font('Helvetica-Bold').fontSize(12).text('WAT WE VOOR JOU GAAN DOEN', 50, y); y += 16;
+      const introText = `Wij helpen ${companyName} met de volgende uitdagingen: ${problems.join(', ')}. Met onze aanpak zorgen we voor concrete, meetbare resultaten die direct impact hebben op uw omzet en online aanwezigheid.`;
+      doc.fill('#374151').font('Helvetica').fontSize(11).text(introText, 50, y, { width: tableW, lineGap: 3 });
+      y += doc.heightOfString(introText, { width: tableW, lineGap: 3 }) + 18;
+    }
+
+    // ── Personal note ──
+    if (note) {
+      doc.rect(50, y, tableW, 1).fill('#e8e8e8'); y += 12;
+      doc.fill('#374151').font('Helvetica-Oblique').fontSize(11).text(`"${note}"`, 50, y, { width: tableW, lineGap: 3 });
+      y += doc.heightOfString(`"${note}"`, { width: tableW, lineGap: 3 }) + 14;
+    }
+
+    // ── Services table ──
+    doc.rect(50, y, tableW, 1).fill('#e8e8e8'); y += 14;
+    doc.fill('#111111').font('Helvetica-Bold').fontSize(12).text('DIENSTEN OVERZICHT', 50, y); y += 18;
+
+    // Header row
+    doc.rect(50, y, tableW, 24).fill('#f9f9f9').stroke('#e8e8e8');
+    doc.fill('#888888').font('Helvetica-Bold').fontSize(9);
+    doc.text('DIENST', 58, y + 8, { width: 185 });
+    doc.text('OMSCHRIJVING', 246, y + 8, { width: 185 });
+    doc.text('PRIJS', pageW - 50 - 95, y + 8, { width: 87, align: 'right' });
+    y += 24;
+
+    let subtotal = 0;
+    services.forEach((svc, idx) => {
+      const price = parseFloat(svc.price || 0);
+      subtotal += price;
+      if (idx % 2 === 1) doc.rect(50, y, tableW, 26).fill('#fafafa');
+      doc.rect(50, y, tableW, 26).stroke('#f0f0f0');
+      doc.fill('#111111').font('Helvetica').fontSize(11).text(svc.name || 'Dienst', 58, y + 8, { width: 182, ellipsis: true });
+      doc.fill('#555555').font('Helvetica').fontSize(10).text(svc.description || '', 246, y + 8, { width: 182, ellipsis: true });
+      const priceLabel = `€${price.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}${svc.billing === 'maandelijks' ? '/mnd' : ''}`;
+      doc.fill('#111111').font('Helvetica').fontSize(11).text(priceLabel, pageW - 50 - 95, y + 8, { width: 87, align: 'right' });
+      y += 26;
+    });
+
+    // Totals
+    const btwAmt    = btwE ? subtotal * btwR / 100 : 0;
+    const totalIncl = btwE ? subtotal + btwAmt : subtotal;
+
+    doc.rect(50, y, tableW, 24).fill('#f9f9f9').stroke('#e8e8e8');
+    doc.fill('#555555').font('Helvetica').fontSize(11).text('Subtotaal', 58, y + 7);
+    doc.fill('#111111').text(`€${subtotal.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}`, pageW - 50 - 95, y + 7, { width: 87, align: 'right' });
+    y += 24;
+
+    if (btwE) {
+      doc.rect(50, y, tableW, 22).fill('#f9f9f9').stroke('#f0f0f0');
+      doc.fill('#555555').font('Helvetica').fontSize(11).text(`BTW ${btwR}%`, 58, y + 6);
+      doc.fill('#555555').text(`€${btwAmt.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}`, pageW - 50 - 95, y + 6, { width: 87, align: 'right' });
+      y += 22;
+    } else {
+      doc.fill('#999999').font('Helvetica').fontSize(10).text('Vrijgesteld van BTW', 58, y + 4); y += 16;
+    }
+
+    doc.rect(50, y, tableW, 32).fill(accent);
+    doc.fill('#ffffff').font('Helvetica-Bold').fontSize(13).text(`TOTAAL${btwE ? ' INCL. BTW' : ''}`, 58, y + 10);
+    doc.fill('#ffffff').font('Helvetica-Bold').fontSize(16).text(`€${totalIncl.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}`, pageW - 50 - 95, y + 8, { width: 87, align: 'right' });
+    y += 44;
+
+    // ── VOLGENDE STAP ──
+    doc.rect(50, y, tableW, 1).fill('#e8e8e8'); y += 14;
+    doc.fill('#111111').font('Helvetica-Bold').fontSize(12).text('VOLGENDE STAP', 50, y); y += 16;
+    const nextStep = 'Om te starten hebben we het volgende nodig: akkoord op dit voorstel en de eerste betaling. U kunt reageren via reply op de begeleidende e-mail of door rechtstreeks contact op te nemen.';
+    doc.fill('#374151').font('Helvetica').fontSize(11).text(nextStep, 50, y, { width: tableW, lineGap: 3 });
+    y += doc.heightOfString(nextStep, { width: tableW, lineGap: 3 }) + 18;
+
+    // ── Contact ──
+    doc.rect(50, y, tableW, 1).fill('#e8e8e8'); y += 12;
+    const contactLine = [agencyName, myName, myEmail].filter(Boolean).join('  ·  ');
+    doc.fill('#555555').font('Helvetica').fontSize(10).text(contactLine, 50, y, { width: tableW });
+
+    // ── Footer ──
+    const footerY = doc.page.height - 50;
+    doc.rect(0, footerY - 1, pageW, 1).fill('#f0f0f0');
+    doc.fill('#aaaaaa').font('Helvetica').fontSize(9).text(`${proposalNr}  ·  Opgesteld op ${todayFmt}  ·  Geldig tot ${validFmt}`, 50, footerY + 8, { align: 'center', width: pageW - 100 });
+
+    doc.end();
+  });
+}
+
+// ─── New Proposals API ────────────────────────────────────────────────────────
+
+app.post('/api/leads/:id/proposals', requireAdmin, async (req, res) => {
+  const leads    = readJSON('leads.json') || [];
+  const settings = readJSON('settings.json') || {};
+  const idx      = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const lead = leads[idx];
+
+  const { services, validUntil, note, btwEnabled, btwRate, sendToClient } = req.body;
+  if (!Array.isArray(services) || !services.length) return res.status(400).json({ error: 'Geen diensten geselecteerd' });
+
+  const proposalNr = `VRS-${Date.now().toString(36).toUpperCase()}`;
+  const btwR       = parseFloat(btwRate) || 21;
+  const subtotal   = services.reduce((s, sv) => s + (parseFloat(sv.price) || 0), 0);
+  const btwAmt     = btwEnabled ? subtotal * btwR / 100 : 0;
+  const total      = btwEnabled ? subtotal + btwAmt : subtotal;
+
+  try {
+    const pdfBuffer = await generateProposalPDF({ proposalNr, lead, services, validUntil, note, btwEnabled, btwRate: btwR, settings });
+
+    const proposalRecord = {
+      id: proposalNr, proposalNr,
+      createdAt: new Date().toISOString(),
+      sentAt: null, status: 'draft',
+      services, validUntil: validUntil || null, note: note || '',
+      btwEnabled: !!btwEnabled, btwRate: btwR, total
+    };
+
+    if (!leads[idx].proposals) leads[idx].proposals = [];
+    leads[idx].proposals.unshift(proposalRecord);
+    addLeadHistory(leads, lead.id, { event: 'proposalCreated', label: `Voorstel ${proposalNr} aangemaakt — €${total.toLocaleString('nl-NL')}` });
+
+    if (sendToClient) {
+      const to = (lead.contactEmail || '').trim();
+      if (to && to.includes('@') && isResendReady(settings)) {
+        const emailHtml   = buildProposalEmailHTML({ proposalNr, lead, services, total, note, validUntil, settings });
+        const safeCompany = (lead.companyName || 'klant').replace(/[^a-zA-Z0-9]/g, '-');
+        await sendEmail({
+          to, subject: `Voorstel ${settings.agencyName || 'Agency AI'} × ${lead.companyName}`,
+          body: `Beste ${lead.contactName || lead.companyName},\n\nBijgevoegd vindt u ons voorstel ${proposalNr}.\n\nMet vriendelijke groet,\n${settings.myName || ''}\n${settings.agencyName || 'Agency AI'}`,
+          html: emailHtml, settings, noCalendly: true,
+          attachments: [{ filename: `Voorstel-${proposalNr}-${safeCompany}.pdf`, content: pdfBuffer.toString('base64') }]
+        });
+        leads[idx].proposals[0].sentAt = new Date().toISOString();
+        leads[idx].proposals[0].status = 'sent';
+        addLeadHistory(leads, lead.id, { event: 'proposalSent', label: `Voorstel ${proposalNr} verstuurd naar ${to}` });
+      }
+    }
+
+    writeJSON('leads.json', leads);
+    res.json({ ok: true, proposalNr, proposal: leads[idx].proposals[0], pdfBase64: pdfBuffer.toString('base64') });
+  } catch (err) {
+    console.error('[Proposal]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/leads/:id/proposals/:proposalId/send', requireAdmin, async (req, res) => {
+  const leads    = readJSON('leads.json') || [];
+  const settings = readJSON('settings.json') || {};
+  const idx      = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const lead     = leads[idx];
+  const proposal = (lead.proposals || []).find(p => p.id === req.params.proposalId);
+  if (!proposal) return res.status(404).json({ error: 'Voorstel niet gevonden' });
+
+  const to = (lead.contactEmail || '').trim();
+  if (!to || !to.includes('@')) return res.status(400).json({ error: 'Geen geldig e-mailadres bekend' });
+  if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
+
+  try {
+    const pdfBuffer = await generateProposalPDF({ proposalNr: proposal.proposalNr, lead, services: proposal.services, validUntil: proposal.validUntil, note: proposal.note, btwEnabled: proposal.btwEnabled, btwRate: proposal.btwRate, settings });
+    const emailHtml = buildProposalEmailHTML({ proposalNr: proposal.proposalNr, lead, services: proposal.services, total: proposal.total, note: proposal.note, validUntil: proposal.validUntil, settings });
+    const safeCompany = (lead.companyName || 'klant').replace(/[^a-zA-Z0-9]/g, '-');
+
+    await sendEmail({
+      to, subject: `Voorstel ${settings.agencyName || 'Agency AI'} × ${lead.companyName}`,
+      body: `Beste ${lead.contactName || lead.companyName},\n\nBijgevoegd vindt u ons voorstel ${proposal.proposalNr}.\n\nMet vriendelijke groet,\n${settings.myName || ''}\n${settings.agencyName || 'Agency AI'}`,
+      html: emailHtml, settings, noCalendly: true,
+      attachments: [{ filename: `Voorstel-${proposal.proposalNr}-${safeCompany}.pdf`, content: pdfBuffer.toString('base64') }]
+    });
+
+    const pIdx = leads[idx].proposals.findIndex(p => p.id === req.params.proposalId);
+    if (pIdx !== -1) { leads[idx].proposals[pIdx].sentAt = new Date().toISOString(); leads[idx].proposals[pIdx].status = 'sent'; }
+    addLeadHistory(leads, lead.id, { event: 'proposalSent', label: `Voorstel ${proposal.proposalNr} verstuurd naar ${to}` });
+    writeJSON('leads.json', leads);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Proposal Generator (SSE 3-step, legacy) ─────────────────────────────────
 
 app.post('/api/leads/:id/generate-proposal', requireAdmin, async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
