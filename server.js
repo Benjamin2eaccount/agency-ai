@@ -5376,7 +5376,14 @@ Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" 
 
 ${brandContext}
 
-MUST include in <body>: professional header, rich body content relevant to ${serviceName}, interactive elements, clear CTA section, footer.
+MUST include in <body>:
+- Navigation bar with links: Home, Over ons, Diensten, Boeken, Contact (anchor href="#boeken" for Boeken)
+- Hero section with company name and tagline
+- Services/about section with rich content
+- A section with id="boeken" — leave it empty but include this HTML comment inside it: <!-- BOOKING_INJECT -->
+- Contact section with form
+- Footer
+- Place this HTML comment exactly as written right before </body>: <!-- CHATBOT_INJECT -->
 Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" from Google Fonts. Mobile responsive. Minimum 500 words visible content.`;
           }
 
@@ -5452,6 +5459,100 @@ Dienst: ${svc.description || serviceName}`);
         const id = Date.now().toString(36) + i;
         deliverables.push({ id, service: serviceName, type: 'unknown', status: 'error', error: err.message, builtAt: new Date().toISOString() });
         sse({ type: 'error', service: serviceName, index: i, total: services.length, message: err.message });
+      }
+    }
+
+    // ── Combine HTML deliverables into one website (website + chatbot + booking) ──
+    const websiteDel = deliverables.find(d =>
+      d.type === 'code' && d.status !== 'error' &&
+      /website|site/.test((d.service || '').toLowerCase())
+    );
+    const chatbotDel = deliverables.find(d =>
+      d.type === 'code' && d.status !== 'error' &&
+      /chatbot|chat/.test((d.service || '').toLowerCase())
+    );
+    const bookingDel = deliverables.find(d =>
+      d.type === 'code' && d.status !== 'error' &&
+      /boek|booking/.test((d.service || '').toLowerCase())
+    );
+
+    if (websiteDel && (chatbotDel || bookingDel)) {
+      sse({ type: 'combine_start', message: 'Componenten samenvoegen tot één website...' });
+      try {
+        let combinedHtml = websiteDel.html;
+
+        // Inject chatbot as floating widget
+        if (chatbotDel) {
+          const widgetCode = await aiCall(`From this chatbot HTML page, extract ONLY the floating chat widget code.
+Return ONLY the <style>, <div>, and <script> elements for the floating chat button and panel.
+Do NOT include <!DOCTYPE>, <html>, <head>, <body>, or full-page wrapper tags.
+The snippet must work when pasted before </body> in another HTML page.
+Return raw HTML/CSS/JS only — no markdown, no explanation.
+
+CHATBOT HTML:
+${chatbotDel.html.substring(0, 8000)}`).catch(() => '');
+
+          if (widgetCode && widgetCode.trim().length > 50) {
+            combinedHtml = combinedHtml.includes('<!-- CHATBOT_INJECT -->')
+              ? combinedHtml.replace('<!-- CHATBOT_INJECT -->', widgetCode)
+              : combinedHtml.replace('</body>', `\n${widgetCode}\n</body>`);
+            chatbotDel.embeddedIn = websiteDel.id;
+            chatbotDel.embedded = true;
+            console.log('[Build] Chatbot widget injected into website');
+          }
+        }
+
+        // Inject booking as a section
+        if (bookingDel) {
+          const bookingSection = await aiCall(`From this booking system HTML page, extract ONLY the booking form section content.
+Return a self-contained <section id="boeken"> element containing: service selection, calendar, time slots, and contact form.
+Include all <style> blocks needed for this section.
+Do NOT include the full page header, nav, footer, or page wrapper.
+Do NOT include <!DOCTYPE>, <html>, <head>, <body> tags.
+Return raw HTML only — no markdown, no explanation.
+
+BOOKING HTML:
+${bookingDel.html.substring(0, 8000)}`).catch(() => '');
+
+          if (bookingSection && bookingSection.trim().length > 100) {
+            const cleanSection = /^\s*<section/i.test(bookingSection.trim())
+              ? bookingSection.trim()
+              : `<section id="boeken" style="padding:60px 20px;background:#f9fafb">\n${bookingSection.trim()}\n</section>`;
+
+            combinedHtml = combinedHtml.includes('<!-- BOOKING_INJECT -->')
+              ? combinedHtml.replace('<!-- BOOKING_INJECT -->', cleanSection)
+              : combinedHtml.includes('id="boeken"')
+                ? combinedHtml.replace(/(<[^>]+id="boeken"[^>]*>)([\s\S]*?)(<\/section>)/i, cleanSection)
+                : combinedHtml.replace('</body>', `\n${cleanSection}\n</body>`);
+
+            // Ensure nav link exists
+            if (!combinedHtml.includes('href="#boeken"')) {
+              combinedHtml = combinedHtml
+                .replace(/(<a[^>]*>\s*Contact\s*<\/a>)/i, '<a href="#boeken">Boeken</a> $1')
+                .replace(/(<li[^>]*>\s*<a[^>]*>\s*Contact\s*<\/a>\s*<\/li>)/i, '<li><a href="#boeken">Boeken</a></li>$1');
+            }
+            bookingDel.embeddedIn = websiteDel.id;
+            bookingDel.embedded = true;
+            console.log('[Build] Booking section injected into website');
+          }
+        }
+
+        // Overwrite the website file with the combined version
+        const sitesDir = path.join(__dirname, 'public', 'sites', companySlug);
+        const websiteFilename = (websiteDel.url || '').split('/').pop() || 'website.html';
+        fs.writeFileSync(path.join(sitesDir, websiteFilename), combinedHtml, 'utf8');
+
+        websiteDel.html = combinedHtml;
+        websiteDel.primary = true;
+        websiteDel.combinedServices = [websiteDel.service, chatbotDel?.service, bookingDel?.service].filter(Boolean);
+
+        const combinedList = websiteDel.combinedServices.join(' + ');
+        sse({ type: 'combine_done', url: websiteDel.url, combinedServices: websiteDel.combinedServices, message: `${combinedList} gecombineerd tot één website` });
+        console.log(`[Build] Combined website saved: ${websiteDel.url}`);
+      } catch (combineErr) {
+        console.error('[Build] Combine error:', combineErr.message);
+        sse({ type: 'combine_error', message: combineErr.message });
+        // Non-fatal — individual deliverables still saved as-is
       }
     }
 

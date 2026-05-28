@@ -3831,6 +3831,11 @@ async function renderProjectPage() {
       const isHtml = d.type === 'code';
       const typeIcon = isHtml ? '💻' : (d.deliverableType === 'strategy' ? '📊' : '📄');
       const typeLabel = isHtml ? 'HTML build' : (d.deliverableType === 'strategy' ? 'Strategie' : 'Document');
+      const primaryBadge = d.primary
+        ? `<span style="font-size:10px;font-weight:700;background:#6366f1;color:#fff;border-radius:4px;padding:2px 7px;margin-right:4px">★ GECOMBINEERD</span>`
+        : d.embedded
+          ? `<span style="font-size:10px;color:var(--text-muted);border:1px solid var(--border);border-radius:4px;padding:2px 6px;margin-right:4px">Ingebouwd in website</span>`
+          : '';
 
       const statusBadge = d.status === 'approved'
         ? `<span class="badge badge-green"><i class="ti ti-check"></i> Goedgekeurd</span>`
@@ -3887,10 +3892,11 @@ async function renderProjectPage() {
         d.approvedAt ? `<span style="color:var(--success)"><i class="ti ti-check" style="margin-right:2px"></i>Goedgekeurd op ${formatDateTime(d.approvedAt)}</span>` : '',
       ].filter(Boolean).join(' &nbsp;·&nbsp; ');
 
-      return `<div style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px;background:var(--surface)">
+      return `<div style="border:1px solid ${d.primary ? '#6366f1' : 'var(--border)'};border-radius:12px;padding:14px 16px;margin-bottom:12px;background:var(--surface)${d.primary ? ';box-shadow:0 0 0 1px rgba(99,102,241,.15)' : ''}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:8px;flex-wrap:wrap">
-          <div style="font-size:14px;font-weight:700">${esc(d.service)}</div>
+          <div style="font-size:14px;font-weight:700">${esc(d.service)}${d.combinedServices?.length > 1 ? ` <span style="font-size:12px;font-weight:400;color:var(--text-muted)">+ ${d.combinedServices.slice(1).map(esc).join(' + ')}</span>` : ''}</div>
           <div style="display:flex;align-items:center;gap:6px">
+            ${primaryBadge}
             <span style="font-size:11px;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:1px 7px">${typeIcon} ${typeLabel}</span>
             ${statusBadge}
             ${isAdmin() ? `<button onclick="deleteDeliverable('${esc(lead.id)}',${i})" title="Verwijder levering" style="width:26px;height:26px;border:none;border-radius:6px;background:transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:var(--text-muted);transition:color .15s,background .15s;flex-shrink:0" onmouseover="this.style.color='#ef4444';this.style.background='#fef2f2'" onmouseout="this.style.color='var(--text-muted)';this.style.background='transparent'"><i class="ti ti-trash" style="font-size:14px"></i></button>` : ''}
@@ -5047,12 +5053,21 @@ window.buildAllServicesForLead = async function(leadId) {
             updateCard(d.service, { status: 'done', percent: 100, url: d.url, deliverableType: d.deliverableType });
           } else if (d.type === 'error' && d.service) {
             updateCard(d.service, { status: 'error' });
+          } else if (d.type === 'combine_start') {
+            const hdr = document.querySelector(`[data-tab-content="building"] .build-counter`);
+            if (hdr) hdr.textContent = d.message || 'Samenvoegen...';
+          } else if (d.type === 'combine_done') {
+            toast(`✓ ${d.message || 'Website gecombineerd'}`, 'success');
+          } else if (d.type === 'combine_error') {
+            toast('Samenvoegen mislukt (afzonderlijke bestanden beschikbaar)', 'info');
           } else if (d.type === 'all_done') {
             window._buildAllRunning[leadId] = false;
             delete window._buildAllProgress[leadId];
             const l = state.leads.find(x => x.id === leadId);
             if (l) l.agentDeliverables = d.deliverables || [];
-            toast(`${d.count} leveringen klaar!`, 'success');
+            const combined = (d.deliverables || []).find(x => x.primary);
+            if (combined) toast(`✓ ${combined.combinedServices?.join(' + ') || 'Leveringen'} gecombineerd in één website!`, 'success');
+            else toast(`${d.count} leveringen klaar!`, 'success');
             renderProjectPage().then(() => switchProjectTab('building'));
           } else if (d.type === 'error' && !d.service) {
             window._buildAllRunning[leadId] = false;
