@@ -236,7 +236,8 @@ async function sendPushToAll(title, body, url) {
 }
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // ─── Public config (no auth) ─────────────────────────────────────────────────
@@ -1927,6 +1928,26 @@ app.post('/api/portal/:token/upload', express.json({ limit: '15mb' }), async (re
   addNotification('client_question', `📎 Bestand geüpload: ${safeName}`, `${leads[li].companyName} heeft een bestand geüpload`, leads[li].id, `project:${leads[li].id}`);
 
   res.json({ ok: true, file: fileInfo });
+});
+
+app.delete('/api/portal/:token/upload/:filename', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const li = leads.findIndex(l => l.portalToken === req.params.token);
+  if (li === -1) return res.status(404).json({ error: 'Niet gevonden' });
+  if (leads[li].portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd' });
+
+  const safeName = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
+  const uploads = leads[li].clientUploads || [];
+  const fileIdx = uploads.findIndex(f => f.filename === safeName);
+  if (fileIdx === -1) return res.status(404).json({ error: 'Bestand niet gevonden' });
+
+  const leadSlug = (leads[li].companyName || 'lead').toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 20);
+  const filePath = path.join(__dirname, 'data', 'uploads', leadSlug, safeName);
+  try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+
+  leads[li].clientUploads = uploads.filter(f => f.filename !== safeName);
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
 });
 
 // â"€â"€â"€ Apply auth middleware to all /api/ routes below this line â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€

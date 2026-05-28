@@ -362,6 +362,7 @@
         renderPortal(data, token);
         initChatWidget(token, data.portalChat || []);
         pollChat(token);
+        _renderUploadedFiles(data.clientUploads || [], token);
       } catch {
         renderError('Kan de pagina niet laden. Probeer het later opnieuw.');
       }
@@ -461,7 +462,7 @@
           <p style="font-size:13px;color:#6b7280;margin:0">Wordt binnenkort geconfigureerd.</p>
         </div>`;
 
-      const calendlyHtml = data.calendlyUrl ? `
+      const calendlyHtml = (data.calendlyUrl && !data.projectStartedAt) ? `
         <div class="inner-section">
           <div class="inner-label">Gesprek inplannen</div>
           <p style="font-size:13px;color:#6b7280;margin-bottom:14px">Kies direct een moment dat jou uitkomt.</p>
@@ -877,7 +878,10 @@
                 <div style="font-size:12px;color:#9ca3af;margin-top:4px">JPG, PNG, SVG, PDF, ZIP — max 10MB per bestand</div>
               </div>
               <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.svg,.gif,.webp,.pdf,.zip" multiple style="display:none" onchange="handlePortalFiles(this.files)">
-              <div id="uploadList" style="margin-top:12px"></div>
+              <div id="stagedList" style="margin-top:10px"></div>
+              <button id="submitFilesBtn" onclick="submitStagedFiles()" style="display:none;margin-top:10px;width:100%;padding:11px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">📤 Verstuur bestanden naar Agency AI</button>
+              <div id="uploadSuccessMsg" style="display:none;margin-top:10px;padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;color:#16a34a;font-size:13px;font-weight:600">✓ Bestanden verstuurd! We gaan hiermee aan de slag.</div>
+              <div id="uploadedList" style="margin-top:14px"></div>
             </div>
             ${!data.portalWelcomeMessage && !svcsHtml && !calendlyHtml && !(data.contactSubmissions||[]).length ? '<div class="empty-state"><p>Nog geen projectinformatie beschikbaar.</p></div>' : ''}
           </div>
@@ -974,36 +978,121 @@
       }
     }
 
-    // ── File upload helper ───────────────────────────────────────────────────
-    async function handlePortalFiles(files) {
-      const token = getToken();
-      const list = document.getElementById('uploadList');
-      if (!list) return;
+    // ── File upload helpers ──────────────────────────────────────────────────
+    window._stagedFiles = window._stagedFiles || [];
+
+    function _renderStagedList() {
+      const stagedList = document.getElementById('stagedList');
+      const submitBtn  = document.getElementById('submitFilesBtn');
+      const successMsg = document.getElementById('uploadSuccessMsg');
+      if (!stagedList) return;
+      if (!window._stagedFiles.length) {
+        stagedList.innerHTML = '';
+        if (submitBtn) submitBtn.style.display = 'none';
+        return;
+      }
+      if (successMsg) successMsg.style.display = 'none';
+      stagedList.innerHTML = window._stagedFiles.map((f, idx) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f9fafb;border:1px solid #c7d2fe;border-radius:6px;margin-top:6px;font-size:13px">
+          <span>📄 ${e(f.name)}</span>
+          <span style="color:#6b7280;font-size:11px">${(f.size/1024).toFixed(1)} KB</span>
+          <button onclick="window._removeStagedFile(${idx})" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#9ca3af;font-size:16px;line-height:1;padding:0 2px" title="Verwijderen">×</button>
+        </div>`).join('');
+      if (submitBtn) submitBtn.style.display = '';
+    }
+
+    window._removeStagedFile = function(idx) {
+      window._stagedFiles.splice(idx, 1);
+      _renderStagedList();
+    };
+
+    function handlePortalFiles(files) {
       for (const file of files) {
         if (file.size > 10 * 1024 * 1024) { alert(e(file.name) + ' is te groot (max 10MB)'); continue; }
-        const uid = 'up-' + Date.now() + '-' + Math.random().toString(36).slice(2,6);
-        list.insertAdjacentHTML('beforeend', `<div id="${uid}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;margin-top:6px;font-size:13px"><span>📄 ${e(file.name)}</span><span style="color:#6b7280;font-size:11px">${(file.size/1024).toFixed(1)} KB</span><span id="${uid}-status" style="margin-left:auto;font-size:11px;color:#6366f1">Uploaden...</span></div>`);
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-          const dataBase64 = ev.target.result.split(',')[1];
-          try {
-            const resp = await fetch('/api/portal/' + token + '/upload', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ filename: file.name, mimeType: file.type, dataBase64, size: file.size })
-            });
-            const data = await resp.json();
-            const statusEl = document.getElementById(uid + '-status');
-            if (data.ok) { if (statusEl) statusEl.innerHTML = '<span style="color:#16a34a">✓ Geüpload</span>'; }
-            else { if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626">' + e(data.error || 'Fout') + '</span>'; }
-          } catch(err) {
-            const statusEl = document.getElementById(uid + '-status');
-            if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626">Verbindingsfout</span>';
-          }
-        };
-        reader.readAsDataURL(file);
+        window._stagedFiles.push(file);
       }
+      // Reset file input so the same file can be re-selected if removed
+      const fi = document.getElementById('fileInput');
+      if (fi) fi.value = '';
+      _renderStagedList();
     }
+
+    async function submitStagedFiles() {
+      const token = getToken();
+      const btn = document.getElementById('submitFilesBtn');
+      const successMsg = document.getElementById('uploadSuccessMsg');
+      if (!window._stagedFiles.length) return;
+      if (btn) { btn.disabled = true; btn.textContent = 'Bezig met uploaden...'; }
+
+      let anyError = false;
+      for (const file of window._stagedFiles) {
+        try {
+          const dataUrl = await new Promise((res, rej) => {
+            const reader = new FileReader();
+            reader.onload = ev => res(ev.target.result);
+            reader.onerror = rej;
+            reader.readAsDataURL(file);
+          });
+          const dataBase64 = dataUrl.split(',')[1];
+          const resp = await fetch('/api/portal/' + token + '/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: file.name, mimeType: file.type, dataBase64, size: file.size })
+          });
+          const data = await resp.json();
+          if (!data.ok) { alert('Fout bij uploaden ' + e(file.name) + ': ' + (data.error || 'onbekend')); anyError = true; }
+        } catch {
+          alert('Verbindingsfout bij ' + e(file.name)); anyError = true;
+        }
+      }
+
+      window._stagedFiles = [];
+      _renderStagedList();
+      if (btn) { btn.disabled = false; btn.textContent = '📤 Verstuur bestanden naar Agency AI'; }
+
+      if (!anyError && successMsg) successMsg.style.display = '';
+
+      // Refresh uploaded list from server
+      await _loadUploadedFiles(token);
+    }
+
+    function _renderUploadedFiles(uploads, token) {
+      const ul = document.getElementById('uploadedList');
+      if (!ul) return;
+      if (!uploads || !uploads.length) { ul.innerHTML = ''; return; }
+      ul.innerHTML = `
+        <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Geüploade bestanden</div>
+        ${uploads.map(f => `
+          <div id="uploaded-${e(f.filename)}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;margin-top:6px;font-size:13px">
+            <span>📄 ${e(f.filename)}</span>
+            <span style="color:#6b7280;font-size:11px">${f.size ? (f.size/1024).toFixed(1)+' KB' : ''}</span>
+            <span style="color:#9ca3af;font-size:11px;margin-left:4px">${f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString('nl-NL') : ''}</span>
+            <button onclick="window._deleteUploadedFile('${e(f.filename)}','${token}')" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#9ca3af;font-size:16px;line-height:1;padding:0 2px" title="Verwijderen">×</button>
+          </div>`).join('')}`;
+    }
+
+    async function _loadUploadedFiles(token) {
+      try {
+        const resp = await fetch('/api/portal/' + token);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        _renderUploadedFiles(data.clientUploads || [], token);
+      } catch { /* ignore */ }
+    }
+
+    window._deleteUploadedFile = async function(filename, token) {
+      if (!confirm('Bestand "' + filename + '" verwijderen?')) return;
+      try {
+        const resp = await fetch('/api/portal/' + token + '/upload/' + encodeURIComponent(filename), { method: 'DELETE' });
+        const data = await resp.json();
+        if (data.ok) {
+          const el = document.getElementById('uploaded-' + filename);
+          if (el) el.remove();
+        } else {
+          alert('Verwijderen mislukt: ' + (data.error || 'onbekend'));
+        }
+      } catch { alert('Verbindingsfout.'); }
+    };
 
     // ── Document vault helpers ───────────────────────────────────────────────
     function togglePw(id, value) {
