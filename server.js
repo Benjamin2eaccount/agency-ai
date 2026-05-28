@@ -1902,14 +1902,14 @@ app.post('/api/portal/:token/upload', express.json({ limit: '15mb' }), async (re
   if (!allowed.includes(mimeType)) return res.status(400).json({ error: 'Bestandstype niet toegestaan' });
   if (size > 10 * 1024 * 1024) return res.status(400).json({ error: 'Bestand te groot (max 10MB)' });
 
-  // Sanitize filename
   const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
-  const leadSlug = (leads[li].companyName || 'lead').toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 20);
-  const uploadDir = path.join(__dirname, 'data', 'uploads', leadSlug);
+  // Use lead.id as folder — immutable, never ambiguous
+  const uploadDir = path.join(__dirname, 'data', 'uploads', leads[li].id);
   fs.mkdirSync(uploadDir, { recursive: true });
 
   const buffer = Buffer.from(dataBase64, 'base64');
   const destPath = path.join(uploadDir, safeName);
+  console.log('[Upload] Saving to:', destPath);
   fs.writeFileSync(destPath, buffer);
 
   const fileInfo = {
@@ -1918,7 +1918,8 @@ app.post('/api/portal/:token/upload', express.json({ limit: '15mb' }), async (re
     mimeType,
     size,
     uploadedAt: new Date().toISOString(),
-    path: `/data/uploads/${leadSlug}/${safeName}`,
+    localPath: destPath,
+    path: `/data/uploads/${leads[li].id}/${safeName}`,
     usedInBuild: false
   };
   leads[li].clientUploads = leads[li].clientUploads || [];
@@ -1938,11 +1939,10 @@ app.delete('/api/portal/:token/upload/:filename', (req, res) => {
 
   const safeName = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
   const uploads = leads[li].clientUploads || [];
-  const fileIdx = uploads.findIndex(f => f.filename === safeName);
-  if (fileIdx === -1) return res.status(404).json({ error: 'Bestand niet gevonden' });
+  const upload = uploads.find(f => f.filename === safeName);
+  if (!upload) return res.status(404).json({ error: 'Bestand niet gevonden' });
 
-  const leadSlug = (leads[li].companyName || 'lead').toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 20);
-  const filePath = path.join(__dirname, 'data', 'uploads', leadSlug, safeName);
+  const filePath = upload.localPath || path.join(__dirname, 'data', 'uploads', leads[li].id, safeName);
   try { fs.unlinkSync(filePath); } catch { /* already gone */ }
 
   leads[li].clientUploads = uploads.filter(f => f.filename !== safeName);
@@ -1966,8 +1966,9 @@ app.get('/api/portal/:token/download/:filename', (req, res) => {
   const upload = (lead.clientUploads || []).find(f => f.filename === safeName);
   if (!upload) return res.status(404).json({ error: 'Bestand niet gevonden' });
 
-  const leadSlug = (lead.companyName || 'lead').toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 20);
-  const filePath = path.join(__dirname, 'data', 'uploads', leadSlug, safeName);
+  const filePath = upload.localPath || path.join(__dirname, 'data', 'uploads', lead.id, safeName);
+  console.log('[Download] Looking for file:', filePath);
+  console.log('[Download] File exists:', fs.existsSync(filePath));
   const ext = path.extname(safeName).toLowerCase();
   const contentType = UPLOAD_MIME_TYPES[ext] || upload.mimeType || 'application/octet-stream';
   res.setHeader('Content-Type', contentType);
@@ -4987,8 +4988,9 @@ app.get('/api/leads/:id/client-uploads/:filename', requireAdmin, (req, res) => {
   const upload = (lead.clientUploads || []).find(f => f.filename === safeName);
   if (!upload) return res.status(404).json({ error: 'Bestand niet gevonden' });
 
-  const leadSlug = (lead.companyName || 'lead').toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 20);
-  const filePath = path.join(__dirname, 'data', 'uploads', leadSlug, safeName);
+  const filePath = upload.localPath || path.join(__dirname, 'data', 'uploads', lead.id, safeName);
+  console.log('[Download] Admin looking for file:', filePath);
+  console.log('[Download] File exists:', fs.existsSync(filePath));
   const ext = path.extname(safeName).toLowerCase();
   const contentType = UPLOAD_MIME_TYPES[ext] || upload.mimeType || 'application/octet-stream';
   res.setHeader('Content-Type', contentType);
