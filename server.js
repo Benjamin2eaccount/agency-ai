@@ -644,7 +644,8 @@ function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken, opts) 
         </table>
       </td></tr>
       <tr><td style="padding:16px 32px;background:#f4f4f2;border-top:1px solid #e8e8e5">
-        <p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9b9b98;text-align:center;line-height:1.5">U ontvangt deze email omdat uw bedrijf voldoet aan onze selectiecriteria voor groeipotentieel. Wilt u geen emails meer ontvangen? Stuur een reply met &#39;Uitschrijven&#39;.</p>
+        <p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9b9b98;text-align:center;line-height:1.5">U ontvangt deze email van Agency AI. Uitschrijven? Stuur een reply met &#39;Uitschrijven&#39; of klik hieronder.</p>
+        <p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9b9b98;text-align:center"><a href="mailto:info@agencyai.info?subject=uitschrijven" style="color:#9b9b98;text-decoration:underline">Uitschrijven</a></p>
         <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9b9b98;text-align:center">&copy; ${new Date().getFullYear()} ${e(agencyName||'Agency AI')}</p>
       </td></tr>
     </table>
@@ -1154,7 +1155,7 @@ async function generateInvoicePDF({ invoiceNr, invoiceDate, dueDate, lead, servi
   });
 }
 
-async function sendEmail({ to, subject, body, html, settings: _settings = {}, trackingToken, noCalendly = false, attachments = [] }) {
+async function sendEmail({ to, subject, body, html, settings: _settings = {}, trackingToken, noCalendly = true, isColdOutreach = false, attachments = [] }) {
   // Normalise "to" — Resend requires a clean plain string
   const toStr = Array.isArray(to) ? to[0] : to;
   const toRaw = (typeof toStr === 'string' ? toStr : String(toStr || ''));
@@ -1198,11 +1199,31 @@ async function sendEmail({ to, subject, body, html, settings: _settings = {}, tr
     throw new Error('Email niet ingesteld. Voeg RESEND_API_KEY toe als Railway environment variable of via Instellingen → Email.');
   }
 
+  const fromName = isColdOutreach
+    ? `${myName || 'Benjamin van Hemert'} via Agency AI`
+    : 'Agency AI';
+  const replyTo  = s.gmailAddress || process.env.GMAIL_USER || 'info@agencyai.info';
+  const entityId = Math.random().toString(36).substring(2, 12);
+  const plainText = (body || htmlBody.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()) || '';
+
   const { default: fetch } = await import('node-fetch');
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: `Agency AI <info@agencyai.info>`, to: toFinal, reply_to: s.gmailAddress || process.env.GMAIL_USER || 'info@agencyai.info', subject: cleanSubject, html: htmlBody, text: body || '', ...(attachments.length ? { attachments } : {}) }),
+    body: JSON.stringify({
+      from: `${fromName} <info@agencyai.info>`,
+      to: toFinal,
+      reply_to: replyTo,
+      subject: cleanSubject,
+      html: htmlBody,
+      text: plainText,
+      headers: {
+        'X-Entity-Ref-ID': entityId,
+        'List-Unsubscribe': `<mailto:info@agencyai.info?subject=uitschrijven>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+      },
+      ...(attachments.length ? { attachments } : {})
+    }),
     signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
   });
   const d = await r.json();
@@ -6032,7 +6053,9 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
         subject: chosenEmail?.subject || item.email?.subject || 'Outreach email',
         body: chosenEmail?.body || item.email?.body || '',
         settings,
-        trackingToken
+        trackingToken,
+        isColdOutreach: true,
+        noCalendly: false
       });
       inbox[idx].status = 'sent';
       inbox[idx].sentAt = new Date().toISOString();
@@ -6407,6 +6430,18 @@ app.post('/api/settings/test-email', requireAdmin, async (req, res) => {
 
   try {
     const { default: fetch } = await import('node-fetch');
+
+    // Check domain verification status in Resend
+    try {
+      const domainRes = await fetch('https://api.resend.com/domains', {
+        headers: { 'Authorization': `Bearer ${resendKey}` }
+      });
+      const domainData = await domainRes.json();
+      console.log('[TestMail] Resend domain verification status:', JSON.stringify(domainData?.data?.map(d => ({ name: d.name, status: d.status, spf: d.records?.find(r=>r.type==='SPF')?.status, dkim: d.records?.find(r=>r.type?.includes('DKIM'))?.status }))));
+    } catch (domErr) {
+      console.warn('[TestMail] Could not fetch domain status:', domErr.message);
+    }
+
     console.log('[TestMail] Sending via Resend...');
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -10681,7 +10716,9 @@ cron.schedule('* * * * *', async () => {
         subject: chosenEmail?.subject || item.email?.subject || 'Outreach email',
         body: chosenEmail?.body || item.email?.body || '',
         settings,
-        trackingToken: scheduledToken
+        trackingToken: scheduledToken,
+        isColdOutreach: true,
+        noCalendly: false
       });
       inbox[idx].status = 'sent';
       inbox[idx].sentAt = new Date().toISOString();
