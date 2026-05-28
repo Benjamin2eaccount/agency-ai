@@ -3864,7 +3864,9 @@ async function renderProjectPage() {
         ? `<span class="badge badge-green"><i class="ti ti-check"></i> Goedgekeurd</span>`
         : d.status === 'error'
           ? `<span class="badge badge-red"><i class="ti ti-x"></i> Fout</span>`
-          : `<span class="badge badge-warning"><i class="ti ti-clock"></i> Wacht op goedkeuring</span>`;
+          : d.status === 'adjusting'
+            ? `<span class="badge badge-warning" style="background:var(--warning-light);color:#92400e"><i class="ti ti-edit"></i> Wordt aangepast</span>`
+            : `<span class="badge badge-warning"><i class="ti ti-clock"></i> Wacht op goedkeuring</span>`;
 
       const preview = isHtml && d.html
         ? `<div style="margin:12px 0">
@@ -3887,7 +3889,11 @@ async function renderProjectPage() {
             ? `<div style="padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin:8px 0;font-size:13px;color:#dc2626">${esc(d.error||'Onbekende fout')}</div>`
             : '';
 
-      const actions = d.status !== 'approved' && d.status !== 'error' && isAdmin() ? `
+      const actions = d.status === 'approved' && isAdmin()
+        ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+            <button class="btn btn-ghost btn-sm" onclick="startDeliverableEdit('${esc(lead.id)}',${i})"><i class="ti ti-edit"></i> Aanpassen</button>
+          </div>`
+        : d.status !== 'error' && isAdmin() ? `
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
           ${isHtml
             ? `<button class="btn btn-primary btn-sm" onclick="approveDeliverable('${esc(lead.id)}',${i})"><i class="ti ti-check"></i> Goedkeuren &amp; naar klant</button>`
@@ -4931,6 +4937,24 @@ window.sendManualDeliverable = async function(leadId, dIdx) {
     const d = await res?.json();
     toast(d?.error || 'Versturen mislukt', 'error');
   }
+};
+
+window.startDeliverableEdit = async function(leadId, dIdx) {
+  const lead = state.leads.find(l => l.id === leadId);
+  const d = lead?.agentDeliverables?.[dIdx];
+  if (!d) return;
+  const confirmed = confirm(`Weet je zeker dat je "${d.service}" wil aanpassen?\n\nDe deliverable wordt verborgen voor de klant totdat jij hem opnieuw goedkeurt.`);
+  if (!confirmed) return;
+
+  const res = await api(`/api/leads/${leadId}/deliverables/${dIdx}/unapprove`, { method: 'POST' });
+  if (!res.ok) { toast('Kon status niet wijzigen', 'error'); return; }
+
+  window._projectActiveTab = 'building';
+  await renderProjectPage();
+  // Open the chat panel immediately after re-render
+  const panel = document.getElementById(`delivChat-${leadId}-${dIdx}`);
+  if (panel) { panel.style.display = 'block'; panel.querySelector('textarea')?.focus(); }
+  toast('Deliverable teruggezet — pas aan via de chat', 'info');
 };
 
 window.toggleDeliverableChat = function(leadId, dIdx) {

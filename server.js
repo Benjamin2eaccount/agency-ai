@@ -5770,6 +5770,23 @@ app.post('/api/leads/:id/deliverables/:dIdx/approve', requireAdmin, async (req, 
   res.json({ ok: true });
 });
 
+app.post('/api/leads/:id/deliverables/:dIdx/unapprove', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const li = leads.findIndex(l => l.id === req.params.id);
+  if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const dIdx = parseInt(req.params.dIdx);
+  const d = (leads[li].agentDeliverables || [])[dIdx];
+  if (!d) return res.status(404).json({ error: 'Levering niet gevonden' });
+
+  leads[li].agentDeliverables[dIdx].status = 'adjusting';
+  leads[li].agentDeliverables[dIdx].clientVisible = false;
+  delete leads[li].agentDeliverables[dIdx].approvedAt;
+
+  addLeadHistory(leads, req.params.id, { event: 'deliverableUnapproved', label: `Levering teruggezet voor aanpassing: ${d.service}` });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
 // Toggle deliverable clientVisible
 app.patch('/api/leads/:id/deliverables/:dIdx/visibility', requireAdmin, (req, res) => {
   const leads = readJSON('leads.json') || [];
