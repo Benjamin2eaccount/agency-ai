@@ -4656,6 +4656,16 @@ Remember: Start your response with <!DOCTYPE html> and fill the body with comple
       const chatLang = (lead.language && lead.language !== 'nl') ? 'English' : 'Dutch (Nederlands)';
       const chatIntakeLines = Object.entries(chatIntakeRaw).filter(([, v]) => v).map(([k, v]) => `  ${k}: ${v}`).join('\n');
 
+      const _chatUploadedFiles = (lead.clientUploads || []).map(u => ({
+        filename: u.filename,
+        mimeType: u.mimeType || 'application/octet-stream',
+        url: `${BASE_URL}/api/leads/${lead.id}/client-uploads/${encodeURIComponent(u.filename)}`
+      }));
+      const _chatHasImages = _chatUploadedFiles.some(f => f.mimeType.startsWith('image/'));
+      const chatUploadsCtx = `\nUPLOADED FILES BY CLIENT:\n${_chatUploadedFiles.length > 0
+        ? _chatUploadedFiles.map(f => `- ${f.filename} (${f.mimeType}) → ${f.url}`).join('\n')
+        : 'No files uploaded yet'}${_chatHasImages ? `\nIMPORTANT — client has uploaded images. Use their direct URLs in HTML:\n- Logo file (name contains "logo"): use as <img> in header/nav\n- Banner/header image: use as hero background\n- All other images: embed contextually using the URL above\n- Do NOT use placeholder images when real client files are available` : ''}`;
+
       const chatBrandCtx = `
 BRAND & STYLE — follow exactly:
 Company: ${lead.companyName} | Location: ${lead.location || ''} | Niche: ${lead.niche || ''}
@@ -4666,6 +4676,7 @@ Language: ${chatLang}
 ${chatStyle.description ? `Brand description: ${chatStyle.description}` : ''}
 ${chatProblems.length ? `Problems being solved:\n${chatProblems.map(p => `- ${p}`).join('\n')}` : ''}
 ${chatIntakeLines ? `Client intake answers:\n${chatIntakeLines}` : ''}
+${chatUploadsCtx}
 `.trim();
 
       const msgLower = (message || '').toLowerCase();
@@ -5412,9 +5423,21 @@ Website: ${lead.websiteUrl || ''}`;
     const langNote = (lead.language && lead.language !== 'nl') ? 'English' : 'Nederlands';
     const intakeLines = Object.entries(intakeRaw).filter(([, v]) => v).map(([k, v]) => `  ${k}: ${v}`).join('\n');
 
-    const uploadsCtx = (lead.clientUploads || []).length
-      ? `\n\nKLANT BESTANDEN (kan door agents worden gebruikt):\n${(lead.clientUploads || []).map(f => `- ${f.filename} (${f.mimeType})`).join('\n')}\nAls de klant een logo of merkafbeelding heeft geüpload, vermeld dan in de HTML: "Logo beschikbaar: vraag uw webmaster om het te vervangen door uw eigen logo."`
-      : '';
+    const _uploadedFiles = (lead.clientUploads || []).map(u => ({
+      filename: u.filename,
+      mimeType: u.mimeType || 'application/octet-stream',
+      size: u.size,
+      url: `${BASE_URL}/api/leads/${lead.id}/client-uploads/${encodeURIComponent(u.filename)}`
+    }));
+    const _hasUploadedImages = _uploadedFiles.some(f => f.mimeType.startsWith('image/'));
+    const uploadsCtx = `\n\nUPLOADED FILES BY CLIENT:
+${_uploadedFiles.length > 0
+  ? _uploadedFiles.map(f => `- ${f.filename} (${f.mimeType}) → ${f.url}`).join('\n')
+  : 'No files uploaded yet'}${_hasUploadedImages ? `\n\nIMPORTANT — client has uploaded images. When building HTML deliverables:
+- If a file with "logo" in the name exists, use it as the company logo: <img src="[url]" alt="${lead.companyName} logo" style="height:48px">
+- If a file with "banner" or "header" in the name exists, use it as the hero background or header image
+- Embed images using their direct URL shown above — do NOT use placeholder or stock images when real client files are available
+- If none of those patterns match, still consider using the uploaded images contextually` : ''}`;
 
     const brandContext = `
 MERK & STIJL — volg dit exact:
