@@ -1950,6 +1950,31 @@ app.delete('/api/portal/:token/upload/:filename', (req, res) => {
   res.json({ ok: true });
 });
 
+const UPLOAD_MIME_TYPES = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml', '.gif': 'image/gif', '.webp': 'image/webp',
+  '.pdf': 'application/pdf', '.zip': 'application/zip'
+};
+
+app.get('/api/portal/:token/download/:filename', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.portalToken === req.params.token);
+  if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
+  if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd' });
+
+  const safeName = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
+  const upload = (lead.clientUploads || []).find(f => f.filename === safeName);
+  if (!upload) return res.status(404).json({ error: 'Bestand niet gevonden' });
+
+  const leadSlug = (lead.companyName || 'lead').toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 20);
+  const filePath = path.join(__dirname, 'data', 'uploads', leadSlug, safeName);
+  const ext = path.extname(safeName).toLowerCase();
+  const contentType = UPLOAD_MIME_TYPES[ext] || upload.mimeType || 'application/octet-stream';
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+  res.sendFile(filePath);
+});
+
 // â"€â"€â"€ Apply auth middleware to all /api/ routes below this line â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 // ─── Gmail Pub/Sub webhook (public — no auth, validated by secret token) ──────
@@ -4953,6 +4978,24 @@ app.post('/api/leads/:id/send-delivery-email', requireAdmin, async (req, res) =>
 });
 
 // ── Project files ───────────────────────────────────────────────────────────
+app.get('/api/leads/:id/client-uploads/:filename', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead  = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+
+  const safeName = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
+  const upload = (lead.clientUploads || []).find(f => f.filename === safeName);
+  if (!upload) return res.status(404).json({ error: 'Bestand niet gevonden' });
+
+  const leadSlug = (lead.companyName || 'lead').toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 20);
+  const filePath = path.join(__dirname, 'data', 'uploads', leadSlug, safeName);
+  const ext = path.extname(safeName).toLowerCase();
+  const contentType = UPLOAD_MIME_TYPES[ext] || upload.mimeType || 'application/octet-stream';
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+  res.sendFile(filePath);
+});
+
 app.get('/api/leads/:id/project-files', requireAdmin, (req, res) => {
   const leads = readJSON('leads.json') || [];
   const lead  = leads.find(l => l.id === req.params.id);

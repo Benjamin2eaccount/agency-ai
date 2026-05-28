@@ -4312,6 +4312,25 @@ async function renderProjectPage() {
         ` : `<div style="font-size:13px;color:var(--text-muted)">Geen portaal aangemaakt. Start het project om een portaallink te genereren.</div>`}
       </div>
 
+      <!-- SECTIE 8: Geüploade bestanden door klant -->
+      <div style="margin-bottom:20px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)">
+        <div class="project-section-title" style="margin-bottom:12px">8 — Geüploade bestanden door klant ${(lead.clientUploads||[]).length > 0 ? `<span class="tab-badge">${(lead.clientUploads||[]).length}</span>` : ''}</div>
+        ${(lead.clientUploads||[]).length > 0
+          ? (lead.clientUploads||[]).map(f => {
+              const fmtSize = ((f.size||0)/1024).toFixed(1);
+              const fmtDate = f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString('nl-NL') : '';
+              return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--surface-2);gap:8px;flex-wrap:wrap">
+                <div style="min-width:0">
+                  <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><i class="ti ti-paperclip" style="margin-right:4px;color:var(--accent)"></i>${esc(f.filename)}</div>
+                  <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(f.mimeType||'')} · ${fmtSize} KB${fmtDate ? ' · ' + fmtDate : ''}</div>
+                </div>
+                <a href="/api/leads/${esc(lead.id)}/client-uploads/${encodeURIComponent(f.filename)}" download="${esc(f.filename)}" class="btn btn-ghost btn-xs" style="flex-shrink:0"><i class="ti ti-download"></i> Download</a>
+              </div>`;
+            }).join('')
+          : `<div style="font-size:13px;color:var(--text-muted)">De klant heeft nog geen bestanden geüpload.</div>`
+        }
+      </div>
+
       ` : `
       <!-- Non-admin: just show the chat -->
       <div style="margin-bottom:20px">
@@ -6702,13 +6721,12 @@ function buildPortalTab(lead) {
       <div class="detail-section-title">📎 Geüploade bestanden door klant</div>
       ${(lead.clientUploads || []).length > 0
         ? (lead.clientUploads || []).map(f => {
-            const leadSlug = (lead.companyName || 'lead').toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 20);
             return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface)">
               <div>
                 <div style="font-size:13px;font-weight:600">${esc(f.filename)}</div>
-                <div style="font-size:11px;color:var(--text-muted)">${esc(f.mimeType)} · ${((f.size||0)/1024).toFixed(1)} KB · ${f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString('nl-NL') : ''}</div>
+                <div style="font-size:11px;color:var(--text-muted)">${esc(f.mimeType||'')} · ${((f.size||0)/1024).toFixed(1)} KB · ${f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString('nl-NL') : ''}</div>
               </div>
-              <a href="/data/uploads/${esc(leadSlug)}/${esc(f.filename)}" download class="btn btn-ghost btn-xs"><i class="ti ti-download"></i> Download</a>
+              <a href="/api/leads/${esc(lead.id)}/client-uploads/${encodeURIComponent(f.filename)}" download="${esc(f.filename)}" class="btn btn-ghost btn-xs"><i class="ti ti-download"></i> Download</a>
             </div>`;
           }).join('')
         : '<p class="text-secondary" style="font-size:13px">Nog geen bestanden geüpload door klant.</p>'
