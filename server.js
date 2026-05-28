@@ -6395,7 +6395,7 @@ app.post('/api/settings/test-email', requireAdmin, async (req, res) => {
   const s = readJSON('settings.json') || {};
   const resendKey   = s.resendApiKey || process.env.RESEND_API_KEY;
   const fromAddress = s.resendFromAddress || process.env.RESEND_FROM_ADDRESS || 'noreply@agencyai.info';
-  const testRecipient = 'benjamin.van.hemert2@gmail.com';
+  const testRecipient = s.adminEmail || s.gmailAddress || 'info@agencyai.info';
 
   console.log('[TestEmail] Sending to:', testRecipient);
   console.log('[TestMail] Key set:', !!resendKey, '| From:', fromAddress, '| To:', testRecipient);
