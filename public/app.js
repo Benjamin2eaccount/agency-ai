@@ -6828,17 +6828,27 @@ function openProjectConfigModal(leadId, editMode) {
   const startDate = lead.projectStartDate || today;
 
   const serviceCheckboxes = servicesList.length
-    ? servicesList.map(s => {
+    ? servicesList.map((s, sIdx) => {
         const sName    = typeof s === 'string' ? s : s.name;
         const sPrice   = typeof s === 'object' ? (parseFloat(s.price) || 0) : 0;
         const sBilling = typeof s === 'object' ? (s.billing || 'maandelijks') : 'maandelijks';
         const checked  = !lead.services?.length || (lead.services || []).some(ls => (typeof ls === 'string' ? ls : ls.name) === sName);
-        const priceLabel = sPrice ? `€${sPrice.toLocaleString('nl-NL')}${sBilling === 'eenmalig' ? ' eenm.' : '/mnd'}` : '';
-        return `<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;margin-bottom:6px;background:var(--surface)">
-          <input type="checkbox" name="svc" value="${esc(sName)}" data-price="${sPrice}" data-billing="${sBilling}" ${checked ? 'checked' : ''} onchange="updateProjectTotal()" style="width:15px;height:15px;accent-color:var(--accent);flex-shrink:0">
-          <span style="flex:1;font-size:13px;font-weight:500">${esc(sName)}</span>
-          ${priceLabel ? `<span style="font-size:12px;color:var(--text-muted)">${priceLabel}</span>` : ''}
-        </label>`;
+        // Use existing custom price if project was already configured
+        const existingSvc = (lead.projectServices || []).find(ps => (typeof ps === 'string' ? ps : ps.name) === sName);
+        const displayPrice = existingSvc != null ? (parseFloat(existingSvc.price) ?? sPrice) : sPrice;
+        const billingTag = sBilling === 'eenmalig' ? 'eenm.' : '/mnd';
+        const cid = `svcchk-${sIdx}`;
+        const pid = `svcprice-${sIdx}`;
+        const bid = `svcbilling-${sIdx}`;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--surface)">
+          <input type="checkbox" id="${cid}" name="svc" value="${esc(sName)}" data-price="${sPrice}" data-billing="${sBilling}" ${checked ? 'checked' : ''} style="width:15px;height:15px;accent-color:var(--accent);flex-shrink:0;cursor:pointer"
+            onchange="updateProjectTotal();document.getElementById('${pid}').style.display=this.checked?'block':'none';document.getElementById('${bid}').style.display=this.checked?'inline':'none'">
+          <label for="${cid}" style="flex:1;font-size:13px;font-weight:500;cursor:pointer;margin:0">${esc(sName)}</label>
+          <input id="${pid}" type="number" class="svc-price-input form-control" value="${displayPrice}" min="0" step="1"
+            style="display:${checked?'block':'none'};width:82px;font-size:13px;padding:4px 8px;text-align:right;border:1px solid var(--border);border-radius:6px"
+            oninput="updateProjectTotal()" placeholder="0">
+          <span id="${bid}" style="font-size:11px;color:var(--text-muted);white-space:nowrap;display:${checked?'inline':'none'}">${billingTag}</span>
+        </div>`;
       }).join('')
     : `<div style="font-size:13px;color:var(--text-muted)">Geen diensten in instellingen. <a onclick="setView('settings')" style="color:var(--accent);cursor:pointer">Voeg toe in Instellingen →</a></div>`;
 
@@ -6950,8 +6960,12 @@ function openProjectConfigModal(leadId, editMode) {
 
 function updateProjectTotal() {
   const checked = [...document.querySelectorAll('#projServicesList input[name="svc"]:checked')];
-  const monthly = checked.filter(el => el.dataset.billing !== 'eenmalig').reduce((sum, el) => sum + (parseFloat(el.dataset.price) || 0), 0);
-  const oneTime = checked.filter(el => el.dataset.billing === 'eenmalig').reduce((sum, el) => sum + (parseFloat(el.dataset.price) || 0), 0);
+  const getPrice = el => {
+    const inp = el.parentElement?.querySelector('.svc-price-input');
+    return parseFloat(inp?.value) || parseFloat(el.dataset.price) || 0;
+  };
+  const monthly = checked.filter(el => el.dataset.billing !== 'eenmalig').reduce((sum, el) => sum + getPrice(el), 0);
+  const oneTime = checked.filter(el => el.dataset.billing === 'eenmalig').reduce((sum, el) => sum + getPrice(el), 0);
   const totalEl = document.getElementById('projServicesTotal');
   if (totalEl) {
     let label = '';
@@ -6984,11 +6998,14 @@ async function confirmStartProject(leadId, editMode) {
   if (!lead) return;
 
   const checkedEls = [...document.querySelectorAll('#projServicesList input[name="svc"]:checked')];
-  const projectServices = checkedEls.map(el => ({
-    name: el.value,
-    price: parseFloat(el.dataset.price) || 0,
-    billing: el.dataset.billing || 'maandelijks'
-  }));
+  const projectServices = checkedEls.map(el => {
+    const priceInput = el.parentElement?.querySelector('.svc-price-input');
+    return {
+      name: el.value,
+      price: parseFloat(priceInput?.value) || parseFloat(el.dataset.price) || 0,
+      billing: el.dataset.billing || 'maandelijks'
+    };
+  });
   const services = projectServices.length ? projectServices : (lead.services || []);
   const selectedProblems = [...document.querySelectorAll('#projProblemsList input[name="prob"]:checked')].map(el => el.value);
   const price     = parseFloat(document.getElementById('projPrice')?.value) || 0;

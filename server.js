@@ -1165,6 +1165,14 @@ async function sendEmail({ to, subject, body, html, settings: _settings = {}, tr
   console.log(`[Email] Versturen naar: "${toFinal}" (origineel: ${JSON.stringify(toRaw)})`);
 
   const s = readJSON('settings.json') || {};
+
+  // Auto-suppress Calendly for clients who have already submitted their intake form
+  if (!noCalendly) {
+    const allLeads = readJSON('leads.json') || [];
+    const matchedLead = allLeads.find(l => (l.contactEmail || '').toLowerCase().trim() === toFinal);
+    if (matchedLead?.intakeSubmittedAt || matchedLead?.status === 'client') noCalendly = true;
+  }
+
   const agencyName  = s.agencyName  || _settings.agencyName || 'Agency AI';
   const myName      = s.myName      || _settings.myName     || 'Admin';
   const myTitle     = s.myTitle     || _settings.myTitle    || '';
