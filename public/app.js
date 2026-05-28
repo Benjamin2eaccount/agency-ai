@@ -831,12 +831,12 @@ function buildAiReplyCard(item) {
   const projectStarted = !!(lead?.projectStartedAt);
 
   const startProjectBtn = (!alreadyClient && !projectStarted)
-    ? `<button class="btn btn-sm" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none" onclick="startProjectFromInbox('${esc(item.id)}','${esc(item.leadId)}')">
-         🚀 Start project &amp; stuur welkomstmail
+    ? `<button class="btn btn-sm" style="background:#6366f1;color:#fff;border:none" onclick="startProjectFromInbox('${esc(item.id)}','${esc(item.leadId)}')">
+         🚀 Start project
        </button>`
     : projectStarted
       ? `<span style="font-size:12px;background:#dcfce7;color:#166534;border-radius:6px;padding:4px 10px;font-weight:600">✓ Project gestart</span>`
-      : `<span style="font-size:12px;color:var(--text-muted)">Al klant</span>`;
+      : '';
 
   return `
     <div class="inbox-card ai-reply-card" data-id="${item.id}" id="card-${item.id}">
@@ -862,17 +862,16 @@ function buildAiReplyCard(item) {
         <button class="btn btn-primary btn-sm" onclick="sendAiReply('${item.id}')">
           <i class="ti ti-send"></i> Verstuur antwoord
         </button>
-      </div>
-      <div style="padding:0 0 4px;display:flex;justify-content:flex-end">
         ${startProjectBtn}
       </div>
     </div>`;
 }
 
 window.startProjectFromInbox = function(itemId, leadId) {
-  // Store which inbox card triggered the project start so we can update it on completion
+  console.log('[InboxStart] clicked, leadId:', leadId);
+  console.log('[InboxStart] modal fn:', typeof window.openProjectConfigModal);
   window._inboxProjectStart = { itemId, leadId };
-  openProjectConfigModal(leadId, false);
+  window.openProjectConfigModal(leadId, false);
 };
 
 
@@ -6840,6 +6839,7 @@ async function sendUpsellEmail(leadId) {
 
 function startProject(leadId) { openProjectConfigModal(leadId, false); }
 function editProjectConfig(leadId) { openProjectConfigModal(leadId, true); }
+window.openProjectConfigModal = function(leadId, editMode) { openProjectConfigModal(leadId, editMode); };
 
 function openProjectConfigModal(leadId, editMode) {
   const lead = state.leads.find(l => l.id === leadId);
