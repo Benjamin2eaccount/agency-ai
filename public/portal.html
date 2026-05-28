@@ -643,22 +643,41 @@
                 <iframe src="${absUrl.replace(/"/g,'&quot;')}" style="width:100%;height:300px;border:none;display:block" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"></iframe>
                 <div style="display:none;padding:20px;text-align:center;font-size:13px;color:#6b7280;background:#f9fafb">Preview niet beschikbaar — <a href="${absUrl.replace(/"/g,'&quot;')}" target="_blank" rel="noopener" style="color:#6366f1;text-decoration:underline;margin-left:4px">open pagina in nieuw tabblad →</a></div>
               </div>` : ''}
-              ${absUrl && d.type==='code' ? `
-              <details style="margin-top:10px">
-                <summary style="font-size:12px;font-weight:600;color:#6366f1;cursor:pointer;padding:6px 0;user-select:none">🔧 Installatie instructies — Zo plaatst u dit op uw website</summary>
-                <div style="margin-top:8px;padding:12px;background:#f0f4ff;border-radius:8px;border:1px solid #c7d2fe">
-                  <div style="font-size:12px;color:#3730a3;line-height:1.7">
-                    <strong>WordPress / Elementor</strong><br>
-                    Voeg een 'Aangepaste HTML'-blok toe en plak:<br>
-                    <code style="display:block;background:#e0e7ff;padding:6px 8px;border-radius:4px;font-size:11px;margin:4px 0;word-break:break-all">${embedCode}</code>
-                    <strong>Webflow</strong> — Voeg een Embed-element toe en plak bovenstaande code.<br>
-                    <strong>Shopify</strong> — Online Store → Thema aanpassen → Aangepaste HTML-sectie.<br>
-                    <strong>Wix</strong> — + → Meer → HTML-iframe → Coderen.<br>
-                    <strong>Directe link</strong> — Deel de URL direct: <a href="${absUrl.replace(/"/g,'&quot;')}" target="_blank" style="color:#6366f1">${absUrl.replace(/"/g,'&quot;')}</a>
-                  </div>
-                  <button onclick="navigator.clipboard.writeText('<iframe src=\\'${absUrl.replace(/'/g,"\\'")}\\'  width=\\'100%\\' height=\\'700\\' frameborder=\\'0\\' style=\\'border:none;border-radius:8px\\'></iframe>').then(()=>this.textContent='Gekopieerd! ✓').catch(()=>{})" style="margin-top:8px;font-size:11px;padding:5px 12px;background:#6366f1;color:#fff;border:none;border-radius:5px;cursor:pointer">Kopieer embedcode</button>
-                </div>
-              </details>` : ''}
+              ${absUrl && d.type==='code' ? (() => {
+                const pid = (d.url || '').replace(/[^a-zA-Z0-9]/g,'').substring(0,24) || ('d' + Math.random().toString(36).slice(2,8));
+                return `<div style="margin-top:12px">
+                  <a href="${absUrl.replace(/"/g,'&quot;')}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;background:#16a34a;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin-bottom:14px">🔗 Open mijn website →</a>
+                  <details style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+                    <summary style="font-size:13px;font-weight:600;color:#374151;cursor:pointer;padding:12px 14px;background:#f9fafb;user-select:none;list-style:none;display:flex;align-items:center;gap:6px">🔧 Installatie instructies <span style="font-size:11px;color:#6b7280;font-weight:400">(klik om uit te klappen)</span></summary>
+                    <div style="padding:16px;background:#fff">
+                      <p style="font-size:14px;color:#111;margin:0 0 16px;line-height:1.6">Uw website is klaar! U kunt hem op twee manieren gebruiken:</p>
+                      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px;margin-bottom:12px">
+                        <div style="font-size:13px;font-weight:700;color:#15803d;margin-bottom:6px">✅ OPTIE 1 — Directe link (makkelijkst)</div>
+                        <div style="font-size:13px;color:#166534;margin-bottom:8px">Deel gewoon deze link met uw klanten — ze kunnen hem direct bezoeken:</div>
+                        <div style="background:#fff;border:1px solid #86efac;border-radius:6px;padding:8px 12px;font-family:monospace;font-size:12px;word-break:break-all;color:#15803d">${absUrl.replace(/"/g,'&quot;')}</div>
+                        <button onclick="navigator.clipboard.writeText('${absUrl.replace(/'/g,"\\'")}').then(()=>this.textContent='Gekopieerd! ✓').catch(()=>{})" style="margin-top:8px;font-size:12px;padding:5px 12px;background:#16a34a;color:#fff;border:none;border-radius:5px;cursor:pointer">Kopieer link</button>
+                      </div>
+                      <div style="background:#f0f4ff;border:1px solid #c7d2fe;border-radius:8px;padding:14px">
+                        <div style="font-size:13px;font-weight:700;color:#4338ca;margin-bottom:6px">🔧 OPTIE 2 — Inbouwen in bestaande website</div>
+                        <div style="font-size:13px;color:#3730a3;margin-bottom:10px">Als u al een website heeft en dit wilt toevoegen, kies uw platform:</div>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+                          <button onclick="document.querySelectorAll('.pp-${pid}').forEach(x=>x.style.display='none');document.getElementById('pp-${pid}-0').style.display='block';this.closest('div').querySelectorAll('button').forEach(b=>{b.style.background='#e0e7ff';b.style.color='#4338ca'});this.style.background='#6366f1';this.style.color='#fff'" style="font-size:12px;padding:5px 12px;border:1px solid #c7d2fe;border-radius:5px;cursor:pointer;background:#6366f1;color:#fff">WordPress</button>
+                          <button onclick="document.querySelectorAll('.pp-${pid}').forEach(x=>x.style.display='none');document.getElementById('pp-${pid}-1').style.display='block';this.closest('div').querySelectorAll('button').forEach(b=>{b.style.background='#e0e7ff';b.style.color='#4338ca'});this.style.background='#6366f1';this.style.color='#fff'" style="font-size:12px;padding:5px 12px;border:1px solid #c7d2fe;border-radius:5px;cursor:pointer;background:#e0e7ff;color:#4338ca">Webflow</button>
+                          <button onclick="document.querySelectorAll('.pp-${pid}').forEach(x=>x.style.display='none');document.getElementById('pp-${pid}-2').style.display='block';this.closest('div').querySelectorAll('button').forEach(b=>{b.style.background='#e0e7ff';b.style.color='#4338ca'});this.style.background='#6366f1';this.style.color='#fff'" style="font-size:12px;padding:5px 12px;border:1px solid #c7d2fe;border-radius:5px;cursor:pointer;background:#e0e7ff;color:#4338ca">Shopify</button>
+                          <button onclick="document.querySelectorAll('.pp-${pid}').forEach(x=>x.style.display='none');document.getElementById('pp-${pid}-3').style.display='block';this.closest('div').querySelectorAll('button').forEach(b=>{b.style.background='#e0e7ff';b.style.color='#4338ca'});this.style.background='#6366f1';this.style.color='#fff'" style="font-size:12px;padding:5px 12px;border:1px solid #c7d2fe;border-radius:5px;cursor:pointer;background:#e0e7ff;color:#4338ca">Wix</button>
+                          <button onclick="document.querySelectorAll('.pp-${pid}').forEach(x=>x.style.display='none');document.getElementById('pp-${pid}-4').style.display='block';this.closest('div').querySelectorAll('button').forEach(b=>{b.style.background='#e0e7ff';b.style.color='#4338ca'});this.style.background='#6366f1';this.style.color='#fff'" style="font-size:12px;padding:5px 12px;border:1px solid #c7d2fe;border-radius:5px;cursor:pointer;background:#e0e7ff;color:#4338ca">HTML</button>
+                        </div>
+                        <div id="pp-${pid}-0" class="pp-${pid}" style="font-size:12px;color:#3730a3;line-height:1.8"><strong>WordPress / Elementor:</strong><br>1. Ga naar uw WordPress dashboard<br>2. Bewerk de pagina → voeg blok "Aangepaste HTML" toe<br>3. Plak onderstaande code en publiceer:<code style="display:block;background:#fff;border:1px solid #c7d2fe;padding:6px 8px;border-radius:4px;font-size:11px;margin:6px 0;word-break:break-all">${embedCode}</code></div>
+                        <div id="pp-${pid}-1" class="pp-${pid}" style="display:none;font-size:12px;color:#3730a3;line-height:1.8"><strong>Webflow:</strong><br>1. Open Webflow designer<br>2. Sleep een "Embed" element naar uw pagina<br>3. Plak onderstaande code en sla op:<code style="display:block;background:#fff;border:1px solid #c7d2fe;padding:6px 8px;border-radius:4px;font-size:11px;margin:6px 0;word-break:break-all">${embedCode}</code></div>
+                        <div id="pp-${pid}-2" class="pp-${pid}" style="display:none;font-size:12px;color:#3730a3;line-height:1.8"><strong>Shopify:</strong><br>1. Online Store → Thema → Aanpassen<br>2. Voeg sectie "Custom HTML" toe<br>3. Plak onderstaande code:<code style="display:block;background:#fff;border:1px solid #c7d2fe;padding:6px 8px;border-radius:4px;font-size:11px;margin:6px 0;word-break:break-all">${embedCode}</code></div>
+                        <div id="pp-${pid}-3" class="pp-${pid}" style="display:none;font-size:12px;color:#3730a3;line-height:1.8"><strong>Wix:</strong><br>1. Open Wix Editor → klik + → Meer<br>2. HTML iframe → Coderen<br>3. Plak onderstaande code:<code style="display:block;background:#fff;border:1px solid #c7d2fe;padding:6px 8px;border-radius:4px;font-size:11px;margin:6px 0;word-break:break-all">${embedCode}</code></div>
+                        <div id="pp-${pid}-4" class="pp-${pid}" style="display:none;font-size:12px;color:#3730a3;line-height:1.8"><strong>Directe HTML embed:</strong><br>1. Open uw HTML bestand<br>2. Plak onderstaande code op de gewenste plek<br>3. Sla op en upload:<code style="display:block;background:#fff;border:1px solid #c7d2fe;padding:6px 8px;border-radius:4px;font-size:11px;margin:6px 0;word-break:break-all">${embedCode}</code></div>
+                        <button onclick="navigator.clipboard.writeText('${embedCode.replace(/'/g,"\\'")}').then(()=>this.textContent='Gekopieerd! ✓').catch(()=>{})" style="margin-top:10px;font-size:12px;padding:6px 14px;background:#6366f1;color:#fff;border:none;border-radius:5px;cursor:pointer">📋 Kopieer embedcode</button>
+                      </div>
+                    </div>
+                  </details>
+                </div>`;
+              })() : ''}
             </div>`;
           }).join('')}
         </div>` : '';
@@ -849,6 +868,17 @@
                 </div>`).join('')}
               </div>`;
             })()}
+            <div style="margin-top:24px;padding:20px;border:2px dashed #d1d5db;border-radius:12px;background:#f9fafb">
+              <div style="font-size:15px;font-weight:700;color:#111;margin-bottom:4px">📎 Bestanden uploaden</div>
+              <div style="font-size:13px;color:#6b7280;margin-bottom:16px">Upload uw logo, foto's of andere bestanden die wij kunnen gebruiken</div>
+              <div id="uploadZone" onclick="document.getElementById('fileInput').click()" ondragover="event.preventDefault();this.style.background='#e0e7ff'" ondrop="event.preventDefault();this.style.background='#f0f4ff';handlePortalFiles(event.dataTransfer.files)" style="border:2px dashed #c7d2fe;border-radius:8px;padding:24px;text-align:center;cursor:pointer;background:#f0f4ff;transition:.2s" onmouseover="this.style.background='#e0e7ff'" onmouseout="this.style.background='#f0f4ff'">
+                <div style="font-size:28px;margin-bottom:8px">📂</div>
+                <div style="font-size:14px;color:#6366f1;font-weight:600">Klik om te bladeren of sleep bestanden hier</div>
+                <div style="font-size:12px;color:#9ca3af;margin-top:4px">JPG, PNG, SVG, PDF, ZIP — max 10MB per bestand</div>
+              </div>
+              <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.svg,.gif,.webp,.pdf,.zip" multiple style="display:none" onchange="handlePortalFiles(this.files)">
+              <div id="uploadList" style="margin-top:12px"></div>
+            </div>
             ${!data.portalWelcomeMessage && !svcsHtml && !calendlyHtml && !(data.contactSubmissions||[]).length ? '<div class="empty-state"><p>Nog geen projectinformatie beschikbaar.</p></div>' : ''}
           </div>
 
@@ -941,6 +971,37 @@
         btn.disabled = false;
         btn.textContent = 'Verstuur bericht';
         alert('Verbindingsfout. Probeer het opnieuw.');
+      }
+    }
+
+    // ── File upload helper ───────────────────────────────────────────────────
+    async function handlePortalFiles(files) {
+      const token = getToken();
+      const list = document.getElementById('uploadList');
+      if (!list) return;
+      for (const file of files) {
+        if (file.size > 10 * 1024 * 1024) { alert(e(file.name) + ' is te groot (max 10MB)'); continue; }
+        const uid = 'up-' + Date.now() + '-' + Math.random().toString(36).slice(2,6);
+        list.insertAdjacentHTML('beforeend', `<div id="${uid}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;margin-top:6px;font-size:13px"><span>📄 ${e(file.name)}</span><span style="color:#6b7280;font-size:11px">${(file.size/1024).toFixed(1)} KB</span><span id="${uid}-status" style="margin-left:auto;font-size:11px;color:#6366f1">Uploaden...</span></div>`);
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          const dataBase64 = ev.target.result.split(',')[1];
+          try {
+            const resp = await fetch('/api/portal/' + token + '/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: file.name, mimeType: file.type, dataBase64, size: file.size })
+            });
+            const data = await resp.json();
+            const statusEl = document.getElementById(uid + '-status');
+            if (data.ok) { if (statusEl) statusEl.innerHTML = '<span style="color:#16a34a">✓ Geüpload</span>'; }
+            else { if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626">' + e(data.error || 'Fout') + '</span>'; }
+          } catch(err) {
+            const statusEl = document.getElementById(uid + '-status');
+            if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626">Verbindingsfout</span>';
+          }
+        };
+        reader.readAsDataURL(file);
       }
     }
 

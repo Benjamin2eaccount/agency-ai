@@ -827,6 +827,14 @@ function esc(str) {
     .replace(/'/g, '&#39;');
 }
 
+function generateInvoiceNumber(settings) {
+  const year = new Date().getFullYear();
+  const last = parseInt(settings.lastInvoiceNumber) || 0;
+  const next = last + 1;
+  // Caller must save settings after using this
+  return { nr: `FAC-${year}-${String(next).padStart(3, '0')}`, nextNum: next };
+}
+
 // Sanitize email subject: replace fancy Unicode chars with ASCII equivalents
 function sanitizeSubject(s) {
   return String(s || '')
@@ -1836,7 +1844,8 @@ app.get('/api/portal/:token', (req, res) => {
       .filter(f => f.sharedWithClient)
       .map(f => ({ id: f.id, name: f.name, type: f.type, url: f.url, fullUrl: f.fullUrl, createdAt: f.createdAt })),
     projectServices: enrichedSvcs,
-    contactSubmissions: (lead.contactSubmissions || []).slice(0, 20)
+    contactSubmissions: (lead.contactSubmissions || []).slice(0, 20),
+    clientUploads: lead.clientUploads || []
   });
 });
 
@@ -1877,6 +1886,47 @@ app.get('/api/portal/:token/chat', (req, res) => {
   const lead  = leads.find(l => l.portalToken === req.params.token);
   if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
   res.json({ chat: lead.portalChat || [], companyName: lead.companyName });
+});
+
+app.post('/api/portal/:token/upload', express.json({ limit: '15mb' }), async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const li = leads.findIndex(l => l.portalToken === req.params.token);
+  if (li === -1) return res.status(404).json({ error: 'Niet gevonden' });
+  if (leads[li].portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd' });
+
+  const { filename, mimeType, dataBase64, size } = req.body || {};
+  if (!filename || !dataBase64) return res.status(400).json({ error: 'Bestandsnaam en data verplicht' });
+
+  const allowed = ['image/jpeg','image/png','image/svg+xml','image/gif','image/webp','application/pdf','application/zip'];
+  if (!allowed.includes(mimeType)) return res.status(400).json({ error: 'Bestandstype niet toegestaan' });
+  if (size > 10 * 1024 * 1024) return res.status(400).json({ error: 'Bestand te groot (max 10MB)' });
+
+  // Sanitize filename
+  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
+  const leadSlug = (leads[li].companyName || 'lead').toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 20);
+  const uploadDir = path.join(__dirname, 'data', 'uploads', leadSlug);
+  fs.mkdirSync(uploadDir, { recursive: true });
+
+  const buffer = Buffer.from(dataBase64, 'base64');
+  const destPath = path.join(uploadDir, safeName);
+  fs.writeFileSync(destPath, buffer);
+
+  const fileInfo = {
+    id: Date.now().toString(36),
+    filename: safeName,
+    mimeType,
+    size,
+    uploadedAt: new Date().toISOString(),
+    path: `/data/uploads/${leadSlug}/${safeName}`,
+    usedInBuild: false
+  };
+  leads[li].clientUploads = leads[li].clientUploads || [];
+  leads[li].clientUploads.push(fileInfo);
+  writeJSON('leads.json', leads);
+
+  addNotification('client_question', `📎 Bestand geüpload: ${safeName}`, `${leads[li].companyName} heeft een bestand geüpload`, leads[li].id, `project:${leads[li].id}`);
+
+  res.json({ ok: true, file: fileInfo });
 });
 
 // â"€â"€â"€ Apply auth middleware to all /api/ routes below this line â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -2111,6 +2161,7 @@ app.post('/api/sites/:siteSlug/contact', async (req, res) => {
 });
 
 app.use('/api', authMiddleware);
+app.use('/data/uploads', authMiddleware, express.static(path.join(__dirname, 'data', 'uploads')));
 
 // ─── API Keys management ──────────────────────────────────────────────────────
 
@@ -5295,6 +5346,10 @@ Website: ${lead.websiteUrl || ''}`;
     const langNote = (lead.language && lead.language !== 'nl') ? 'English' : 'Nederlands';
     const intakeLines = Object.entries(intakeRaw).filter(([, v]) => v).map(([k, v]) => `  ${k}: ${v}`).join('\n');
 
+    const uploadsCtx = (lead.clientUploads || []).length
+      ? `\n\nKLANT BESTANDEN (kan door agents worden gebruikt):\n${(lead.clientUploads || []).map(f => `- ${f.filename} (${f.mimeType})`).join('\n')}\nAls de klant een logo of merkafbeelding heeft geüpload, vermeld dan in de HTML: "Logo beschikbaar: vraag uw webmaster om het te vervangen door uw eigen logo."`
+      : '';
+
     const brandContext = `
 MERK & STIJL — volg dit exact:
 Bedrijf: ${lead.companyName} | Locatie: ${lead.location || ''} | Niche: ${lead.niche || ''}
@@ -5305,7 +5360,7 @@ Toon: ${toneNote}
 Taal van alle teksten: ${langNote}
 ${style.description ? `Merkbeschrijving: ${style.description}` : ''}
 ${problemsCtxList.length ? `Problemen die we oplossen:\n${problemsCtxList.map(p => `- ${p}`).join('\n')}` : ''}
-${intakeLines ? `Intake antwoorden van klant:\n${intakeLines}` : ''}
+${intakeLines ? `Intake antwoorden van klant:\n${intakeLines}` : ''}${uploadsCtx}
 `.trim();
 
     // Service classification
@@ -6393,6 +6448,29 @@ app.get('/api/payments', (req, res) => {
   res.json(all);
 });
 
+app.get('/api/payments/overview', authMiddleware, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const rows = [];
+  leads.forEach(lead => {
+    (lead.payments || []).forEach(pay => {
+      rows.push({
+        id: pay.id,
+        leadId: lead.id,
+        invoiceNr: pay.invoiceNr || pay.id,
+        companyName: lead.companyName || '',
+        service: pay.description || (lead.services?.[0]?.name || lead.services?.[0] || ''),
+        amount: pay.amount || 0,
+        createdAt: pay.createdAt || pay.dueDate,
+        dueDate: pay.dueDate,
+        status: pay.status || 'pending',
+        paidAt: pay.paidAt || null,
+      });
+    });
+  });
+  rows.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  res.json(rows);
+});
+
 app.get('/api/leads/:id/payments', (req, res) => {
   const leads = readJSON('leads.json') || [];
   const lead = leads.find(l => l.id === req.params.id);
@@ -6459,7 +6537,9 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
     console.log('[Invoice] Sending to:', payEmailTo || '(no email)');
     if (payEmailTo && isResendReady(settings)) {
       try {
-        const invoiceNr  = `INV-${Date.now().toString(36).toUpperCase()}`;
+        const { nr: invoiceNr, nextNum: _invNum } = generateInvoiceNumber(settings);
+        settings.lastInvoiceNumber = _invNum;
+        writeJSON('settings.json', settings);
         const invoiceDate = new Date().toISOString();
         const termDays   = settings.paymentTermDays || 14;
         const dueDateISO = new Date(Date.now() + termDays * 86400000).toISOString();
@@ -10494,7 +10574,9 @@ cron.schedule('0 9 * * *', async () => {
         }
         if (lead.contactEmail && isResendReady(settings)) {
           const termDays    = settings.paymentTermDays || 14;
-          const invoiceNr   = `INV-${Date.now().toString(36).toUpperCase()}`;
+          const { nr: invoiceNr, nextNum: _invNum2 } = generateInvoiceNumber(settings);
+          settings.lastInvoiceNumber = _invNum2;
+          writeJSON('settings.json', settings);
           const dueDateISO  = new Date(today.getTime() + termDays * 86400000).toISOString();
           const svcsForInv  = monthlyServices.map(s => ({ name: s.name || 'Dienst', price: s.price || 0, billing: 'maandelijks' }));
           const invoiceHtml = buildInvoiceEmailHTML({ invoiceNr, invoiceDate: today.toISOString(), dueDate: dueDateISO, lead, services: svcsForInv, amount: total, settings });
