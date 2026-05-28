@@ -4829,6 +4829,19 @@ app.patch('/api/leads/:id/deliverables/:dIdx/visibility', requireAdmin, (req, re
   res.json({ ok: true });
 });
 
+// Delete deliverable
+app.delete('/api/leads/:id/deliverables/:dIdx', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const li = leads.findIndex(l => l.id === req.params.id);
+  if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const dIdx = parseInt(req.params.dIdx);
+  if (!leads[li].agentDeliverables?.[dIdx]) return res.status(404).json({ error: 'Levering niet gevonden' });
+  const removed = leads[li].agentDeliverables.splice(dIdx, 1)[0];
+  addLeadHistory(leads, req.params.id, { event: 'deliverableDeleted', label: `Levering verwijderd: ${removed.service || 'onbekend'}` });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
 // Reset portal token
 app.post('/api/leads/:id/portal/reset-token', requireAdmin, (req, res) => {
   const leads = readJSON('leads.json') || [];

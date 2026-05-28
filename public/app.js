@@ -3081,6 +3081,7 @@ async function renderProjectPage() {
                 <span style="font-size:13px;flex:1">${typeIcon} ${esc(d.service)}</span>
                 <span style="font-size:11px;color:${dot}">${statusLabel}</span>
                 ${d.url ? `<a href="${esc(d.url)}" target="_blank" style="font-size:11px;color:var(--accent)"><i class="ti ti-external-link"></i></a>` : ''}
+                ${isAdmin() ? `<button onclick="deleteDeliverable('${esc(lead.id)}',${dIdx})" title="Verwijder" style="width:22px;height:22px;border:none;border-radius:4px;background:transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:var(--text-muted);padding:0;flex-shrink:0" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='var(--text-muted)'"><i class="ti ti-trash" style="font-size:12px"></i></button>` : ''}
               </div>`;
             }).join('')
           : `<div style="text-align:center;padding:24px 0;color:var(--text-muted);font-size:13px">
@@ -3624,6 +3625,7 @@ async function renderProjectPage() {
           <div style="display:flex;align-items:center;gap:6px">
             <span style="font-size:11px;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:1px 7px">${typeIcon} ${typeLabel}</span>
             ${statusBadge}
+            ${isAdmin() ? `<button onclick="deleteDeliverable('${esc(lead.id)}',${i})" title="Verwijder levering" style="width:26px;height:26px;border:none;border-radius:6px;background:transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:var(--text-muted);transition:color .15s,background .15s;flex-shrink:0" onmouseover="this.style.color='#ef4444';this.style.background='#fef2f2'" onmouseout="this.style.color='var(--text-muted)';this.style.background='transparent'"><i class="ti ti-trash" style="font-size:14px"></i></button>` : ''}
           </div>
         </div>
         ${timestamps ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;display:flex;flex-wrap:wrap;gap:6px">${timestamps}</div>` : '<div style="margin-bottom:8px"></div>'}
@@ -4906,6 +4908,32 @@ window.retryBuildService = async function(leadId, serviceName) {
     delete window._buildAllProgress[leadId];
     toast('Fout: ' + err.message, 'error');
     renderProjectPage().then(() => switchProjectTab('building'));
+  }
+};
+
+window.deleteDeliverable = function(leadId, dIdx) {
+  openModal(`
+    <div style="padding:24px">
+      <h3 style="margin:0 0 10px;font-size:16px;font-weight:700">Levering verwijderen</h3>
+      <p style="margin:0 0 20px;color:var(--text-secondary);font-size:14px">Weet je zeker dat je deze levering wilt verwijderen? Dit kan niet ongedaan worden gemaakt.</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="closeModal()">Annuleer</button>
+        <button class="btn" style="background:#ef4444;color:#fff" onclick="closeModal();_doDeleteDeliverable('${leadId}',${dIdx})"><i class="ti ti-trash"></i> Verwijder</button>
+      </div>
+    </div>
+  `);
+};
+
+window._doDeleteDeliverable = async function(leadId, dIdx) {
+  try {
+    const res = await api(`/api/leads/${leadId}/deliverables/${dIdx}`, { method: 'DELETE' });
+    if (!res?.ok) throw new Error('Verwijderen mislukt');
+    const lead = (state.leads || []).find(l => l.id === leadId);
+    if (lead?.agentDeliverables) lead.agentDeliverables.splice(dIdx, 1);
+    toast('Levering verwijderd', 'success');
+    renderProjectPage().then(() => switchProjectTab('building'));
+  } catch(e) {
+    toast(e.message || 'Verwijderen mislukt', 'error');
   }
 };
 
