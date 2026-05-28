@@ -1846,7 +1846,7 @@ app.get('/api/portal/:token', (req, res) => {
       .map(f => ({ id: f.id, name: f.name, type: f.type, url: f.url, fullUrl: f.fullUrl, createdAt: f.createdAt })),
     projectServices: enrichedSvcs,
     contactSubmissions: (lead.contactSubmissions || []).slice(0, 20),
-    clientUploads: lead.clientUploads || []
+    clientUploads: (lead.clientUploads || []).map(({ content: _c, ...f }) => f)
   });
 });
 
@@ -1903,23 +1903,16 @@ app.post('/api/portal/:token/upload', express.json({ limit: '15mb' }), async (re
   if (size > 10 * 1024 * 1024) return res.status(400).json({ error: 'Bestand te groot (max 10MB)' });
 
   const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
-  // Use lead.id as folder — immutable, never ambiguous
-  const uploadDir = path.join(__dirname, 'data', 'uploads', leads[li].id);
-  fs.mkdirSync(uploadDir, { recursive: true });
-
-  const buffer = Buffer.from(dataBase64, 'base64');
-  const destPath = path.join(uploadDir, safeName);
-  console.log('[Upload] Saving to:', destPath);
-  fs.writeFileSync(destPath, buffer);
+  // Strip data-URL prefix if present; store raw base64 in DB (survives Railway redeploys)
+  const rawBase64 = dataBase64.replace(/^data:[^;]+;base64,/, '');
 
   const fileInfo = {
     id: Date.now().toString(36),
     filename: safeName,
     mimeType,
     size,
+    content: rawBase64,
     uploadedAt: new Date().toISOString(),
-    localPath: destPath,
-    path: `/data/uploads/${leads[li].id}/${safeName}`,
     usedInBuild: false
   };
   leads[li].clientUploads = leads[li].clientUploads || [];
@@ -1928,7 +1921,9 @@ app.post('/api/portal/:token/upload', express.json({ limit: '15mb' }), async (re
 
   addNotification('client_question', `📎 Bestand geüpload: ${safeName}`, `${leads[li].companyName} heeft een bestand geüpload`, leads[li].id, `project:${leads[li].id}`);
 
-  res.json({ ok: true, file: fileInfo });
+  // Return without content to keep response small
+  const { content: _c, ...fileInfoPublic } = fileInfo;
+  res.json({ ok: true, file: fileInfoPublic });
 });
 
 app.delete('/api/portal/:token/upload/:filename', (req, res) => {
@@ -1939,22 +1934,20 @@ app.delete('/api/portal/:token/upload/:filename', (req, res) => {
 
   const safeName = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
   const uploads = leads[li].clientUploads || [];
-  const upload = uploads.find(f => f.filename === safeName);
-  if (!upload) return res.status(404).json({ error: 'Bestand niet gevonden' });
-
-  const filePath = upload.localPath || path.join(__dirname, 'data', 'uploads', leads[li].id, safeName);
-  try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+  if (!uploads.find(f => f.filename === safeName)) return res.status(404).json({ error: 'Bestand niet gevonden' });
 
   leads[li].clientUploads = uploads.filter(f => f.filename !== safeName);
   writeJSON('leads.json', leads);
   res.json({ ok: true });
 });
 
-const UPLOAD_MIME_TYPES = {
-  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-  '.svg': 'image/svg+xml', '.gif': 'image/gif', '.webp': 'image/webp',
-  '.pdf': 'application/pdf', '.zip': 'application/zip'
-};
+function _serveUpload(upload, res) {
+  if (!upload || !upload.content) return res.status(404).json({ error: 'Bestandsinhoud niet beschikbaar' });
+  const buffer = Buffer.from(upload.content, 'base64');
+  res.setHeader('Content-Type', upload.mimeType || 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${upload.filename}"`);
+  res.send(buffer);
+}
 
 app.get('/api/portal/:token/download/:filename', (req, res) => {
   const leads = readJSON('leads.json') || [];
@@ -1965,15 +1958,7 @@ app.get('/api/portal/:token/download/:filename', (req, res) => {
   const safeName = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
   const upload = (lead.clientUploads || []).find(f => f.filename === safeName);
   if (!upload) return res.status(404).json({ error: 'Bestand niet gevonden' });
-
-  const filePath = upload.localPath || path.join(__dirname, 'data', 'uploads', lead.id, safeName);
-  console.log('[Download] Looking for file:', filePath);
-  console.log('[Download] File exists:', fs.existsSync(filePath));
-  const ext = path.extname(safeName).toLowerCase();
-  const contentType = UPLOAD_MIME_TYPES[ext] || upload.mimeType || 'application/octet-stream';
-  res.setHeader('Content-Type', contentType);
-  res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
-  res.sendFile(filePath);
+  _serveUpload(upload, res);
 });
 
 // â"€â"€â"€ Apply auth middleware to all /api/ routes below this line â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -4987,15 +4972,7 @@ app.get('/api/leads/:id/client-uploads/:filename', requireAdmin, (req, res) => {
   const safeName = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
   const upload = (lead.clientUploads || []).find(f => f.filename === safeName);
   if (!upload) return res.status(404).json({ error: 'Bestand niet gevonden' });
-
-  const filePath = upload.localPath || path.join(__dirname, 'data', 'uploads', lead.id, safeName);
-  console.log('[Download] Admin looking for file:', filePath);
-  console.log('[Download] File exists:', fs.existsSync(filePath));
-  const ext = path.extname(safeName).toLowerCase();
-  const contentType = UPLOAD_MIME_TYPES[ext] || upload.mimeType || 'application/octet-stream';
-  res.setHeader('Content-Type', contentType);
-  res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
-  res.sendFile(filePath);
+  _serveUpload(upload, res);
 });
 
 app.get('/api/leads/:id/project-files', requireAdmin, (req, res) => {
