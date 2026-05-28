@@ -1980,6 +1980,21 @@ app.get('/api/portal/:token/download/:filename', (req, res) => {
   _serveUpload(upload, res);
 });
 
+// Public route — client uploaded files served from built websites (no auth required)
+app.get('/api/sites/:siteSlug/uploads/:filename', (req, res) => {
+  if (!/^[a-z0-9-]+$/.test(req.params.siteSlug)) return res.status(404).json({ error: 'Niet gevonden' });
+  const leads = readJSON('leads.json') || [];
+  const slug = req.params.siteSlug;
+  const lead = leads.find(l =>
+    l.generatedSite?.siteSlug === slug ||
+    generateSiteSlug(l.companyName) === slug
+  );
+  if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
+  const upload = _findUpload(lead.clientUploads, req.params.filename);
+  if (!upload) return res.status(404).json({ error: 'Bestand niet gevonden' });
+  _serveUpload(upload, res);
+});
+
 // â"€â"€â"€ Apply auth middleware to all /api/ routes below this line â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 // ─── Gmail Pub/Sub webhook (public — no auth, validated by secret token) ──────
@@ -4656,10 +4671,11 @@ Remember: Start your response with <!DOCTYPE html> and fill the body with comple
       const chatLang = (lead.language && lead.language !== 'nl') ? 'English' : 'Dutch (Nederlands)';
       const chatIntakeLines = Object.entries(chatIntakeRaw).filter(([, v]) => v).map(([k, v]) => `  ${k}: ${v}`).join('\n');
 
+      const _chatSiteSlug = lead.generatedSite?.siteSlug || generateSiteSlug(lead.companyName);
       const _chatUploadedFiles = (lead.clientUploads || []).map(u => ({
         filename: u.filename,
         mimeType: u.mimeType || 'application/octet-stream',
-        url: `${BASE_URL}/api/leads/${lead.id}/client-uploads/${encodeURIComponent(u.filename)}`
+        url: `${BASE_URL}/api/sites/${_chatSiteSlug}/uploads/${encodeURIComponent(u.filename)}`
       }));
       const _chatHasImages = _chatUploadedFiles.some(f => f.mimeType.startsWith('image/'));
       const chatUploadsCtx = `\nUPLOADED FILES BY CLIENT:\n${_chatUploadedFiles.length > 0
@@ -5423,11 +5439,12 @@ Website: ${lead.websiteUrl || ''}`;
     const langNote = (lead.language && lead.language !== 'nl') ? 'English' : 'Nederlands';
     const intakeLines = Object.entries(intakeRaw).filter(([, v]) => v).map(([k, v]) => `  ${k}: ${v}`).join('\n');
 
+    const _leadSiteSlug = lead.generatedSite?.siteSlug || generateSiteSlug(lead.companyName);
     const _uploadedFiles = (lead.clientUploads || []).map(u => ({
       filename: u.filename,
       mimeType: u.mimeType || 'application/octet-stream',
       size: u.size,
-      url: `${BASE_URL}/api/leads/${lead.id}/client-uploads/${encodeURIComponent(u.filename)}`
+      url: `${BASE_URL}/api/sites/${_leadSiteSlug}/uploads/${encodeURIComponent(u.filename)}`
     }));
     const _hasUploadedImages = _uploadedFiles.some(f => f.mimeType.startsWith('image/'));
     const uploadsCtx = `\n\nUPLOADED FILES BY CLIENT:
