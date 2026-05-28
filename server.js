@@ -828,7 +828,7 @@ function sanitizeSubject(s) {
     .trim();
 }
 
-async function sendEmail({ to, subject, body, html, settings: _settings = {}, trackingToken }) {
+async function sendEmail({ to, subject, body, html, settings: _settings = {}, trackingToken, noCalendly = false }) {
   // Normalise "to" — Resend requires a clean plain string
   const toStr = Array.isArray(to) ? to[0] : to;
   const toRaw = (typeof toStr === 'string' ? toStr : String(toStr || ''));
@@ -853,7 +853,7 @@ async function sendEmail({ to, subject, body, html, settings: _settings = {}, tr
   const myTitle     = s.myTitle     || _settings.myTitle    || '';
   const htmlBody    = html || buildEmailHTML(body, agencyName, myName, myTitle, trackingToken, {
     myEmail:      s.gmailAddress || s.resendFromAddress || process.env.RESEND_FROM_ADDRESS || '',
-    calendlyLink: s.calendlyUrl  || '',
+    calendlyLink: noCalendly ? '' : (s.calendlyUrl || ''),
     logoUrl:      s.agencyLogo ? `${BASE_URL}/api/logo` : '',
   });
   const resendKey   = s.resendApiKey || process.env.RESEND_API_KEY;
@@ -2375,28 +2375,30 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
     // Step 1 — Portal token
     send(1, 'Portaaltoegang instellen', 'running');
     if (!lead.portalToken) {
-      lead.portalToken = Math.random().toString(36).substr(2, 8) + Math.random().toString(36).substr(2, 4);
+      lead.portalToken = crypto.randomBytes(16).toString('hex');
     }
     const portalUrl = `${BASE_URL}/portal/${lead.portalToken}`;
     send(1, 'Portaaltoegang instellen', 'done', { portalUrl });
 
-    // Step 2 — Intake token
+    // Step 2 — Intake token + persist both tokens immediately
     send(2, 'Intake link genereren', 'running');
     if (!lead.intakeToken) {
-      lead.intakeToken = Math.random().toString(36).substr(2, 10) + Date.now().toString(36);
+      lead.intakeToken = crypto.randomBytes(16).toString('hex');
     }
     const intakeUrl = `${BASE_URL}/intake/${lead.id}/${lead.intakeToken}`;
+    // Save tokens now so links are valid even if later steps fail
+    writeJSON('leads.json', leads);
     send(2, 'Intake link genereren', 'done', { intakeUrl });
 
     // Step 3 — Welcome email to client
     send(3, 'Welkomstmail versturen', 'running');
     const clientEmail = (lead.contactEmail || '').trim();
+    const clientName = lead.contactName || lead.companyName;
     let emailSent = false;
     if (clientEmail && isResendReady(settings)) {
       try {
-        const calendlyCta = settings.calendlyUrl ? `\n\nWil je alvast een gesprek inplannen? Dat kan direct via:\n${settings.calendlyUrl}` : '';
-        const welcomeBody = `Beste ${lead.contactName || lead.companyName},\n\nWelkom! We zijn verheugd om samen te werken.\n\nVia de onderstaande link kun je jouw intake-vragenlijst invullen, zodat we zo snel mogelijk kunnen starten:\n${intakeUrl}\n\nHeb je vragen? Stuur dan gerust een bericht via je klantportaal:\n${portalUrl}${calendlyCta}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.myTitle || ''}\n${settings.agencyName}`;
-        await sendEmail({ to: clientEmail, subject: `Welkom bij ${settings.agencyName} — volgende stappen`, body: welcomeBody, settings });
+        const welcomeBody = `Beste ${clientName},\n\nWelkom! We zijn verheugd om samen te werken.\n\nVia de onderstaande link kun je jouw intake-vragenlijst invullen, zodat we zo snel mogelijk kunnen starten:\n${intakeUrl}\n\nHeb je vragen? Stuur dan gerust een bericht via je klantportaal:\n${portalUrl}\n\nMet vriendelijke groet,\n${settings.myName}\n${settings.myTitle || ''}\n${settings.agencyName}`;
+        await sendEmail({ to: clientEmail, subject: `Welkom bij ${settings.agencyName} — volgende stappen`, body: welcomeBody, settings, noCalendly: true });
         emailSent = true;
       } catch (emailErr) {
         console.warn(`[Project] Welkomstmail mislukt voor ${lead.companyName}:`, emailErr.message);
@@ -3570,10 +3572,11 @@ async function generateClientEmail(lead, trigger, settings, extra = {}) {
 
   const prompts = {
     welcome: `Schrijf een warme welkomstmail voor een nieuw klant.
-Klant: ${lead.companyName} (${lead.niche}, ${lead.location}).
+Klant: ${lead.contactName || lead.companyName} (bedrijf: ${lead.companyName}, ${lead.niche}, ${lead.location}).
 Diensten: ${serviceNames}.
 Bureau: ${settings.agencyName}, contactpersoon: ${settings.myName} (${settings.myTitle||''}).
 ${intakeCtx}
+BELANGRIJK: Spreek de klant aan als "Beste ${lead.contactName || lead.companyName}," — gebruik NOOIT de naam van het bureau of medewerker als aanhef.
 De mail is professioneel maar persoonlijk, max 200 woorden. Geen bullet lists. Noem concreet wat er de komende week gaat gebeuren.
 ${intakeUrl ? `Vraag de klant om de intake-vragenlijst in te vullen via: ${intakeUrl} — dit is belangrijk voor een goede start.` : ''}
 ${portalUrl ? `Vermeld de klantportaal link: ${portalUrl}` : ''}
@@ -3705,9 +3708,13 @@ app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet geconfigureerd — voeg Resend API key toe via Instellingen → Email.' });
 
   try {
-    // Ensure intake token exists
+    // Ensure portal + intake tokens exist
+    if (!leads[idx].portalToken) {
+      leads[idx].portalToken = require('crypto').randomBytes(16).toString('hex');
+      lead.portalToken = leads[idx].portalToken;
+    }
     if (!leads[idx].intakeToken) {
-      leads[idx].intakeToken = Math.random().toString(36).substr(2, 10) + Date.now().toString(36);
+      leads[idx].intakeToken = require('crypto').randomBytes(16).toString('hex');
       lead.intakeToken = leads[idx].intakeToken;
     }
 
@@ -3789,21 +3796,6 @@ app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
         </table>
       </td></tr>
 
-      <!-- Step 3: Calendly (optional) -->
-      ${settings.calendlyUrl ? `<tr><td style="padding:24px 32px 0">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-          <tr>
-            <td valign="top" style="width:40px">
-              <div style="width:32px;height:32px;background:#2563eb;border-radius:50%;text-align:center;line-height:32px;font-family:Arial,sans-serif;font-size:14px;font-weight:800;color:#fff">${intakeUrl ? '3' : '2'}</div>
-            </td>
-            <td valign="top" style="padding-left:14px">
-              <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:15px;font-weight:700;color:#111">Plan een kennismakingsgesprek</p>
-              <p style="margin:0 0 14px;font-family:Arial,sans-serif;font-size:14px;color:#6b7280;line-height:1.6">Optioneel — even kennismaken kan altijd. Kies zelf een moment dat uitkomt.</p>
-              <a href="${e(settings.calendlyUrl)}" style="display:inline-block;padding:12px 22px;background:#006bff;color:#fff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;text-decoration:none;border-radius:8px">Plan een gratis gesprek →</a>
-            </td>
-          </tr>
-        </table>
-      </td></tr>` : ''}
 
       <!-- Footer -->
       <tr><td style="padding:32px 32px 28px">
