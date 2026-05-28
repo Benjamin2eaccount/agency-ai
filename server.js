@@ -1128,6 +1128,8 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
 
   leads[idx].intakeAnswers = req.body.answers || {};
   leads[idx].intakeSubmittedAt = new Date().toISOString();
+  // Advance to Fase 2 — Uitvoering on intake submission
+  if ((leads[idx].currentPhase || 1) < 2) leads[idx].currentPhase = 2;
   addLeadHistory(leads, leads[idx].id, { event: 'intakeSubmitted', label: 'Intake ingevuld door klant' });
   addNotification('intake_submitted', `Intake ingevuld: ${leads[idx].companyName}`, `De intake is ingevuld door ${leads[idx].contactName || leads[idx].companyName}`, leads[idx].id, `project:${leads[idx].id}`);
   fireWebhooks('intake.submitted', { leadId: leads[idx].id, companyName: leads[idx].companyName, niche: leads[idx].niche, contactEmail: leads[idx].contactEmail, submittedAt: leads[idx].intakeSubmittedAt });
@@ -3071,7 +3073,7 @@ ${(d.sections||[]).length?`<div style="margin-top:12px;border:1px solid #e5e7eb;
       serviceDeliveries: serviceDeliveries
     };
     leads[idx].delivery = delivery;
-    // Update portal phase to 2 (Strategie → Uitvoering)
+    // Advance to Fase 2 — Uitvoering if not already past it
     if ((leads[idx].currentPhase || 1) < 2) leads[idx].currentPhase = 2;
     addLeadHistory(leads, lead.id, { event: 'deliveryGenerated', label: 'AI leveringen gegenereerd (content kalender, chatbot FAQ, mijlpalen)' });
     writeJSON('leads.json', leads);

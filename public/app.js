@@ -3847,7 +3847,7 @@ async function renderProjectPage() {
   const clientLoginUrl = `${window.location.origin}/client/login`;
 
   // Portal phase labels
-  const phaseLabels = ['', 'Fase 1: Intake', 'Fase 2: Strategie', 'Fase 3: Uitvoering', 'Fase 4: Live gaan', 'Fase 5: Optimalisatie'];
+  const phaseLabels = ['', 'Fase 1: Intake', 'Fase 2: Uitvoering', 'Fase 3: Oplevering & Check', 'Fase 4: Live gaan', 'Fase 5: Volgende stap'];
   const currentPhase = lead.currentPhase || 1;
 
   // Deliverable visibility list (for section 3)
@@ -6267,7 +6267,7 @@ function buildPortalTab(lead) {
     `;
   }
 
-  const PHASE_NAMES = ['Intake', 'Strategie', 'Uitvoering', 'Live gaan', 'Optimalisatie'];
+  const PHASE_NAMES = ['Intake', 'Uitvoering', 'Oplevering & Check', 'Live gaan', 'Volgende stap'];
   const currentPhase = lead.currentPhase || 1;
   const messages     = lead.clientMessages || [];
   const unread       = messages.filter(m => !m.read).length;
@@ -6471,7 +6471,7 @@ async function setLeadPhase(leadId, phase) {
     btn.className = `portal-phase-btn${num === phase ? ' active' : num < phase ? ' done' : ''}`;
     btn.querySelector('.portal-phase-num').textContent = num < phase ? '✓' : String(num);
   });
-  toast(`Fase ${phase} — ${['Intake','Strategie','Uitvoering','Live gaan','Optimalisatie'][phase-1]} ingesteld`, 'success');
+  toast(`Fase ${phase} — ${['Intake','Uitvoering','Oplevering & Check','Live gaan','Volgende stap'][phase-1]} ingesteld`, 'success');
 }
 
 async function savePortalSettings(leadId) {

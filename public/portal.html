@@ -326,10 +326,10 @@
   <script>
     const PHASES = [
       { num: 1, label: 'Intake' },
-      { num: 2, label: 'Strategie' },
-      { num: 3, label: 'Uitvoering' },
+      { num: 2, label: 'Uitvoering' },
+      { num: 3, label: 'Oplevering & Check' },
       { num: 4, label: 'Live gaan' },
-      { num: 5, label: 'Optimalisatie' }
+      { num: 5, label: 'Volgende stap' }
     ];
 
     const CHECK   = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
@@ -783,6 +783,15 @@
           ${data.estimatedCompletion ? `
             <div class="date-row">${CAL_SVG} Verwachte afronddatum: <strong>${fmt(data.estimatedCompletion)}</strong></div>` : ''}
         </div>
+
+        ${cur === 5 ? `
+        <div style="margin:0 0 16px;padding:16px 18px;border-radius:12px;background:${svcs.some(s => s.billing !== 'eenmalig') ? 'linear-gradient(135deg,#f0fdf4,#dcfce7)' : 'linear-gradient(135deg,#eff6ff,#dbeafe)'};border:1.5px solid ${svcs.some(s => s.billing !== 'eenmalig') ? '#86efac' : '#bfdbfe'};display:flex;gap:12px;align-items:flex-start">
+          <span style="font-size:22px;flex-shrink:0">${svcs.some(s => s.billing !== 'eenmalig') ? '🤝' : '🎉'}</span>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#111;margin-bottom:4px">${svcs.some(s => s.billing !== 'eenmalig') ? 'We werken graag samen!' : 'Project afgerond!'}</div>
+            <div style="font-size:13px;color:#374151;line-height:1.6">${svcs.some(s => s.billing !== 'eenmalig') ? 'Fijn dat we al een tijdje samenwerken! We hopen dit nog lang voort te zetten.' : 'Het project is afgerond! Wil je nog een vervolgproject starten? We helpen je graag verder.'}</div>
+          </div>
+        </div>` : ''}
 
         <div class="tabs-wrap">
           <nav class="tabs-nav">
