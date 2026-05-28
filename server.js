@@ -5556,15 +5556,18 @@ ${bookingDel.html.substring(0, 8000)}`).catch(() => '');
       }
     }
 
+    // If combination succeeded, drop embedded sub-deliverables — client only sees the combined one
+    const toSave = deliverables.filter(d => !d.embedded);
+
     // Merge with any existing deliverables (keep approved ones)
     const existing = (leads[li].agentDeliverables || []).filter(d => d.status === 'approved');
-    leads[li].agentDeliverables = [...existing, ...deliverables];
+    leads[li].agentDeliverables = [...existing, ...toSave];
     leads[li].agentsRanAt = new Date().toISOString();
     writeJSON('leads.json', leads);
-    addLeadHistory(leads, req.params.id, { event: 'buildAllServices', label: `Agents bouwden ${deliverables.length} leveringen automatisch` });
-    addActivity('agent_build', `${lead.companyName}: ${deliverables.length} leveringen gebouwd`);
+    addLeadHistory(leads, req.params.id, { event: 'buildAllServices', label: `Agents bouwden ${toSave.length} leveringen automatisch` });
+    addActivity('agent_build', `${lead.companyName}: ${toSave.length} leveringen gebouwd`);
 
-    sse({ type: 'all_done', count: deliverables.length, deliverables });
+    sse({ type: 'all_done', count: toSave.length, deliverables: toSave });
   } catch (err) {
     sse({ type: 'error', service: '', message: err.message });
   }

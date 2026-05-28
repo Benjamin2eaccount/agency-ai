@@ -4969,6 +4969,54 @@ window.buildAllServicesForLead = async function(leadId) {
   await renderProjectPage();
   switchProjectTab('building');
 
+  // Timer map: service name → { timerId, startTime, estSecs }
+  window._buildTimers = window._buildTimers || new Map();
+
+  const _fmtTime = (secs) => {
+    const m = Math.floor(Math.abs(secs) / 60), s = Math.abs(secs) % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const _estSecs = (serviceName) => {
+    const n = (serviceName || '').toLowerCase();
+    if (/website|site|boek|booking|chatbot|chat|dashboard|landing|faq/.test(n)) return 120;
+    if (/seo.*rapport|concurrentie|audit|crm|keyword.*research|branding|heatmap/.test(n)) return 60;
+    return 90;
+  };
+
+  const _startTimer = (serviceName, estSecs) => {
+    const startTime = Date.now();
+    const slug = serviceName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const timerId = setInterval(() => {
+      const card = document.getElementById(`build-card-${leadId}-${slug}`);
+      const statusEl = card?.querySelector('.build-status');
+      if (!statusEl) return;
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const remaining = estSecs - elapsed;
+      if (remaining > 0) {
+        statusEl.innerHTML = `<span style="font-size:12px;color:var(--accent)"><i class="ti ti-loader-2 spin"></i> ~${_fmtTime(remaining)} resterend</span>`;
+      } else {
+        const over = elapsed - estSecs;
+        statusEl.innerHTML = `<span style="font-size:12px;color:var(--warning)"><i class="ti ti-loader-2 spin"></i> Bijna klaar... +${_fmtTime(over)}</span>`;
+      }
+    }, 1000);
+    window._buildTimers.set(serviceName, { timerId, startTime, estSecs });
+  };
+
+  const _stopTimer = (serviceName) => {
+    const t = window._buildTimers.get(serviceName);
+    if (!t) return 0;
+    clearInterval(t.timerId);
+    const elapsed = Math.floor((Date.now() - t.startTime) / 1000);
+    window._buildTimers.delete(serviceName);
+    return elapsed;
+  };
+
+  const _stopAllTimers = () => {
+    window._buildTimers.forEach(t => clearInterval(t.timerId));
+    window._buildTimers.clear();
+  };
+
   const updateCard = (serviceName, updates) => {
     const prog = window._buildAllProgress[leadId];
     if (!prog) return;
@@ -4989,10 +5037,13 @@ window.buildAllServicesForLead = async function(leadId) {
         statusEl.innerHTML = `<span style="font-size:12px;color:var(--accent)"><i class="ti ti-loader-2 spin"></i> Bezig...</span>`;
         card.style.borderColor = 'var(--accent)';
       } else if (updates.status === 'done') {
-        statusEl.innerHTML = `<span style="font-size:12px;color:var(--success)"><i class="ti ti-check"></i> Klaar ✓</span>`;
+        const elapsed = _stopTimer(serviceName);
+        const timeStr = elapsed > 0 ? ` in ${_fmtTime(elapsed)}` : '';
+        statusEl.innerHTML = `<span style="font-size:12px;color:var(--success)"><i class="ti ti-check"></i> Klaar${timeStr}</span>`;
         card.style.borderColor = 'var(--success)';
         if (progressWrap) progressWrap.style.display = 'none';
       } else if (updates.status === 'error') {
+        _stopTimer(serviceName);
         statusEl.innerHTML = `<span style="font-size:12px;color:var(--danger)"><i class="ti ti-x"></i> Mislukt ✗</span>`;
         card.style.borderColor = 'var(--danger)';
         if (progressWrap) progressWrap.style.display = 'none';
@@ -5030,6 +5081,7 @@ window.buildAllServicesForLead = async function(leadId) {
 
     const pump = () => reader.read().then(({ done, value }) => {
       if (done) {
+        _stopAllTimers();
         window._buildAllRunning[leadId] = false;
         delete window._buildAllProgress[leadId];
         renderProjectPage().then(() => switchProjectTab('building'));
@@ -5047,20 +5099,45 @@ window.buildAllServicesForLead = async function(leadId) {
 
           if (d.type === 'start') {
             updateCard(d.service, { status: 'building', percent: 10 });
+            _startTimer(d.service, _estSecs(d.service));
           } else if (d.type === 'progress') {
             updateCard(d.service, { percent: d.percent });
           } else if (d.type === 'done') {
+            // _stopTimer is called inside updateCard for 'done' status
             updateCard(d.service, { status: 'done', percent: 100, url: d.url, deliverableType: d.deliverableType });
           } else if (d.type === 'error' && d.service) {
             updateCard(d.service, { status: 'error' });
           } else if (d.type === 'combine_start') {
+            _startTimer('__combine__', 60);
             const hdr = document.querySelector(`[data-tab-content="building"] .build-counter`);
-            if (hdr) hdr.textContent = d.message || 'Samenvoegen...';
+            if (hdr) {
+              const combineTimerId = setInterval(() => {
+                const t = window._buildTimers.get('__combine__');
+                if (!t || !hdr.isConnected) return;
+                const elapsed = Math.floor((Date.now() - t.startTime) / 1000);
+                const remaining = 60 - elapsed;
+                if (remaining > 0) {
+                  hdr.textContent = `Samenvoegen... ~${_fmtTime(remaining)} resterend`;
+                } else {
+                  hdr.textContent = `Samenvoegen... bijna klaar`;
+                }
+              }, 1000);
+              // Store interval on the element so combine_done can clear it
+              hdr._combineTimerId = combineTimerId;
+              hdr.textContent = d.message || 'Samenvoegen...';
+            }
           } else if (d.type === 'combine_done') {
+            _stopTimer('__combine__');
+            const hdr = document.querySelector(`[data-tab-content="building"] .build-counter`);
+            if (hdr?._combineTimerId) { clearInterval(hdr._combineTimerId); delete hdr._combineTimerId; }
             toast(`✓ ${d.message || 'Website gecombineerd'}`, 'success');
           } else if (d.type === 'combine_error') {
+            _stopTimer('__combine__');
+            const hdr = document.querySelector(`[data-tab-content="building"] .build-counter`);
+            if (hdr?._combineTimerId) { clearInterval(hdr._combineTimerId); delete hdr._combineTimerId; }
             toast('Samenvoegen mislukt (afzonderlijke bestanden beschikbaar)', 'info');
           } else if (d.type === 'all_done') {
+            _stopAllTimers();
             window._buildAllRunning[leadId] = false;
             delete window._buildAllProgress[leadId];
             const l = state.leads.find(x => x.id === leadId);
@@ -5070,6 +5147,7 @@ window.buildAllServicesForLead = async function(leadId) {
             else toast(`${d.count} leveringen klaar!`, 'success');
             renderProjectPage().then(() => switchProjectTab('building'));
           } else if (d.type === 'error' && !d.service) {
+            _stopAllTimers();
             window._buildAllRunning[leadId] = false;
             delete window._buildAllProgress[leadId];
             toast(d.message || 'Fout bij bouwen', 'error');
@@ -5079,6 +5157,7 @@ window.buildAllServicesForLead = async function(leadId) {
       });
       pump();
     }).catch(err => {
+      _stopAllTimers();
       window._buildAllRunning[leadId] = false;
       delete window._buildAllProgress[leadId];
       toast('Verbindingsfout: ' + err.message, 'error');
@@ -5086,6 +5165,7 @@ window.buildAllServicesForLead = async function(leadId) {
 
     pump();
   } catch (err) {
+    _stopAllTimers();
     window._buildAllRunning[leadId] = false;
     delete window._buildAllProgress[leadId];
     toast('Fout: ' + err.message, 'error');
