@@ -826,6 +826,18 @@ function buildLinkedinDmCard(item) {
 
 function buildAiReplyCard(item) {
   const draftRaw = (item.aiDraft || '').replace(/`/g, '\\`');
+  const lead = (state.leads || []).find(l => l.id === item.leadId);
+  const alreadyClient  = lead?.status === 'client';
+  const projectStarted = !!(lead?.projectStartedAt);
+
+  const startProjectBtn = (!alreadyClient && !projectStarted)
+    ? `<button class="btn btn-sm" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none" onclick="startProjectFromInbox('${esc(item.id)}','${esc(item.leadId)}')">
+         🚀 Start project &amp; stuur welkomstmail
+       </button>`
+    : projectStarted
+      ? `<span style="font-size:12px;background:#dcfce7;color:#166534;border-radius:6px;padding:4px 10px;font-weight:600">✓ Project gestart</span>`
+      : `<span style="font-size:12px;color:var(--text-muted)">Al klant</span>`;
+
   return `
     <div class="inbox-card ai-reply-card" data-id="${item.id}" id="card-${item.id}">
       <div class="ai-reply-header">
@@ -851,8 +863,18 @@ function buildAiReplyCard(item) {
           <i class="ti ti-send"></i> Verstuur antwoord
         </button>
       </div>
+      <div style="padding:0 0 4px;display:flex;justify-content:flex-end">
+        ${startProjectBtn}
+      </div>
     </div>`;
 }
+
+window.startProjectFromInbox = function(itemId, leadId) {
+  // Store which inbox card triggered the project start so we can update it on completion
+  window._inboxProjectStart = { itemId, leadId };
+  openProjectConfigModal(leadId, false);
+};
+
 
 async function sendAiReply(id) {
   const item = state.inbox?.find(i => i.id === id);
@@ -7120,6 +7142,15 @@ function _doStartProject(leadId) {
       ].join('');
       const localLead = state.leads.find(l => l.id === leadId);
       if (localLead) { localLead.status = 'client'; localLead.projectStartedAt = new Date().toISOString(); }
+      // Update inbox reply card if this project was started from inbox
+      if (window._inboxProjectStart?.leadId === leadId) {
+        const startBtn = document.querySelector(`#card-${window._inboxProjectStart.itemId} [onclick*="startProjectFromInbox"]`);
+        if (startBtn) {
+          const wrapper = startBtn.parentElement;
+          if (wrapper) wrapper.innerHTML = `<span style="font-size:12px;background:#dcfce7;color:#166534;border-radius:6px;padding:4px 10px;font-weight:600">✓ Project gestart</span>`;
+        }
+        window._inboxProjectStart = null;
+      }
     }
 
     if (status === 'error') {
