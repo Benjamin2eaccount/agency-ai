@@ -817,6 +817,16 @@ function buildDeliveryEmailHTML({ lead, d, settings, portalLink }) {
 </html>`;
 }
 
+// HTML-escape helper — used by server-side HTML builders (emails, proposals, agency page)
+function esc(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Sanitize email subject: replace fancy Unicode chars with ASCII equivalents
 function sanitizeSubject(s) {
   return String(s || '')
