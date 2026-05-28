@@ -143,7 +143,7 @@ if (!readJSON('settings.json')) {
   writeJSON('settings.json', {
     username: 'admin', password: hash,
     agencyName: 'Agency AI', myName: 'Admin', myTitle: 'AI Growth Specialist',
-    gmailAddress: '', gmailPassword: '', linkedinUrl: '', stripeSecretKey: '',
+    gmailAddress: process.env.GMAIL_USER || 'info@agencyai.info', gmailPassword: process.env.GMAIL_APP_PASSWORD || '', adminEmail: 'info@agencyai.info', agencyEmail: 'info@agencyai.info', linkedinUrl: '', stripeSecretKey: '',
     mollieApiKey: '', paypalMe: '', preferredPaymentMethod: 'bank_transfer',
     bankTransferIban: '', bankTransferName: '', bankTransferBic: '', paymentTermDays: 14,
     dailyRunTime: '09:00', leadsPerDay: 15, autoApproveScore: 8.0, automationPaused: false, autoArchiveEnabled: true, autoArchiveDays: 30,
@@ -1202,7 +1202,7 @@ async function sendEmail({ to, subject, body, html, settings: _settings = {}, tr
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: `"${agencyName}" <${fromAddress}>`, to: toFinal, reply_to: s.gmailAddress ? `${myName} <${s.gmailAddress}>` : undefined, subject: cleanSubject, html: htmlBody, text: body || '', ...(attachments.length ? { attachments } : {}) }),
+    body: JSON.stringify({ from: `Agency AI <info@agencyai.info>`, to: toFinal, reply_to: s.gmailAddress || process.env.GMAIL_USER || 'info@agencyai.info', subject: cleanSubject, html: htmlBody, text: body || '', ...(attachments.length ? { attachments } : {}) }),
     signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
   });
   const d = await r.json();
@@ -1239,10 +1239,10 @@ function getGmailPassword(s) {
     try { return decryptGmailPassword(s.gmailPasswordEncrypted); } catch {}
   }
   if (s.gmailPassword && s.gmailPassword !== '__encrypted__') return s.gmailPassword;
-  return process.env.GMAIL_APP_PASSWORD || '';
+  return process.env.GMAIL_APP_PASSWORD || process.env.IMAP_PASSWORD || '';
 }
 function isGmailReady(s) {
-  return !!(s && (s.gmailAddress || process.env.GMAIL_ADDRESS) && getGmailPassword(s));
+  return !!(s && (s.gmailAddress || process.env.GMAIL_USER || process.env.GMAIL_ADDRESS) && getGmailPassword(s));
 }
 function isResendReady(s) {
   return !!(s && (s.resendApiKey || process.env.RESEND_API_KEY));
@@ -6441,11 +6441,11 @@ app.post('/api/settings/test-email', requireAdmin, async (req, res) => {
 app.post('/api/settings/test-imap', requireAdmin, async (req, res) => {
   console.log('[TestIMAP] Starting...');
   const s    = readJSON('settings.json') || {};
-  const user = s.gmailAddress || process.env.GMAIL_ADDRESS;
+  const user = s.gmailAddress || process.env.GMAIL_USER || process.env.GMAIL_ADDRESS;
   const pass = getGmailPassword(s);
 
-  if (!user) return res.status(400).json({ success: false, error: 'Gmail adres niet ingesteld' });
-  if (!pass) return res.status(400).json({ success: false, error: 'Gmail app-wachtwoord niet ingesteld' });
+  if (!user) return res.status(400).json({ success: false, error: 'Email adres niet ingesteld' });
+  if (!pass) return res.status(400).json({ success: false, error: 'Email wachtwoord niet ingesteld' });
 
   let imapSimple;
   try { imapSimple = require('imap-simple'); }
@@ -6454,7 +6454,7 @@ app.post('/api/settings/test-imap', requireAdmin, async (req, res) => {
   let connection;
   try {
     connection = await imapSimple.connect({
-      imap: { user, password: pass, host: 'imap.gmail.com', port: 993, tls: true,
+      imap: { user, password: pass, host: 'imap.soverin.net', port: 993, tls: true,
               tlsOptions: { rejectUnauthorized: false }, authTimeout: 10000 }
     });
     const box = await connection.openBox('INBOX');
@@ -9223,9 +9223,9 @@ async function checkReplies() {
 
   const imapConfig = {
     imap: {
-      user:       settings.gmailAddress || process.env.GMAIL_ADDRESS,
+      user:       settings.gmailAddress || process.env.GMAIL_USER || process.env.GMAIL_ADDRESS || 'info@agencyai.info',
       password:   getGmailPassword(settings),
-      host:       'imap.gmail.com',
+      host:       'imap.soverin.net',
       port:       993,
       tls:        true,
       tlsOptions: { rejectUnauthorized: false },
@@ -9235,7 +9235,7 @@ async function checkReplies() {
 
   let connection;
   try {
-    console.log(`[IMAP] Verbinden met Gmail als ${settings.gmailAddress}...`);
+    console.log(`[IMAP] Verbinden met Soverin als ${imapConfig.imap.user}...`);
     connection = await imapSimple.connect(imapConfig);
     console.log('[IMAP] Verbonden ✓');
     await connection.openBox('INBOX');

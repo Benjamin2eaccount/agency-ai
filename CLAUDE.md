@@ -183,7 +183,9 @@ A fully autonomous AI outreach SaaS. It finds 15 local businesses daily using 7 
 - **Backend:** Node.js + Express, vanilla JS frontend (no framework)
 - **AI:** Anthropic Claude API (`claude-sonnet-4-6`) via `aiCall()` / `aiJSON()` helpers
 - **Storage:** SQLite (`data/agency.db`) via `database.js` — WAL mode, key-value store. Migrated from JSON flat files. `readJSON`/`writeJSON` in server.js now use SQLite instead of the filesystem.
-- **Email:** nodemailer, Gmail SMTP (smtp.gmail.com:587 STARTTLS)
+- **Email sending:** Resend API — from `Agency AI <info@agencyai.info>` (agencyai.info via mijndomein.nl / Soverin)
+- **Email receiving (IMAP):** imap.soverin.net:993 TLS — user `info@agencyai.info` — for reply detection
+- **Old Gmail:** benjamin.van.hemert2@gmail.com — no longer used for sending or receiving
 - **Auth:** bcryptjs + JWT (7-day tokens), default login: admin / agency2024
 - **Design:** Light mode, Notion-style (#F9FAFB bg, #E5E7EB borders, #111 button)
 - **Language:** Dutch UI + outreach emails (English for non-NL/BE leads)
