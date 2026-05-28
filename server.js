@@ -1941,6 +1941,20 @@ app.delete('/api/portal/:token/upload/:filename', (req, res) => {
   res.json({ ok: true });
 });
 
+function _findUpload(uploads, rawFilename) {
+  if (!uploads || !rawFilename) return null;
+  let decoded = rawFilename;
+  try { decoded = decodeURIComponent(rawFilename); } catch { /* use raw */ }
+  const sanitized = decoded.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
+  return uploads.find(u =>
+    u.filename === rawFilename ||
+    u.filename === decoded ||
+    u.filename === sanitized ||
+    u.filename.replace(/\s+/g, '_') === rawFilename ||
+    u.filename.replace(/\s+/g, '_') === decoded
+  ) || null;
+}
+
 function _serveUpload(upload, res) {
   if (!upload || !upload.content) return res.status(404).json({ error: 'Bestandsinhoud niet beschikbaar' });
   const buffer = Buffer.from(upload.content, 'base64');
@@ -1955,8 +1969,12 @@ app.get('/api/portal/:token/download/:filename', (req, res) => {
   if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
   if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd' });
 
-  const safeName = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
-  const upload = (lead.clientUploads || []).find(f => f.filename === safeName);
+  const filename = req.params.filename;
+  console.log('[Download] filename param:', filename);
+  console.log('[Download] clientUploads count:', lead.clientUploads?.length);
+  console.log('[Download] upload filenames:', lead.clientUploads?.map(u => u.filename));
+  const upload = _findUpload(lead.clientUploads, filename);
+  console.log('[Download] found upload:', upload ? 'yes, content length: ' + upload.content?.length : 'NOT FOUND');
   if (!upload) return res.status(404).json({ error: 'Bestand niet gevonden' });
   _serveUpload(upload, res);
 });
@@ -4969,8 +4987,12 @@ app.get('/api/leads/:id/client-uploads/:filename', requireAdmin, (req, res) => {
   const lead  = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
 
-  const safeName = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
-  const upload = (lead.clientUploads || []).find(f => f.filename === safeName);
+  const filename = req.params.filename;
+  console.log('[Download] Admin filename param:', filename);
+  console.log('[Download] clientUploads count:', lead.clientUploads?.length);
+  console.log('[Download] upload filenames:', lead.clientUploads?.map(u => u.filename));
+  const upload = _findUpload(lead.clientUploads, filename);
+  console.log('[Download] found upload:', upload ? 'yes, content length: ' + upload.content?.length : 'NOT FOUND');
   if (!upload) return res.status(404).json({ error: 'Bestand niet gevonden' });
   _serveUpload(upload, res);
 });
