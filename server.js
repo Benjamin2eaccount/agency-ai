@@ -1563,7 +1563,24 @@ Antwoord ALLEEN als JSON: { "headline": "string", "subheadline": "string", "abou
         } catch { content = { headline: `Welkom bij ${freshLead.companyName}`, subheadline: `Professionele ${freshLead.niche} diensten`, about: `${freshLead.companyName} biedt professionele diensten aan in ${freshLead.location}.`, services: [], ctaText: 'Neem contact op', ctaSubtext: 'We reageren binnen 24 uur', footerTagline: freshLead.companyName }; }
 
         const servicesStr = (content.services || []).map(s => `${s.icon} ${s.title}: ${s.desc}`).join('\n');
-        const siteHtml = await aiCallBuild(`<!DOCTYPE html>\nMaak een volledige professionele HTML website voor ${freshLead.companyName} (${freshLead.niche}, ${freshLead.location}). Headline: ${content.headline}. Subheadline: ${content.subheadline}. About: ${content.about}. Diensten:\n${servicesStr}. CTA: ${content.ctaText}. Kleur: ${colors.primary}. Standalone HTML, alle CSS inline.`);
+        const siteHtml = await aiCallBuild(`${BUILD_HTML_RULES}Build a complete HTML website for ${freshLead.companyName} (${freshLead.niche}, ${freshLead.location}).
+
+BRAND CONTEXT:
+- Headline: ${content.headline}
+- Subheadline: ${content.subheadline}
+- About: ${content.about}
+- Services: ${servicesStr}
+- CTA: ${content.ctaText}
+- Accent color: ${colors.primary}
+
+MUST include in <body>:
+1. Sticky navigation with all sections + hamburger on mobile
+2. Full-viewport hero: use the headline, subheadline, a stats row, and two CTA buttons
+3. Over ons section: about text + 3 value cards (icon + title + description)
+4. Diensten section: service cards with icon, title, description
+5. Contact section with form posting to /api/sites/${(freshLead.companyName||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}/contact
+6. Footer with company name, location, copyright
+Use ${colors.primary} as accent color. Scroll-triggered animations. Mobile responsive.`);
 
         const siteSlug = generateSiteSlug(freshLead.companyName);
         const sitesDir = path.join(__dirname, 'public', 'sites', siteSlug);
@@ -4709,26 +4726,7 @@ app.post('/api/leads/:id/agent-chat', requireAdmin, async (req, res) => {
 
   try {
     if (action === 'build') {
-      const PREAMBLE = `You are an expert HTML developer.
-
-TASK: Build a complete, fully working HTML page.
-
-Be concise. Generate a complete working page in maximum 800 lines of HTML. No comments, no excessive whitespace.
-
-CRITICAL:
-- Your ENTIRE response must be raw HTML
-- Start with: <!DOCTYPE html>
-- End with: </html>
-- Do NOT use markdown or backticks
-- The <body> tag MUST contain ALL visible content
-- Minimum 50 lines of content in <body>
-- All CSS in <style> tag inside <head>
-- All JavaScript in <script> tag before </body>
-- No external dependencies except Google Fonts
-
-Remember: Start your response with <!DOCTYPE html> and fill the body with complete, working content.
-
-`;
+      const PREAMBLE = BUILD_HTML_RULES;
       // Extract live brand style from client website
       const chatStyle = await extractWebsiteStyle(lead.websiteUrl);
       const chatIntakeRaw = { ...(lead.intakeAnswers || {}), ...(lead.intakeData || {}) };
@@ -4779,15 +4777,17 @@ ${chatUploadsCtx}
 ${chatBrandCtx}
 
 MUST include in <body>:
-- Header with company name and tagline
-- Step 1: Choose service (clickable cards) — use intake answers for actual services/prices if available: ${message}
-- Step 2: Pick date (Mon-Fri only calendar, past dates disabled)
-- Step 3: Pick time (09:00-17:00 slots, 1-hour intervals)
-- Step 4: Contact form (naam, bedrijf, email, telefoon)
-- Submit button with loading state
-- Success confirmation screen with booking summary
-
-Use brand color ${chatStyle.color} for all accents. Load font "${chatStyle.font}" from Google Fonts. Mobile responsive.`;
+1. Sticky header with company name and tagline
+2. Full-viewport hero section: headline, subtext, 2 CTA buttons
+3. Step-by-step booking flow:
+   - Step 1: Service selection (clickable cards) — use intake answers for actual services/prices: ${message}
+   - Step 2: Date picker — Mon-Fri calendar only (past dates + weekends disabled), month navigation
+   - Step 3: Time slot picker 09:00-17:00 (1-hour intervals, visually styled)
+   - Step 4: Contact form (naam, bedrijf, email, telefoon, notities)
+   - Submit with loading spinner
+   - Success confirmation screen with booking summary
+4. Footer with contact info
+Use brand color ${chatStyle.color} as accent. Load font "${chatStyle.font}" from Google Fonts. Scroll-triggered animations. Mobile responsive.`;
       } else if (isDocument) {
         buildPrompt = `${PREAMBLE}Build a complete HTML report/document for ${lead.companyName}.
 
@@ -4797,12 +4797,12 @@ Task: ${message}
 
 MUST include in <body>:
 - Professional report header with title, company name, date
-- Executive summary section (3-5 key findings specific to ${lead.niche || 'their industry'})
-- Main content sections with headings, data tables, bullet lists
-- Recommendations section with numbered action items
+- Executive summary (3-5 key findings specific to ${lead.niche || 'their industry'})
+- Main content sections with headings, data tables where relevant, bullet lists
+- Recommendations with numbered action items
 - Footer
 
-Style: clean report layout, white bg, dark headers, ${chatStyle.font} from Google Fonts, print-friendly.`;
+Style: clean report layout, white background, dark section headers, ${chatStyle.font} from Google Fonts, print-friendly. Use brand color ${chatStyle.color} for headings and accents.`;
       } else if (isStrategy) {
         buildPrompt = `${PREAMBLE}Build a complete HTML strategy document for ${lead.companyName}.
 
@@ -4811,14 +4811,14 @@ ${chatBrandCtx}
 Task: ${message}
 
 MUST include in <body>:
-- Strategy title and company context
-- Situation analysis (current state vs desired state)
-- Step-by-step implementation plan with phases
-- Timeline / roadmap section
-- KPIs and success metrics
-- Next steps and quick wins
+- Strategy title and company context section
+- Situation analysis: current state vs desired state with visual comparison cards
+- Step-by-step implementation plan with phases and timelines
+- Visual roadmap section
+- KPIs and success metrics table
+- Next steps and quick wins section
 
-Use brand color ${chatStyle.color} for section highlights. Load font "${chatStyle.font}" from Google Fonts.`;
+Use brand color ${chatStyle.color} for section highlights and phase colors. Load font "${chatStyle.font}" from Google Fonts. Scroll-triggered animations.`;
       } else if (isChatbot) {
         buildPrompt = `${PREAMBLE}Build a complete HTML chatbot / FAQ assistant page for ${lead.companyName}.
 
@@ -4826,14 +4826,15 @@ ${chatBrandCtx}
 
 Task: ${message}
 
-Requirements:
-- Chat widget with open/close toggle, message bubbles, typing indicator
-- 15+ pre-programmed Q&A pairs relevant to their niche and services
-- Lead capture form when user asks to contact
-- IMPORTANT: when no matching answer found, display fallback: "Ik kan u helaas niet verder helpen met deze vraag. Neem contact op via ${lead.contactEmail || '[email]'} of bel ons voor directe hulp."
-- Use brand color ${chatStyle.color} as accent (NOT hardcoded indigo unless that is the brand color)
-- Load font "${chatStyle.font}" from Google Fonts
-- Mobile responsive layout`;
+MUST include in <body>:
+1. Full-viewport hero section with headline, subtext, and chat preview
+2. Floating chat widget (bottom-right): open/close toggle, message bubbles, typing indicator animation
+3. Minimum 15 pre-programmed Q&A pairs relevant to their niche and services
+4. Lead capture form triggered when user asks to contact/book
+5. IMPORTANT fallback: "Ik kan u helaas niet verder helpen met deze vraag. Neem contact op via ${lead.contactEmail || '[email]'} of bel ons voor directe hulp."
+6. Veelgestelde vragen accordion section (top 8 questions)
+7. Footer
+Use brand color ${chatStyle.color} as accent. Load font "${chatStyle.font}" from Google Fonts. Mobile responsive.`;
       } else {
         buildPrompt = `${PREAMBLE}Build a complete, fully functional standalone HTML page for ${lead.companyName}.
 
@@ -4841,11 +4842,13 @@ ${chatBrandCtx}
 
 Task: ${message}
 
-Requirements:
-- Rich content in <body> — headings, paragraphs, sections, interactive elements
-- Use brand color ${chatStyle.color} as accent (NOT hardcoded indigo unless that is the brand color)
-- Load font "${chatStyle.font}" from Google Fonts
-- Mobile responsive layout`;
+MUST include in <body>:
+1. Sticky navigation with all sections + hamburger menu on mobile
+2. Full-viewport hero: large headline, subtext, stats row (3 numbers), 2 CTA buttons
+3. 3+ richly styled content sections directly relevant to the task/service — each with heading, subtext, and content cards (icon + title + description)
+4. Contact/CTA section with form or button
+5. Branded footer
+Use brand color ${chatStyle.color} as accent. Load font "${chatStyle.font}" from Google Fonts. Scroll-triggered entrance animations. Mobile responsive. Minimum 500 words.`;
       }
 
       // aiCallBuild() now handles markdown stripping + body validation internally
@@ -5415,24 +5418,62 @@ async function extractWebsiteStyle(websiteUrl) {
   }
 }
 
-const BUILD_HTML_RULES = `You are an expert HTML developer.
+const BUILD_HTML_RULES = `You are an expert HTML developer building a premium professional website.
 
-TASK: Build a complete, fully working HTML page.
+Your ENTIRE response must be raw HTML starting with <!DOCTYPE html> and ending with </html>.
+Do NOT use markdown, backticks, or any explanation outside the HTML.
+All CSS in a <style> tag in <head>. All JS in a <script> tag before </body>.
+No external dependencies except Google Fonts.
 
-Be concise. Generate a complete working page in maximum 800 lines of HTML. No comments, no excessive whitespace.
+CRITICAL QUALITY REQUIREMENTS — follow without exception:
 
-CRITICAL:
-- Your ENTIRE response must be raw HTML
-- Start with: <!DOCTYPE html>
-- End with: </html>
-- Do NOT use markdown or backticks
-- The <body> tag MUST contain ALL visible content
-- Minimum 50 lines of content in <body>
-- All CSS in <style> tag inside <head>
-- All JavaScript in <script> tag before </body>
-- No external dependencies except Google Fonts
+DESIGN:
+- Choose a strong color scheme that fits the business niche (dark/light, fitting accent color)
+- One consistent design language throughout the entire page
+- NO section that looks visually different or pasted in from another design
+- Smooth gradient transitions between sections
+- Professional typography: load exactly 2 fonts from Google Fonts (a display/heading font + a body font)
+- All text must have sufficient contrast — NEVER dark text on dark background, NEVER white text on white background
+- Rich visual detail: icons (use Unicode emoji or inline SVG), subtle shadows, border-radius on cards
 
-Remember: Start your response with <!DOCTYPE html> and fill the body with complete, working content.
+STRUCTURE:
+- Sticky navigation bar listing all sections, with smooth scroll anchors; hamburger menu on mobile
+- Full-viewport hero section: large headline, subtext, a stats row (3 numbers), and 2 CTA buttons
+- Every section has a clear heading + short subtext paragraph before the content
+- Cards always have: icon/emoji, bold title, description text
+- Footer with company name, address, phone, email, and current year copyright
+
+SCROLL & ANIMATION:
+- Smooth scroll between all anchor sections
+- Scroll-triggered entrance animations: elements fade/slide in as they enter the viewport (use IntersectionObserver)
+
+TECHNICAL:
+- Contact/booking forms POST to the correct API endpoint (use relative path)
+- All buttons and links are functional (no href="#" dead links)
+- Hover effects on all interactive elements (buttons, cards, nav links)
+- Page loads fast — no heavy external images; use CSS gradients and emoji for visuals
+
+CONTENT:
+- Use ALL intake data and brand context provided below
+- Show real business name, address, phone number, opening hours if known
+- Show real products/services with real prices from intake answers
+- Write copy that is specific to the business niche and location
+- Professional copywriting tone matching the brand's detected tone (formal/informal)
+- Dutch language unless the business is international (English)
+
+MOBILE RESPONSIVE:
+- Multi-column grids collapse to 1 column below 768px
+- Navigation becomes a hamburger toggle menu on mobile
+- Font sizes scale down proportionally on small screens
+- All touch targets minimum 44px height
+- Zero horizontal scroll on mobile
+
+ABSOLUTELY NEVER:
+- Generic placeholder content or Lorem ipsum text
+- Broken layout on desktop or mobile
+- Invisible text due to wrong color contrast
+- Sections that look visually disconnected from the rest
+- Any markdown visible in the HTML output (no backticks, no ** bold, no # headings outside HTML)
 
 `;
 
@@ -5582,37 +5623,54 @@ ${intakeLines ? `Intake antwoorden van klant:\n${intakeLines}` : ''}${uploadsCtx
 
 ${brandContext}
 
-MUST include in <body>: header with company name, service selection cards, Mon-Fri calendar (past days disabled), time slot picker (09:00-17:00), contact form (naam/email/tel), submit with loading state, success screen.
-Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" from Google Fonts. Mobile responsive.`;
+MUST include in <body>:
+1. Sticky header with company name and tagline
+2. Full-viewport hero section: headline, subtext, 2 CTA buttons
+3. Step-by-step booking flow:
+   - Step 1: Service selection (clickable cards with real service names/prices from intake)
+   - Step 2: Date picker — Mon-Fri calendar only (past dates + weekends disabled), month navigation
+   - Step 3: Time slot picker 09:00-17:00 (1-hour intervals, visually styled)
+   - Step 4: Contact form (naam, bedrijf, email, telefoon, notities)
+   - Submit button with loading spinner
+   - Success confirmation screen with booking summary
+4. Footer with contact info
+Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" from Google Fonts. Scroll-triggered animations. Mobile responsive.`;
           } else if (/chatbot|faq.*assistent|kennisbank/i.test(serviceName)) {
             prompt = `${BUILD_HTML_RULES}Build a complete HTML chatbot / FAQ assistant page for ${lead.companyName}.
 
 ${brandContext}
 
-MUST include in <body>: clean chat interface, 15+ pre-programmed Q&A pairs relevant to their niche (${lead.niche || ''}), floating chat widget with open/close, message bubbles, typing indicator, lead capture form when user asks to contact.
-IMPORTANT: when no matching answer found, the chatbot MUST display: "Ik kan u helaas niet verder helpen met deze vraag. Neem contact op via ${lead.contactEmail || '[email]'} of bel ons voor directe hulp."
-Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" from Google Fonts. Mobile responsive.`;
+MUST include in <body>:
+1. Full-viewport hero section with headline, subtext, and chat widget preview
+2. Floating chat widget (bottom-right corner): open/close toggle button, message bubbles (left for bot, right for user), typing indicator animation, smooth open/close animation
+3. Pre-programmed Q&A pairs (minimum 15) specifically about ${lead.niche || 'the business'} — use intake answers for real services/prices
+4. Lead capture form triggered when user asks to contact or book
+5. IMPORTANT fallback: when no matching answer, display exactly: "Ik kan u helaas niet verder helpen met deze vraag. Neem contact op via ${lead.contactEmail || '[email]'} of bel ons voor directe hulp."
+6. "Veelgestelde vragen" section showing the top 8 questions as clickable FAQ accordion
+7. Footer with contact info
+Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" from Google Fonts. Scroll-triggered animations. Mobile responsive.`;
           } else if (/dashboard/i.test(serviceName)) {
             prompt = `${BUILD_HTML_RULES}Build a complete HTML analytics dashboard for ${lead.companyName}.
 
 ${brandContext}
 
-MUST include in <body>: KPI cards (revenue, visitors, conversions, engagement), chart placeholders with realistic demo data, sidebar nav, date filter, data table, responsive grid layout.
+MUST include in <body>: sidebar navigation with menu items, top bar with company name and date filter, KPI cards row (omzet, bezoekers, conversies, engagement) with trend arrows, two chart placeholder sections with realistic demo data visualized via CSS bars, a data table with sortable columns, responsive grid layout.
 Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" from Google Fonts. Mobile responsive.`;
           } else {
             prompt = `${BUILD_HTML_RULES}Build a complete HTML ${serviceName} page for ${lead.companyName}.
 
 ${brandContext}
 
-MUST include in <body>:
-- Navigation bar with links: Home, Over ons, Diensten, Boeken, Contact (anchor href="#boeken" for Boeken)
-- Hero section with company name and tagline
-- Services/about section with rich content
-- A section with id="boeken" — leave it empty but include this HTML comment inside it: <!-- BOOKING_INJECT -->
-- Contact section with form
-- Footer
-- Place this HTML comment exactly as written right before </body>: <!-- CHATBOT_INJECT -->
-Use EXACTLY the brand color ${style.color} as accent. Load font "${style.font}" from Google Fonts. Mobile responsive. Minimum 500 words visible content.`;
+MUST include in <body> — in this order:
+1. Sticky navigation: company name/logo left, nav links right (Home, Over ons, Diensten, Boeken, Contact), hamburger on mobile
+2. Full-viewport hero: large headline, subtext describing the business, a stats row with 3 impressive numbers (clients, years, satisfaction etc.), two CTA buttons (primary + secondary)
+3. Over ons section with company story and 3 value cards (each with icon + title + description)
+4. Diensten section: richly styled service cards (icon, name, short description, price if known)
+5. A section with id="boeken" — place this comment inside: <!-- BOOKING_INJECT -->
+6. Contact section with a working form (naam, email, bericht) that POSTs to /api/sites/${(lead.companyName||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}/contact
+7. Branded footer with address, phone, email, social links, copyright year
+8. Place this comment exactly before </body>: <!-- CHATBOT_INJECT -->
+Use EXACTLY the brand color ${style.color} as accent color. Load font "${style.font}" from Google Fonts. Minimum 600 words of visible content. Scroll-triggered animations on all sections.`;
           }
 
           sse({ type: 'progress', service: serviceName, percent: 50 });
@@ -7201,11 +7259,17 @@ app.post('/api/test-service', requireAdmin, async (req, res) => {
       const isChatbot = /chatbot|faq.*assistent|kennisbank/i.test(serviceName);
       let prompt;
       if (isBooking) {
-        prompt = `${BUILD_HTML_RULES}Build a complete HTML booking page for ${companyName} in ${location}.${intakeCtx}\nMUST include in <body>: header, 3 service cards, Mon-Fri calendar (past disabled), time slots 09:00-17:00, contact form, success screen. Style: white bg, #6366f1 accent, Inter, mobile responsive.`;
+        prompt = `${BUILD_HTML_RULES}Build a complete HTML booking page for ${companyName} in ${location}.${intakeCtx}
+
+MUST include in <body>: sticky header with company name, 3 service cards (with real service names/prices if in intake), Mon-Fri calendar (past days disabled), time slot picker 09:00-17:00, contact form (naam/email/telefoon), submit with loading state, success screen. Full viewport hero. Mobile responsive.`;
       } else if (isChatbot) {
-        prompt = `${BUILD_HTML_RULES}Build a complete HTML chatbot/FAQ page for ${companyName} (${niche}).${intakeCtx}\nMUST include in <body>: chat widget, 15+ Q&A pairs for ${niche}, animated bubbles, typing indicator, lead capture form. Style: white bg, #6366f1 accent, Inter, mobile responsive.`;
+        prompt = `${BUILD_HTML_RULES}Build a complete HTML chatbot/FAQ assistant page for ${companyName} (${niche}).${intakeCtx}
+
+MUST include in <body>: floating chat widget with open/close toggle, 15+ pre-programmed Q&A pairs relevant to ${niche}, message bubbles, typing indicator, lead capture form when user asks to contact. Fallback message: "Ik kan u helaas niet verder helpen met deze vraag. Neem contact op via onze website of bel ons voor directe hulp." Full viewport hero section behind the chat widget. Mobile responsive.`;
       } else {
-        prompt = `${BUILD_HTML_RULES}Build a complete HTML ${serviceName} page for ${companyName} (${niche}) in ${location}.${intakeCtx}\nMUST include in <body>: branded header, 3+ content sections relevant to "${serviceName}", CTA with form/button, footer. Style: white bg, #6366f1 accent, Inter, mobile responsive. Min 500 words.`;
+        prompt = `${BUILD_HTML_RULES}Build a complete HTML ${serviceName} page for ${companyName} (${niche}) in ${location}.${intakeCtx}
+
+MUST include in <body>: sticky navigation, full-viewport hero with headline + stats row + CTA buttons, 3+ richly styled content sections directly relevant to "${serviceName}", contact section with form, branded footer. Min 500 words of real content. Mobile responsive.`;
       }
       const html = await aiCallBuild(prompt);
       const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
