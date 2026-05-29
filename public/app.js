@@ -3889,9 +3889,15 @@ async function renderProjectPage() {
             ? `<div style="padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin:8px 0;font-size:13px;color:#dc2626">${esc(d.error||'Onbekende fout')}</div>`
             : '';
 
+      const htmlCount = deliverables.filter(d2 => d2.type === 'code' && d2.html && d2.status !== 'error' && !d2.embedded).length;
+      const combineBtn = isHtml && !d.embedded && htmlCount >= 2 && isAdmin()
+        ? `<button class="btn btn-ghost btn-sm" onclick="openCombineModal('${esc(lead.id)}',${i})"><i class="ti ti-layers-intersect"></i> Combineer</button>`
+        : '';
+
       const actions = d.status === 'approved' && isAdmin()
         ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
             <button class="btn btn-ghost btn-sm" onclick="startDeliverableEdit('${esc(lead.id)}',${i})"><i class="ti ti-edit"></i> Aanpassen</button>
+            ${combineBtn}
           </div>`
         : d.status !== 'error' && isAdmin() ? `
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
@@ -3899,6 +3905,7 @@ async function renderProjectPage() {
             ? `<button class="btn btn-primary btn-sm" onclick="approveDeliverable('${esc(lead.id)}',${i})"><i class="ti ti-check"></i> Goedkeuren &amp; naar klant</button>`
             : `<button class="btn btn-primary btn-sm" id="manualApproveBtn-${esc(lead.id)}-${i}" onclick="approveManualDeliverable('${esc(lead.id)}',${i})"><i class="ti ti-send"></i> Goedkeuren &amp; naar klant</button>`}
           <button class="btn btn-ghost btn-sm" onclick="toggleDeliverableChat('${esc(lead.id)}',${i})"><i class="ti ti-message"></i> Aanpassen</button>
+          ${combineBtn}
         </div>` : '';
 
       const errorActions = d.status === 'error' && isAdmin() ? `
@@ -3969,6 +3976,7 @@ async function renderProjectPage() {
         <div style="height:1px;background:var(--border);margin-bottom:12px"></div>
         ${isAdmin() && pendingCount > 0 ? `<button class="btn btn-primary btn-sm" style="width:100%;margin-bottom:8px" onclick="approveAllDeliverables('${esc(lead.id)}')"><i class="ti ti-checks"></i> Alles goedkeuren</button>` : ''}
         ${isAdmin() && approvedCount > 0 ? `<button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px" onclick="sendAllDeliverablesToClient('${esc(lead.id)}')"><i class="ti ti-send"></i> Stuur alles naar klant</button>` : ''}
+        ${isAdmin() && deliverables.filter(d => d.type === 'code' && d.html && d.status !== 'error' && !d.embedded).length >= 2 ? `<button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px" onclick="openCombineModal('${esc(lead.id)}')"><i class="ti ti-layers-intersect"></i> Combineer deliverables</button>` : ''}
         ${isAdmin() ? `<button class="btn btn-ghost btn-sm" style="width:100%" onclick="buildAllServicesForLead('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Opnieuw bouwen</button>` : ''}
       </div>` : '';
 
@@ -5404,6 +5412,118 @@ window._doDeleteDeliverable = async function(leadId, dIdx) {
     renderProjectPage().then(() => switchProjectTab('building'));
   } catch(e) {
     toast(e.message || 'Verwijderen mislukt', 'error');
+  }
+};
+
+window.openCombineModal = function(leadId, preSelectedIdx) {
+  const lead = (state.leads || []).find(l => l.id === leadId);
+  if (!lead) return;
+  const deliverables = lead.agentDeliverables || [];
+  const htmlDeliverables = deliverables
+    .map((d, i) => ({ d, i }))
+    .filter(({ d }) => d.type === 'code' && d.html && d.status !== 'error' && !d.embedded);
+
+  if (htmlDeliverables.length < 2) {
+    toast('Je hebt minimaal 2 HTML deliverables nodig om te combineren.', 'error');
+    return;
+  }
+
+  const rows = htmlDeliverables.map(({ d, i }) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--surface);cursor:pointer"
+         id="combineRow-${i}" onclick="window._toggleCombineRow(${i})">
+      <input type="checkbox" id="combineCheck-${i}" value="${i}"
+        ${i === preSelectedIdx ? 'checked' : ''}
+        style="width:16px;height:16px;accent-color:var(--accent);flex-shrink:0"
+        onclick="event.stopPropagation();window._toggleCombineRow(${i})">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">${esc(d.service)}</div>
+        ${d.primary ? `<div style="font-size:11px;color:#6366f1;font-weight:600">★ Eerder gecombineerd</div>` : ''}
+      </div>
+      <div>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);cursor:pointer"
+               onclick="event.stopPropagation()">
+          <input type="radio" name="combineBase" value="${i}" ${i === preSelectedIdx ? 'checked' : ''}
+            style="accent-color:var(--accent)" onclick="window._onCombineBaseChange(${i},event)">
+          Basis
+        </label>
+      </div>
+    </div>`).join('');
+
+  openModal(`
+    <div style="padding:24px;max-width:520px">
+      <h3 style="margin:0 0 6px;font-size:17px;font-weight:700"><i class="ti ti-layers-intersect" style="margin-right:6px;color:var(--accent)"></i>Combineer deliverables</h3>
+      <p style="margin:0 0 18px;font-size:13px;color:var(--text-secondary)">Selecteer welke HTML builds samengevoegd worden. De <strong>basis</strong> is de hoofdpagina — de rest wordt er als sectie/widget in geïnjecteerd.</p>
+      <div id="combineRowList">${rows}</div>
+      <div id="combineError" style="display:none;margin-top:10px;padding:9px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:7px;font-size:13px;color:#dc2626"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+        <button class="btn btn-ghost" onclick="closeModal()">Annuleer</button>
+        <button class="btn btn-primary" onclick="window._doCombineDeliverables('${esc(leadId)}')">
+          <i class="ti ti-layers-intersect"></i> Combineer geselecteerde
+        </button>
+      </div>
+    </div>
+  `);
+
+  // Auto-check the preSelected if provided
+  if (preSelectedIdx != null) {
+    setTimeout(() => {
+      const cb = document.getElementById(`combineCheck-${preSelectedIdx}`);
+      if (cb) cb.checked = true;
+      const rb = document.querySelector(`input[name="combineBase"][value="${preSelectedIdx}"]`);
+      if (rb) rb.checked = true;
+    }, 50);
+  }
+};
+
+window._toggleCombineRow = function(idx) {
+  const cb = document.getElementById(`combineCheck-${idx}`);
+  if (cb) cb.checked = !cb.checked;
+};
+
+window._onCombineBaseChange = function(idx, event) {
+  // Auto-check the checkbox when selecting as base
+  const cb = document.getElementById(`combineCheck-${idx}`);
+  if (cb) cb.checked = true;
+};
+
+window._doCombineDeliverables = async function(leadId) {
+  const checked = [...document.querySelectorAll('#combineRowList input[type="checkbox"]:checked')].map(cb => parseInt(cb.value));
+  const baseEl = document.querySelector('#combineRowList input[name="combineBase"]:checked');
+  const baseIdx = baseEl ? parseInt(baseEl.value) : null;
+  const errBox = document.getElementById('combineError');
+
+  if (checked.length < 2) {
+    errBox.textContent = 'Selecteer minimaal 2 deliverables om te combineren.';
+    errBox.style.display = 'block';
+    return;
+  }
+  if (baseIdx === null || !checked.includes(baseIdx)) {
+    errBox.textContent = 'Selecteer welke deliverable de basis website is (radio button).';
+    errBox.style.display = 'block';
+    return;
+  }
+  errBox.style.display = 'none';
+
+  const injectIdxs = checked.filter(i => i !== baseIdx);
+  const confirmBtn = document.querySelector('#combineRowList')?.closest('[style]')?.querySelector('button.btn-primary');
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Combineren...'; }
+
+  try {
+    const res = await api(`/api/leads/${leadId}/deliverables/combine`, {
+      method: 'POST',
+      body: JSON.stringify({ baseIdx, injectIdxs })
+    });
+    if (!res?.ok && !res?.combinedServices) throw new Error(res?.error || 'Combineren mislukt');
+
+    const lead = (state.leads || []).find(l => l.id === leadId);
+    if (lead && res.deliverables) lead.agentDeliverables = res.deliverables;
+
+    closeModal();
+    toast(`Gecombineerd: ${(res.combinedServices || []).join(' + ')}`, 'success');
+    renderProjectPage().then(() => switchProjectTab('building'));
+  } catch(e) {
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = '<i class="ti ti-layers-intersect"></i> Combineer geselecteerde'; }
+    if (errBox) { errBox.textContent = e.message || 'Combineren mislukt'; errBox.style.display = 'block'; }
   }
 };
 

@@ -5919,6 +5919,125 @@ app.delete('/api/leads/:id/deliverables/:dIdx', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// Manual combine deliverables
+app.post('/api/leads/:id/deliverables/combine', requireAdmin, async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const li = leads.findIndex(l => l.id === req.params.id);
+  if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+
+  const { baseIdx, injectIdxs } = req.body;
+  if (typeof baseIdx !== 'number' || !Array.isArray(injectIdxs) || injectIdxs.length === 0) {
+    return res.status(400).json({ error: 'baseIdx (number) en injectIdxs (array) zijn vereist' });
+  }
+
+  const deliverables = leads[li].agentDeliverables || [];
+  const baseDel = deliverables[baseIdx];
+  if (!baseDel || baseDel.type !== 'code' || !baseDel.html) {
+    return res.status(400).json({ error: 'Basis deliverable moet een HTML build zijn' });
+  }
+
+  try {
+    let combinedHtml = baseDel.html;
+    const injectedServices = [baseDel.service];
+
+    for (const idx of injectIdxs) {
+      const injectDel = deliverables[idx];
+      if (!injectDel || injectDel.type !== 'code' || !injectDel.html) continue;
+      const svcLower = (injectDel.service || '').toLowerCase();
+
+      if (/chatbot|chat/.test(svcLower)) {
+        const widgetCode = await aiCall(`From this chatbot HTML page, extract ONLY the floating chat widget code.
+Return ONLY the <style>, <div>, and <script> elements for the floating chat button and panel.
+Do NOT include <!DOCTYPE>, <html>, <head>, <body>, or full-page wrapper tags.
+The snippet must work when pasted before </body> in another HTML page.
+Return raw HTML/CSS/JS only — no markdown, no explanation.
+
+CHATBOT HTML:
+${injectDel.html.substring(0, 8000)}`).catch(() => '');
+
+        if (widgetCode && widgetCode.trim().length > 50) {
+          combinedHtml = combinedHtml.includes('<!-- CHATBOT_INJECT -->')
+            ? combinedHtml.replace('<!-- CHATBOT_INJECT -->', widgetCode)
+            : combinedHtml.replace('</body>', `\n${widgetCode}\n</body>`);
+          injectDel.embedded = true;
+          injectDel.embeddedIn = baseDel.id;
+          injectedServices.push(injectDel.service);
+          console.log('[Combine] Chatbot widget injected');
+        }
+      } else if (/boek|booking|reserv|agenda/.test(svcLower)) {
+        const bookingSection = await aiCall(`From this booking system HTML page, extract ONLY the booking form section content.
+Return a self-contained <section id="boeken"> element containing: service selection, calendar, time slots, and contact form.
+Include all <style> blocks needed for this section.
+Do NOT include the full page header, nav, footer, or page wrapper.
+Do NOT include <!DOCTYPE>, <html>, <head>, <body> tags.
+Return raw HTML only — no markdown, no explanation.
+
+BOOKING HTML:
+${injectDel.html.substring(0, 8000)}`).catch(() => '');
+
+        if (bookingSection && bookingSection.trim().length > 100) {
+          const cleanSection = /^\s*<section/i.test(bookingSection.trim())
+            ? bookingSection.trim()
+            : `<section id="boeken" style="padding:60px 20px;background:#f9fafb">\n${bookingSection.trim()}\n</section>`;
+
+          combinedHtml = combinedHtml.includes('<!-- BOOKING_INJECT -->')
+            ? combinedHtml.replace('<!-- BOOKING_INJECT -->', cleanSection)
+            : combinedHtml.includes('id="boeken"')
+              ? combinedHtml.replace(/(<[^>]+id="boeken"[^>]*>)([\s\S]*?)(<\/section>)/i, cleanSection)
+              : combinedHtml.replace('</body>', `\n${cleanSection}\n</body>`);
+
+          if (!combinedHtml.includes('href="#boeken"')) {
+            combinedHtml = combinedHtml
+              .replace(/(<a[^>]*>\s*Contact\s*<\/a>)/i, '<a href="#boeken">Boeken</a> $1')
+              .replace(/(<li[^>]*>\s*<a[^>]*>\s*Contact\s*<\/a>\s*<\/li>)/i, '<li><a href="#boeken">Boeken</a></li>$1');
+          }
+          injectDel.embedded = true;
+          injectDel.embeddedIn = baseDel.id;
+          injectedServices.push(injectDel.service);
+          console.log('[Combine] Booking section injected');
+        }
+      } else {
+        // Generic: inject as a new section before </body>
+        const genericSection = await aiCall(`From this HTML page, extract the main content as a self-contained <section> element.
+Return a single <section> with all needed inline <style> and <script>.
+Do NOT include <!DOCTYPE>, <html>, <head>, <body> tags.
+Return raw HTML only — no markdown, no explanation.
+
+HTML:
+${injectDel.html.substring(0, 8000)}`).catch(() => '');
+
+        if (genericSection && genericSection.trim().length > 50) {
+          combinedHtml = combinedHtml.replace('</body>', `\n${genericSection.trim()}\n</body>`);
+          injectDel.embedded = true;
+          injectDel.embeddedIn = baseDel.id;
+          injectedServices.push(injectDel.service);
+          console.log('[Combine] Generic section injected:', injectDel.service);
+        }
+      }
+    }
+
+    // Save combined HTML to disk
+    const companySlug = (leads[li].companyName || 'bedrijf')
+      .toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').substring(0, 20);
+    const sitesDir = path.join(__dirname, 'public', 'sites', companySlug);
+    if (!fs.existsSync(sitesDir)) fs.mkdirSync(sitesDir, { recursive: true });
+    const websiteFilename = (baseDel.url || '').split('/').pop() || 'website.html';
+    fs.writeFileSync(path.join(sitesDir, websiteFilename), combinedHtml, 'utf8');
+
+    baseDel.html = combinedHtml;
+    baseDel.primary = true;
+    baseDel.combinedServices = injectedServices;
+
+    addLeadHistory(leads, req.params.id, { event: 'deliverablesManualCombined', label: `Deliverables handmatig gecombineerd: ${injectedServices.join(' + ')}` });
+    writeJSON('leads.json', leads);
+
+    res.json({ ok: true, deliverables: leads[li].agentDeliverables, combinedServices: injectedServices });
+  } catch (err) {
+    console.error('[Combine] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Reset portal token
 app.post('/api/leads/:id/portal/reset-token', requireAdmin, (req, res) => {
   const leads = readJSON('leads.json') || [];
