@@ -9296,6 +9296,8 @@ async function checkReplies() {
     let bouncesFound = 0;
     const newNames = [];
     const aiReplyQueue = [];
+    // Global set of messageIds already matched this session — prevents one message matching multiple leads
+    const sessionProcessed = new Set();
 
     for (const msg of messages) {
       const headerPart = msg.parts.find(p => p.which === 'HEADER');
@@ -9312,73 +9314,100 @@ async function checkReplies() {
       if (!/^re:/i.test(subject)) continue;
       const cleanSubject = subject.replace(/^(re:\s*)+/i, '').trim();
 
-      console.log(`[IMAP] Reply email: from="${senderEmail}", subject="${rawSubject}"`);
+      console.log(`[IMAP] Reply email: from="${senderEmail}", subject="${rawSubject}", msgId="${msgId}"`);
+
+      // Skip if already matched this session (prevents one message matching multiple leads)
+      if (sessionProcessed.has(msgId)) {
+        console.log(`[IMAP] Skipping - already matched this session: ${msgId}`);
+        continue;
+      }
 
       // Pre-compute sender domain for Strategy 4
       const fromDomain = (senderEmail.split('@')[1] || '').toLowerCase().trim();
 
-      const matched = sentLeads.find(l => {
-        // Skip already-processed message IDs
-        if (l.processedMessageIds?.includes(msgId)) return false;
+      let matched = null;
+      let matchStrategy = '';
 
-        // ── Strategy 1: sender email matches lead contact email (most reliable) ──
+      // ── Pass 1: exact email match — wins immediately, no fallback ──
+      for (const l of sentLeads) {
+        if (l.processedMessageIds?.includes(msgId)) continue;
         if (senderEmail && l.contactEmail &&
             senderEmail === l.contactEmail.toLowerCase().trim()) {
-          console.log(`[IMAP]   → Match via contactEmail: ${l.companyName} (${l.contactEmail})`);
-          return true;
+          matched = l;
+          matchStrategy = 'strategy 1 (exact email)';
+          console.log(`[IMAP] Matched to: ${l.companyName} via ${matchStrategy}`);
+          break; // stop immediately — exact match found
         }
+      }
 
-        // ── Strategy 2: company name appears in reply subject ──
-        const companyLower = (l.companyName || '').toLowerCase().trim();
-        if (companyLower.length >= 3 && cleanSubject.includes(companyLower)) {
-          console.log(`[IMAP]   → Match via bedrijfsnaam in onderwerp: ${l.companyName}`);
-          return true;
-        }
+      // ── Pass 2: fuzzy matching — only if no exact email match ──
+      if (!matched) {
+        for (const l of sentLeads) {
+          if (l.processedMessageIds?.includes(msgId)) continue;
 
-        // ── Strategy 3: reply subject matches any sent subject (all variants) ──
-        const possibleSubjects = [
-          l.email?.subject,
-          l.emailA?.subject,
-          l.emailB?.subject,
-          ...(Array.isArray(l.subjectOptions) ? l.subjectOptions : [])
-        ].filter(Boolean).map(s => s.toLowerCase().trim());
+          // Strategy 2: company name appears in reply subject
+          const companyLower = (l.companyName || '').toLowerCase().trim();
+          if (companyLower.length >= 3 && cleanSubject.includes(companyLower)) {
+            matched = l;
+            matchStrategy = 'strategy 2 (bedrijfsnaam in onderwerp)';
+            console.log(`[IMAP] Matched to: ${l.companyName} via ${matchStrategy}`);
+            break;
+          }
 
-        for (const orig of possibleSubjects) {
-          if (cleanSubject === orig ||
-              (orig.length >= 10 && cleanSubject.includes(orig.substring(0, 30))) ||
-              (cleanSubject.length >= 10 && orig.includes(cleanSubject.substring(0, 30)))) {
-            console.log(`[IMAP]   → Match via onderwerp: ${l.companyName} (orig: "${orig}")`);
-            return true;
+          // Strategy 3: reply subject matches any sent subject
+          const possibleSubjects = [
+            l.email?.subject,
+            l.emailA?.subject,
+            l.emailB?.subject,
+            ...(Array.isArray(l.subjectOptions) ? l.subjectOptions : [])
+          ].filter(Boolean).map(s => s.toLowerCase().trim());
+
+          let subjectMatched = false;
+          for (const orig of possibleSubjects) {
+            if (cleanSubject === orig ||
+                (orig.length >= 10 && cleanSubject.includes(orig.substring(0, 30))) ||
+                (cleanSubject.length >= 10 && orig.includes(cleanSubject.substring(0, 30)))) {
+              subjectMatched = true;
+              break;
+            }
+          }
+          if (subjectMatched) {
+            matched = l;
+            matchStrategy = 'strategy 3 (onderwerp match)';
+            console.log(`[IMAP] Matched to: ${l.companyName} via ${matchStrategy}`);
+            break;
+          }
+
+          // Strategy 4: sender domain matches lead website or email domain
+          if (fromDomain.length >= 4) {
+            const websiteHost = (l.websiteUrl || '')
+              .replace(/^https?:\/\/(www\.)?/, '').toLowerCase().split('/')[0].split('?')[0];
+            if (websiteHost && websiteHost === fromDomain) {
+              matched = l;
+              matchStrategy = 'strategy 4 (website domein)';
+              console.log(`[IMAP] Matched to: ${l.companyName} via ${matchStrategy}`);
+              break;
+            }
+            const contactDomain = (l.contactEmail || '').split('@')[1]?.toLowerCase().trim() || '';
+            if (contactDomain && contactDomain === fromDomain) {
+              matched = l;
+              matchStrategy = 'strategy 4 (email domein)';
+              console.log(`[IMAP] Matched to: ${l.companyName} via ${matchStrategy}`);
+              break;
+            }
           }
         }
-
-        // ── Strategy 4: sender domain matches lead's website domain or email domain ──
-        if (fromDomain.length >= 4) {
-          // Strip protocol/www to get bare hostname
-          const websiteHost = (l.websiteUrl || '')
-            .replace(/^https?:\/\/(www\.)?/, '').toLowerCase().split('/')[0].split('?')[0];
-          if (websiteHost && websiteHost === fromDomain) {
-            console.log(`[IMAP]   → Match via website domein: ${l.companyName} (${l.websiteUrl})`);
-            return true;
-          }
-          // Contact email on same domain (catches info@X.nl when we only stored contact@X.nl)
-          const contactDomain = (l.contactEmail || '').split('@')[1]?.toLowerCase().trim() || '';
-          if (contactDomain && contactDomain === fromDomain) {
-            console.log(`[IMAP]   → Match via email domein: ${l.companyName} (${l.contactEmail} ~ ${senderEmail})`);
-            return true;
-          }
-        }
-
-        return false;
-      });
+      }
 
       if (!matched) {
         console.log(`[IMAP]   → Geen match gevonden voor email van "${senderEmail}"`);
-        // Log the leads we checked against for debugging
         if (sentLeads.length <= 20) {
           sentLeads.forEach(l => console.log(`[IMAP]     Geen match: ${l.companyName} | contactEmail: ${l.contactEmail || '—'} | subject: ${l.email?.subject || l.emailA?.subject || '—'}`));
         }
       }
+
+      // Mark as processed immediately — no other lead can claim this message
+      if (matched) sessionProcessed.add(msgId);
 
       if (matched) {
         // Mark as read in Gmail (never delete)
