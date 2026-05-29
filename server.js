@@ -7664,6 +7664,7 @@ async function checkWebsite(url) {
     const hasBooking  = /\b(boek|reserveer|afspraak|appointment|book|reservat)/i.test(html);
     const hasShop     = /\b(shop|winkel|bestel|kopen|cart|basket|checkout)/i.test(html);
     const hasCTA      = /\b(contact|contact us|meer info|neem contact|bel ons|call us)/i.test(html);
+    const hasChatbot  = /tawk\.to|crisp\.chat|intercom|drift\.com|tidio|hubspot.*chat|chatbot|livechat|freshchat|zendesk.*chat|zoho.*salesiq|messenger.*chat/i.test(html);
     const speedScore  = ms < 1500 ? 9 : ms < 3000 ? 7 : ms < 5000 ? 5 : 3;
 
     const problems = [];
@@ -7671,11 +7672,12 @@ async function checkWebsite(url) {
     if (!hasViewport) problems.push('Geen mobile-optimalisatie gevonden');
     if (!hasHttps) problems.push('Geen HTTPS — onveilige verbinding');
     if (!hasBooking && !hasShop) problems.push('Geen duidelijk boekings- of bestelsysteem');
+    if (!hasChatbot) problems.push('Geen chatbot of live chat op de website');
     if (!hasCTA) problems.push('Geen duidelijke call-to-action op de pagina');
 
     console.log(`[Agent2] ${url} — status: ${res.status}, ${ms}ms, speedScore: ${speedScore}`);
 
-    return { reachable: true, loadTimeMs: ms, speedScore, hasHttps, hasMobileOptimization: hasViewport, hasBookingSystem: hasBooking, hasShop, hasCTA, problems };
+    return { reachable: true, loadTimeMs: ms, speedScore, hasHttps, hasMobileOptimization: hasViewport, hasBookingSystem: hasBooking, hasChatbot, hasShop, hasCTA, problems };
   } catch (err) {
     return { reachable: false, notes: `Website niet bereikbaar: ${err.message}` };
   }
@@ -7838,32 +7840,33 @@ Website problemen: ${website.problems?.join(', ') || 'geen'}
 
   // Only recommend services agents can build 100% automatically (HTML page or written document)
   const AUTO_BUILDABLE = new Set([
-    // HTML builds — fully generated pages
-    'website bouwen', 'online boekingssysteem integreren', 'ai chatbot voor website',
-    'ai landingspagina', 'ai faq assistent', 'ai kennisbank systeem',
-    'ai onboarding systeem', 'chatbot script voor website',
-    'ai offerte generator',
-    // Written documents / copy — generated text output
-    'nieuwsbrief template ontwerpen', 'over ons pagina schrijven',
-    'faq pagina schrijven', 'website teksten schrijven', 'seo teksten optimaliseren',
-    'blog artikelen schrijven', 'email nieuwsbrief reeks', 'email autoresponder reeks',
+    // TIER 1 — always recommend first (core website + content builds)
+    'professionele website bouwen', 'website bouwen', 'online boekingssysteem integreren',
+    'ai chatbot voor website', 'ai landingspagina',
+    'website teksten schrijven', 'seo teksten optimaliseren',
+    // TIER 2 — recommend when relevant to the lead's needs
+    'ai faq assistent', 'ai kennisbank systeem', 'ai onboarding systeem',
+    'email autoresponder reeks', 'blog artikelen schrijven', 'over ons pagina schrijven',
+    'faq pagina schrijven', 'privacy policy + algemene voorwaarden',
+    'ai offerte generator', 'chatbot script voor website',
+    'nieuwsbrief template ontwerpen', 'email nieuwsbrief reeks', 'product beschrijvingen',
+    'google bedrijfsprofiel content',
+    // TIER 3 — only when specifically relevant to the lead's niche
     'ai content voor social media', 'maandelijkse content kalender',
-    'instagram reels scripts', 'ai tiktok content systeem',
-    'ai youtube scripts', 'ai video content creatie', 'product beschrijvingen',
-    'privacy policy + algemene voorwaarden', 'ai keyword research',
-    'google bedrijfsprofiel content', 'concurrentieanalyse rapport',
-    'social media audit', 'ai branding kit generatie', 'ai sales opvolging',
-    'email marketing automatisering',
-    // Removed: 'lokale seo optimalisatie' (monthly, requires ongoing manual work)
-    // Removed: 'verlaten winkelwagen emails' (requires e-commerce platform access)
-    // Removed: 'webshop opzetten' (requires manual platform setup)
+    'instagram reels scripts', 'ai tiktok content systeem', 'ai youtube scripts',
+    // Other fully auto-buildable outputs
+    'ai keyword research', 'concurrentieanalyse rapport', 'social media audit',
+    'ai branding kit generatie', 'ai sales opvolging', 'email marketing automatisering',
+    'ai video content creatie',
   ]);
 
-  // Services that should NEVER be recommended — require manual setup, platform access, or ongoing human work
+  // Services that should NEVER be recommended — require manual setup, platform access, paid ad accounts, or ongoing human work
   const NEVER_RECOMMEND = new Set([
     'lokale seo optimalisatie', 'webshop opzetten', 'verlaten winkelwagen emails',
     'google ads beheer', 'facebook ads beheer', 'meta ads campagne',
     'retargeting campagne opzetten', 'google shopping campagnes',
+    'reputatie management', 'whatsapp automatisering', 'ai telefonische assistent',
+    'facebook pixel & conversies', 'google ads remarketing',
   ]);
   const buildableServices = services.filter(s => {
     const key = (s.name || '').toLowerCase().trim();
@@ -7890,10 +7893,15 @@ Betaalde ads: ${social.runningAds ? 'ja' : 'nee'}
 Beschikbare diensten (kies de 2-3 meest relevante voor dit specifieke bedrijf):
 ${servicesList}
 
-Kies ALLEEN diensten die echt passen bij de problemen van dit bedrijf (niche, locatie, sociale media situatie).
-Kies 1-2 maandelijkse + eventueel 1 eenmalige dienst als logisch startpunt.
-STRIKT VEREIST: Gebruik ALLEEN de exacte dienstnamen uit de bovenstaande lijst. Verzin geen andere diensten.
-NOOIT aanbevelen: webshops opzetten, SEO-beheer, advertentiebeheer (Google/Meta Ads), of diensten die externe platformtoegang, handmatige instellingen of API-koppelingen vereisen.
+PRIORITEIT: Focus primair op het aanbevelen van website builds, chatbots en geschreven content. Deze leveren direct tastbare waarde en kunnen volledig automatisch worden gebouwd.
+
+REGELS voor dienstaanbeveling:
+- Als het bedrijf geen website heeft of de website niet bereikbaar is: ALTIJD een website build als eerste dienst aanbevelen.
+- Als er geen online boekingssysteem is bij een servicebedrijf (kapper, fysiotherapeut, restaurant, etc.): boekingssysteem aanbevelen.
+- Als er geen chatbot op de website staat: AI chatbot voor website aanbevelen.
+- Kies 1-2 diensten die een CONCREET, ZICHTBAAR resultaat opleveren dat de klant morgen al kan gebruiken.
+- STRIKT VEREIST: Gebruik ALLEEN de exacte dienstnamen uit de bovenstaande lijst. Verzin geen andere diensten.
+- NOOIT aanbevelen: advertentiebeheer (Google/Meta Ads), webshops opzetten, reputatie management, WhatsApp automatisering, of diensten die externe platformtoegang of handmatige instellingen vereisen.
 
 Geef JSON:
 {
@@ -7939,6 +7947,34 @@ Geef JSON:
     }
   }
 
+  // Website gap bonuses — businesses with obvious digital needs score higher
+  const wsBonus = [];
+  if (!website.reachable) {
+    opportunity.score = Math.min(10, (opportunity.score || 6.5) + 2.0);
+    wsBonus.push('+2.0 geen/onbereikbare website');
+  } else if (website.speedScore <= 3) {
+    opportunity.score = Math.min(10, (opportunity.score || 6.5) + 1.5);
+    wsBonus.push('+1.5 zeer trage website');
+  }
+  if (!website.hasBookingSystem) {
+    opportunity.score = Math.min(10, (opportunity.score || 6.5) + 1.5);
+    wsBonus.push('+1.5 geen boekingssysteem');
+  }
+  if (!website.hasChatbot) {
+    opportunity.score = Math.min(10, (opportunity.score || 6.5) + 1.5);
+    wsBonus.push('+1.5 geen chatbot');
+  }
+  if (!website.hasCTA) {
+    opportunity.score = Math.min(10, (opportunity.score || 6.5) + 1.0);
+    wsBonus.push('+1.0 geen duidelijke CTA');
+  }
+  if (!website.hasMobileOptimization) {
+    opportunity.score = Math.min(10, (opportunity.score || 6.5) + 0.5);
+    wsBonus.push('+0.5 niet mobiel responsive');
+  }
+  opportunity.score = Math.min(10, opportunity.score || 6.5);
+  if (wsBonus.length > 0) console.log(`  [WebGap] ${wsBonus.join(', ')}`);
+
   _runState.currentAgent = 'Agent 7 — Concurrent analyzer';
   console.log(`  [Agent 7] Concurrentie analyseren...`);
   let competitors;
@@ -7966,11 +8002,43 @@ Analyseer wat die concurrenten waarschijnlijk beter doen aan online marketing.
   const topProblem = opportunity.problems?.[0] || (language === 'nl' ? 'groei online aanwezigheid' : language === 'de' ? 'Online-Präsenz verbessern' : language === 'fr' ? 'améliorer la présence en ligne' : language === 'it' ? 'migliorare la presenza online' : 'growing online presence');
   const topService = opportunity.recommendedServices?.[0]?.name || services[0]?.name || 'AI-marketing';
   const loadSec = website.loadTimeMs ? (website.loadTimeMs / 1000).toFixed(1) : null;
-  const opener  = language === 'nl' ? (social.emailOpener || `Zag ${lead.companyName} online en merkte ${topProblem.toLowerCase()}`) :
-    language === 'de' ? `Ich bin auf ${lead.companyName} gestoßen und habe bemerkt: ${topProblem.toLowerCase()}` :
-    language === 'fr' ? `En découvrant ${lead.companyName}, j'ai remarqué que ${topProblem.toLowerCase()}` :
-    language === 'it' ? `Ho trovato ${lead.companyName} online e ho notato che ${topProblem.toLowerCase()}` :
-    (social.emailOpenerEn || `Came across ${lead.companyName} online and noticed ${topProblem.toLowerCase()}`);
+
+  // Determine the most specific website gap for the email opening
+  const wsGapNL = !website.reachable ? 'geen professionele website heeft'
+    : !website.hasBookingSystem ? 'geen online boekingssysteem heeft'
+    : !website.hasChatbot ? 'geen chatbot of live chat op de website heeft'
+    : !website.hasMobileOptimization ? 'de website niet goed werkt op mobiel'
+    : null;
+  const wsGapEN = !website.reachable ? 'doesn\'t have a professional website'
+    : !website.hasBookingSystem ? 'has no online booking system'
+    : !website.hasChatbot ? 'has no chatbot on the website'
+    : !website.hasMobileOptimization ? 'the website doesn\'t work well on mobile'
+    : null;
+  const wsGapDE = !website.reachable ? 'keine professionelle Website hat'
+    : !website.hasBookingSystem ? 'kein Online-Buchungssystem hat'
+    : !website.hasChatbot ? 'keinen Chatbot auf der Website hat'
+    : !website.hasMobileOptimization ? 'die Website auf Mobilgeräten nicht gut funktioniert'
+    : null;
+  const wsGapFR = !website.reachable ? 'n\'a pas de site web professionnel'
+    : !website.hasBookingSystem ? 'n\'a pas de système de réservation en ligne'
+    : !website.hasChatbot ? 'n\'a pas de chatbot sur son site web'
+    : !website.hasMobileOptimization ? 'le site web ne fonctionne pas bien sur mobile'
+    : null;
+  const wsGapIT = !website.reachable ? 'non ha un sito web professionale'
+    : !website.hasBookingSystem ? 'non ha un sistema di prenotazione online'
+    : !website.hasChatbot ? 'non ha un chatbot sul sito web'
+    : !website.hasMobileOptimization ? 'il sito web non funziona bene su mobile'
+    : null;
+
+  const opener = language === 'nl'
+    ? (wsGapNL ? `Uw website bekeken en gezien dat ${lead.companyName} ${wsGapNL}` : (social.emailOpener || `Zag ${lead.companyName} online en merkte ${topProblem.toLowerCase()}`))
+    : language === 'de'
+    ? (wsGapDE ? `Ihre Website besucht und festgestellt, dass ${lead.companyName} ${wsGapDE}` : `Ich bin auf ${lead.companyName} gestoßen und habe bemerkt: ${topProblem.toLowerCase()}`)
+    : language === 'fr'
+    ? (wsGapFR ? `En visitant votre site, j'ai constaté que ${lead.companyName} ${wsGapFR}` : `En découvrant ${lead.companyName}, j'ai remarqué que ${topProblem.toLowerCase()}`)
+    : language === 'it'
+    ? (wsGapIT ? `Ho visitato il vostro sito e notato che ${lead.companyName} ${wsGapIT}` : `Ho trovato ${lead.companyName} online e ho notato che ${topProblem.toLowerCase()}`)
+    : (wsGapEN ? `Visited ${lead.companyName}'s website and noticed it ${wsGapEN}` : (social.emailOpenerEn || `Came across ${lead.companyName} online and noticed ${topProblem.toLowerCase()}`));
 
   const todayNL   = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
   const seasonal  = getSeasonalContext(language);
@@ -8452,7 +8520,8 @@ async function runFindLeadsJob(overrides = {}, manual = false) {
     const expanded = targetNiches.flatMap(n => SUB_NICHES[n] || [n]);
     nichesList = expanded.join(', ');
   } else {
-    nichesList = Object.values(SUB_NICHES).flat().join(', ');
+    // Default to local service businesses that typically lack websites, chatbots, and booking systems
+    nichesList = 'restaurant, kapper, schoonheidssalon, fysiotherapeut, tandarts, advocaat, accountant, makelaar, aannemer, loodgieter, elektricien, garage, dierenarts, personal trainer, fotograaf';
   }
 
 
@@ -8465,8 +8534,9 @@ async function runFindLeadsJob(overrides = {}, manual = false) {
     'Sydney', 'Barcelona', 'Madrid', 'Vienna', 'Zurich'
   ];
   const SEARCH_NICHES_WEB = [
-    'beauty salon', 'restaurant', 'fitness studio', 'retail shop',
-    'wellness spa', 'bakery', 'photography studio', 'interior design'
+    'restaurant', 'kapper', 'schoonheidssalon', 'fysiotherapeut', 'tandarts',
+    'makelaar', 'aannemer', 'loodgieter', 'garage', 'personal trainer',
+    'fotograaf', 'advocaat', 'accountant', 'dierenarts', 'elektricien',
   ];
 
   const BATCH_SIZE = 5;
