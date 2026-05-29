@@ -3890,7 +3890,8 @@ async function renderProjectPage() {
             : '';
 
       const htmlCount = deliverables.filter(d2 => d2.type === 'code' && d2.html && d2.status !== 'error' && !d2.embedded).length;
-      const combineBtn = isHtml && !d.embedded && htmlCount >= 2 && isAdmin()
+      const eligibleCount = deliverables.filter(d2 => d2.status !== 'error' && !d2.embedded && (d2.html || d2.content || d2.instructions)).length;
+      const combineBtn = isHtml && !d.embedded && htmlCount >= 1 && eligibleCount >= 2 && isAdmin()
         ? `<button class="btn btn-ghost btn-sm" onclick="openCombineModal('${esc(lead.id)}',${i})"><i class="ti ti-layers-intersect"></i> Combineer</button>`
         : '';
 
@@ -3976,7 +3977,7 @@ async function renderProjectPage() {
         <div style="height:1px;background:var(--border);margin-bottom:12px"></div>
         ${isAdmin() && pendingCount > 0 ? `<button class="btn btn-primary btn-sm" style="width:100%;margin-bottom:8px" onclick="approveAllDeliverables('${esc(lead.id)}')"><i class="ti ti-checks"></i> Alles goedkeuren</button>` : ''}
         ${isAdmin() && approvedCount > 0 ? `<button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px" onclick="sendAllDeliverablesToClient('${esc(lead.id)}')"><i class="ti ti-send"></i> Stuur alles naar klant</button>` : ''}
-        ${isAdmin() && deliverables.filter(d => d.type === 'code' && d.html && d.status !== 'error' && !d.embedded).length >= 2 ? `<button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px" onclick="openCombineModal('${esc(lead.id)}')"><i class="ti ti-layers-intersect"></i> Combineer deliverables</button>` : ''}
+        ${isAdmin() && deliverables.filter(d => d.type === 'code' && d.html && d.status !== 'error' && !d.embedded).length >= 1 && deliverables.filter(d => d.status !== 'error' && !d.embedded && (d.html || d.content || d.instructions)).length >= 2 ? `<button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px" onclick="openCombineModal('${esc(lead.id)}')"><i class="ti ti-layers-intersect"></i> Combineer deliverables</button>` : ''}
         ${isAdmin() ? `<button class="btn btn-ghost btn-sm" style="width:100%" onclick="buildAllServicesForLead('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Opnieuw bouwen</button>` : ''}
       </div>` : '';
 
@@ -5419,16 +5420,41 @@ window.openCombineModal = function(leadId, preSelectedIdx) {
   const lead = (state.leads || []).find(l => l.id === leadId);
   if (!lead) return;
   const deliverables = lead.agentDeliverables || [];
-  const htmlDeliverables = deliverables
-    .map((d, i) => ({ d, i }))
-    .filter(({ d }) => d.type === 'code' && d.html && d.status !== 'error' && !d.embedded);
 
-  if (htmlDeliverables.length < 2) {
-    toast('Je hebt minimaal 2 HTML deliverables nodig om te combineren.', 'error');
+  // All non-embedded deliverables with content are eligible
+  const eligible = deliverables
+    .map((d, i) => ({ d, i }))
+    .filter(({ d }) => d.status !== 'error' && !d.embedded && (d.html || d.content || d.instructions));
+
+  // HTML builds that can serve as the base website
+  const htmlEligible = eligible.filter(({ d }) => d.type === 'code' && d.html);
+
+  if (htmlEligible.length < 1) {
+    toast('Je hebt minimaal 1 HTML build nodig als basis om te combineren.', 'error');
+    return;
+  }
+  if (eligible.length < 2) {
+    toast('Je hebt minimaal 2 deliverables nodig om te combineren.', 'error');
     return;
   }
 
-  const rows = htmlDeliverables.map(({ d, i }) => `
+  function _combineLabel(d) {
+    const svc = (d.service || '').toLowerCase();
+    if (d.type === 'code') {
+      if (/chatbot|chat/.test(svc)) return '(widget)';
+      if (/boek|booking|reserv/.test(svc)) return '(sectie)';
+      return '(sectie)';
+    }
+    return '(sectie)';
+  }
+
+  const rows = eligible.map(({ d, i }) => {
+    const isHtml = d.type === 'code' && !!d.html;
+    const label = _combineLabel(d);
+    const typeTag = isHtml
+      ? `<span style="font-size:10px;background:#eef2ff;color:#4338ca;border-radius:4px;padding:1px 6px;font-weight:600">HTML</span>`
+      : `<span style="font-size:10px;background:var(--surface-2);color:var(--text-muted);border-radius:4px;padding:1px 6px">DOC</span>`;
+    return `
     <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--surface);cursor:pointer"
          id="combineRow-${i}" onclick="window._toggleCombineRow(${i})">
       <input type="checkbox" id="combineCheck-${i}" value="${i}"
@@ -5436,23 +5462,28 @@ window.openCombineModal = function(leadId, preSelectedIdx) {
         style="width:16px;height:16px;accent-color:var(--accent);flex-shrink:0"
         onclick="event.stopPropagation();window._toggleCombineRow(${i})">
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600;color:var(--text)">${esc(d.service)}</div>
-        ${d.primary ? `<div style="font-size:11px;color:#6366f1;font-weight:600">★ Eerder gecombineerd</div>` : ''}
+        <div style="font-size:13px;font-weight:600;color:var(--text)">${esc(d.service)} <span style="font-size:12px;color:var(--text-muted);font-weight:400">${label}</span></div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px;display:flex;gap:5px;align-items:center">
+          ${typeTag}
+          ${d.primary ? `<span style="color:#6366f1;font-weight:600">★ Eerder gecombineerd</span>` : ''}
+        </div>
       </div>
-      <div>
-        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);cursor:pointer"
+      ${isHtml ? `<div>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);cursor:pointer;white-space:nowrap"
                onclick="event.stopPropagation()">
           <input type="radio" name="combineBase" value="${i}" ${i === preSelectedIdx ? 'checked' : ''}
             style="accent-color:var(--accent)" onclick="window._onCombineBaseChange(${i},event)">
           Basis
         </label>
-      </div>
-    </div>`).join('');
+      </div>` : ''}
+    </div>`;
+  }).join('');
 
   openModal(`
     <div style="padding:24px;max-width:520px">
       <h3 style="margin:0 0 6px;font-size:17px;font-weight:700"><i class="ti ti-layers-intersect" style="margin-right:6px;color:var(--accent)"></i>Combineer deliverables</h3>
-      <p style="margin:0 0 18px;font-size:13px;color:var(--text-secondary)">Selecteer welke HTML builds samengevoegd worden. De <strong>basis</strong> is de hoofdpagina — de rest wordt er als sectie/widget in geïnjecteerd.</p>
+      <p style="margin:0 0 6px;font-size:13px;color:var(--text-secondary)">Selecteer alles wat samengevoegd moet worden tot één website. Kies daarna de <strong>basis</strong> (de HTML hoofdpagina).</p>
+      <p style="margin:0 0 14px;font-size:12px;color:var(--text-muted)">HTML builds worden als sectie/widget ingebouwd. Documenten worden omgezet naar een gestylde sectie op de pagina.</p>
       <div id="combineRowList">${rows}</div>
       <div id="combineError" style="display:none;margin-top:10px;padding:9px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:7px;font-size:13px;color:#dc2626"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
@@ -5463,16 +5494,6 @@ window.openCombineModal = function(leadId, preSelectedIdx) {
       </div>
     </div>
   `);
-
-  // Auto-check the preSelected if provided
-  if (preSelectedIdx != null) {
-    setTimeout(() => {
-      const cb = document.getElementById(`combineCheck-${preSelectedIdx}`);
-      if (cb) cb.checked = true;
-      const rb = document.querySelector(`input[name="combineBase"][value="${preSelectedIdx}"]`);
-      if (rb) rb.checked = true;
-    }, 50);
-  }
 };
 
 window._toggleCombineRow = function(idx) {
@@ -5497,8 +5518,13 @@ window._doCombineDeliverables = async function(leadId) {
     errBox.style.display = 'block';
     return;
   }
-  if (baseIdx === null || !checked.includes(baseIdx)) {
-    errBox.textContent = 'Selecteer welke deliverable de basis website is (radio button).';
+  if (baseIdx === null) {
+    errBox.textContent = 'Selecteer welke HTML build de basis website is (klik op Basis).';
+    errBox.style.display = 'block';
+    return;
+  }
+  if (!checked.includes(baseIdx)) {
+    errBox.textContent = 'De basis deliverable moet ook aangevinkt zijn.';
     errBox.style.display = 'block';
     return;
   }

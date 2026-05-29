@@ -5942,10 +5942,11 @@ app.post('/api/leads/:id/deliverables/combine', requireAdmin, async (req, res) =
 
     for (const idx of injectIdxs) {
       const injectDel = deliverables[idx];
-      if (!injectDel || injectDel.type !== 'code' || !injectDel.html) continue;
+      if (!injectDel) continue;
       const svcLower = (injectDel.service || '').toLowerCase();
+      const isHtmlDel = injectDel.type === 'code' && !!injectDel.html;
 
-      if (/chatbot|chat/.test(svcLower)) {
+      if (isHtmlDel && /chatbot|chat/.test(svcLower)) {
         const widgetCode = await aiCall(`From this chatbot HTML page, extract ONLY the floating chat widget code.
 Return ONLY the <style>, <div>, and <script> elements for the floating chat button and panel.
 Do NOT include <!DOCTYPE>, <html>, <head>, <body>, or full-page wrapper tags.
@@ -5964,7 +5965,7 @@ ${injectDel.html.substring(0, 8000)}`).catch(() => '');
           injectedServices.push(injectDel.service);
           console.log('[Combine] Chatbot widget injected');
         }
-      } else if (/boek|booking|reserv|agenda/.test(svcLower)) {
+      } else if (isHtmlDel && /boek|booking|reserv|agenda/.test(svcLower)) {
         const bookingSection = await aiCall(`From this booking system HTML page, extract ONLY the booking form section content.
 Return a self-contained <section id="boeken"> element containing: service selection, calendar, time slots, and contact form.
 Include all <style> blocks needed for this section.
@@ -5996,8 +5997,8 @@ ${injectDel.html.substring(0, 8000)}`).catch(() => '');
           injectedServices.push(injectDel.service);
           console.log('[Combine] Booking section injected');
         }
-      } else {
-        // Generic: inject as a new section before </body>
+      } else if (isHtmlDel) {
+        // Other HTML: extract main content as a section
         const genericSection = await aiCall(`From this HTML page, extract the main content as a self-contained <section> element.
 Return a single <section> with all needed inline <style> and <script>.
 Do NOT include <!DOCTYPE>, <html>, <head>, <body> tags.
@@ -6011,7 +6012,32 @@ ${injectDel.html.substring(0, 8000)}`).catch(() => '');
           injectDel.embedded = true;
           injectDel.embeddedIn = baseDel.id;
           injectedServices.push(injectDel.service);
-          console.log('[Combine] Generic section injected:', injectDel.service);
+          console.log('[Combine] HTML section injected:', injectDel.service);
+        }
+      } else {
+        // Non-HTML deliverable (document/strategy/text): convert content to styled HTML section
+        const rawContent = injectDel.content || injectDel.instructions || '';
+        if (!rawContent.trim()) { console.log('[Combine] Skipping empty non-HTML deliverable:', injectDel.service); continue; }
+
+        const docSection = await aiCall(`Convert this text document into a styled HTML <section> to embed in a website.
+Make it visually appealing with proper headings, readable typography, and clean layout.
+Use inline <style> within the section only — no external dependencies.
+Do NOT include <!DOCTYPE>, <html>, <head>, <body> tags.
+Return raw HTML <section> only — no markdown, no explanation.
+
+DOCUMENT: ${injectDel.service}
+CONTENT:
+${rawContent.substring(0, 6000)}`).catch(() => '');
+
+        if (docSection && docSection.trim().length > 100) {
+          const cleanDoc = /^\s*<section/i.test(docSection.trim())
+            ? docSection.trim()
+            : `<section style="padding:60px 20px;background:#f9fafb">\n${docSection.trim()}\n</section>`;
+          combinedHtml = combinedHtml.replace('</body>', `\n${cleanDoc}\n</body>`);
+          injectDel.embedded = true;
+          injectDel.embeddedIn = baseDel.id;
+          injectedServices.push(injectDel.service);
+          console.log('[Combine] Document section injected:', injectDel.service);
         }
       }
     }
@@ -7748,21 +7774,42 @@ Website problemen: ${website.problems?.join(', ') || 'geen'}
 
   // Only recommend services agents can build 100% automatically (HTML page or written document)
   const AUTO_BUILDABLE = new Set([
+    // HTML builds — fully generated pages
     'website bouwen', 'online boekingssysteem integreren', 'ai chatbot voor website',
     'ai landingspagina', 'ai faq assistent', 'ai kennisbank systeem',
-    'ai onboarding systeem', 'chatbot script voor website', 'email autoresponder reeks',
-    'ai offerte generator', 'nieuwsbrief template ontwerpen', 'over ons pagina schrijven',
+    'ai onboarding systeem', 'chatbot script voor website',
+    'ai offerte generator',
+    // Written documents / copy — generated text output
+    'nieuwsbrief template ontwerpen', 'over ons pagina schrijven',
     'faq pagina schrijven', 'website teksten schrijven', 'seo teksten optimaliseren',
-    'blog artikelen schrijven', 'email nieuwsbrief reeks', 'ai content voor social media',
-    'maandelijkse content kalender', 'instagram reels scripts', 'ai tiktok content systeem',
+    'blog artikelen schrijven', 'email nieuwsbrief reeks', 'email autoresponder reeks',
+    'ai content voor social media', 'maandelijkse content kalender',
+    'instagram reels scripts', 'ai tiktok content systeem',
     'ai youtube scripts', 'ai video content creatie', 'product beschrijvingen',
     'privacy policy + algemene voorwaarden', 'ai keyword research',
-    'lokale seo optimalisatie', 'google bedrijfsprofiel content', 'concurrentieanalyse rapport',
+    'google bedrijfsprofiel content', 'concurrentieanalyse rapport',
     'social media audit', 'ai branding kit generatie', 'ai sales opvolging',
-    'verlaten winkelwagen emails', 'email marketing automatisering',
+    'email marketing automatisering',
+    // Removed: 'lokale seo optimalisatie' (monthly, requires ongoing manual work)
+    // Removed: 'verlaten winkelwagen emails' (requires e-commerce platform access)
+    // Removed: 'webshop opzetten' (requires manual platform setup)
   ]);
-  const buildableServices = services.filter(s => AUTO_BUILDABLE.has((s.name || '').toLowerCase().trim()));
-  const servicesList = (buildableServices.length > 0 ? buildableServices : services)
+
+  // Services that should NEVER be recommended — require manual setup, platform access, or ongoing human work
+  const NEVER_RECOMMEND = new Set([
+    'lokale seo optimalisatie', 'webshop opzetten', 'verlaten winkelwagen emails',
+    'google ads beheer', 'facebook ads beheer', 'meta ads campagne',
+    'retargeting campagne opzetten', 'google shopping campagnes',
+  ]);
+  const buildableServices = services.filter(s => {
+    const key = (s.name || '').toLowerCase().trim();
+    return AUTO_BUILDABLE.has(key) && !NEVER_RECOMMEND.has(key);
+  });
+  // Fall back to all services minus the never-recommend ones if whitelist has no matches
+  const recommendableServices = buildableServices.length > 0
+    ? buildableServices
+    : services.filter(s => !NEVER_RECOMMEND.has((s.name || '').toLowerCase().trim()));
+  const servicesList = recommendableServices
     .map(s => `- ${s.name} (${s.billing}): €${s.price} — ${s.description}`).join('\n');
 
   let opportunity;
@@ -7781,7 +7828,8 @@ ${servicesList}
 
 Kies ALLEEN diensten die echt passen bij de problemen van dit bedrijf (niche, locatie, sociale media situatie).
 Kies 1-2 maandelijkse + eventueel 1 eenmalige dienst als logisch startpunt.
-BELANGRIJK: Kies ALLEEN diensten die volledig automatisch geleverd kunnen worden als HTML-pagina of geschreven document. Nooit diensten die handmatige advertentie-instellingen, API-koppelingen of toegang tot externe platforms vereisen.
+STRIKT VEREIST: Gebruik ALLEEN de exacte dienstnamen uit de bovenstaande lijst. Verzin geen andere diensten.
+NOOIT aanbevelen: webshops opzetten, SEO-beheer, advertentiebeheer (Google/Meta Ads), of diensten die externe platformtoegang, handmatige instellingen of API-koppelingen vereisen.
 
 Geef JSON:
 {
