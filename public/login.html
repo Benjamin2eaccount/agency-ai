@@ -344,7 +344,7 @@
   <script>
     // Redirect already-logged-in staff
     if (localStorage.getItem('agencyToken')) {
-      window.location.href = '/app';
+      window.location.href = '/app/dashboard';
     }
 
     // Guard against double-submit / re-click during the redirect window
@@ -452,7 +452,7 @@
         _redirecting = true; // block any further submits
         staffBtn.style.background = '#10b981';
         staffBtn.querySelector('.btn-text').textContent = '✓ Ingelogd';
-        setTimeout(() => { window.location.href = '/app'; }, 100);
+        setTimeout(() => { window.location.href = '/app/dashboard'; }, 100);
 
       } catch {
         staffError.textContent = 'Kan geen verbinding maken met de server.';
