@@ -29,6 +29,22 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS job_queue (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_type     TEXT NOT NULL,
+    status       TEXT DEFAULT 'pending',
+    priority     TEXT DEFAULT 'normal',
+    data         TEXT,
+    result       TEXT,
+    error        TEXT,
+    attempts     INTEGER DEFAULT 0,
+    created_at   TEXT DEFAULT (datetime('now')),
+    started_at   TEXT,
+    completed_at TEXT
+  )
+`);
+
 // Migrate existing flat JSON files into SQLite on first local run
 const JSON_FILES = [
   'leads.json', 'inbox.json', 'runs.json', 'stats.json',

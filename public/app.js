@@ -3147,6 +3147,10 @@ function switchProjectTab(tab) {
   if (tab === 'portaal') {
     initPortalServices(lead.id);
   }
+  if (tab === 'building') {
+    // Refresh queue status badge
+    apiJSON('/api/jobs').then(d => { if (d) window._jobQueueStatus = d; }).catch(() => {});
+  }
 }
 
 async function renderProjectPage() {
@@ -3876,6 +3880,12 @@ async function renderProjectPage() {
     const deliverables = lead.agentDeliverables || [];
     const running = !!(window._buildAllRunning && window._buildAllRunning[lead.id]);
     const progress = (window._buildAllProgress && window._buildAllProgress[lead.id]) || [];
+    // Show queue status badge (loaded async and stored in window._jobQueueStatus)
+    const queueStatus = window._jobQueueStatus;
+    const queueBadge = queueStatus && !running
+      ? (queueStatus.running ? `<span style="font-size:12px;background:#fef3c7;color:#d97706;border-radius:20px;padding:3px 10px;font-weight:600">⏳ Ander build bezig...</span>`
+      : queueStatus.queued  ? `<span style="font-size:12px;background:#eff6ff;color:#2563eb;border-radius:20px;padding:3px 10px;font-weight:600">📋 In wachtrij (#${queueStatus.queued})</span>`
+      : '') : '';
 
     const doneCount    = running ? progress.filter(p => p.status === 'done').length   : deliverables.filter(d => d.status !== 'error').length;
     const errorCount   = running ? progress.filter(p => p.status === 'error').length  : deliverables.filter(d => d.status === 'error').length;
@@ -3913,7 +3923,7 @@ async function renderProjectPage() {
         </div>
         <div style="font-size:12px;color:var(--text-secondary);margin-top:6px">${doneCount} van ${totalCount} klaar${errorCount > 0 ? ` · ${errorCount} mislukt` : ''}</div>
       </div>
-    ` : '';
+    ` : (queueBadge ? `<div style="margin-bottom:12px">${queueBadge}</div>` : '');
 
     // Live progress cards (during build)
     const liveCards = running && progress.length ? progress.filter(p => p && p.service).map(p => {

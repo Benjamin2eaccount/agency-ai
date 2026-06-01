@@ -332,6 +332,91 @@ function addNotification(type, title, body, leadId, link) {
 
 // ─── Outgoing webhook helper ──────────────────────────────────────────────────
 
+// ─── Job Queue ────────────────────────────────────────────────────────────────
+class JobQueue {
+  constructor() {
+    this._running = false;
+    this._queue   = []; // { jobId, jobType, fn, attempts }
+  }
+
+  // Add a job. Returns a Promise that resolves when the job completes.
+  add(jobType, fn, data = {}, priority = 'normal') {
+    let jobId;
+    try {
+      const { getDb } = require('./database');
+      const stmt = getDb().prepare(
+        'INSERT INTO job_queue (job_type, status, priority, data) VALUES (?, ?, ?, ?)'
+      );
+      jobId = stmt.run(jobType, 'pending', priority, JSON.stringify(data)).lastInsertRowid;
+    } catch {}
+
+    return new Promise((resolve, reject) => {
+      const entry = { jobId, jobType, fn, attempts: 0, resolve, reject };
+      if (priority === 'high') this._queue.unshift(entry);
+      else this._queue.push(entry);
+      this._process();
+    });
+  }
+
+  async _process() {
+    if (this._running || !this._queue.length) return;
+    this._running = true;
+    const job = this._queue.shift();
+
+    try {
+      this._update(job.jobId, 'running', { started_at: new Date().toISOString() });
+      const result = await job.fn();
+      this._update(job.jobId, 'completed', { result: JSON.stringify(result ?? null), completed_at: new Date().toISOString() });
+      broadcastWS('job_complete', { jobId: job.jobId, jobType: job.jobType });
+      job.resolve(result);
+    } catch (err) {
+      job.attempts++;
+      this._update(job.jobId, 'failed', { error: err.message, attempts: job.attempts });
+      if (job.attempts < 3) {
+        console.log(`[JobQueue] ${job.jobType} mislukt (poging ${job.attempts}/3), opnieuw proberen...`);
+        this._update(job.jobId, 'pending', {});
+        this._queue.unshift(job); // retry at front
+      } else {
+        console.error(`[JobQueue] ${job.jobType} definitief mislukt na 3 pogingen:`, err.message);
+        broadcastWS('job_failed', { jobId: job.jobId, jobType: job.jobType, error: err.message });
+        job.reject(err);
+      }
+    }
+
+    this._running = false;
+    setImmediate(() => this._process()); // process next without stack overflow
+  }
+
+  _update(jobId, status, fields = {}) {
+    if (!jobId) return;
+    try {
+      const { getDb } = require('./database');
+      const sets = ['status = ?', 'attempts = attempts + 0'];
+      const vals = [status];
+      if (fields.started_at)   { sets.push('started_at = ?');   vals.push(fields.started_at); }
+      if (fields.completed_at) { sets.push('completed_at = ?'); vals.push(fields.completed_at); }
+      if (fields.result)       { sets.push('result = ?');       vals.push(fields.result); }
+      if (fields.error)        { sets.push('error = ?');        vals.push(fields.error); }
+      if (fields.attempts !== undefined) { sets.push('attempts = ?'); vals.push(fields.attempts); }
+      vals.push(jobId);
+      getDb().prepare(`UPDATE job_queue SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    } catch {}
+  }
+
+  status() {
+    return { running: this._running, queued: this._queue.length, currentJob: this._queue[0]?.jobType || null };
+  }
+
+  recentJobs(limit = 20) {
+    try {
+      const { getDb } = require('./database');
+      return getDb().prepare('SELECT * FROM job_queue ORDER BY created_at DESC LIMIT ?').all(limit);
+    } catch { return []; }
+  }
+}
+
+const jobQueue = new JobQueue();
+
 async function fireWebhooks(event, payload) {
   const hooks = (readJSON('webhooks.json') || []).filter(h => h.active !== false && (h.events || []).includes(event));
   if (!hooks.length) return;
@@ -5525,6 +5610,15 @@ app.post('/api/leads/:id/build-all-services', requireAdmin, async (req, res) => 
 
   const sse = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
 
+  // Track this build in the job_queue table for visibility
+  let _buildJobId;
+  try {
+    const { getDb } = require('./database');
+    _buildJobId = getDb().prepare(
+      'INSERT INTO job_queue (job_type, status, data, started_at) VALUES (?, ?, ?, ?)'
+    ).run('html_build', 'running', JSON.stringify({ leadId: req.params.id }), new Date().toISOString()).lastInsertRowid;
+  } catch {}
+
   try {
     const leads    = readJSON('leads.json') || [];
     const settings = readJSON('settings.json') || {};
@@ -5911,7 +6005,10 @@ ${bookingDel.html.substring(0, 8000)}`).catch(() => '');
 
     sse({ type: 'all_done', count: toSave.length, deliverables: toSave });
     broadcastWS('build_complete', { leadId: req.params.id, count: toSave.length });
+    // Mark build job complete
+    try { if (_buildJobId) { const { getDb } = require('./database'); getDb().prepare("UPDATE job_queue SET status='completed', completed_at=? WHERE id=?").run(new Date().toISOString(), _buildJobId); } } catch {}
   } catch (err) {
+    try { if (_buildJobId) { const { getDb } = require('./database'); getDb().prepare("UPDATE job_queue SET status='failed', error=? WHERE id=?").run(err.message, _buildJobId); } } catch {}
     sse({ type: 'error', service: '', message: err.message });
   }
   res.end();
@@ -9001,13 +9098,19 @@ CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
 app.post('/api/find-leads', requireAdmin, async (req, res) => {
   try {
     const overrides = req.body || {};
-    const manual = overrides.manual !== false; // default true for manual route
-    const found = await runFindLeadsJob(overrides, manual);
+    const manual = overrides.manual !== false;
+    const found = await jobQueue.add('find_leads', () => runFindLeadsJob(overrides, manual), overrides, 'high');
     res.json({ ok: true, found });
   } catch (err) {
     logError('run', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get('/api/jobs', requireAdmin, (req, res) => {
+  const status = jobQueue.status();
+  const recent = jobQueue.recentJobs(50);
+  res.json({ ...status, jobs: recent });
 });
 
 // â"€â"€â"€ Follow-up sequencer â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -11012,7 +11115,7 @@ function scheduleCron() {
   if (cronJob) cronJob.stop();
   cronJob = cron.schedule(schedule, () => {
     console.log(`[Cron] Dagelijkse run gestart om ${time}`);
-    runFindLeadsJob({}, false).catch(err => logError('cron_run', 'Dagelijkse run mislukt', err.message));
+    jobQueue.add('find_leads_cron', () => runFindLeadsJob({}, false), {}).catch(err => logError('cron_run', 'Dagelijkse run mislukt', err.message));
   });
   console.log(`[Cron] Dagelijkse run ingepland om ${time} (${schedule})`);
 }
@@ -11139,7 +11242,7 @@ cron.schedule('0 */2 * * *', () => {
     return;
   }
   console.log('[Cron] Reply check gestart');
-  checkReplies().catch(err => console.error('[Cron Reply] Fout:', err.message));
+  jobQueue.add('check_replies', () => checkReplies(), {}).catch(err => console.error('[Cron Reply] Fout:', err.message));
 });
 
 // Scheduled send cron: every minute
