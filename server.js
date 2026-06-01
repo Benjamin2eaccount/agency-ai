@@ -1430,6 +1430,7 @@ function requireAuth(req, res, next) {
 
 // Simple in-memory login rate limiter: max 10 attempts per IP per 15 minutes
 const _loginAttempts = new Map();
+// loginRateLimit moved to routes/auth.js — kept here as no-op in case of references
 function loginRateLimit(req, res, next) {
   const ip = req.ip || req.connection?.remoteAddress || 'unknown';
   const now = Date.now();
@@ -1446,44 +1447,10 @@ function loginRateLimit(req, res, next) {
   next();
 }
 
-app.post('/api/auth/login', loginRateLimit, async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Gebruikersnaam en wachtwoord verplicht' });
-  }
+// ── Auth routes — migrated to routes/auth.js ────────────────────────────────
+app.use('/api/auth', require('./routes/auth')({ readJSON, writeJSON, JWT_SECRET }));
 
-  const users = readJSON('users.json') || [];
-  const user = users.find(u => u.username === username);
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(401).json({ error: 'Onjuiste gebruikersnaam of wachtwoord' });
-  }
-
-  const settings = readJSON('settings.json') || {};
-  const token = jwt.sign(
-    { id: user.id, username: user.username, name: user.name, role: user.role,
-      agencyName: settings.agencyName, myName: user.name },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-
-  res.json({ token, myName: user.name, agencyName: settings.agencyName, role: user.role });
-});
-
-app.get('/api/auth/verify', (req, res) => {
-  const header = req.headers['authorization'];
-  if (!header || !header.startsWith('Bearer ')) {
-    return res.json({ valid: false });
-  }
-  const token = header.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    res.json({ valid: true, user: decoded });
-  } catch {
-    res.json({ valid: false });
-  }
-});
-
-// â"€â"€â"€ Portal (public â€" no login needed) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ── Portal routes — migrated to routes/portal.js ────────────────────────────
 
 app.get('/portal/:token', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'portal.html'));
@@ -1961,6 +1928,13 @@ ${caseCards ? `
   res.send(html);
 });
 
+// ── Portal API routes — migrated to routes/portal.js ────────────────────────
+app.use('/api/portal', require('./routes/portal')({ readJSON, writeJSON, addNotification, addLeadHistory, computeRealAnalytics }));
+
+// === LEGACY portal routes below — superseded by routes/portal.js above ===
+// Express matches the router first; these are unreachable but kept for reference
+// during migration. Delete in the next cleanup pass.
+if (false) { /* eslint-disable-line no-constant-condition */
 app.get('/api/portal/:token', (req, res) => {
   const leads   = readJSON('leads.json') || [];
   const lead    = leads.find(l => l.portalToken === req.params.token);
@@ -2143,6 +2117,7 @@ app.get('/api/portal/:token/download/:filename', (req, res) => {
   if (!upload) return res.status(404).json({ error: 'Bestand niet gevonden' });
   _serveUpload(upload, res);
 });
+} // end legacy portal stubs
 
 // Public route — client uploaded files served from built websites (no auth required)
 app.get('/api/sites/:siteSlug/uploads/:filename', (req, res) => {

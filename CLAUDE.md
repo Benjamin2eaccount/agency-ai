@@ -194,8 +194,23 @@ A fully autonomous AI outreach SaaS. It finds 15 local businesses daily using 7 
 ## File structure
 ```
 agency-ai/
-├── server.js          — full backend (auth, 7-agent pipeline, Gmail, all cron jobs)
-├── database.js        — SQLite init, readJSON/writeJSON, auto-migration from JSON files
+├── server.js          — main entry point; large routes still here during migration
+├── database.js        — SQLite init, readJSON/writeJSON, getDb(), auto-migration
+├── routes/            — Express Router modules (factory function pattern)
+│   ├── auth.js        ✅ MIGRATED  — POST /api/auth/login, GET /api/auth/verify
+│   ├── portal.js      ✅ MIGRATED  — all /api/portal/:token/* public routes
+│   ├── leads.js       ⏳ PENDING   — /api/leads CRUD + export + blacklist
+│   ├── projects.js    ⏳ PENDING   — start-project, intake, tasks, files
+│   ├── agents.js      ⏳ PENDING   — build-all-services, agent-chat, deliverables
+│   ├── email.js       ⏳ PENDING   — client emails, delivery, admin emails
+│   ├── payments.js    ⏳ PENDING   — invoices, Stripe, Mollie, PayPal
+│   └── settings.js    ⏳ PENDING   — all /api/settings/* routes
+├── lib/               — Shared pure/helper modules
+│   ├── email.js       ⏳ PENDING   — buildEmailHTML, generateInvoicePDF, sendEmail
+│   ├── agents.js      ⏳ PENDING   — processOneLead, runFindLeadsJob, agent fns
+│   ├── builds.js      ⏳ PENDING   — aiCallBuild, BUILD_HTML_RULES, AUTO_BUILDABLE
+│   ├── imap.js        ⏳ PENDING   — checkReplies, IMAP helpers
+│   └── cron.js        ⏳ PENDING   — all cron job definitions
 ├── package.json       — engines >=18, start/dev scripts
 ├── Procfile           — web: node server.js
 ├── .gitignore         — node_modules/, .env, data/, *.log
