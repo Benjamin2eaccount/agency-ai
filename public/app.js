@@ -137,8 +137,9 @@ function toast(msg, type = 'success') {
   const t = document.createElement('div');
   t.className = `toast toast-${type}`;
   t.innerHTML = `
-    <i class="ti ti-${type === 'success' ? 'check' : type === 'error' ? 'x' : 'info-circle'}"></i>
+    <i class="ti ti-${type === 'success' ? 'check' : type === 'error' ? 'x' : type === 'warning' ? 'alert-triangle' : 'info-circle'}"></i>
     <span>${msg}</span>
+    <button onclick="this.closest('.toast').remove()" style="background:none;border:none;color:rgba(255,255,255,.7);cursor:pointer;font-size:16px;margin-left:8px;line-height:1">×</button>
   `;
   container.appendChild(t);
   setTimeout(() => t.classList.add('visible'), 10);
@@ -652,6 +653,59 @@ async function renderDashboard() {
       </div>
     `;
   }
+
+  // Client health dashboard section
+  const healthHtml = buildClientHealthSection(state.leads);
+  if (healthHtml) {
+    const healthDiv = document.createElement('div');
+    healthDiv.innerHTML = healthHtml;
+    document.getElementById('referralSection')?.after(healthDiv);
+  }
+}
+
+function buildClientHealthSection(leads) {
+  const clients = (leads || []).filter(l => l.status === 'client');
+  if (!clients.length) return '';
+  const now = Date.now();
+  const day = 86400000;
+  const rows = clients.map(l => {
+    const pendingPayment = (l.payments || []).some(p => p.status !== 'paid' && p.dueDate && new Date(p.dueDate) < new Date());
+    const overdue30 = (l.payments || []).some(p => p.status !== 'paid' && p.dueDate && (now - new Date(p.dueDate).getTime()) > 30*day);
+    const noDeliverables = l.intakeSubmittedAt && !((l.agentDeliverables||[]).length) && (now - new Date(l.intakeSubmittedAt).getTime()) > 14*day;
+    const waitingDeliverable = (l.agentDeliverables||[]).some(d => d.status === 'wacht_op_goedkeuring' && d.builtAt && (now - new Date(d.builtAt).getTime()) > 7*day);
+    const noPortalActivity = l.portalToken && !l.lastPortalVisit && l.projectStartedAt && (now - new Date(l.projectStartedAt).getTime()) > 30*day;
+
+    let health = 'green', reason = 'Alles in orde';
+    if (overdue30 || noDeliverables) { health = 'red'; reason = overdue30 ? 'Betaling >30 dagen verlopen' : 'Geen deliverables na intake'; }
+    else if (pendingPayment || waitingDeliverable || noPortalActivity) {
+      health = 'orange';
+      reason = pendingPayment ? 'Betaling openstaand' : waitingDeliverable ? 'Deliverable wacht op goedkeuring' : 'Geen portaal activiteit >30 dagen';
+    }
+    const color = health === 'green' ? 'var(--success)' : health === 'orange' ? '#f59e0b' : 'var(--danger)';
+    const label = health === 'green' ? 'Gezond' : health === 'orange' ? 'Aandacht' : 'Kritiek';
+    return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="setView('project');setTimeout(()=>openLeadDetail('${esc(l.id)}'),50)">
+      <td style="padding:10px 14px;font-size:13px;font-weight:600">${esc(l.companyName)}</td>
+      <td style="padding:10px 14px"><span style="display:inline-flex;align-items:center;gap:6px;background:${color}22;color:${color};border-radius:20px;padding:3px 10px;font-size:12px;font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0"></span>${label}</span></td>
+      <td style="padding:10px 14px;font-size:13px;color:var(--text-secondary)">${esc(reason)}</td>
+      <td style="padding:10px 14px"><button class="btn btn-sm btn-outline" onclick="event.stopPropagation();setView('project');setTimeout(()=>openLeadDetail('${esc(l.id)}'),50)">Open →</button></td>
+    </tr>`;
+  }).join('');
+
+  if (!rows) return '';
+  return `<div class="card" style="margin-top:24px">
+    <div class="card-header"><h3 class="card-title"><i class="ti ti-heart-rate-monitor" style="margin-right:8px"></i>Klant gezondheid</h3></div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:var(--surface-2)">
+          <th style="padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-secondary);text-align:left">Klant</th>
+          <th style="padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-secondary);text-align:left">Status</th>
+          <th style="padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-secondary);text-align:left">Reden</th>
+          <th style="padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-secondary);text-align:left">Actie</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
 }
 
 // ─── Inbox ────────────────────────────────────────────────────────────────────
@@ -1339,6 +1393,43 @@ function setInboxFocus(cards, idx) {
 
 function clearInboxFocus(cards) {
   cards.forEach(c => c.classList.remove('kb-focused'));
+}
+
+// ─── Global keyboard shortcuts ────────────────────────────────────────────────
+function initGlobalKeyboard() {
+  document.addEventListener('keydown', function(e) {
+    if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+    if (document.querySelector('.modal-backdrop')) return;
+    if (state.view === 'inbox') return; // inbox has its own handler
+    switch (e.key) {
+      case '?': e.preventDefault(); showShortcutsOverlay(); break;
+      case 'i': case 'I': setView('inbox'); break;
+      case 'l': case 'L': setView('leads'); break;
+      case 'p': case 'P': setView('pipeline'); break;
+      case 's': if (!e.shiftKey) { setView('stats'); } break;
+      case 'n': case 'N': setView('runs'); break;
+    }
+  });
+}
+
+function showShortcutsOverlay() {
+  openModal(`
+    <div style="padding:24px;min-width:360px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <h3 style="font-size:16px;font-weight:700">Keyboard shortcuts</h3>
+        <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--text-secondary)">×</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${[
+          ['I','Inbox'],['L','Leads'],['P','Pipeline'],['S','Statistieken'],['N','Runs / New run'],
+          ['A','Approve (inbox)'],['R','Reject (inbox)'],['↑ ↓','Navigate (inbox)'],['?','Deze hulp']
+        ].map(([k,d]) => `<div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:14px;color:var(--text-secondary)">${d}</span>
+          <kbd style="background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-family:monospace;font-size:13px;font-weight:600">${k}</kbd>
+        </div>`).join('')}
+      </div>
+    </div>
+  `);
 }
 
 async function markLinkedinDmSent(id) {
@@ -7288,6 +7379,11 @@ function openProjectConfigModal(leadId, editMode) {
       </div>
       <textarea id="projNotes" class="form-control" rows="3" placeholder="Speciale wensen, doelen, beperkingen..." style="width:100%;resize:vertical">${esc(lead.projectNotes || '')}</textarea>
 
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:16px 0 8px">
+        Verjaardag contactpersoon <span style="font-weight:400;text-transform:none">(voor automatische verjaardagsmail)</span>
+      </div>
+      <input type="date" id="projBirthday" class="form-input" style="max-width:200px" value="${esc(lead.clientBirthday || '')}">
+
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
@@ -7359,6 +7455,7 @@ async function confirmStartProject(leadId, editMode) {
   const startDate = document.getElementById('projStartDate')?.value || new Date().toISOString().split('T')[0];
   const endDate   = document.getElementById('projEndDate')?.value || '';
   const notes     = document.getElementById('projNotes')?.value?.trim() || '';
+  const birthday  = document.getElementById('projBirthday')?.value || '';
 
   const patch = {
     estimatedValue: price, servicePrice: price,
@@ -7367,6 +7464,7 @@ async function confirmStartProject(leadId, editMode) {
     projectNotes: notes,
     selectedProblems: selectedProblems,
     projectServices: projectServices,
+    ...(birthday ? { clientBirthday: birthday } : {})
   };
   if (services.length) patch.services = services;
 
@@ -11454,6 +11552,32 @@ function switchSettingsTab(id) {
   localStorage.setItem('settingsTab', id);
   // Load AI rate status when automation or api tab opens
   if (id === 'automation' || id === 'api') loadAiRateStatus?.();
+  // Load audit log when tab opens
+  if (id === 'auditlog') loadAuditLog();
+}
+
+async function loadAuditLog() {
+  const el = document.getElementById('auditLogContent');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--text-muted);font-size:13px">Laden...</div>';
+  const rows = await apiJSON('/api/audit-log') || [];
+  if (!rows.length) { el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:16px 0">Nog geen audit log entries</div>'; return; }
+  el.innerHTML = `<div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:var(--surface-2)">
+        <th style="padding:8px 12px;text-align:left;color:var(--text-secondary);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Actie</th>
+        <th style="padding:8px 12px;text-align:left;color:var(--text-secondary);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Type</th>
+        <th style="padding:8px 12px;text-align:left;color:var(--text-secondary);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px">ID</th>
+        <th style="padding:8px 12px;text-align:left;color:var(--text-secondary);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Datum</th>
+      </tr></thead>
+      <tbody>${rows.map(r => `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 12px;font-weight:600">${esc(r.action)}</td>
+        <td style="padding:8px 12px;color:var(--text-secondary)">${esc(r.entity_type||'—')}</td>
+        <td style="padding:8px 12px;color:var(--text-muted);font-size:12px">${esc(r.entity_id||'—')}</td>
+        <td style="padding:8px 12px;color:var(--text-muted);font-size:12px">${r.created_at ? new Date(r.created_at).toLocaleString('nl-NL') : '—'}</td>
+      </tr>`).join('')}</tbody>
+    </table>
+  </div>`;
 }
 
 // ─── Contacts view ────────────────────────────────────────────────────────────
@@ -11575,10 +11699,20 @@ async function renderBetalingen() {
   };
 
   const render = (filter, q) => {
+    const minAmt = parseFloat(document.getElementById('betMinAmt')?.value) || 0;
+    const maxAmt = parseFloat(document.getElementById('betMaxAmt')?.value) || Infinity;
+    const fromDate = document.getElementById('betFromDate')?.value;
+    const toDate = document.getElementById('betToDate')?.value;
     let data = q ? rows.filter(r => r.companyName.toLowerCase().includes(q.toLowerCase()) || (r.invoiceNr || '').toLowerCase().includes(q.toLowerCase())) : rows;
     if (filter === 'open') data = data.filter(r => r.status !== 'paid' && !(new Date(r.dueDate) < new Date()));
     if (filter === 'paid') data = data.filter(r => r.status === 'paid');
     if (filter === 'overdue') data = data.filter(r => r.status !== 'paid' && new Date(r.dueDate) < new Date());
+    if (minAmt > 0) data = data.filter(r => parseFloat(r.amount||0) >= minAmt);
+    if (isFinite(maxAmt)) data = data.filter(r => parseFloat(r.amount||0) <= maxAmt);
+    if (fromDate) data = data.filter(r => r.createdAt && r.createdAt >= fromDate);
+    if (toDate) data = data.filter(r => r.createdAt && r.createdAt <= toDate + 'T23:59:59');
+    const countEl = document.getElementById('betCount');
+    if (countEl) countEl.textContent = `${data.length} facturen`;
 
     const totalOpen = data.filter(r => r.status !== 'paid').reduce((s, r) => s + parseFloat(r.amount || 0), 0);
     const totalPaid = data.filter(r => r.status === 'paid').reduce((s, r) => s + parseFloat(r.amount || 0), 0);
@@ -11611,7 +11745,14 @@ async function renderBetalingen() {
         ).join('')}
       </div>
       <div style="flex:1;padding:20px">
-        <input id="betSearch" type="text" placeholder="Zoek op bedrijf of factuurnummer..." class="form-input" style="max-width:320px;margin-bottom:16px">
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:flex-end">
+          <input id="betSearch" type="text" placeholder="Zoek op bedrijf of factuurnummer..." class="form-input" style="max-width:260px">
+          <input id="betFromDate" type="date" class="form-input" style="width:140px" title="Van datum">
+          <input id="betToDate" type="date" class="form-input" style="width:140px" title="Tot datum">
+          <input id="betMinAmt" type="number" class="form-input" style="width:100px" placeholder="Min €">
+          <input id="betMaxAmt" type="number" class="form-input" style="width:100px" placeholder="Max €">
+          <span id="betCount" style="font-size:13px;color:var(--text-secondary);line-height:36px"></span>
+        </div>
         <div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px">
           <table style="width:100%;border-collapse:collapse">
             <thead>
@@ -11638,6 +11779,7 @@ async function renderBetalingen() {
   window._renderBet();
 
   document.getElementById('betSearch')?.addEventListener('input', () => window._renderBet());
+  ['betFromDate','betToDate','betMinAmt','betMaxAmt'].forEach(id => document.getElementById(id)?.addEventListener('input', () => window._renderBet()));
 }
 
 async function renderSettings() {
@@ -11665,6 +11807,7 @@ async function renderSettings() {
       <button class="settings-nav-item"         data-tab="blacklist" onclick="switchSettingsTab('blacklist')"> <i class="ti ti-ban"></i>           Blacklist</button>
       <button class="settings-nav-item"         data-tab="api"       onclick="switchSettingsTab('api')">       <i class="ti ti-api"></i>           API &amp; integraties</button>
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="team" onclick="switchSettingsTab('team')"><i class="ti ti-users"></i> Team</button>` : ''}
+      ${isAdmin() ? `<button class="settings-nav-item" data-tab="auditlog" onclick="switchSettingsTab('auditlog')"><i class="ti ti-list-search"></i> Audit log</button>` : ''}
       <div class="settings-nav-spacer"></div>
       <button class="settings-nav-item nav-danger" data-tab="danger" onclick="switchSettingsTab('danger')"><i class="ti ti-alert-triangle"></i> Gevaarlijke zone</button>
     </nav>
@@ -12396,6 +12539,16 @@ async function renderSettings() {
       ` : ''}
 
       <!-- ── Gevaarlijke zone ── -->
+      <div class="settings-tab-pane" id="stab-auditlog">
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title"><i class="ti ti-list-search" style="margin-right:6px"></i>Audit log</div>
+            <div class="stg-sub">Laatste 100 admin acties in het systeem</div>
+          </div>
+          <div id="auditLogContent"><div style="color:var(--text-muted);font-size:13px">Laden...</div></div>
+        </div>
+      </div>
+
       <div class="settings-tab-pane" id="stab-danger">
         <div class="stg-section">
           <div class="stg-section-header">
@@ -13100,6 +13253,9 @@ document.addEventListener('DOMContentLoaded', () => {
       initPushNotifications(reg);
     }).catch(() => {});
   }
+
+  // Global keyboard shortcuts
+  initGlobalKeyboard();
 
   // Load initial view
   setView('dashboard');

@@ -432,6 +432,15 @@ function addLeadHistory(leads, leadId, event) {
   lead.history.push({ ...event, time: new Date().toISOString() });
 }
 
+function logAction(action, entityType, entityId, details) {
+  try {
+    const { getDb } = require('./database');
+    const dbInst = getDb();
+    if (!dbInst) return;
+    dbInst.prepare('INSERT INTO audit_log (action, entity_type, entity_id, details) VALUES (?, ?, ?, ?)').run(action, entityType || null, String(entityId || ''), JSON.stringify(details || {}));
+  } catch(e) { console.log('[Audit] Log error:', e.message); }
+}
+
 const NL_DAYS = ['zondag','maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag'];
 
 const SUB_NICHES = {
@@ -5311,6 +5320,23 @@ All CSS in <style> in <head>. All JS in <script> before </body>.`;
           const filename = `${typeSlug}.html`;
           fs.writeFileSync(path.join(sitesDir, filename), html, 'utf8');
           const url = `${BASE_URL}/sites/${companySlug}/${filename}`;
+          // Generate sitemap.xml and robots.txt
+          try {
+            const today2 = new Date().toISOString().split('T')[0];
+            const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>${url}</loc>\n    <lastmod>${today2}</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>`;
+            const robots = `User-agent: *\nAllow: /\nSitemap: ${BASE_URL}/sites/${companySlug}/sitemap.xml`;
+            fs.writeFileSync(path.join(sitesDir, 'sitemap.xml'), sitemap, 'utf8');
+            fs.writeFileSync(path.join(sitesDir, 'robots.txt'), robots, 'utf8');
+          } catch(e2) { console.log('[Sitemap] Error:', e2.message); }
+          // Generate 404.html for website builds
+          if (filename.includes('website') || typeSlug === 'website') {
+            try {
+              const primaryColor = (html.match(/--primary[^:]*:\s*([#\w()]+)/)?.[1] || '#6366f1').trim();
+              const compName = lead?.companyName || companySlug;
+              const notFoundHtml = `<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Pagina niet gevonden — ${compName}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:#f9fafb;color:#111;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:24px}.card{background:#fff;border-radius:16px;padding:48px 40px;max-width:440px;box-shadow:0 4px 24px rgba(0,0,0,.1)}h1{font-size:4rem;font-weight:800;color:${primaryColor};line-height:1}h2{font-size:1.5rem;font-weight:700;margin:12px 0 8px}p{color:#666;font-size:15px;margin-bottom:28px}a{display:inline-block;background:${primaryColor};color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px}a:hover{opacity:.9}</style></head><body><div class="card"><h1>404</h1><h2>Pagina niet gevonden</h2><p>De pagina die u zoekt bestaat niet of is verplaatst.</p><a href="website.html">&#8592; Terug naar ${compName}</a></div></body></html>`;
+              fs.writeFileSync(path.join(sitesDir, '404.html'), notFoundHtml, 'utf8');
+            } catch(e4) { console.log('[404] Error:', e4.message); }
+          }
 
           // Auto-generate todo list for client
           const embedCode = `<iframe src="${url}" width="100%" height="600" frameborder="0" allowfullscreen></iframe>`;
@@ -5474,6 +5500,15 @@ ABSOLUTELY NEVER:
 - Invisible text due to wrong color contrast
 - Sections that look visually disconnected from the rest
 - Any markdown visible in the HTML output (no backticks, no ** bold, no # headings outside HTML)
+
+COOKIE CONSENT (REQUIRED FOR ALL PAGES):
+Add a GDPR cookie consent banner fixed at the bottom. Check localStorage.getItem('cookieConsent') - if null/false, show a banner with: message "Wij gebruiken cookies voor een betere ervaring.", [Accepteren] button (sets localStorage.setItem('cookieConsent','1') and hides banner), [Meer info] link (scrolls to #privacy or footer). Style to match the page theme.
+
+PRINT STYLESHEET (REQUIRED):
+Add this in the <head>: <style>@media print { nav, header nav, .nav, .navbar, .chatbot-widget, #cookieBanner, .cookie-banner, .sticky, [style*="position:fixed"], [style*="position: fixed"] { display: none !important; } body { background: white !important; color: black !important; } .card, [class*="card"] { box-shadow: none !important; border: 1px solid #ddd !important; } h2, h3 { page-break-after: avoid; } .section, section { page-break-inside: avoid; } }</style>
+
+SCHEMA MARKUP (REQUIRED FOR LOCAL BUSINESS WEBSITES):
+Add LocalBusiness JSON-LD in <head>: <script type="application/ld+json">{"@context":"https://schema.org","@type":"LocalBusiness","name":"[bedrijfsnaam uit intake]","address":{"@type":"PostalAddress","addressLocality":"[stad]","addressCountry":"NL"},"telephone":"[telefoon als bekend]","url":"[website URL]","description":"[1 zin beschrijving van het bedrijf]"}</script>. Also add FAQPage schema if the page includes FAQ items.
 
 `;
 
@@ -5687,6 +5722,23 @@ Use EXACTLY the brand color ${style.color} as accent color. Load font "${style.f
           const filename = `${typeSlug}.html`;
           fs.writeFileSync(path.join(sitesDir, filename), html, 'utf8');
           const url = `${BASE_URL}/sites/${companySlug}/${filename}`;
+          // Generate sitemap.xml and robots.txt
+          try {
+            const today3 = new Date().toISOString().split('T')[0];
+            const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>${url}</loc>\n    <lastmod>${today3}</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>`;
+            const robotsTxt = `User-agent: *\nAllow: /\nSitemap: ${BASE_URL}/sites/${companySlug}/sitemap.xml`;
+            fs.writeFileSync(path.join(sitesDir, 'sitemap.xml'), sitemapXml, 'utf8');
+            fs.writeFileSync(path.join(sitesDir, 'robots.txt'), robotsTxt, 'utf8');
+          } catch(e3) { console.log('[Sitemap] Error:', e3.message); }
+          // Generate 404.html for website builds
+          if (filename.includes('website') || typeSlug === 'website') {
+            try {
+              const primaryColor5 = (html.match(/--primary[^:]*:\s*([#\w()]+)/)?.[1] || '#6366f1').trim();
+              const compName5 = lead?.companyName || companySlug;
+              const nfHtml = `<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Pagina niet gevonden — ${compName5}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:#f9fafb;color:#111;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:24px}.card{background:#fff;border-radius:16px;padding:48px 40px;max-width:440px;box-shadow:0 4px 24px rgba(0,0,0,.1)}h1{font-size:4rem;font-weight:800;color:${primaryColor5};line-height:1}h2{font-size:1.5rem;font-weight:700;margin:12px 0 8px}p{color:#666;font-size:15px;margin-bottom:28px}a{display:inline-block;background:${primaryColor5};color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px}a:hover{opacity:.9}</style></head><body><div class="card"><h1>404</h1><h2>Pagina niet gevonden</h2><p>De pagina die u zoekt bestaat niet of is verplaatst.</p><a href="website.html">&#8592; Terug naar ${compName5}</a></div></body></html>`;
+              fs.writeFileSync(path.join(sitesDir, '404.html'), nfHtml, 'utf8');
+            } catch(e5) { console.log('[404] Error:', e5.message); }
+          }
 
           const todoText = await aiCall(`Schrijf max 5 concrete stappen voor de klant om "${serviceName}" te activeren op hun website. Live URL: ${url}. Embed code: <iframe src="${url}" width="100%" height="600" frameborder="0"></iframe>. Stap-voor-stap, in het Nederlands.`).catch(() => '');
 
@@ -9997,6 +10049,33 @@ app.get('/api/stats/costs', (req, res) => {
   });
 });
 
+// ─── Extended stats ───────────────────────────────────────────────────────────
+app.get('/api/stats/extended', authMiddleware, (req, res) => {
+  try {
+    const leads = readJSON('leads.json') || [];
+    const totalSent = leads.filter(l => l.sentAt).length;
+    const totalReplied = leads.filter(l => l.repliedAt).length;
+    const replyRate = totalSent > 0 ? Math.round(totalReplied / totalSent * 100) : 0;
+    const avgScore = leads.length ? Math.round((leads.reduce((s,l) => s+(l.score||0),0)/leads.length)*10)/10 : 0;
+    const activeProjects = leads.filter(l => l.status === 'client').length;
+    const now = new Date();
+    const thisMonth = leads.filter(l => (l.payments||[]).some(p => p.status==='paid' && new Date(p.paidAt).getMonth()===now.getMonth() && new Date(p.paidAt).getFullYear()===now.getFullYear()));
+    const lastMonth = leads.filter(l => (l.payments||[]).some(p => p.status==='paid' && new Date(p.paidAt).getMonth()===(now.getMonth()-1+12)%12));
+    const omzetDeze = thisMonth.reduce((s,l) => s + (l.payments||[]).filter(p=>p.status==='paid').reduce((a,p)=>a+parseFloat(p.amount||0),0), 0);
+    const omzetVorige = lastMonth.reduce((s,l) => s + (l.payments||[]).filter(p=>p.status==='paid').reduce((a,p)=>a+parseFloat(p.amount||0),0), 0);
+    const niches = {};
+    leads.forEach(l => { const n = l.niche||'Onbekend'; niches[n] = (niches[n]||0)+1; });
+    const statuses = {};
+    leads.forEach(l => { const s = l.status||'new'; statuses[s] = (statuses[s]||0)+1; });
+    const emailsPerWeek = Array.from({length:8},(_,i) => {
+      const weekStart = new Date(now.getTime() - (7-i)*7*86400000);
+      const weekEnd = new Date(now.getTime() - (6-i)*7*86400000);
+      return leads.filter(l => l.sentAt && new Date(l.sentAt)>=weekStart && new Date(l.sentAt)<weekEnd).length;
+    });
+    res.json({ totalSent, totalReplied, replyRate, avgScore, activeProjects, omzetDeze, omzetVorige, niches, statuses, emailsPerWeek });
+  } catch(e) { res.json({ error: e.message }); }
+});
+
 // ─── A/B email stats ──────────────────────────────────────────────────────────
 
 app.get('/api/stats/ab', authMiddleware, (req, res) => {
@@ -10970,6 +11049,43 @@ cron.schedule('30 10 * * *', () => {
   runAutoArchive().catch(err => console.error('[Cron AutoArchive] Fout:', err.message));
 });
 
+// Birthday emails — daily 09:05
+cron.schedule('5 9 * * *', async () => {
+  try {
+    const leads = readJSON('leads.json') || [];
+    const settings = readJSON('settings.json') || {};
+    if (!isResendReady(settings)) return;
+    const today = new Date();
+    const mmdd = `${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    const birthdays = leads.filter(l => l.clientBirthday && l.clientBirthday.slice(5) === mmdd && l.contactEmail);
+    for (const lead of birthdays) {
+      await sendEmail({
+        to: lead.contactEmail,
+        subject: `Fijne verjaardag van ${settings.agencyName || 'Agency AI'}! 🎂`,
+        body: `Beste ${lead.contactName || lead.companyName},\n\nVan het hele team van ${settings.agencyName || 'Agency AI'} wensen wij u een hele fijne verjaardag! 🎂\n\nWij werken graag verder samen met ${lead.companyName} en wensen u een succesvol jaar toe.\n\nMet vriendelijke groet,\n${settings.myName || 'Het team'}\n${settings.agencyName || 'Agency AI'}`,
+        settings
+      }).catch(e => console.log('[Birthday] Email error:', e.message));
+    }
+    if (birthdays.length) console.log(`[Birthday] Sent ${birthdays.length} birthday emails`);
+  } catch(e) { console.log('[Birthday] Cron error:', e.message); }
+});
+
+// Data retention — cleanup archived leads older than 90 days (Sunday 03:00)
+cron.schedule('0 3 * * 0', async () => {
+  try {
+    const leads = readJSON('leads.json') || [];
+    const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
+    const before = leads.length;
+    const cleaned = leads.filter(l => !(l.status === 'archived' && l.archivedAt && l.archivedAt < cutoff));
+    if (cleaned.length < before) {
+      writeJSON('leads.json', cleaned);
+      const deleted = before - cleaned.length;
+      console.log(`[CLEANUP] Deleted ${deleted} old archived leads (>90 days)`);
+      addActivity('cleanup', `${deleted} gearchiveerde leads verwijderd (>90 dagen)`);
+    }
+  } catch(e) { console.log('[CLEANUP] Error:', e.message); }
+});
+
 let briefingCronJob = null;
 
 function scheduleBriefingCron() {
@@ -11158,6 +11274,69 @@ cron.schedule('0 9 * * *', async () => {
     }
   }
   writeJSON('leads.json', allLeads);
+});
+
+// Client health alerts — daily 09:30
+cron.schedule('30 9 * * *', async () => {
+  try {
+    const leads = readJSON('leads.json') || [];
+    const settings = readJSON('settings.json') || {};
+    if (!isResendReady(settings)) return;
+    const now = Date.now();
+    const day = 86400000;
+    const issues = [];
+
+    for (const l of leads.filter(l => l.status === 'client')) {
+      const overduePayment = (l.payments||[]).find(p => p.status !== 'paid' && p.dueDate && (now - new Date(p.dueDate).getTime()) > 14*day);
+      const noPortalActivity = l.portalToken && !l.lastPortalVisit && l.projectStartedAt && (now - new Date(l.projectStartedAt).getTime()) > 30*day;
+      const waitingDeliverable = (l.agentDeliverables||[]).find(d => d.status === 'wacht_op_goedkeuring' && d.builtAt && (now - new Date(d.builtAt).getTime()) > 7*day);
+
+      if (overduePayment) issues.push({ company: l.companyName, id: l.id, type: '💰 Betaling verlopen', detail: `Factuur ${overduePayment.invoiceNr||'—'} verlopen op ${new Date(overduePayment.dueDate).toLocaleDateString('nl-NL')}` });
+      if (noPortalActivity) issues.push({ company: l.companyName, id: l.id, type: '👻 Geen portaal activiteit', detail: 'Klant heeft portaal >30 dagen niet bezocht' });
+      if (waitingDeliverable) issues.push({ company: l.companyName, id: l.id, type: '⏳ Deliverable wacht', detail: `"${waitingDeliverable.service}" wacht >7 dagen op goedkeuring` });
+    }
+
+    if (!issues.length) return;
+
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+    const issueRows = issues.map(i => `<tr><td style="padding:10px 14px;font-weight:600">${i.company}</td><td style="padding:10px 14px">${i.type}</td><td style="padding:10px 14px;color:#666">${i.detail}</td><td style="padding:10px 14px"><a href="${baseUrl}/app/dashboard" style="color:#6366f1">Open →</a></td></tr>`).join('');
+
+    await sendEmail({
+      to: settings.gmailAddress || settings.resendFromAddress || 'info@agencyai.info',
+      subject: `Agency AI — ${issues.length} klant${issues.length > 1 ? 'en vereisen' : ' vereist'} aandacht`,
+      html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto"><h2 style="color:#111">Klant gezondheid — actie vereist</h2><p style="color:#555;margin-bottom:20px">${issues.length} issue${issues.length>1?'s':''} vereisen uw aandacht:</p><table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><thead><tr style="background:#f9fafb"><th style="padding:10px 14px;text-align:left;font-size:12px;color:#888;text-transform:uppercase">Klant</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:#888;text-transform:uppercase">Type</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:#888;text-transform:uppercase">Detail</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:#888;text-transform:uppercase">Actie</th></tr></thead><tbody>${issueRows}</tbody></table><p style="margin-top:20px;color:#888;font-size:13px">Agency AI — automatisch gegenereerde alert</p></div>`,
+      settings,
+      noCalendly: true
+    }).catch(e => console.log('[HealthAlert] Email error:', e.message));
+
+    console.log(`[HealthAlert] Sent alert for ${issues.length} client issues`);
+  } catch(e) { console.log('[HealthAlert] Cron error:', e.message); }
+});
+
+// ─── Admin data stats ────────────────────────────────────────────────────────
+app.get('/api/admin/data-stats', requireAdmin, (req, res) => {
+  try {
+    const leads = readJSON('leads.json') || [];
+    const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
+    const archived = leads.filter(l => l.status === 'archived');
+    const toCleanup = archived.filter(l => l.archivedAt && l.archivedAt < cutoff);
+    const dbPath = path.join(__dirname, 'data', 'agency.db');
+    let dbSize = '—';
+    try { const s = require('fs').statSync(dbPath); dbSize = (s.size / (1024*1024)).toFixed(1) + ' MB'; } catch {}
+    res.json({ total_leads: leads.length, archived_leads: archived.length, leads_to_cleanup: toCleanup.length, database_size_estimate: dbSize });
+  } catch(e) { res.json({ error: e.message }); }
+});
+
+// ─── Audit log ───────────────────────────────────────────────────────────────
+app.get('/api/audit-log', requireAdmin, (req, res) => {
+  try {
+    const { getDb } = require('./database');
+    const dbInst = getDb();
+    const rows = dbInst.prepare('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 100').all();
+    res.json(rows);
+  } catch(e) {
+    res.json([]);
+  }
 });
 
 // ─── Notifications ───────────────────────────────────────────────────────────

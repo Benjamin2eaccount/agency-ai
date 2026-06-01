@@ -18,6 +18,17 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    action      TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id   TEXT,
+    details     TEXT,
+    created_at  TEXT DEFAULT (datetime('now'))
+  )
+`);
+
 // Migrate existing flat JSON files into SQLite on first local run
 const JSON_FILES = [
   'leads.json', 'inbox.json', 'runs.json', 'stats.json',
@@ -152,4 +163,6 @@ function writeJSON(filename, data) {
   }
 }
 
-module.exports = { readJSON, writeJSON, db, pgInitPromise };
+function getDb() { return db; }
+
+module.exports = { readJSON, writeJSON, db, pgInitPromise, getDb };
