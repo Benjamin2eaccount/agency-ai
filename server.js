@@ -18,6 +18,7 @@ const jwt = require('jsonwebtoken');
 const cron = require('node-cron');
 const Stripe = require('stripe');
 const webpush = require('web-push');
+const WebSocket = require('ws');
 const { readJSON, writeJSON, pgInitPromise } = require('./database');
 const dnsPromises = require('dns').promises;
 const PDFDocument = require('pdfkit');
@@ -324,6 +325,9 @@ function addNotification(type, title, body, leadId, link) {
     const url = leadId ? `/app#lead-${leadId}` : '/app';
     sendPushToAll(title, body, url).catch(() => {});
   }
+
+  // Broadcast to all connected WebSocket clients
+  broadcastWS('notification', { type, title, body, leadId, link: resolvedLink });
 }
 
 // ─── Outgoing webhook helper ──────────────────────────────────────────────────
@@ -5906,6 +5910,7 @@ ${bookingDel.html.substring(0, 8000)}`).catch(() => '');
     addActivity('agent_build', `${lead.companyName}: ${toSave.length} leveringen gebouwd`);
 
     sse({ type: 'all_done', count: toSave.length, deliverables: toSave });
+    broadcastWS('build_complete', { leadId: req.params.id, count: toSave.length });
   } catch (err) {
     sse({ type: 'error', service: '', message: err.message });
   }
@@ -8898,6 +8903,7 @@ CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
   if (pendingCount > 0) {
     addNotification('run_complete', `Run klaar: ${pendingCount} leads gevonden`,
       `${pendingCount} wachten op goedkeuring${highScoreCount > 0 ? ` · ${highScoreCount} met score 8+` : ''}`, null, 'inbox');
+    broadcastWS('new_lead', { count: pendingCount, highScoreCount });
     fireWebhooks('run.complete', { leadsFound: pendingCount, pendingCount, highScoreCount, totalValue, completedAt: new Date().toISOString() });
   }
 
@@ -9809,6 +9815,7 @@ async function checkReplies() {
 
         addActivity('reply', 'Reply ontvangen van ' + matched.companyName, { meta: { companyName: matched.companyName, leadId: matched.id } });
         addNotification('reply_received', `Reply: ${matched.companyName}`, `${matched.companyName} heeft gereageerd op jouw email`, matched.id, `project:${matched.id}`);
+        broadcastWS('new_reply', { leadId: matched.id, companyName: matched.companyName, repliedAt: matched.repliedAt });
         fireWebhooks('lead.replied', { leadId: matched.id, companyName: matched.companyName, niche: matched.niche, score: matched.score, location: matched.location, contactEmail: matched.contactEmail, repliedAt: matched.repliedAt });
         console.log(`[Reply] Reply gedetecteerd: ${matched.companyName} (${msgId})`);
 
@@ -11603,6 +11610,18 @@ pgInitPromise.catch(err => {
   // Server ALWAYS starts — even if pgInitPromise somehow rejects
 });
 
+// ─── WebSocket client registry ────────────────────────────────────────────────
+const _wsClients = new Set();
+
+function broadcastWS(event, data = {}) {
+  const msg = JSON.stringify({ event, data, ts: Date.now() });
+  for (const client of _wsClients) {
+    if (client.readyState === WebSocket.OPEN) {
+      try { client.send(msg); } catch {}
+    }
+  }
+}
+
 pgInitPromise.then(() => {
   const server = app.listen(PORT, () => {
     const s = readJSON('settings.json') || {};
@@ -11652,4 +11671,26 @@ pgInitPromise.then(() => {
     }
     throw err;
   });
+
+  // ── WebSocket server (attached to same HTTP server) ──────────────────────
+  const wss = new WebSocket.Server({ server, path: '/ws' });
+  wss.on('connection', (ws, req) => {
+    // Authenticate via ?token= query param
+    const url = new URL(req.url, `http://localhost`);
+    const token = url.searchParams.get('token');
+    let authenticated = false;
+    if (token) {
+      try {
+        jwt.verify(token, JWT_SECRET);
+        authenticated = true;
+      } catch {}
+    }
+    if (!authenticated) { ws.close(4001, 'Unauthorized'); return; }
+    _wsClients.add(ws);
+    ws.on('close', () => _wsClients.delete(ws));
+    ws.on('error', () => _wsClients.delete(ws));
+    ws.send(JSON.stringify({ event: 'connected', data: { message: 'Agency AI WebSocket verbonden' } }));
+    console.log(`[WS] Client verbonden (${_wsClients.size} actief)`);
+  });
+  console.log('[WS] WebSocket server actief op /ws');
 });

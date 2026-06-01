@@ -13001,6 +13001,64 @@ function toggleDarkMode() {
   if (btn) btn.innerHTML = `<i class="ti ti-${next === 'dark' ? 'sun' : 'moon'}"></i>`;
 }
 
+// ─── WebSocket real-time updates ──────────────────────────────────────────────
+let _ws = null;
+let _wsReconnectTimer = null;
+
+function initWebSocket() {
+  const token = localStorage.getItem('agencyToken');
+  if (!token) return;
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const url = `${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`;
+  try {
+    _ws = new WebSocket(url);
+  } catch { return; }
+
+  _ws.onopen = () => {
+    console.log('[WS] Verbonden');
+    if (_wsReconnectTimer) { clearTimeout(_wsReconnectTimer); _wsReconnectTimer = null; }
+  };
+
+  _ws.onmessage = (evt) => {
+    let msg;
+    try { msg = JSON.parse(evt.data); } catch { return; }
+    const { event, data } = msg;
+
+    if (event === 'new_reply') {
+      toast(`💬 ${data.companyName} heeft gereageerd!`, 'success');
+      fetchNotifications();
+      // If inbox is open, refresh it
+      if (state.view === 'inbox') renderInbox();
+    } else if (event === 'new_lead') {
+      toast(`⚡ Run klaar: ${data.count} leads gevonden`, 'info');
+      fetchNotifications();
+      // Update inbox badge
+      const badge = document.getElementById('inboxBadge');
+      if (badge) { badge.textContent = parseInt(badge.textContent || '0') + data.count; badge.style.display = ''; }
+    } else if (event === 'build_complete') {
+      toast(`🏗️ Build klaar: ${data.count} leveringen gebouwd`, 'success');
+      // If currently viewing that project's building tab, refresh it
+      if (state.view === 'project' && state._openLeadId === data.leadId) {
+        const leads = state.leads || [];
+        const lead = leads.find(l => l.id === data.leadId);
+        if (lead) { apiJSON(`/api/leads/${data.leadId}`).then(updated => { if (updated) { const idx = leads.findIndex(l => l.id === data.leadId); if (idx !== -1) { state.leads[idx] = updated; renderProjectPage(); } } }); }
+      }
+    } else if (event === 'notification') {
+      fetchNotifications();
+    }
+  };
+
+  _ws.onclose = (evt) => {
+    console.log('[WS] Verbinding verbroken, herverbinden in 15s...', evt.code);
+    _ws = null;
+    if (evt.code !== 4001) { // 4001 = unauthorized, don't retry
+      _wsReconnectTimer = setTimeout(initWebSocket, 15000);
+    }
+  };
+
+  _ws.onerror = () => {};
+}
+
 // ─── Notifications ────────────────────────────────────────────────────────────
 let _notifPollTimer = null;
 
@@ -13008,6 +13066,8 @@ function startNotificationPolling() {
   if (_notifPollTimer) return;
   fetchNotifications();
   _notifPollTimer = setInterval(fetchNotifications, 30000);
+  // Also try WebSocket (falls back to polling if unavailable)
+  initWebSocket();
 }
 
 async function fetchNotifications() {
