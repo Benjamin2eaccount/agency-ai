@@ -11,149 +11,67 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --accent: #6366f1;
-      --success: #10b981;
-      --warn: #f59e0b;
-      --danger: #ef4444;
-      --border: #e5e7eb;
-      --muted: #6b7280;
-      --surface: #f9fafb;
+      --accent: #6366f1; --success: #10b981; --warn: #f59e0b; --danger: #ef4444;
+      --border: #e5e7eb; --muted: #6b7280; --surface: #f9fafb;
     }
-
-    body {
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      background: #f9fafb;
-      color: #111;
-      min-height: 100vh;
-      padding-bottom: 48px;
-    }
-
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f9fafb; color: #111; min-height: 100vh; padding-bottom: 48px; }
     .container { max-width: 600px; margin: 0 auto; padding: 0 16px; }
-
-    /* Agency header */
     .agency-header { text-align: center; padding: 28px 0 20px; }
-    .agency-logo {
-      width: 44px; height: 44px; background: #111; border-radius: 12px;
-      display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px;
-    }
+    .agency-logo { width: 44px; height: 44px; background: #111; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px; }
     .agency-logo svg { width: 22px; height: 22px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .agency-name { font-size: 15px; font-weight: 700; color: #111; }
-
-    /* Project banner */
-    .project-banner {
-      background: #fff; border: 1px solid var(--border); border-radius: 14px;
-      padding: 20px 24px; margin-bottom: 0;
-    }
+    .project-banner { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 20px 24px; margin-bottom: 0; }
     .company-name { font-size: 22px; font-weight: 700; margin-bottom: 2px; }
     .company-sub { font-size: 13px; color: var(--muted); }
-
-    /* Phase tracker */
     .phase-track { display: flex; align-items: flex-start; margin: 20px 0 10px; }
     .phase-step { flex: 1; display: flex; flex-direction: column; align-items: center; }
     .phase-connector { flex: 1; height: 2px; margin-top: 13px; background: var(--border); transition: background 0.3s; }
     .phase-connector.done { background: var(--success); }
-    .phase-dot {
-      width: 26px; height: 26px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 700; border: 2px solid var(--border);
-      background: #fff; color: var(--muted); position: relative; z-index: 1;
-    }
-    .phase-dot.done    { background: var(--success); border-color: var(--success); color: #fff; }
-    .phase-dot.current { background: var(--accent);  border-color: var(--accent);  color: #fff; box-shadow: 0 0 0 4px rgba(99,102,241,.15); }
+    .phase-dot { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; border: 2px solid var(--border); background: #fff; color: var(--muted); position: relative; z-index: 1; }
+    .phase-dot.done { background: var(--success); border-color: var(--success); color: #fff; }
+    .phase-dot.current { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 0 0 4px rgba(99,102,241,.15); }
     .phase-label { font-size: 10px; font-weight: 500; color: var(--muted); margin-top: 7px; text-align: center; max-width: 56px; line-height: 1.3; }
-    .phase-label.done    { color: var(--success); }
+    .phase-label.done { color: var(--success); }
     .phase-label.current { color: var(--accent); font-weight: 600; }
-
     .progress-wrap { background: #f3f4f6; border-radius: 99px; height: 5px; margin: 4px 0 10px; overflow: hidden; }
     .progress-fill { height: 100%; border-radius: 99px; background: linear-gradient(to right, var(--success), var(--accent)); transition: width 0.6s ease; }
     .phase-caption { font-size: 13px; color: var(--muted); }
     .phase-caption strong { color: #111; }
-
-    .date-row {
-      display: flex; align-items: center; gap: 8px;
-      padding: 10px 14px; background: var(--surface); border-radius: 8px;
-      font-size: 13px; margin-top: 14px;
-    }
-    .date-row svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
-
-    /* Tabs */
+    .date-row { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--surface); border-radius: 8px; font-size: 13px; margin-top: 14px; }
     .tabs-wrap { background: #fff; border: 1px solid var(--border); border-radius: 14px; margin: 14px 0 0; overflow: hidden; }
-    .tabs-nav {
-      display: flex; border-bottom: 1px solid var(--border);
-      overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
-    }
+    .tabs-nav { display: flex; border-bottom: 1px solid var(--border); overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
     .tabs-nav::-webkit-scrollbar { display: none; }
-    .tab-btn {
-      flex-shrink: 0; padding: 13px 16px; font-family: inherit; font-size: 13px;
-      font-weight: 600; color: var(--muted); background: none; border: none;
-      border-bottom: 2px solid transparent; margin-bottom: -1px;
-      cursor: pointer; transition: color 0.15s, border-color 0.15s; white-space: nowrap;
-    }
+    .tab-btn { flex-shrink: 0; padding: 13px 16px; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--muted); background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
     .tab-btn:hover { color: #111; }
     .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .tab-pane { padding: 20px 24px; display: none; }
-    .tab-pane.active { display: block; }
-
-    /* Sections inside tabs */
+    .tab-pane { padding: 20px 24px; }
     .inner-section { margin-bottom: 24px; }
     .inner-section:last-child { margin-bottom: 0; }
     .inner-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px; }
-
-    /* Services */
-    .svc-row {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 14px;
-    }
+    .svc-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
     .svc-row:last-of-type { border-bottom: none; }
     .svc-price { font-weight: 600; font-size: 13px; }
     .svc-total { display: flex; justify-content: space-between; align-items: center; padding: 12px 0 0; font-size: 14px; font-weight: 700; border-top: 1px solid var(--border); margin-top: 4px; }
-
-    /* Status badges */
     .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
-    .badge-paid      { background: #f0fdf4; color: #16a34a; }
-    .badge-pending   { background: #fefce8; color: #d97706; }
-    .badge-sent      { background: #eff6ff; color: #2563eb; }
-    .badge-overdue   { background: #fef2f2; color: #dc2626; }
+    .badge-paid { background: #f0fdf4; color: #16a34a; }
+    .badge-pending { background: #fefce8; color: #d97706; }
+    .badge-sent { background: #eff6ff; color: #2563eb; }
+    .badge-overdue { background: #fef2f2; color: #dc2626; }
     .badge-cancelled { background: #f3f4f6; color: var(--muted); }
-
-    /* Invoice cards */
     .invoice-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
     .invoice-card:last-child { margin-bottom: 0; }
     .invoice-card.overdue { border-color: #fca5a5; }
     .invoice-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
-    .invoice-desc   { font-size: 14px; font-weight: 600; color: #111; }
+    .invoice-desc { font-size: 14px; font-weight: 600; color: #111; }
     .invoice-amount { font-size: 15px; font-weight: 700; color: #111; }
-    .invoice-meta   { font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    .invoice-pay-btn {
-      display: inline-flex; align-items: center; gap: 5px;
-      padding: 7px 14px; background: var(--accent); color: #fff;
-      border-radius: 7px; text-decoration: none; font-size: 12px; font-weight: 600; margin-top: 10px;
-    }
+    .invoice-meta { font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .invoice-pay-btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; background: var(--accent); color: #fff; border-radius: 7px; text-decoration: none; font-size: 12px; font-weight: 600; margin-top: 10px; }
     .invoice-pay-btn:hover { opacity: .9; }
-
-    /* Timeline */
-    .timeline { display: flex; flex-direction: column; }
-    .tl-item { display: flex; gap: 12px; padding-bottom: 16px; position: relative; }
-    .tl-item::before { content: ''; position: absolute; left: 9px; top: 20px; bottom: 0; width: 2px; background: var(--border); }
-    .tl-item:last-child::before { display: none; }
-    .tl-dot { width: 20px; height: 20px; border-radius: 50%; background: #d1d5db; flex-shrink: 0; margin-top: 2px; border: 2px solid #fff; box-shadow: 0 0 0 1px #d1d5db; }
-    .tl-dot.accent  { background: var(--accent);  box-shadow: 0 0 0 1px var(--accent); }
-    .tl-dot.success { background: var(--success); box-shadow: 0 0 0 1px var(--success); }
-    .tl-dot.warn    { background: var(--warn);    box-shadow: 0 0 0 1px var(--warn); }
-    .tl-content { flex: 1; }
-    .tl-label { font-size: 13px; font-weight: 600; color: #111; line-height: 1.4; }
-    .tl-time  { font-size: 11px; color: var(--muted); margin-top: 2px; }
-
-    /* Messages */
-    .msg-thread { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
-    .msg-bubble {
-      max-width: 85%; padding: 10px 14px; border-radius: 12px;
-      font-size: 13px; line-height: 1.55;
-    }
-    .msg-bubble.client { background: var(--accent); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
-    .msg-meta { font-size: 11px; margin-top: 4px; }
-
-    /* Content calendar */
+    .faq-item { border: 1px solid #f3f4f6; border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
+    .faq-q { background: var(--surface); padding: 10px 14px; cursor: pointer; font-size: 13px; font-weight: 600; color: #111; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .faq-a { padding: 12px 14px; font-size: 13px; color: #374151; line-height: 1.6; }
+    .faq-chevron { transition: transform 0.2s; flex-shrink: 0; }
+    .faq-chevron.open { transform: rotate(180deg); }
     .cal-item { padding: 10px 12px; background: var(--surface); border: 1px solid #f3f4f6; border-radius: 8px; margin-bottom: 8px; font-size: 13px; }
     .cal-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 6px; }
     .cal-tag { border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: 700; }
@@ -161,169 +79,94 @@
     .tag-plat { background: #f3f4f6; color: #374151; }
     .tag-type { background: #fefce8; color: #d97706; }
     .tag-time { background: #f0fdf4; color: #16a34a; }
-    .cal-topic    { font-weight: 700; color: #111; margin-bottom: 3px; }
-    .cal-caption  { color: var(--muted); line-height: 1.5; margin-bottom: 3px; }
+    .cal-topic { font-weight: 700; color: #111; margin-bottom: 3px; }
+    .cal-caption { color: var(--muted); line-height: 1.5; margin-bottom: 3px; }
     .cal-hashtags { color: var(--accent); font-size: 12px; }
-
-    /* FAQ / collapsible */
-    .faq-item { border: 1px solid #f3f4f6; border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
-    .faq-q { background: var(--surface); padding: 10px 14px; cursor: pointer; font-size: 13px; font-weight: 600; color: #111; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .faq-a { display: none; padding: 12px 14px; font-size: 13px; color: #374151; line-height: 1.6; }
-    .faq-item.open .faq-a { display: block; }
-    .faq-chevron { transition: transform 0.2s; flex-shrink: 0; }
-    .faq-item.open .faq-chevron { transform: rotate(180deg); }
-
-    /* Milestones */
     .milestone-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; background: var(--surface); border: 1px solid #f3f4f6; border-radius: 8px; margin-bottom: 8px; }
-    .milestone-week  { background: var(--accent); color: #fff; border-radius: 5px; padding: 3px 7px; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+    .milestone-week { background: var(--accent); color: #fff; border-radius: 5px; padding: 3px 7px; font-size: 11px; font-weight: 700; flex-shrink: 0; }
     .milestone-title { font-size: 13px; font-weight: 700; color: #111; }
-    .milestone-desc  { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
-    /* Calendly button */
-    .calendly-btn {
-      display: inline-flex; align-items: center; gap: 8px;
-      background: #006bff; color: #fff; padding: 10px 18px;
-      border-radius: 8px; font-weight: 600; font-size: 14px; text-decoration: none;
-    }
-    .calendly-btn:hover { opacity: .9; }
-
-    /* Empty state */
-    .empty-state { text-align: center; padding: 32px 20px; color: var(--muted); font-size: 13px; }
-    .empty-state svg { display: block; margin: 0 auto 10px; opacity: 0.35; }
-
-    /* Form */
-    .form-group { margin-bottom: 12px; }
-    .form-group label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; color: #374151; }
-    .form-group input, .form-group textarea {
-      width: 100%; border: 1.5px solid var(--border); border-radius: 8px; padding: 10px 12px;
-      font-size: 14px; font-family: inherit; outline: none; color: #111; transition: border-color 0.15s;
-    }
-    .form-group input:focus, .form-group textarea:focus { border-color: var(--accent); }
-    .form-group textarea { min-height: 80px; resize: vertical; }
-
-    .btn-send {
-      width: 100%; padding: 12px; background: #111; color: #fff; border: none;
-      border-radius: 9px; font-size: 14px; font-weight: 600; font-family: inherit;
-      cursor: pointer; transition: opacity 0.15s; margin-top: 4px;
-    }
-    .btn-send:hover { opacity: 0.85; }
-    .btn-send:disabled { opacity: 0.45; cursor: not-allowed; }
-
-    .success-msg {
-      background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px;
-      padding: 14px; font-size: 14px; color: #166534;
-      display: flex; align-items: center; gap: 10px;
-    }
-
-    /* Analytics */
-    .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-    @media (max-width: 400px) { .analytics-grid { grid-template-columns: 1fr; } }
-    .analytics-card { border-radius: 10px; padding: 14px 16px; border: 1px solid; }
-    .analytics-card.green  { background: #f0fdf4; border-color: #bbf7d0; }
-    .analytics-card.blue   { background: #eff6ff; border-color: #bfdbfe; }
+    .milestone-desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .doc-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; background: #fff; }
+    .doc-card:last-child { margin-bottom: 0; }
+    .doc-card-header { display: flex; align-items: flex-start; gap: 10px; }
+    .doc-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .doc-icon.link { background: #eff6ff; color: #2563eb; }
+    .doc-icon.password { background: #fef3c7; color: #d97706; }
+    .doc-icon.note { background: #f0fdf4; color: #16a34a; }
+    .doc-title { font-size: 14px; font-weight: 600; color: #111; margin-bottom: 2px; }
+    .doc-desc { font-size: 12px; color: var(--muted); }
+    .doc-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+    .doc-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 7px; font-size: 12px; font-weight: 600; text-decoration: none; cursor: pointer; border: 1.5px solid var(--border); background: #fff; color: #111; font-family: inherit; }
+    .doc-btn:hover { background: var(--surface); }
+    .doc-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .doc-password-field { display: flex; align-items: center; gap: 8px; margin-top: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 7px 12px; }
+    .doc-password-value { font-family: monospace; font-size: 13px; flex: 1; color: #111; letter-spacing: .05em; }
+    .analytics-card { border-radius: 10px; padding: 14px 16px; border: 1px solid; margin-bottom: 10px; }
+    .analytics-card.green { background: #f0fdf4; border-color: #bbf7d0; }
+    .analytics-card.blue { background: #eff6ff; border-color: #bfdbfe; }
     .analytics-card.purple { background: #f5f3ff; border-color: #ddd6fe; }
     .analytics-card.orange { background: #fff7ed; border-color: #fed7aa; }
-    .analytics-card-title  { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
-    .analytics-card.green  .analytics-card-title { color: #15803d; }
-    .analytics-card.blue   .analytics-card-title { color: #1d4ed8; }
+    .analytics-card-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
+    .analytics-card.green .analytics-card-title { color: #15803d; }
+    .analytics-card.blue .analytics-card-title { color: #1d4ed8; }
     .analytics-card.purple .analytics-card-title { color: #6d28d9; }
     .analytics-card.orange .analytics-card-title { color: #c2410c; }
     .analytics-stat { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid rgba(0,0,0,.05); }
     .analytics-stat:last-child { border-bottom: none; }
     .analytics-stat-label { font-size: 12px; color: #374151; }
-    .analytics-stat-right  { display: flex; align-items: baseline; gap: 6px; }
-    .analytics-stat-value  { font-size: 14px; font-weight: 700; color: #111; }
-    .analytics-trend-up   { font-size: 11px; font-weight: 700; color: #16a34a; }
-    .analytics-trend-down { font-size: 11px; font-weight: 700; color: #dc2626; }
+    .analytics-stat-value { font-size: 14px; font-weight: 700; color: #111; }
     .analytics-disclaimer { font-size: 11px; color: var(--muted); background: var(--surface); border-radius: 8px; padding: 10px 12px; margin-top: 16px; line-height: 1.5; }
-
-    /* Document vault */
-    .doc-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; background: #fff; }
-    .doc-card:last-child { margin-bottom: 0; }
-    .doc-card-header { display: flex; align-items: flex-start; gap: 10px; }
-    .doc-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .doc-icon.link     { background: #eff6ff; color: #2563eb; }
-    .doc-icon.password { background: #fef3c7; color: #d97706; }
-    .doc-icon.note     { background: #f0fdf4; color: #16a34a; }
-    .doc-title { font-size: 14px; font-weight: 600; color: #111; margin-bottom: 2px; }
-    .doc-desc  { font-size: 12px; color: var(--muted); }
-    .doc-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
-    .doc-btn {
-      display: inline-flex; align-items: center; gap: 5px;
-      padding: 6px 12px; border-radius: 7px; font-size: 12px; font-weight: 600;
-      text-decoration: none; cursor: pointer; border: 1.5px solid var(--border);
-      background: #fff; color: #111; font-family: inherit;
-    }
-    .doc-btn:hover { background: var(--surface); }
-    .doc-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .doc-btn.primary:hover { opacity: .9; }
-    .doc-password-field { display: flex; align-items: center; gap: 8px; margin-top: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 7px 12px; }
-    .doc-password-value { font-family: monospace; font-size: 13px; flex: 1; color: #111; letter-spacing: .05em; }
-
-    /* Live chat widget */
-    .chat-fab {
-      position: fixed; bottom: 24px; right: 20px; z-index: 1000;
-      width: 52px; height: 52px; border-radius: 50%; background: var(--accent);
-      border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 4px 16px rgba(99,102,241,.45); transition: transform 0.2s;
-    }
+    .msg-form .form-group { margin-bottom: 12px; }
+    .msg-form .form-group label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; color: #374151; }
+    .msg-form .form-group input, .msg-form .form-group textarea { width: 100%; border: 1.5px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit; outline: none; color: #111; transition: border-color 0.15s; }
+    .msg-form .form-group input:focus, .msg-form .form-group textarea:focus { border-color: var(--accent); }
+    .msg-form .form-group textarea { min-height: 80px; resize: vertical; }
+    .btn-send { width: 100%; padding: 12px; background: #111; color: #fff; border: none; border-radius: 9px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; transition: opacity 0.15s; margin-top: 4px; }
+    .btn-send:hover { opacity: 0.85; }
+    .btn-send:disabled { opacity: 0.45; cursor: not-allowed; }
+    .chat-fab { position: fixed; bottom: 24px; right: 20px; z-index: 1000; width: 52px; height: 52px; border-radius: 50%; background: var(--accent); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(99,102,241,.45); transition: transform 0.2s; }
     .chat-fab:hover { transform: scale(1.08); }
     .chat-fab svg { width: 24px; height: 24px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-    .chat-fab-badge {
-      position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px;
-      background: #ef4444; color: #fff; border-radius: 99px; font-size: 10px; font-weight: 700;
-      display: flex; align-items: center; justify-content: center; padding: 0 4px; display: none;
-    }
-    .chat-panel {
-      position: fixed; bottom: 88px; right: 16px; width: 320px; max-height: 480px;
-      background: #fff; border: 1px solid var(--border); border-radius: 16px;
-      box-shadow: 0 8px 32px rgba(0,0,0,.14); display: flex; flex-direction: column;
-      z-index: 999; overflow: hidden; display: none;
-    }
-    @media (max-width: 400px) { .chat-panel { width: calc(100vw - 32px); right: 16px; } }
-    .chat-panel-header {
-      padding: 14px 16px; background: var(--accent); color: #fff;
-      display: flex; align-items: center; justify-content: space-between;
-    }
+    .chat-fab-badge { position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px; background: #ef4444; color: #fff; border-radius: 99px; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+    .chat-panel { position: fixed; bottom: 88px; right: 16px; width: 320px; max-height: 480px; background: #fff; border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,.14); display: flex; flex-direction: column; z-index: 999; overflow: hidden; }
+    @media (max-width: 400px) { .chat-panel { width: calc(100vw - 32px); } }
+    .chat-panel-header { padding: 14px 16px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: space-between; }
     .chat-panel-title { font-size: 14px; font-weight: 700; }
     .chat-panel-close { background: none; border: none; color: rgba(255,255,255,.8); cursor: pointer; font-size: 18px; line-height: 1; padding: 0; }
-    .chat-panel-close:hover { color: #fff; }
     .chat-messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
     .chat-msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; font-size: 13px; line-height: 1.5; word-break: break-word; }
     .chat-msg.client { background: var(--accent); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
-    .chat-msg.admin  { background: #f3f4f6; color: #111; align-self: flex-start; border-bottom-left-radius: 4px; }
-    .chat-msg-meta   { font-size: 10px; margin-top: 3px; opacity: .65; }
+    .chat-msg.admin { background: #f3f4f6; color: #111; align-self: flex-start; border-bottom-left-radius: 4px; }
+    .chat-msg-meta { font-size: 10px; margin-top: 3px; opacity: .65; }
     .chat-input-area { padding: 10px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-end; }
-    .chat-input-area textarea {
-      flex: 1; min-height: 38px; max-height: 100px; padding: 8px 10px; border: 1.5px solid var(--border);
-      border-radius: 8px; font-family: inherit; font-size: 13px; resize: none; outline: none;
-    }
+    .chat-input-area textarea { flex: 1; min-height: 38px; max-height: 100px; padding: 8px 10px; border: 1.5px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; resize: none; outline: none; }
     .chat-input-area textarea:focus { border-color: var(--accent); }
-    .chat-send-btn {
-      width: 36px; height: 36px; border-radius: 8px; background: var(--accent); border: none;
-      color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-    }
+    .chat-send-btn { width: 36px; height: 36px; border-radius: 8px; background: var(--accent); border: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .chat-send-btn:hover { opacity: .85; }
     .chat-name-row { padding: 8px 10px 0; display: flex; gap: 8px; }
-    .chat-name-row input {
-      flex: 1; height: 34px; padding: 0 10px; border: 1.5px solid var(--border); border-radius: 7px;
-      font-family: inherit; font-size: 12px; outline: none;
-    }
+    .chat-name-row input { flex: 1; height: 34px; padding: 0 10px; border: 1.5px solid var(--border); border-radius: 7px; font-family: inherit; font-size: 12px; outline: none; }
     .chat-name-row input:focus { border-color: var(--accent); }
-
-    /* Loader */
     .center-page { text-align: center; padding: 80px 20px; color: var(--muted); }
     .center-page h2 { font-size: 18px; color: #111; margin: 12px 0 6px; }
+    .empty-state { text-align: center; padding: 32px 20px; color: var(--muted); font-size: 13px; }
+    .calendly-btn { display: inline-flex; align-items: center; gap: 8px; background: #006bff; color: #fff; padding: 10px 18px; border-radius: 8px; font-weight: 600; font-size: 14px; text-decoration: none; }
+    .calendly-btn:hover { opacity: .9; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .spinner { width: 26px; height: 26px; border: 2px solid #e5e7eb; border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 12px; }
   </style>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
 </head>
 <body>
   <div class="container">
-    <div id="root"><div class="center-page"><div class="spinner"></div><p>Laden...</p></div></div>
+    <div id="root"></div>
   </div>
 
-  <script>
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef } = React;
+
+    // ── Helpers ──────────────────────────────────────────────────────────
     const PHASES = [
       { num: 1, label: 'Intake' },
       { num: 2, label: 'Uitvoering' },
@@ -332,895 +175,865 @@
       { num: 5, label: 'Volgende stap' }
     ];
 
-    const CHECK   = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-    const CHEVRON = `<svg class="faq-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
-    const CAL_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
+    function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function fmt(iso) { if (!iso) return ''; return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }); }
+    function fmtS(iso) { if (!iso) return ''; return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' }); }
 
-    function e(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function getToken() { return window.location.pathname.split('/').filter(Boolean).pop(); }
 
-    function getToken() {
-      return window.location.pathname.split('/').filter(Boolean).pop();
+    function copyText(text, btn) {
+      navigator.clipboard.writeText(text).then(() => {
+        if (btn) { const orig = btn.textContent; btn.textContent = 'Gekopieerd! ✓'; setTimeout(() => btn.textContent = orig, 2000); }
+      }).catch(() => {});
     }
 
-    function fmt(iso) {
-      if (!iso) return '';
-      return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+    // ── Phase Tracker ────────────────────────────────────────────────────
+    function PhaseTracker({ current }) {
+      const pct = Math.round(((current - 1) / (PHASES.length - 1)) * 100);
+      const CheckIcon = () => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" width="12" height="12">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      );
+      return (
+        <>
+          <div className="phase-track">
+            {PHASES.map((p, i) => {
+              const done = p.num < current, cur = p.num === current;
+              return (
+                <React.Fragment key={p.num}>
+                  <div className="phase-step">
+                    <div className={`phase-dot ${done ? 'done' : cur ? 'current' : ''}`}>
+                      {done ? <CheckIcon /> : p.num}
+                    </div>
+                    <div className={`phase-label ${done ? 'done' : cur ? 'current' : ''}`}>{p.label}</div>
+                  </div>
+                  {i < PHASES.length - 1 && <div className={`phase-connector${done ? ' done' : ''}`} />}
+                </React.Fragment>
+              );
+            })}
+          </div>
+          <div className="progress-wrap">
+            <div className="progress-fill" style={{ width: `${pct}%` }} />
+          </div>
+          <div className="phase-caption">
+            Fase: <strong>Fase {current} — {PHASES[current - 1]?.label}</strong>
+          </div>
+        </>
+      );
     }
 
-    function fmtS(iso) {
-      if (!iso) return '';
-      return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
+    // ── Badge helpers ─────────────────────────────────────────────────────
+    function PayBadge({ payment }) {
+      const { status, dueDate, paidAt } = payment;
+      const overdue = dueDate && !paidAt && new Date(dueDate) < new Date() && status !== 'paid';
+      if (status === 'paid')     return <span className="badge badge-paid">Betaald</span>;
+      if (overdue)               return <span className="badge badge-overdue">Te laat</span>;
+      if (status === 'sent')     return <span className="badge badge-sent">Verzonden</span>;
+      if (status === 'cancelled')return <span className="badge badge-cancelled">Geannuleerd</span>;
+      return <span className="badge badge-pending">In afwachting</span>;
     }
 
-    async function load() {
-      const token = getToken();
-      if (!token || token === 'portal') { renderError('Geen portaallink gevonden.'); return; }
-      try {
-        const res = await fetch('/api/portal/' + token);
-        if (!res.ok) { renderError('Portaal niet gevonden. Controleer de link.'); return; }
-        const data = await res.json();
-        renderPortal(data, token);
-        initChatWidget(token, data.portalChat || []);
-        pollChat(token);
-        _renderUploadedFiles(data.clientUploads || [], token);
-      } catch {
-        renderError('Kan de pagina niet laden. Probeer het later opnieuw.');
+    // ── FAQ Item (collapsible) ────────────────────────────────────────────
+    function FaqItem({ question, answer }) {
+      const [open, setOpen] = useState(false);
+      const ChevronSvg = () => (
+        <svg className={`faq-chevron${open ? ' open' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      );
+      return (
+        <div className="faq-item">
+          <div className="faq-q" onClick={() => setOpen(!open)}>
+            <span>{question}</span>
+            <ChevronSvg />
+          </div>
+          {open && <div className="faq-a">{answer}</div>}
+        </div>
+      );
+    }
+
+    // ── Overzicht Tab ────────────────────────────────────────────────────
+    function OverzichtTab({ data, token }) {
+      const [stagedFiles, setStagedFiles] = useState([]);
+      const [uploadMsg, setUploadMsg] = useState('');
+      const [uploads, setUploads] = useState(data.clientUploads || []);
+      const fileInputRef = useRef(null);
+
+      const svcs = (data.projectServices?.length ? data.projectServices : data.services) || [];
+      const monthlyTotal = svcs.filter(s => s.billing !== 'eenmalig').reduce((a, s) => a + (s.price || 0), 0);
+      const onceTotal    = svcs.filter(s => s.billing === 'eenmalig').reduce((a, s) => a + (s.price || 0), 0);
+
+      function handleFiles(files) {
+        const newFiles = [];
+        for (const f of files) {
+          if (f.size > 10 * 1024 * 1024) { alert(f.name + ' is te groot (max 10MB)'); continue; }
+          newFiles.push(f);
+        }
+        setStagedFiles(prev => [...prev, ...newFiles]);
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
-    }
 
-    function renderError(msg) {
-      document.getElementById('root').innerHTML = `
-        <div class="center-page">
-          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <h2>Niet gevonden</h2><p>${msg}</p>
-        </div>`;
-    }
+      async function submitFiles() {
+        if (!stagedFiles.length) return;
+        setUploadMsg('uploading');
+        let anyError = false;
+        for (const file of stagedFiles) {
+          try {
+            const dataUrl = await new Promise((res, rej) => {
+              const reader = new FileReader();
+              reader.onload = ev => res(ev.target.result);
+              reader.onerror = rej;
+              reader.readAsDataURL(file);
+            });
+            const resp = await fetch(`/api/portal/${token}/upload`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: file.name, mimeType: file.type, dataBase64: dataUrl.split(',')[1], size: file.size })
+            });
+            const d = await resp.json();
+            if (!d.ok) { alert('Fout: ' + (d.error || 'onbekend')); anyError = true; }
+          } catch { alert('Verbindingsfout bij ' + file.name); anyError = true; }
+        }
+        setStagedFiles([]);
+        if (!anyError) {
+          setUploadMsg('success');
+          const r = await fetch(`/api/portal/${token}`);
+          if (r.ok) { const d = await r.json(); setUploads(d.clientUploads || []); }
+        } else { setUploadMsg(''); }
+      }
 
-    function showTab(tab) {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-      document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === tab));
-    }
+      async function deleteFile(filename) {
+        if (!confirm(`Bestand "${filename}" verwijderen?`)) return;
+        const r = await fetch(`/api/portal/${token}/upload/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+        const d = await r.json();
+        if (d.ok) setUploads(prev => prev.filter(f => f.filename !== filename));
+        else alert('Verwijderen mislukt: ' + (d.error || 'onbekend'));
+      }
 
-    function toggleFaq(id) {
-      document.getElementById(id).classList.toggle('open');
-    }
+      const CalSvg = () => (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+      );
 
-    function payBadge(p) {
-      const overdue = p.dueDate && !p.paidAt && new Date(p.dueDate) < new Date() && p.status !== 'paid';
-      if (p.status === 'paid')      return `<span class="badge badge-paid">Betaald</span>`;
-      if (overdue)                   return `<span class="badge badge-overdue">Te laat</span>`;
-      if (p.status === 'sent')       return `<span class="badge badge-sent">Verzonden</span>`;
-      if (p.status === 'cancelled')  return `<span class="badge badge-cancelled">Geannuleerd</span>`;
-      return `<span class="badge badge-pending">In afwachting</span>`;
-    }
-
-    function tlDotClass(event) {
-      if (['projectStarted','approved','client','replied'].includes(event)) return 'accent';
-      if (['emailSent','followup1','followup2'].includes(event))            return 'warn';
-      if (['intakeSubmitted','deliveryReady','taskCompleted'].includes(event)) return 'success';
-      return '';
-    }
-
-    function tlLabel(h) {
-      const map = {
-        projectStarted: 'Project gestart',
-        approved:       'Lead goedgekeurd',
-        emailSent:      'E-mail verstuurd',
-        followup1:      'Follow-up 1 verstuurd',
-        followup2:      'Follow-up 2 verstuurd',
-        replied:        'Klant heeft gereageerd',
-        intakeSubmitted:'Intakeformulier ingevuld',
-        deliveryReady:  'Levering klaar',
-        clientMessage:  'Klantbericht ontvangen',
-        taskCompleted:  'Taak afgerond',
-        weekComplete:   'Week afgerond',
-        proposalSent:   'Voorstel verstuurd',
-        contractSent:   'Contract verstuurd',
-        caseStudy:      'Case study bijgewerkt',
-        upsell:         'Upsell aangeboden',
-      };
-      return map[h.event] || h.label || h.event || 'Gebeurtenis';
-    }
-
-    function renderPortal(data, token) {
-      document.title = 'Projectstatus – ' + (data.companyName || '');
-      const cur      = data.currentPhase || 1;
-      const pct      = Math.round(((cur - 1) / (PHASES.length - 1)) * 100);
-      const svcs     = (data.projectServices && data.projectServices.length) ? data.projectServices : (data.services || []);
-      const payments = data.payments  || [];
-      const messages = data.messages  || [];
-
-      /* ── Phase tracker ── */
-      const phaseTrack = PHASES.map((p, i) => {
-        const done = p.num < cur, current = p.num === cur;
-        const conn = i < PHASES.length - 1
-          ? `<div class="phase-connector${done ? ' done' : ''}"></div>` : '';
-        return `<div class="phase-step">
-          <div class="phase-dot ${done ? 'done' : current ? 'current' : ''}">${done ? CHECK : p.num}</div>
-          <div class="phase-label ${done ? 'done' : current ? 'current' : ''}">${p.label}</div>
-        </div>${conn}`;
-      }).join('');
-
-      /* ── Overzicht tab ── */
-      const monthlyTotal = svcs.filter(s => s.billing !== 'eenmalig').reduce((s,v)=>s+(v.price||0),0);
-      const onceTotal    = svcs.filter(s => s.billing === 'eenmalig').reduce((s,v)=>s+(v.price||0),0);
-
-      const svcsHtml = svcs.length > 0 ? `
-        <div class="inner-section">
-          <div class="inner-label">Diensten &amp; Investering</div>
-          ${svcs.map(s => {
-            const isOnce = s.billing === 'eenmalig';
-            return `<div class="svc-row"><span>${e(s.name)}</span><span class="svc-price">€${(s.price||0).toLocaleString('nl-NL')}${isOnce?' eenmalig':'/mnd'}</span></div>`;
-          }).join('')}
-          ${svcs.length > 1 ? (
-            (monthlyTotal > 0 ? `<div class="svc-total"><span>Totaal per maand</span><span>€${monthlyTotal.toLocaleString('nl-NL')}</span></div>` : '') +
-            (onceTotal > 0   ? `<div class="svc-total"><span>Totaal eenmalig</span><span>€${onceTotal.toLocaleString('nl-NL')}</span></div>` : '')
-          ) : ''}
-        </div>`
-      : `<div class="inner-section">
-          <div class="inner-label">Diensten &amp; Investering</div>
-          <p style="font-size:13px;color:#6b7280;margin:0">Wordt binnenkort geconfigureerd.</p>
-        </div>`;
-
-      const calendlyHtml = (data.calendlyUrl && !data.projectStartedAt) ? `
-        <div class="inner-section">
-          <div class="inner-label">Gesprek inplannen</div>
-          <p style="font-size:13px;color:#6b7280;margin-bottom:14px">Kies direct een moment dat jou uitkomt.</p>
-          <a href="${data.calendlyUrl}" target="_blank" rel="noopener" class="calendly-btn">
-            ${CAL_SVG} Gesprek inplannen
-          </a>
-        </div>` : '';
-
-
-      /* ── Facturen tab ── */
-      const openCount = payments.filter(p => p.status !== 'paid' && p.status !== 'cancelled').length;
-      const facturenHtml = payments.length > 0
-        ? payments.map(p => {
-            const ov = p.dueDate && !p.paidAt && new Date(p.dueDate) < new Date() && p.status !== 'paid';
-            return `<div class="invoice-card${ov ? ' overdue' : ''}">
-              <div class="invoice-header">
-                <div class="invoice-desc">${p.description || 'Factuur'}</div>
-                <div class="invoice-amount">€${(p.amount||0).toLocaleString('nl-NL')}</div>
+      return (
+        <div>
+          {data.portalWelcomeMessage && (
+            <div className="inner-section" style={{background:'linear-gradient(135deg,#eff6ff,#f8faff)',border:'1.5px solid #bfdbfe',borderRadius:10,padding:'14px 16px'}}>
+              <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+                <span style={{fontSize:15}}>👋</span>
+                <span style={{fontSize:12,fontWeight:700,color:'#1d4ed8',textTransform:'uppercase',letterSpacing:'.06em'}}>Bericht van uw accountmanager</span>
               </div>
-              <div class="invoice-meta">
-                ${payBadge(p)}
-                ${p.dueDate ? `<span>${CAL_SVG} Vervaldatum: ${fmtS(p.dueDate)}</span>` : ''}
-                ${p.paidAt  ? `<span style="color:#16a34a">✓ Betaald op ${fmtS(p.paidAt)}</span>` : ''}
+              <p style={{margin:0,fontSize:14,lineHeight:1.65,color:'#1e3a8a',whiteSpace:'pre-line'}}>{data.portalWelcomeMessage}</p>
+            </div>
+          )}
+
+          {svcs.length > 0 && (
+            <div className="inner-section">
+              <div className="inner-label">Diensten &amp; Investering</div>
+              {svcs.map((s, i) => (
+                <div key={i} className="svc-row">
+                  <span>{s.name}</span>
+                  <span className="svc-price">€{(s.price||0).toLocaleString('nl-NL')}{s.billing==='eenmalig'?' eenmalig':'/mnd'}</span>
+                </div>
+              ))}
+              {svcs.length > 1 && <>
+                {monthlyTotal > 0 && <div className="svc-total"><span>Totaal per maand</span><span>€{monthlyTotal.toLocaleString('nl-NL')}</span></div>}
+                {onceTotal > 0    && <div className="svc-total"><span>Totaal eenmalig</span><span>€{onceTotal.toLocaleString('nl-NL')}</span></div>}
+              </>}
+            </div>
+          )}
+
+          {data.calendlyUrl && !data.projectStartedAt && (
+            <div className="inner-section">
+              <div className="inner-label">Gesprek inplannen</div>
+              <p style={{fontSize:13,color:'#6b7280',marginBottom:14}}>Kies direct een moment dat jou uitkomt.</p>
+              <a href={data.calendlyUrl} target="_blank" rel="noopener" className="calendly-btn">
+                <CalSvg /> Gesprek inplannen
+              </a>
+            </div>
+          )}
+
+          {(data.contactSubmissions||[]).length > 0 && (
+            <div className="inner-section" style={{marginTop:14}}>
+              <div className="inner-label" style={{marginBottom:8}}>📩 Binnengekomen berichten via uw website</div>
+              {(data.contactSubmissions||[]).map((s, i) => (
+                <div key={i} style={{padding:'10px 12px',border:'1px solid #e5e7eb',borderRadius:8,marginBottom:6,background:'#f9fafb'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',gap:8}}>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600}}>{s.name}{s.email && <span style={{fontWeight:400,color:'#6b7280'}}> &lt;{s.email}&gt;</span>}</div>
+                      {s.service && <div style={{fontSize:12,color:'#6366f1',marginTop:2}}>{s.service}</div>}
+                      {s.message && <div style={{fontSize:12,color:'#374151',marginTop:4,lineHeight:1.5}}>{s.message.substring(0,140)}{s.message.length>140?'…':''}</div>}
+                    </div>
+                    <div style={{fontSize:11,color:'#9ca3af',whiteSpace:'nowrap',flexShrink:0}}>{s.submittedAt ? new Date(s.submittedAt).toLocaleDateString('nl-NL',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : ''}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{marginTop:24,padding:20,border:'2px dashed #d1d5db',borderRadius:12,background:'#f9fafb'}}>
+            <div style={{fontSize:15,fontWeight:700,color:'#111',marginBottom:4}}>📎 Bestanden uploaden</div>
+            <div style={{fontSize:13,color:'#6b7280',marginBottom:16}}>Upload uw logo, foto's of andere bestanden die wij kunnen gebruiken</div>
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); e.currentTarget.style.background='#e0e7ff'; }}
+              onDrop={e => { e.preventDefault(); e.currentTarget.style.background='#f0f4ff'; handleFiles(e.dataTransfer.files); }}
+              style={{border:'2px dashed #c7d2fe',borderRadius:8,padding:24,textAlign:'center',cursor:'pointer',background:'#f0f4ff',transition:'.2s'}}
+              onMouseOver={e => e.currentTarget.style.background='#e0e7ff'}
+              onMouseOut={e => e.currentTarget.style.background='#f0f4ff'}
+            >
+              <div style={{fontSize:28,marginBottom:8}}>📂</div>
+              <div style={{fontSize:14,color:'#6366f1',fontWeight:600}}>Klik om te bladeren of sleep bestanden hier</div>
+              <div style={{fontSize:12,color:'#9ca3af',marginTop:4}}>JPG, PNG, SVG, PDF, ZIP — max 10MB per bestand</div>
+            </div>
+            <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.svg,.gif,.webp,.pdf,.zip" multiple style={{display:'none'}} onChange={e => handleFiles(e.target.files)} />
+
+            {stagedFiles.length > 0 && (
+              <div style={{marginTop:10}}>
+                {stagedFiles.map((f, i) => (
+                  <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'#f9fafb',border:'1px solid #c7d2fe',borderRadius:6,marginTop:6,fontSize:13}}>
+                    <span>📄 {f.name}</span>
+                    <span style={{color:'#6b7280',fontSize:11}}>{(f.size/1024).toFixed(1)} KB</span>
+                    <button onClick={() => setStagedFiles(prev => prev.filter((_,j)=>j!==i))} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'#9ca3af',fontSize:16}}>×</button>
+                  </div>
+                ))}
+                <button onClick={submitFiles} disabled={uploadMsg==='uploading'} style={{marginTop:10,width:'100%',padding:11,background:'#6366f1',color:'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:600,cursor:'pointer'}}>
+                  {uploadMsg==='uploading' ? 'Bezig...' : '📤 Verstuur bestanden naar Agency AI'}
+                </button>
               </div>
-              ${p.paymentUrl && p.status !== 'paid' && p.status !== 'cancelled' ? `
-                <a href="${p.paymentUrl}" target="_blank" rel="noopener" class="invoice-pay-btn">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-                  Nu betalen
-                </a>` : ''}
-            </div>`;
-          }).join('')
-        : `<div class="empty-state">
-             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-             <p>Nog geen facturen aangemaakt</p>
-           </div>`;
+            )}
+            {uploadMsg === 'success' && (
+              <div style={{marginTop:10,padding:'10px 14px',background:'#f0fdf4',border:'1px solid #86efac',borderRadius:8,color:'#16a34a',fontSize:13,fontWeight:600}}>
+                ✓ Bestanden verstuurd! We gaan hiermee aan de slag.
+              </div>
+            )}
 
-      /* ── Leveringen tab ── */
+            {uploads.length > 0 && (
+              <div style={{marginTop:14}}>
+                <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:6}}>Geüploade bestanden</div>
+                {uploads.map((f, i) => (
+                  <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:6,marginTop:6,fontSize:13}}>
+                    <span>📄 {f.filename}</span>
+                    <span style={{color:'#6b7280',fontSize:11}}>{f.size ? (f.size/1024).toFixed(1)+' KB' : ''}</span>
+                    <span style={{color:'#9ca3af',fontSize:11}}>{f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString('nl-NL') : ''}</span>
+                    <button onClick={() => deleteFile(f.filename)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'#9ca3af',fontSize:16}}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
 
-      /* ── Leveringen tab ── */
+    // ── Deliverable Card ─────────────────────────────────────────────────
+    function DeliverableCard({ d }) {
+      const [platform, setPlatform] = useState(0);
+      const absUrl = !d.url ? '' : (d.url.startsWith('http') ? d.url : window.location.origin + d.url);
+      const embedCode = absUrl ? `<iframe src="${absUrl}" width="100%" height="700" frameborder="0" style="border:none;border-radius:8px"></iframe>` : '';
+      const typeIcon = d.type === 'code' ? '💻' : d.deliverableType === 'strategy' ? '📊' : '📄';
+      const typeLabel = d.type === 'code' ? 'Interactieve pagina' : d.deliverableType === 'strategy' ? 'Strategiedocument' : 'Document';
+
+      const PLATFORMS = [
+        { name: 'WordPress', steps: 'Ga naar uw WordPress dashboard → Bewerk de pagina → voeg blok "Aangepaste HTML" toe → Plak onderstaande code en publiceer:' },
+        { name: 'Webflow',   steps: 'Open Webflow designer → Sleep een "Embed" element naar uw pagina → Plak onderstaande code en sla op:' },
+        { name: 'Shopify',   steps: 'Online Store → Thema → Aanpassen → Voeg sectie "Custom HTML" toe → Plak onderstaande code:' },
+        { name: 'Wix',       steps: 'Open Wix Editor → klik + → Meer → HTML iframe → Coderen → Plak onderstaande code:' },
+        { name: 'HTML',      steps: 'Open uw HTML bestand → Plak onderstaande code op de gewenste plek → Sla op en upload:' },
+      ];
+
+      return (
+        <div style={{padding:12,border:'1px solid #e5e7eb',borderRadius:8,marginBottom:8,background:'#f9fafb'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:absUrl&&d.type==='code'?10:0}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'#111'}}>{typeIcon} {d.service}</div>
+              <div style={{fontSize:11,color:'#6b7280'}}>{typeLabel} · Goedgekeurd</div>
+            </div>
+            {absUrl && <a href={absUrl} target="_blank" rel="noopener" style={{fontSize:12,background:'#6366f1',color:'#fff',padding:'6px 14px',borderRadius:6,textDecoration:'none',whiteSpace:'nowrap'}}>Bekijken →</a>}
+          </div>
+
+          {absUrl && d.type === 'code' && <>
+            <div style={{border:'1px solid #e5e7eb',borderRadius:6,overflow:'hidden',marginTop:10}}>
+              <iframe src={absUrl} style={{width:'100%',height:300,border:'none',display:'block'}} loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms" />
+            </div>
+            <a href={absUrl} target="_blank" rel="noopener" style={{display:'inline-flex',alignItems:'center',gap:6,background:'#16a34a',color:'#fff',padding:'10px 18px',borderRadius:8,textDecoration:'none',fontWeight:600,fontSize:14,marginBottom:14,marginTop:12}}>🔗 Open mijn website →</a>
+            <details style={{border:'1px solid #e5e7eb',borderRadius:8,overflow:'hidden'}}>
+              <summary style={{fontSize:13,fontWeight:600,color:'#374151',cursor:'pointer',padding:'12px 14px',background:'#f9fafb',listStyle:'none',display:'flex',alignItems:'center',gap:6}}>
+                🔧 Installatie instructies <span style={{fontSize:11,color:'#6b7280',fontWeight:400}}>(klik om uit te klappen)</span>
+              </summary>
+              <div style={{padding:16,background:'#fff'}}>
+                <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:14,marginBottom:12}}>
+                  <div style={{fontSize:13,fontWeight:700,color:'#15803d',marginBottom:6}}>✅ OPTIE 1 — Directe link</div>
+                  <div style={{fontFamily:'monospace',fontSize:12,wordBreak:'break-all',color:'#15803d',background:'#fff',border:'1px solid #86efac',borderRadius:6,padding:'8px 12px',marginBottom:8}}>{absUrl}</div>
+                  <button onClick={e => copyText(absUrl, e.target)} style={{fontSize:12,padding:'5px 12px',background:'#16a34a',color:'#fff',border:'none',borderRadius:5,cursor:'pointer'}}>Kopieer link</button>
+                </div>
+                <div style={{background:'#f0f4ff',border:'1px solid #c7d2fe',borderRadius:8,padding:14}}>
+                  <div style={{fontSize:13,fontWeight:700,color:'#4338ca',marginBottom:6}}>🔧 OPTIE 2 — Inbouwen</div>
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
+                    {PLATFORMS.map((p, i) => (
+                      <button key={i} onClick={() => setPlatform(i)}
+                        style={{fontSize:12,padding:'5px 12px',border:'1px solid #c7d2fe',borderRadius:5,cursor:'pointer',background:platform===i?'#6366f1':'#e0e7ff',color:platform===i?'#fff':'#4338ca'}}>
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{fontSize:12,color:'#3730a3',lineHeight:1.8}}>
+                    <strong>{PLATFORMS[platform].name}:</strong><br/>
+                    {PLATFORMS[platform].steps}
+                    <code style={{display:'block',background:'#fff',border:'1px solid #c7d2fe',padding:'6px 8px',borderRadius:4,fontSize:11,margin:'6px 0',wordBreak:'break-all'}}>{embedCode}</code>
+                  </div>
+                  <button onClick={e => copyText(embedCode, e.target)} style={{marginTop:10,fontSize:12,padding:'6px 14px',background:'#6366f1',color:'#fff',border:'none',borderRadius:5,cursor:'pointer'}}>📋 Kopieer embedcode</button>
+                </div>
+              </div>
+            </details>
+          </>}
+        </div>
+      );
+    }
+
+    // ── Leveringen Tab ───────────────────────────────────────────────────
+    function LeveringenTab({ data, token }) {
+      const [fbText, setFbText] = useState('');
+      const [fbSent, setFbSent] = useState(false);
+      const [showFb, setShowFb] = useState(false);
+
       const calItems   = data.delivery?.contentCalendar?.items || [];
       const faqs       = data.delivery?.chatbotFlow?.faqs || [];
       const milestones = data.delivery?.milestones?.milestones || [];
-      const hasSite    = !!data.generatedSite;
-      const hasReports = (data.reports || []).length > 0;
-
-      const calHtml = calItems.length > 0 ? `
-        <div class="inner-section">
-          <div class="inner-label">Content kalender — Maand 1</div>
-          ${calItems.map(item => `
-            <div class="cal-item">
-              <div class="cal-tags">
-                <span class="cal-tag tag-week">Week ${item.week}${item.day ? ' · '+item.day : ''}</span>
-                ${item.platform ? `<span class="cal-tag tag-plat">${item.platform}</span>` : ''}
-                ${item.type     ? `<span class="cal-tag tag-type">${item.type}</span>` : ''}
-                ${item.bestTime ? `<span class="cal-tag tag-time">${item.bestTime}</span>` : ''}
-              </div>
-              <div class="cal-topic">${item.topic||''}</div>
-              ${item.caption    ? `<div class="cal-caption">${item.caption}</div>` : ''}
-              ${item.hashtags?.length ? `<div class="cal-hashtags">${item.hashtags.join(' ')}</div>` : ''}
-            </div>`).join('')}
-        </div>` : '';
-
-      const faqHtml = faqs.length > 0 ? `
-        <div class="inner-section">
-          <div class="inner-label">Chatbot FAQ Script</div>
-          <p style="font-size:13px;color:#6b7280;margin-bottom:12px;line-height:1.5">Gebruik deze antwoorden op jullie website chat of WhatsApp.</p>
-          ${faqs.map((f, i) => `
-            <div class="faq-item" id="faq${i}">
-              <div class="faq-q" onclick="toggleFaq('faq${i}')"><span>${f.question||''}</span>${CHEVRON}</div>
-              <div class="faq-a">${f.answer||''}</div>
-            </div>`).join('')}
-        </div>` : '';
-
-      const msHtml = milestones.length > 0 ? `
-        <div class="inner-section">
-          <div class="inner-label">Projectmijlpalen</div>
-          ${milestones.map(m => `
-            <div class="milestone-row">
-              <span class="milestone-week">W${m.week}</span>
-              <div>
-                <div class="milestone-title">${m.title||''}</div>
-                ${m.description ? `<div class="milestone-desc">${m.description}</div>` : ''}
-              </div>
-            </div>`).join('')}
-        </div>` : '';
-
-      const _siteUrl = hasSite && data.generatedSite.siteUrl
-        ? (data.generatedSite.siteUrl.startsWith('http') ? data.generatedSite.siteUrl : (window.location.origin + data.generatedSite.siteUrl))
-        : '';
-      const siteHtml = hasSite ? `
-        <div class="inner-section">
-          <div class="inner-label">Website preview</div>
-          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-            <span style="background:${data.generatedSite.status==='live'?'#16a34a':'#d97706'};color:#fff;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700">${data.generatedSite.status==='live'?'Live':'Preview'}</span>
-            <span style="font-size:12px;color:#6b7280">Gegenereerd op ${fmt(data.generatedSite.generatedAt)}</span>
-          </div>
-          ${_siteUrl ? `
-          <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:12px">
-            <iframe src="${_siteUrl}" style="width:100%;height:300px;border:none;display:block" loading="lazy" sandbox="allow-same-origin allow-scripts"></iframe>
-          </div>` : `
-          <div style="border:1px solid #e5e7eb;border-radius:8px;padding:20px;text-align:center;margin-bottom:12px;color:#6b7280;font-size:13px">
-            Geen preview beschikbaar — bekijk via de directe link
-          </div>`}
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-            ${_siteUrl ? `<a href="${_siteUrl}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#111;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">Bekijk website</a>` : ''}
-            <button onclick="document.getElementById('siteFbSec').style.display=''" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;color:#111;border:1.5px solid #e5e7eb;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Aanpassingen doorgeven</button>
-          </div>
-          <div id="siteFbSec" style="display:none">
-            <div class="form-group">
-              <label>Beschrijf de aanpassingen</label>
-              <textarea id="portalSiteFb" placeholder="Bijv: andere kleur, andere tekst..." style="width:100%;min-height:80px;padding:10px;border:1.5px solid #e5e7eb;border-radius:8px;font-family:inherit;font-size:13px;resize:vertical"></textarea>
-            </div>
-            <button onclick="submitSiteFeedback('${token}')" class="btn-send" style="margin-top:0">Verstuur aanpassingen</button>
-            <div id="siteFbOk" style="display:none;margin-top:10px;color:#16a34a;font-size:13px;font-weight:600">✓ Aanpassingen ontvangen!</div>
-          </div>
-        </div>` : '';
-
-      const reportsHtml = hasReports ? `
-        <div class="inner-section">
-          <div class="inner-label">Rapporten</div>
-          ${(data.reports||[]).map((r,i) => `
-            <div class="faq-item" id="rep${i}" style="margin-bottom:8px">
-              <div class="faq-q" onclick="toggleFaq('rep${i}')">
-                <div>
-                  <div style="font-size:13px;font-weight:600;color:#111">${r.title}</div>
-                  <div style="font-size:11px;color:#6b7280">${fmt(r.createdAt)}</div>
-                </div>${CHEVRON}
-              </div>
-              <div class="faq-a" style="white-space:pre-line">${r.content}</div>
-            </div>`).join('')}
-        </div>` : '';
-
-      // Shared project files
-      const sharedFiles = data.sharedProjectFiles || [];
-      const sharedFilesHtml = sharedFiles.length > 0 ? `
-        <div class="inner-section">
-          <div class="inner-label">Project bestanden</div>
-          ${sharedFiles.map(f => {
-            const icon = f.type === 'html' ? '🌐' : f.type === 'document' ? '📄' : '📊';
-            const absUrl = f.fullUrl || (f.url ? (f.url.startsWith('http') ? f.url : (window.location.origin + f.url)) : '');
-            return `<div style="padding:12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;background:#f9fafb">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${absUrl?'10px':'0'}">
-                <div>
-                  <div style="font-size:13px;font-weight:600;color:#111">${icon} ${(f.name||'').replace(/</g,'&lt;')}</div>
-                  <div style="font-size:11px;color:#6b7280">Toegevoegd ${fmt(f.createdAt)}</div>
-                </div>
-                ${absUrl ? `<a href="${absUrl.replace(/"/g,'&quot;')}" target="_blank" style="font-size:12px;background:#6366f1;color:#fff;padding:6px 14px;border-radius:6px;text-decoration:none;white-space:nowrap">Bekijken →</a>` : ''}
-              </div>
-              ${absUrl && f.type === 'html' ? `
-              <div style="border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;margin-top:10px">
-                <iframe src="${absUrl.replace(/"/g,'&quot;')}" style="width:100%;height:300px;border:none;display:block" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"></iframe>
-                <div style="display:none;padding:20px;text-align:center;font-size:13px;color:#6b7280;background:#f9fafb">Preview niet beschikbaar — <a href="${absUrl.replace(/"/g,'&quot;')}" target="_blank" rel="noopener" style="color:#6366f1;text-decoration:underline;margin-left:4px">open pagina in nieuw tabblad →</a></div>
-              </div>` : ''}
-            </div>`;
-          }).join('')}
-        </div>` : '';
-
-      // Approved agent deliverables
       const approvedDelivs = data.approvedDeliverables || [];
-      const _absUrl = u => !u ? '' : (u.startsWith('http') ? u : (window.location.origin + u));
-      const delivHtml = approvedDelivs.length > 0 ? `
-        <div class="inner-section">
-          <div class="inner-label">Gebouwde leveringen</div>
-          ${approvedDelivs.map(d => {
-            const typeIcon = d.type === 'code' ? '💻' : d.deliverableType === 'strategy' ? '📊' : '📄';
-            const typeLabel = d.type === 'code' ? 'Interactieve pagina' : d.deliverableType === 'strategy' ? 'Strategiedocument' : 'Document';
-            const absUrl = _absUrl(d.url);
-            const embedCode = absUrl ? `&lt;iframe src="${absUrl.replace(/"/g,'&quot;')}" width="100%" height="700" frameborder="0" style="border:none;border-radius:8px"&gt;&lt;/iframe&gt;` : '';
-            return `<div style="padding:12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;background:#f9fafb">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${absUrl && d.type==='code'?'10px':'0'}">
-                <div>
-                  <div style="font-size:13px;font-weight:600;color:#111">${typeIcon} ${(d.service||'').replace(/</g,'&lt;')}</div>
-                  <div style="font-size:11px;color:#6b7280">${typeLabel} · Goedgekeurd</div>
-                </div>
-                ${absUrl ? `<a href="${absUrl.replace(/"/g,'&quot;')}" target="_blank" style="font-size:12px;background:#6366f1;color:#fff;padding:6px 14px;border-radius:6px;text-decoration:none;white-space:nowrap">Bekijken →</a>` : ''}
-              </div>
-              ${absUrl && d.type==='code' ? `
-              <div style="border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;margin-top:10px">
-                <iframe src="${absUrl.replace(/"/g,'&quot;')}" style="width:100%;height:300px;border:none;display:block" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"></iframe>
-                <div style="display:none;padding:20px;text-align:center;font-size:13px;color:#6b7280;background:#f9fafb">Preview niet beschikbaar — <a href="${absUrl.replace(/"/g,'&quot;')}" target="_blank" rel="noopener" style="color:#6366f1;text-decoration:underline;margin-left:4px">open pagina in nieuw tabblad →</a></div>
-              </div>` : ''}
-              ${absUrl && d.type==='code' ? (() => {
-                const pid = (d.url || '').replace(/[^a-zA-Z0-9]/g,'').substring(0,24) || ('d' + Math.random().toString(36).slice(2,8));
-                return `<div style="margin-top:12px">
-                  <a href="${absUrl.replace(/"/g,'&quot;')}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;background:#16a34a;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin-bottom:14px">🔗 Open mijn website →</a>
-                  <details style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
-                    <summary style="font-size:13px;font-weight:600;color:#374151;cursor:pointer;padding:12px 14px;background:#f9fafb;user-select:none;list-style:none;display:flex;align-items:center;gap:6px">🔧 Installatie instructies <span style="font-size:11px;color:#6b7280;font-weight:400">(klik om uit te klappen)</span></summary>
-                    <div style="padding:16px;background:#fff">
-                      <p style="font-size:14px;color:#111;margin:0 0 16px;line-height:1.6">Uw website is klaar! U kunt hem op twee manieren gebruiken:</p>
-                      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px;margin-bottom:12px">
-                        <div style="font-size:13px;font-weight:700;color:#15803d;margin-bottom:6px">✅ OPTIE 1 — Directe link (makkelijkst)</div>
-                        <div style="font-size:13px;color:#166534;margin-bottom:8px">Deel gewoon deze link met uw klanten — ze kunnen hem direct bezoeken:</div>
-                        <div style="background:#fff;border:1px solid #86efac;border-radius:6px;padding:8px 12px;font-family:monospace;font-size:12px;word-break:break-all;color:#15803d">${absUrl.replace(/"/g,'&quot;')}</div>
-                        <button onclick="navigator.clipboard.writeText('${absUrl.replace(/'/g,"\\'")}').then(()=>this.textContent='Gekopieerd! ✓').catch(()=>{})" style="margin-top:8px;font-size:12px;padding:5px 12px;background:#16a34a;color:#fff;border:none;border-radius:5px;cursor:pointer">Kopieer link</button>
-                      </div>
-                      <div style="background:#f0f4ff;border:1px solid #c7d2fe;border-radius:8px;padding:14px">
-                        <div style="font-size:13px;font-weight:700;color:#4338ca;margin-bottom:6px">🔧 OPTIE 2 — Inbouwen in bestaande website</div>
-                        <div style="font-size:13px;color:#3730a3;margin-bottom:10px">Als u al een website heeft en dit wilt toevoegen, kies uw platform:</div>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-                          <button onclick="document.querySelectorAll('.pp-${pid}').forEach(x=>x.style.display='none');document.getElementById('pp-${pid}-0').style.display='block';this.closest('div').querySelectorAll('button').forEach(b=>{b.style.background='#e0e7ff';b.style.color='#4338ca'});this.style.background='#6366f1';this.style.color='#fff'" style="font-size:12px;padding:5px 12px;border:1px solid #c7d2fe;border-radius:5px;cursor:pointer;background:#6366f1;color:#fff">WordPress</button>
-                          <button onclick="document.querySelectorAll('.pp-${pid}').forEach(x=>x.style.display='none');document.getElementById('pp-${pid}-1').style.display='block';this.closest('div').querySelectorAll('button').forEach(b=>{b.style.background='#e0e7ff';b.style.color='#4338ca'});this.style.background='#6366f1';this.style.color='#fff'" style="font-size:12px;padding:5px 12px;border:1px solid #c7d2fe;border-radius:5px;cursor:pointer;background:#e0e7ff;color:#4338ca">Webflow</button>
-                          <button onclick="document.querySelectorAll('.pp-${pid}').forEach(x=>x.style.display='none');document.getElementById('pp-${pid}-2').style.display='block';this.closest('div').querySelectorAll('button').forEach(b=>{b.style.background='#e0e7ff';b.style.color='#4338ca'});this.style.background='#6366f1';this.style.color='#fff'" style="font-size:12px;padding:5px 12px;border:1px solid #c7d2fe;border-radius:5px;cursor:pointer;background:#e0e7ff;color:#4338ca">Shopify</button>
-                          <button onclick="document.querySelectorAll('.pp-${pid}').forEach(x=>x.style.display='none');document.getElementById('pp-${pid}-3').style.display='block';this.closest('div').querySelectorAll('button').forEach(b=>{b.style.background='#e0e7ff';b.style.color='#4338ca'});this.style.background='#6366f1';this.style.color='#fff'" style="font-size:12px;padding:5px 12px;border:1px solid #c7d2fe;border-radius:5px;cursor:pointer;background:#e0e7ff;color:#4338ca">Wix</button>
-                          <button onclick="document.querySelectorAll('.pp-${pid}').forEach(x=>x.style.display='none');document.getElementById('pp-${pid}-4').style.display='block';this.closest('div').querySelectorAll('button').forEach(b=>{b.style.background='#e0e7ff';b.style.color='#4338ca'});this.style.background='#6366f1';this.style.color='#fff'" style="font-size:12px;padding:5px 12px;border:1px solid #c7d2fe;border-radius:5px;cursor:pointer;background:#e0e7ff;color:#4338ca">HTML</button>
-                        </div>
-                        <div id="pp-${pid}-0" class="pp-${pid}" style="font-size:12px;color:#3730a3;line-height:1.8"><strong>WordPress / Elementor:</strong><br>1. Ga naar uw WordPress dashboard<br>2. Bewerk de pagina → voeg blok "Aangepaste HTML" toe<br>3. Plak onderstaande code en publiceer:<code style="display:block;background:#fff;border:1px solid #c7d2fe;padding:6px 8px;border-radius:4px;font-size:11px;margin:6px 0;word-break:break-all">${embedCode}</code></div>
-                        <div id="pp-${pid}-1" class="pp-${pid}" style="display:none;font-size:12px;color:#3730a3;line-height:1.8"><strong>Webflow:</strong><br>1. Open Webflow designer<br>2. Sleep een "Embed" element naar uw pagina<br>3. Plak onderstaande code en sla op:<code style="display:block;background:#fff;border:1px solid #c7d2fe;padding:6px 8px;border-radius:4px;font-size:11px;margin:6px 0;word-break:break-all">${embedCode}</code></div>
-                        <div id="pp-${pid}-2" class="pp-${pid}" style="display:none;font-size:12px;color:#3730a3;line-height:1.8"><strong>Shopify:</strong><br>1. Online Store → Thema → Aanpassen<br>2. Voeg sectie "Custom HTML" toe<br>3. Plak onderstaande code:<code style="display:block;background:#fff;border:1px solid #c7d2fe;padding:6px 8px;border-radius:4px;font-size:11px;margin:6px 0;word-break:break-all">${embedCode}</code></div>
-                        <div id="pp-${pid}-3" class="pp-${pid}" style="display:none;font-size:12px;color:#3730a3;line-height:1.8"><strong>Wix:</strong><br>1. Open Wix Editor → klik + → Meer<br>2. HTML iframe → Coderen<br>3. Plak onderstaande code:<code style="display:block;background:#fff;border:1px solid #c7d2fe;padding:6px 8px;border-radius:4px;font-size:11px;margin:6px 0;word-break:break-all">${embedCode}</code></div>
-                        <div id="pp-${pid}-4" class="pp-${pid}" style="display:none;font-size:12px;color:#3730a3;line-height:1.8"><strong>Directe HTML embed:</strong><br>1. Open uw HTML bestand<br>2. Plak onderstaande code op de gewenste plek<br>3. Sla op en upload:<code style="display:block;background:#fff;border:1px solid #c7d2fe;padding:6px 8px;border-radius:4px;font-size:11px;margin:6px 0;word-break:break-all">${embedCode}</code></div>
-                        <button onclick="navigator.clipboard.writeText('${embedCode.replace(/'/g,"\\'")}').then(()=>this.textContent='Gekopieerd! ✓').catch(()=>{})" style="margin-top:10px;font-size:12px;padding:6px 14px;background:#6366f1;color:#fff;border:none;border-radius:5px;cursor:pointer">📋 Kopieer embedcode</button>
-                      </div>
-                    </div>
-                  </details>
-                </div>`;
-              })() : ''}
-            </div>`;
-          }).join('')}
-        </div>` : '';
+      const sharedFiles    = data.sharedProjectFiles || [];
+      const hasSite        = !!data.generatedSite;
+      const _siteUrl       = hasSite && data.generatedSite.siteUrl
+        ? (data.generatedSite.siteUrl.startsWith('http') ? data.generatedSite.siteUrl : window.location.origin + data.generatedSite.siteUrl) : '';
 
-      const leveringenHtml = (sharedFilesHtml || delivHtml || calHtml || faqHtml || msHtml || siteHtml || reportsHtml)
-        ? sharedFilesHtml + delivHtml + calHtml + faqHtml + msHtml + siteHtml + reportsHtml
-        : `<div class="empty-state">
-             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-             <p>Nog geen leveringen beschikbaar</p>
-           </div>`;
+      async function submitFeedback() {
+        if (!fbText.trim()) return;
+        const r = await fetch(`/api/portal/${token}/site-feedback`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feedback: fbText })
+        });
+        if (r.ok) { setFbSent(true); setFbText(''); setShowFb(false); }
+        else alert('Versturen mislukt.');
+      }
 
-      /* ── Documenten tab ── */
-      const docs = data.documents || [];
-      const LOCK_SVG  = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
-      const LINK_SVG  = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
-      const NOTE_SVG  = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`;
+      const hasContent = sharedFiles.length || approvedDelivs.length || calItems.length || faqs.length || milestones.length || hasSite;
 
-      const docIcon = type => ({ link: LINK_SVG, password: LOCK_SVG, note: NOTE_SVG }[type] || NOTE_SVG);
-
-      const documentsHtml = docs.length > 0 ? docs.map(doc => {
-        const isLink = doc.type === 'link';
-        const isPw   = doc.type === 'password';
-        const isNote = doc.type === 'note';
-        return `
-          <div class="doc-card">
-            <div class="doc-card-header">
-              <div class="doc-icon ${doc.type || 'note'}">${docIcon(doc.type)}</div>
-              <div style="flex:1;min-width:0">
-                <div class="doc-title">${(doc.title||'').replace(/</g,'&lt;')}</div>
-                ${doc.description ? `<div class="doc-desc">${(doc.description||'').replace(/</g,'&lt;')}</div>` : ''}
-              </div>
-            </div>
-            ${isLink && doc.content ? `
-              <div class="doc-actions">
-                <a class="doc-btn primary" href="${(doc.content||'').replace(/"/g,'&quot;')}" target="_blank" rel="noopener">${LINK_SVG} Openen</a>
-                <button class="doc-btn" onclick="navigator.clipboard.writeText(${JSON.stringify(doc.content||'')}).then(()=>this.textContent='Gekopieerd!')">Kopieer link</button>
-              </div>` : ''}
-            ${isPw ? `
-              <div style="margin-top:10px">
-                ${doc.username ? `<div style="font-size:12px;color:var(--muted);margin-bottom:4px">Gebruikersnaam: <strong style="color:#111">${(doc.username||'').replace(/</g,'&lt;')}</strong></div>` : ''}
-                <div class="doc-password-field">
-                  <span class="doc-password-value" id="pw-${doc.id}">••••••••</span>
-                  <button class="doc-btn" style="border:none;padding:4px 8px" onclick="togglePw('${doc.id}',${JSON.stringify(doc.content||'')})">Toon</button>
-                  <button class="doc-btn" style="border:none;padding:4px 8px" onclick="navigator.clipboard.writeText(${JSON.stringify(doc.content||'')}).then(()=>this.textContent='✓')">Kopieer</button>
-                </div>
-              </div>` : ''}
-            ${isNote && doc.content ? `<div style="margin-top:10px;font-size:13px;color:#374151;background:var(--surface);border-radius:7px;padding:10px 12px;white-space:pre-line;line-height:1.6">${(doc.content||'').replace(/</g,'&lt;')}</div>` : ''}
-          </div>`;
-      }).join('') : `
-        <div class="empty-state">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-          <p>Nog geen documenten beschikbaar. Uw accountmanager zal hier binnenkort bestanden en links plaatsen.</p>
-        </div>`;
-
-      /* ── Resultaten tab (real data only) ── */
-      const ra = data.analytics || {};
-      const bk = ra.bookings   || {};
-      const dv = ra.deliverables || {};
-      const pj = ra.project    || {};
-      const em = ra.emails     || {};
-
-      const statRow = (label, value) =>
-        `<div class="analytics-stat">
-           <span class="analytics-stat-label">${label}</span>
-           <span class="analytics-stat-value">${value}</span>
-         </div>`;
-
-      const bookingsSection = `
-        <div class="analytics-card blue" style="margin-bottom:10px">
-          <div class="analytics-card-title" style="color:#1d4ed8">📅 Boekingen</div>
-          ${bk.total > 0 ? `
-            ${statRow('Totaal boekingen', bk.total)}
-            ${statRow('Boekingen deze maand', bk.thisMonth || 0)}
-            ${bk.lastBooking ? statRow('Laatste boeking', fmtS(bk.lastBooking)) : ''}
-            ${bk.popularService ? statRow('Populairste dienst', e(bk.popularService)) : ''}
-          ` : `<div style="font-size:13px;color:var(--muted);padding:4px 0">Nog geen boekingen ontvangen.</div>`}
-        </div>`;
-
-      const delivSection = `
-        <div class="analytics-card green" style="margin-bottom:10px">
-          <div class="analytics-card-title" style="color:#15803d">💻 Gebouwde pagina's</div>
-          ${dv.total > 0 ? `
-            ${statRow("Pagina's gebouwd", dv.total)}
-            ${dv.lastBuilt ? statRow('Laatste update', fmtS(dv.lastBuilt)) : ''}
-            <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
-              ${(dv.items||[]).map(d => `
-                <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:5px 0;border-top:1px solid rgba(0,0,0,.06)">
-                  <span style="color:#374151;font-weight:600">${e(d.service)}</span>
-                  ${d.url ? `<a href="${d.url}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:none;font-size:11px">Bekijk →</a>` : '<span style="color:var(--muted);font-size:11px">Geen link</span>'}
-                </div>`).join('')}
-            </div>
-          ` : `<div style="font-size:13px;color:var(--muted);padding:4px 0">Nog geen pagina's gebouwd.</div>`}
-        </div>`;
-
-      const projectSection = `
-        <div class="analytics-card purple" style="margin-bottom:10px">
-          <div class="analytics-card-title" style="color:#6d28d9">📊 Project voortgang</div>
-          ${pj.startDate ? `
-            ${pj.phase    ? statRow('Huidige fase', 'Fase ' + pj.phase + ' van 5') : ''}
-            ${pj.daysActive !== null ? statRow('Dagen actief als klant', pj.daysActive) : ''}
-          ` : `<div style="font-size:13px;color:var(--muted);padding:4px 0">Project is nog niet gestart.</div>`}
-        </div>`;
-
-      const emailSection = em.total > 0 ? `
-        <div class="analytics-card orange" style="margin-bottom:10px">
-          <div class="analytics-card-title" style="color:#c2410c">✉️ Communicatie</div>
-          ${statRow('Berichten ontvangen', em.total)}
-          ${em.lastSent ? statRow('Laatste bericht', fmtS(em.lastSent)) : ''}
-        </div>` : '';
-
-      const analyticsHtml = `
-        <div style="margin-bottom:14px">
-          ${bookingsSection}
-          ${delivSection}
-          ${projectSection}
-          ${emailSection}
-        </div>`;
-
-      /* ── Tab badge for open invoices ── */
-      const payTabLabel = openCount > 0
-        ? `Facturen <span style="background:#ef4444;color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;font-weight:700;margin-left:3px">${openCount}</span>`
-        : 'Facturen';
-
-      /* ── Render ── */
-      document.getElementById('root').innerHTML = `
-        <div class="agency-header">
-          <div class="agency-logo">
-            ${data.agencyLogo ? `<img src="${e(data.agencyLogo)}" style="width:26px;height:26px;object-fit:contain;border-radius:4px;display:block" alt="${e(data.agencyName)}">` : '<svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>'}
+      if (!hasContent) {
+        return (
+          <div className="empty-state">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <p>Nog geen leveringen beschikbaar</p>
           </div>
-          <div class="agency-name">${e(data.agencyName)}</div>
-        </div>
+        );
+      }
 
-        <div class="project-banner">
-          <div class="company-name">${e(data.companyName)}</div>
-          <div class="company-sub">Bijgewerkt door ${e(data.myName || data.agencyName)}</div>
-          <div class="phase-track">${phaseTrack}</div>
-          <div class="progress-wrap"><div class="progress-fill" style="width:${pct}%"></div></div>
-          <div class="phase-caption">Fase: <strong>Fase ${cur} — ${PHASES[cur-1]?.label}</strong></div>
-          ${data.estimatedCompletion ? `
-            <div class="date-row">${CAL_SVG} Verwachte afronddatum: <strong>${fmt(data.estimatedCompletion)}</strong></div>` : ''}
-        </div>
-
-        ${cur === 5 ? `
-        <div style="margin:0 0 16px;padding:16px 18px;border-radius:12px;background:${svcs.some(s => s.billing !== 'eenmalig') ? 'linear-gradient(135deg,#f0fdf4,#dcfce7)' : 'linear-gradient(135deg,#eff6ff,#dbeafe)'};border:1.5px solid ${svcs.some(s => s.billing !== 'eenmalig') ? '#86efac' : '#bfdbfe'};display:flex;gap:12px;align-items:flex-start">
-          <span style="font-size:22px;flex-shrink:0">${svcs.some(s => s.billing !== 'eenmalig') ? '🤝' : '🎉'}</span>
-          <div>
-            <div style="font-size:14px;font-weight:700;color:#111;margin-bottom:4px">${svcs.some(s => s.billing !== 'eenmalig') ? 'We werken graag samen!' : 'Project afgerond!'}</div>
-            <div style="font-size:13px;color:#374151;line-height:1.6">${svcs.some(s => s.billing !== 'eenmalig') ? 'Fijn dat we al een tijdje samenwerken! We hopen dit nog lang voort te zetten.' : 'Het project is afgerond! Wil je nog een vervolgproject starten? We helpen je graag verder.'}</div>
-          </div>
-        </div>` : ''}
-
-        <div class="tabs-wrap">
-          <nav class="tabs-nav">
-            <button class="tab-btn active" data-tab="overview"   onclick="showTab('overview')">Overzicht</button>
-            <button class="tab-btn"         data-tab="leveringen" onclick="showTab('leveringen')">Leveringen</button>
-            <button class="tab-btn"         data-tab="facturen"   onclick="showTab('facturen')">${payTabLabel}</button>
-            <button class="tab-btn"         data-tab="documenten" onclick="showTab('documenten')">${docs.length > 0 ? `Documenten <span style="background:var(--accent);color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;font-weight:700;margin-left:3px">${docs.length}</span>` : 'Documenten'}</button>
-            <button class="tab-btn"         data-tab="resultaten" onclick="showTab('resultaten')">Resultaten</button>
-            <button class="tab-btn"         data-tab="berichten"  onclick="showTab('berichten')">Berichten</button>
-          </nav>
-
-          <div class="tab-pane active" data-pane="overview">
-            ${data.portalWelcomeMessage ? `
-              <div class="inner-section" style="background:linear-gradient(135deg,#eff6ff,#f8faff);border:1.5px solid #bfdbfe;border-radius:10px;padding:14px 16px">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-                  <span style="font-size:15px">👋</span>
-                  <span style="font-size:12px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:.06em">Bericht van uw accountmanager</span>
-                </div>
-                <p style="margin:0;font-size:14px;line-height:1.65;color:#1e3a8a;white-space:pre-line">${e(data.portalWelcomeMessage)}</p>
-              </div>` : ''}
-            ${svcsHtml}
-            ${calendlyHtml}
-            ${(() => {
-              const subs = data.contactSubmissions || [];
-              if (!subs.length) return '';
-              const fmt2 = iso => { try { return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
-              return `<div class="inner-section" style="margin-top:14px">
-                <div class="inner-label" style="margin-bottom:8px">📩 Binnengekomen berichten via uw website</div>
-                ${subs.map(s => `<div style="padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;background:#f9fafb">
-                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-                    <div>
-                      <div style="font-size:13px;font-weight:600;color:#111">${e(s.name)}${s.email ? ` <span style="font-weight:400;color:#6b7280">&lt;${e(s.email)}&gt;</span>` : ''}</div>
-                      ${s.service ? `<div style="font-size:12px;color:#6366f1;margin-top:2px">${e(s.service)}</div>` : ''}
-                      ${s.message ? `<div style="font-size:12px;color:#374151;margin-top:4px;line-height:1.5">${e(s.message.substring(0,140))}${s.message.length>140?'…':''}</div>` : ''}
+      return (
+        <div>
+          {sharedFiles.length > 0 && (
+            <div className="inner-section">
+              <div className="inner-label">Project bestanden</div>
+              {sharedFiles.map((f, i) => {
+                const icon = f.type==='html'?'🌐':f.type==='document'?'📄':'📊';
+                const absUrl = f.fullUrl || (f.url ? (f.url.startsWith('http') ? f.url : window.location.origin+f.url) : '');
+                return (
+                  <div key={i} style={{padding:12,border:'1px solid #e5e7eb',borderRadius:8,marginBottom:8,background:'#f9fafb'}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:600}}>{icon} {f.name}</div>
+                        <div style={{fontSize:11,color:'#6b7280'}}>Toegevoegd {fmt(f.createdAt)}</div>
+                      </div>
+                      {absUrl && <a href={absUrl} target="_blank" rel="noopener" style={{fontSize:12,background:'#6366f1',color:'#fff',padding:'6px 14px',borderRadius:6,textDecoration:'none'}}>Bekijken →</a>}
                     </div>
-                    <div style="font-size:11px;color:#9ca3af;white-space:nowrap;flex-shrink:0">${fmt2(s.submittedAt)}</div>
+                    {absUrl && f.type==='html' && (
+                      <div style={{border:'1px solid #e5e7eb',borderRadius:6,overflow:'hidden',marginTop:10}}>
+                        <iframe src={absUrl} style={{width:'100%',height:300,border:'none',display:'block'}} loading="lazy" sandbox="allow-scripts allow-same-origin" />
+                      </div>
+                    )}
                   </div>
-                </div>`).join('')}
-              </div>`;
-            })()}
-            <div style="margin-top:24px;padding:20px;border:2px dashed #d1d5db;border-radius:12px;background:#f9fafb">
-              <div style="font-size:15px;font-weight:700;color:#111;margin-bottom:4px">📎 Bestanden uploaden</div>
-              <div style="font-size:13px;color:#6b7280;margin-bottom:16px">Upload uw logo, foto's of andere bestanden die wij kunnen gebruiken</div>
-              <div id="uploadZone" onclick="document.getElementById('fileInput').click()" ondragover="event.preventDefault();this.style.background='#e0e7ff'" ondrop="event.preventDefault();this.style.background='#f0f4ff';handlePortalFiles(event.dataTransfer.files)" style="border:2px dashed #c7d2fe;border-radius:8px;padding:24px;text-align:center;cursor:pointer;background:#f0f4ff;transition:.2s" onmouseover="this.style.background='#e0e7ff'" onmouseout="this.style.background='#f0f4ff'">
-                <div style="font-size:28px;margin-bottom:8px">📂</div>
-                <div style="font-size:14px;color:#6366f1;font-weight:600">Klik om te bladeren of sleep bestanden hier</div>
-                <div style="font-size:12px;color:#9ca3af;margin-top:4px">JPG, PNG, SVG, PDF, ZIP — max 10MB per bestand</div>
-              </div>
-              <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.svg,.gif,.webp,.pdf,.zip" multiple style="display:none" onchange="handlePortalFiles(this.files)">
-              <div id="stagedList" style="margin-top:10px"></div>
-              <button id="submitFilesBtn" onclick="submitStagedFiles()" style="display:none;margin-top:10px;width:100%;padding:11px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">📤 Verstuur bestanden naar Agency AI</button>
-              <div id="uploadSuccessMsg" style="display:none;margin-top:10px;padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;color:#16a34a;font-size:13px;font-weight:600">✓ Bestanden verstuurd! We gaan hiermee aan de slag.</div>
-              <div id="uploadedList" style="margin-top:14px"></div>
+                );
+              })}
             </div>
-            ${!data.portalWelcomeMessage && !svcsHtml && !calendlyHtml && !(data.contactSubmissions||[]).length ? '<div class="empty-state"><p>Nog geen projectinformatie beschikbaar.</p></div>' : ''}
-          </div>
+          )}
 
-          <div class="tab-pane" data-pane="leveringen">
-            ${leveringenHtml}
-          </div>
-
-          <div class="tab-pane" data-pane="facturen">
-            ${facturenHtml}
-          </div>
-
-          <div class="tab-pane" data-pane="documenten">
-            ${documentsHtml}
-          </div>
-
-          <div class="tab-pane" data-pane="resultaten">
-            ${analyticsHtml}
-          </div>
-
-          <div class="tab-pane" data-pane="berichten">
-            <div class="inner-label">Gesprek met uw accountmanager</div>
-            <div id="tabChatThread" style="display:flex;flex-direction:column;gap:8px;min-height:80px;margin-bottom:14px">
-              ${(data.portalChat||[]).length === 0
-                ? `<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0">Nog geen berichten. Stuur ons een bericht!</div>`
-                : (data.portalChat||[]).map(m => `
-                    <div style="max-width:85%;padding:8px 12px;border-radius:12px;font-size:13px;line-height:1.5;${m.from==='client'?'background:var(--accent);color:#fff;align-self:flex-end;border-bottom-right-radius:4px;margin-left:auto':'background:#f3f4f6;color:#111;align-self:flex-start;border-bottom-left-radius:4px'}">
-                      ${(m.message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-                      <div style="font-size:10px;margin-top:3px;opacity:.65">${m.from==='admin'?(m.name||'Accountmanager'):(m.name||'U')} · ${fmtS(m.time)}</div>
-                    </div>`).join('')}
+          {approvedDelivs.length > 0 && (
+            <div className="inner-section">
+              <div className="inner-label">Gebouwde leveringen</div>
+              {approvedDelivs.map((d, i) => <DeliverableCard key={i} d={d} />)}
             </div>
-            <div id="msgForm" style="border-top:1px solid var(--border);padding-top:14px">
-              <div class="form-group">
-                <label>Uw naam</label>
-                <input type="text" id="msgName" placeholder="Uw naam">
-              </div>
-              <div class="form-group">
-                <label>Bericht</label>
-                <textarea id="msgText" placeholder="Schrijf hier uw vraag of opmerking..."></textarea>
-              </div>
-              <button class="btn-send" id="sendBtn" onclick="sendMsg('${token}')">Verstuur bericht</button>
+          )}
+
+          {calItems.length > 0 && (
+            <div className="inner-section">
+              <div className="inner-label">Content kalender — Maand 1</div>
+              {calItems.map((item, i) => (
+                <div key={i} className="cal-item">
+                  <div className="cal-tags">
+                    <span className="cal-tag tag-week">Week {item.week}{item.day ? ` · ${item.day}` : ''}</span>
+                    {item.platform && <span className="cal-tag tag-plat">{item.platform}</span>}
+                    {item.type     && <span className="cal-tag tag-type">{item.type}</span>}
+                    {item.bestTime && <span className="cal-tag tag-time">{item.bestTime}</span>}
+                  </div>
+                  <div className="cal-topic">{item.topic}</div>
+                  {item.caption  && <div className="cal-caption">{item.caption}</div>}
+                  {item.hashtags?.length > 0 && <div className="cal-hashtags">{item.hashtags.join(' ')}</div>}
+                </div>
+              ))}
             </div>
-          </div>
+          )}
+
+          {faqs.length > 0 && (
+            <div className="inner-section">
+              <div className="inner-label">Chatbot FAQ Script</div>
+              {faqs.map((f, i) => <FaqItem key={i} question={f.question} answer={f.answer} />)}
+            </div>
+          )}
+
+          {milestones.length > 0 && (
+            <div className="inner-section">
+              <div className="inner-label">Projectmijlpalen</div>
+              {milestones.map((m, i) => (
+                <div key={i} className="milestone-row">
+                  <span className="milestone-week">W{m.week}</span>
+                  <div>
+                    <div className="milestone-title">{m.title}</div>
+                    {m.description && <div className="milestone-desc">{m.description}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {hasSite && (
+            <div className="inner-section">
+              <div className="inner-label">Website preview</div>
+              <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'10px 14px',marginBottom:12,display:'flex',alignItems:'center',gap:8}}>
+                <span style={{background:data.generatedSite.status==='live'?'#16a34a':'#d97706',color:'#fff',borderRadius:4,padding:'2px 8px',fontSize:11,fontWeight:700}}>
+                  {data.generatedSite.status==='live'?'Live':'Preview'}
+                </span>
+                <span style={{fontSize:12,color:'#6b7280'}}>Gegenereerd op {fmt(data.generatedSite.generatedAt)}</span>
+              </div>
+              {_siteUrl ? (
+                <div style={{border:'1px solid #e5e7eb',borderRadius:8,overflow:'hidden',marginBottom:12}}>
+                  <iframe src={_siteUrl} style={{width:'100%',height:300,border:'none',display:'block'}} loading="lazy" sandbox="allow-same-origin allow-scripts" />
+                </div>
+              ) : (
+                <div style={{border:'1px solid #e5e7eb',borderRadius:8,padding:20,textAlign:'center',marginBottom:12,color:'#6b7280',fontSize:13}}>
+                  Geen preview beschikbaar
+                </div>
+              )}
+              <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
+                {_siteUrl && <a href={_siteUrl} target="_blank" style={{display:'inline-flex',alignItems:'center',gap:6,padding:'8px 14px',background:'#111',color:'#fff',borderRadius:6,textDecoration:'none',fontSize:13,fontWeight:600}}>Bekijk website</a>}
+                <button onClick={() => setShowFb(true)} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'8px 14px',background:'#fff',color:'#111',border:'1.5px solid #e5e7eb',borderRadius:6,fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Aanpassingen doorgeven</button>
+              </div>
+              {showFb && !fbSent && (
+                <div>
+                  <textarea value={fbText} onChange={e => setFbText(e.target.value)} placeholder="Bijv: andere kleur, andere tekst..." style={{width:'100%',minHeight:80,padding:10,border:'1.5px solid #e5e7eb',borderRadius:8,fontFamily:'inherit',fontSize:13,resize:'vertical',marginBottom:8}} />
+                  <button onClick={submitFeedback} className="btn-send" style={{marginTop:0}}>Verstuur aanpassingen</button>
+                </div>
+              )}
+              {fbSent && <div style={{marginTop:10,color:'#16a34a',fontSize:13,fontWeight:600}}>✓ Aanpassingen ontvangen!</div>}
+            </div>
+          )}
         </div>
-      `;
+      );
     }
 
-    async function submitSiteFeedback(token) {
-      const feedback = document.getElementById('portalSiteFb')?.value?.trim();
-      if (!feedback) { alert('Voer feedback in.'); return; }
-      try {
-        const res = await fetch('/api/portal/' + token + '/site-feedback', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ feedback })
-        });
-        if (res.ok) {
-          document.getElementById('siteFbOk').style.display = '';
-          document.getElementById('portalSiteFb').value = '';
-        } else { alert('Versturen mislukt.'); }
-      } catch { alert('Verbindingsfout.'); }
+    // ── Facturen Tab ─────────────────────────────────────────────────────
+    function FacturenTab({ payments }) {
+      if (!payments.length) return (
+        <div className="empty-state">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          <p>Nog geen facturen aangemaakt</p>
+        </div>
+      );
+      return (
+        <div>
+          {payments.map((p, i) => {
+            const ov = p.dueDate && !p.paidAt && new Date(p.dueDate) < new Date() && p.status !== 'paid';
+            return (
+              <div key={i} className={`invoice-card${ov?' overdue':''}`}>
+                <div className="invoice-header">
+                  <div className="invoice-desc">{p.description || 'Factuur'}</div>
+                  <div className="invoice-amount">€{(p.amount||0).toLocaleString('nl-NL')}</div>
+                </div>
+                <div className="invoice-meta">
+                  <PayBadge payment={p} />
+                  {p.dueDate && <span>Vervaldatum: {fmtS(p.dueDate)}</span>}
+                  {p.paidAt  && <span style={{color:'#16a34a'}}>✓ Betaald op {fmtS(p.paidAt)}</span>}
+                </div>
+                {p.paymentUrl && p.status !== 'paid' && p.status !== 'cancelled' && (
+                  <a href={p.paymentUrl} target="_blank" rel="noopener" className="invoice-pay-btn">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                    Nu betalen
+                  </a>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      );
     }
 
-    async function sendMsg(token) {
-      const nameEl    = document.getElementById('msgName');
-      const textEl    = document.getElementById('msgText');
-      const btn       = document.getElementById('sendBtn');
-      const name      = nameEl?.value?.trim();
-      const message   = textEl?.value?.trim();
-      if (!name || !message) { alert('Vul je naam en een bericht in.'); return; }
-      btn.disabled = true;
-      btn.textContent = 'Versturen...';
-      try {
-        const res = await fetch('/api/portal/' + token + '/message', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, message })
-        });
-        if (res.ok) {
-          if (textEl) textEl.value = '';
-          btn.textContent = '✓ Verstuurd!';
-          btn.style.background = '#16a34a';
-          setTimeout(() => { btn.disabled = false; btn.textContent = 'Verstuur bericht'; btn.style.background = ''; }, 2500);
-          // Refresh thread immediately
-          clearTimeout(_chatPollTimer);
-          pollChat(token);
-        } else {
-          btn.disabled = false;
-          btn.textContent = 'Verstuur bericht';
-          alert('Versturen mislukt. Probeer het opnieuw.');
-        }
-      } catch {
-        btn.disabled = false;
-        btn.textContent = 'Verstuur bericht';
-        alert('Verbindingsfout. Probeer het opnieuw.');
-      }
+    // ── Documenten Tab ───────────────────────────────────────────────────
+    function DocumentenTab({ docs }) {
+      const [shownPw, setShownPw] = useState({});
+
+      if (!docs.length) return (
+        <div className="empty-state">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <p>Nog geen documenten beschikbaar.</p>
+        </div>
+      );
+
+      const LockSvg = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
+      const LinkSvg = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>;
+      const NoteSvg = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>;
+
+      return (
+        <div>
+          {docs.map((doc, i) => (
+            <div key={i} className="doc-card">
+              <div className="doc-card-header">
+                <div className={`doc-icon ${doc.type||'note'}`}>
+                  {doc.type==='link' ? <LinkSvg /> : doc.type==='password' ? <LockSvg /> : <NoteSvg />}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div className="doc-title">{doc.title}</div>
+                  {doc.description && <div className="doc-desc">{doc.description}</div>}
+                </div>
+              </div>
+              {doc.type==='link' && doc.content && (
+                <div className="doc-actions">
+                  <a className="doc-btn primary" href={doc.content} target="_blank" rel="noopener"><LinkSvg /> Openen</a>
+                  <button className="doc-btn" onClick={e => copyText(doc.content, e.target)}>Kopieer link</button>
+                </div>
+              )}
+              {doc.type==='password' && (
+                <div style={{marginTop:10}}>
+                  {doc.username && <div style={{fontSize:12,color:'#6b7280',marginBottom:4}}>Gebruikersnaam: <strong style={{color:'#111'}}>{doc.username}</strong></div>}
+                  <div className="doc-password-field">
+                    <span className="doc-password-value">{shownPw[doc.id] ? doc.content : '••••••••'}</span>
+                    <button className="doc-btn" style={{border:'none',padding:'4px 8px'}} onClick={() => setShownPw(prev => ({...prev, [doc.id]: !prev[doc.id]}))}>
+                      {shownPw[doc.id] ? 'Verberg' : 'Toon'}
+                    </button>
+                    <button className="doc-btn" style={{border:'none',padding:'4px 8px'}} onClick={e => copyText(doc.content, e.target)}>Kopieer</button>
+                  </div>
+                </div>
+              )}
+              {doc.type==='note' && doc.content && (
+                <div style={{marginTop:10,fontSize:13,color:'#374151',background:'#f9fafb',borderRadius:7,padding:'10px 12px',whiteSpace:'pre-line',lineHeight:1.6}}>{doc.content}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      );
     }
 
-    // ── File upload helpers ──────────────────────────────────────────────────
-    window._stagedFiles = window._stagedFiles || [];
-
-    function _renderStagedList() {
-      const stagedList = document.getElementById('stagedList');
-      const submitBtn  = document.getElementById('submitFilesBtn');
-      const successMsg = document.getElementById('uploadSuccessMsg');
-      if (!stagedList) return;
-      if (!window._stagedFiles.length) {
-        stagedList.innerHTML = '';
-        if (submitBtn) submitBtn.style.display = 'none';
-        return;
-      }
-      if (successMsg) successMsg.style.display = 'none';
-      stagedList.innerHTML = window._stagedFiles.map((f, idx) => `
-        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f9fafb;border:1px solid #c7d2fe;border-radius:6px;margin-top:6px;font-size:13px">
-          <span>📄 ${e(f.name)}</span>
-          <span style="color:#6b7280;font-size:11px">${(f.size/1024).toFixed(1)} KB</span>
-          <button onclick="window._removeStagedFile(${idx})" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#9ca3af;font-size:16px;line-height:1;padding:0 2px" title="Verwijderen">×</button>
-        </div>`).join('');
-      if (submitBtn) submitBtn.style.display = '';
+    // ── Resultaten Tab ────────────────────────────────────────────────────
+    function ResultatenTab({ analytics }) {
+      const ra = analytics || {};
+      const bk = ra.bookings    || {};
+      const dv = ra.deliverables|| {};
+      const pj = ra.project     || {};
+      const em = ra.emails      || {};
+      const StatRow = ({ label, value }) => (
+        <div className="analytics-stat">
+          <span className="analytics-stat-label">{label}</span>
+          <span className="analytics-stat-value">{value}</span>
+        </div>
+      );
+      return (
+        <div>
+          <div className="analytics-card blue">
+            <div className="analytics-card-title">📅 Boekingen</div>
+            {bk.total > 0 ? <>
+              <StatRow label="Totaal boekingen" value={bk.total} />
+              <StatRow label="Boekingen deze maand" value={bk.thisMonth||0} />
+              {bk.lastBooking    && <StatRow label="Laatste boeking" value={fmtS(bk.lastBooking)} />}
+              {bk.popularService && <StatRow label="Populairste dienst" value={bk.popularService} />}
+            </> : <div style={{fontSize:13,color:'#6b7280',padding:'4px 0'}}>Nog geen boekingen ontvangen.</div>}
+          </div>
+          <div className="analytics-card green">
+            <div className="analytics-card-title">💻 Gebouwde pagina's</div>
+            {dv.total > 0 ? <>
+              <StatRow label="Pagina's gebouwd" value={dv.total} />
+              {dv.lastBuilt && <StatRow label="Laatste update" value={fmtS(dv.lastBuilt)} />}
+            </> : <div style={{fontSize:13,color:'#6b7280',padding:'4px 0'}}>Nog geen pagina's gebouwd.</div>}
+          </div>
+          <div className="analytics-card purple">
+            <div className="analytics-card-title">📊 Project voortgang</div>
+            {pj.startDate ? <>
+              {pj.phase       && <StatRow label="Huidige fase" value={`Fase ${pj.phase} van 5`} />}
+              {pj.daysActive !== null && <StatRow label="Dagen actief" value={pj.daysActive} />}
+            </> : <div style={{fontSize:13,color:'#6b7280',padding:'4px 0'}}>Project is nog niet gestart.</div>}
+          </div>
+          {em.total > 0 && (
+            <div className="analytics-card orange">
+              <div className="analytics-card-title">✉️ Communicatie</div>
+              <StatRow label="Berichten ontvangen" value={em.total} />
+              {em.lastSent && <StatRow label="Laatste bericht" value={fmtS(em.lastSent)} />}
+            </div>
+          )}
+        </div>
+      );
     }
 
-    window._removeStagedFile = function(idx) {
-      window._stagedFiles.splice(idx, 1);
-      _renderStagedList();
-    };
+    // ── Berichten Tab ─────────────────────────────────────────────────────
+    function BerichtenTab({ token, chat }) {
+      const [name, setName]     = useState('');
+      const [text, setText]     = useState('');
+      const [sending, setSending] = useState(false);
+      const [sent, setSent]     = useState(false);
 
-    function handlePortalFiles(files) {
-      for (const file of files) {
-        if (file.size > 10 * 1024 * 1024) { alert(e(file.name) + ' is te groot (max 10MB)'); continue; }
-        window._stagedFiles.push(file);
-      }
-      // Reset file input so the same file can be re-selected if removed
-      const fi = document.getElementById('fileInput');
-      if (fi) fi.value = '';
-      _renderStagedList();
-    }
-
-    async function submitStagedFiles() {
-      const token = getToken();
-      const btn = document.getElementById('submitFilesBtn');
-      const successMsg = document.getElementById('uploadSuccessMsg');
-      if (!window._stagedFiles.length) return;
-      if (btn) { btn.disabled = true; btn.textContent = 'Bezig met uploaden...'; }
-
-      let anyError = false;
-      for (const file of window._stagedFiles) {
+      async function sendMsg() {
+        if (!name.trim() || !text.trim()) { alert('Vul je naam en een bericht in.'); return; }
+        setSending(true);
         try {
-          const dataUrl = await new Promise((res, rej) => {
-            const reader = new FileReader();
-            reader.onload = ev => res(ev.target.result);
-            reader.onerror = rej;
-            reader.readAsDataURL(file);
+          const r = await fetch(`/api/portal/${token}/message`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, message: text })
           });
-          const dataBase64 = dataUrl.split(',')[1];
-          const resp = await fetch('/api/portal/' + token + '/upload', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filename: file.name, mimeType: file.type, dataBase64, size: file.size })
-          });
-          const data = await resp.json();
-          if (!data.ok) { alert('Fout bij uploaden ' + e(file.name) + ': ' + (data.error || 'onbekend')); anyError = true; }
-        } catch {
-          alert('Verbindingsfout bij ' + e(file.name)); anyError = true;
-        }
+          if (r.ok) { setText(''); setSent(true); setTimeout(() => setSent(false), 2500); }
+          else alert('Versturen mislukt.');
+        } catch { alert('Verbindingsfout.'); }
+        setSending(false);
       }
 
-      window._stagedFiles = [];
-      _renderStagedList();
-      if (btn) { btn.disabled = false; btn.textContent = '📤 Verstuur bestanden naar Agency AI'; }
-
-      if (!anyError && successMsg) successMsg.style.display = '';
-
-      // Refresh uploaded list from server
-      await _loadUploadedFiles(token);
-    }
-
-    function _renderUploadedFiles(uploads, token) {
-      const ul = document.getElementById('uploadedList');
-      if (!ul) return;
-      if (!uploads || !uploads.length) { ul.innerHTML = ''; return; }
-      ul.innerHTML = `
-        <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Geüploade bestanden</div>
-        ${uploads.map(f => `
-          <div id="uploaded-${e(f.filename)}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;margin-top:6px;font-size:13px">
-            <span>📄 ${e(f.filename)}</span>
-            <span style="color:#6b7280;font-size:11px">${f.size ? (f.size/1024).toFixed(1)+' KB' : ''}</span>
-            <span style="color:#9ca3af;font-size:11px;margin-left:4px">${f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString('nl-NL') : ''}</span>
-            <button onclick="window._deleteUploadedFile('${e(f.filename)}','${token}')" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#9ca3af;font-size:16px;line-height:1;padding:0 2px" title="Verwijderen">×</button>
-          </div>`).join('')}`;
-    }
-
-    async function _loadUploadedFiles(token) {
-      try {
-        const resp = await fetch('/api/portal/' + token);
-        if (!resp.ok) return;
-        const data = await resp.json();
-        _renderUploadedFiles(data.clientUploads || [], token);
-      } catch { /* ignore */ }
-    }
-
-    window._deleteUploadedFile = async function(filename, token) {
-      if (!confirm('Bestand "' + filename + '" verwijderen?')) return;
-      try {
-        const resp = await fetch('/api/portal/' + token + '/upload/' + encodeURIComponent(filename), { method: 'DELETE' });
-        const data = await resp.json();
-        if (data.ok) {
-          const el = document.getElementById('uploaded-' + filename);
-          if (el) el.remove();
-        } else {
-          alert('Verwijderen mislukt: ' + (data.error || 'onbekend'));
-        }
-      } catch { alert('Verbindingsfout.'); }
-    };
-
-    // ── Document vault helpers ───────────────────────────────────────────────
-    function togglePw(id, value) {
-      const el  = document.getElementById('pw-' + id);
-      const btn = el?.nextElementSibling;
-      if (!el) return;
-      if (el.dataset.shown === '1') { el.textContent = '••••••••'; el.dataset.shown = ''; if (btn) btn.textContent = 'Toon'; }
-      else { el.textContent = value; el.dataset.shown = '1'; if (btn) btn.textContent = 'Verberg'; }
-    }
-
-    // ── Floating chat widget ─────────────────────────────────────────────────
-    let _chatOpen = false;
-    let _chatPollTimer = null;
-    let _chatName = localStorage.getItem('portalChatName') || '';
-    let _lastMsgCount = 0;
-
-    function initChatWidget(token, initialChat) {
-      _lastMsgCount = initialChat.length;
-      // Inject floating elements
-      document.body.insertAdjacentHTML('beforeend', `
-        <button class="chat-fab" id="chatFab" onclick="toggleChatPanel()" title="Chat met ons">
-          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span class="chat-fab-badge" id="chatFabBadge"></span>
-        </button>
-        <div class="chat-panel" id="chatPanel">
-          <div class="chat-panel-header">
-            <span class="chat-panel-title">💬 Chat met ons</span>
-            <button class="chat-panel-close" onclick="toggleChatPanel()">✕</button>
+      return (
+        <div>
+          <div className="inner-label">Gesprek met uw accountmanager</div>
+          <div id="tabChatThread" style={{display:'flex',flexDirection:'column',gap:8,minHeight:80,marginBottom:14}}>
+            {chat.length === 0
+              ? <div style={{fontSize:13,color:'#6b7280',textAlign:'center',padding:'20px 0'}}>Nog geen berichten. Stuur ons een bericht!</div>
+              : chat.map((m, i) => (
+                <div key={i} style={{maxWidth:'85%',padding:'8px 12px',borderRadius:12,fontSize:13,lineHeight:1.5,...(m.from==='client'?{background:'var(--accent)',color:'#fff',alignSelf:'flex-end',borderBottomRightRadius:4,marginLeft:'auto'}:{background:'#f3f4f6',color:'#111',alignSelf:'flex-start',borderBottomLeftRadius:4})}}>
+                  {m.message}
+                  <div style={{fontSize:10,marginTop:3,opacity:.65}}>{m.from==='admin'?(m.name||'Accountmanager'):(m.name||'U')} · {fmtS(m.time)}</div>
+                </div>
+              ))
+            }
           </div>
-          <div class="chat-messages" id="chatMessages"></div>
-          <div class="chat-name-row" id="chatNameRow">
-            <input type="text" id="chatNameInput" placeholder="Uw naam" value="${_chatName.replace(/"/g,'&quot;')}"
-              oninput="localStorage.setItem('portalChatName',this.value);_chatName=this.value">
-          </div>
-          <div class="chat-input-area">
-            <textarea id="chatInput" placeholder="Schrijf een bericht..." rows="1"
-              oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"
-              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg('${token}');}"></textarea>
-            <button class="chat-send-btn" onclick="sendChatMsg('${token}')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          <div style={{borderTop:'1px solid var(--border)',paddingTop:14}} className="msg-form">
+            <div className="form-group">
+              <label>Uw naam</label>
+              <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Uw naam" />
+            </div>
+            <div className="form-group">
+              <label>Bericht</label>
+              <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Schrijf hier uw vraag of opmerking..." />
+            </div>
+            <button className="btn-send" disabled={sending} onClick={sendMsg} style={sent?{background:'#16a34a'}:{}}>
+              {sent ? '✓ Verstuurd!' : sending ? 'Versturen...' : 'Verstuur bericht'}
             </button>
           </div>
         </div>
-      `);
-      renderChatMessages(initialChat);
+      );
     }
 
-    function renderChatMessages(chat) {
-      const el = document.getElementById('chatMessages');
-      if (el) {
-        if (chat.length === 0) {
-          el.innerHTML = '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:20px 0">Stuur een bericht om het gesprek te starten.</div>';
-        } else {
-          el.innerHTML = chat.map(m => `
-            <div>
-              <div class="chat-msg ${m.from === 'client' ? 'client' : 'admin'}">
-                ${(m.message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+    // ── Chat Widget ───────────────────────────────────────────────────────
+    function ChatWidget({ token, initialChat }) {
+      const [open, setOpen]           = useState(false);
+      const [chat, setChat]           = useState(initialChat);
+      const [chatName, setChatName]   = useState(localStorage.getItem('portalChatName') || '');
+      const [input, setInput]         = useState('');
+      const [badge, setBadge]         = useState(0);
+      const messagesRef               = useRef(null);
+      const pollRef                   = useRef(null);
+
+      const pollChat = useCallback(async () => {
+        try {
+          const r = await fetch(`/api/portal/${token}/chat`);
+          if (!r.ok) return;
+          const d = await r.json();
+          const c = d.chat || [];
+          setChat(c);
+          const adminCount = c.filter(m => m.from === 'admin').length;
+          if (!open && adminCount > 0) setBadge(adminCount);
+        } catch {}
+      }, [token, open]);
+
+      useEffect(() => {
+        pollRef.current = setInterval(pollChat, 30000);
+        return () => clearInterval(pollRef.current);
+      }, [pollChat]);
+
+      useEffect(() => {
+        if (open && messagesRef.current) {
+          messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+          setBadge(0);
+        }
+      }, [open, chat]);
+
+      async function send() {
+        if (!input.trim()) return;
+        const msg = input;
+        setInput('');
+        try {
+          await fetch(`/api/portal/${token}/message`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: chatName || 'Klant', message: msg })
+          });
+          await pollChat();
+        } catch { alert('Versturen mislukt.'); }
+      }
+
+      return (
+        <>
+          <button className="chat-fab" onClick={() => setOpen(o => !o)} title="Chat met ons">
+            <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            {badge > 0 && <span className="chat-fab-badge">{badge}</span>}
+          </button>
+          {open && (
+            <div className="chat-panel">
+              <div className="chat-panel-header">
+                <span className="chat-panel-title">💬 Chat met ons</span>
+                <button className="chat-panel-close" onClick={() => setOpen(false)}>✕</button>
               </div>
-              <div class="chat-msg-meta" style="text-align:${m.from==='client'?'right':'left'};font-size:10px;color:#9ca3af;margin:2px 4px">
-                ${m.from==='admin'?(m.name||'Accountmanager'):(m.name||'U')} · ${fmtS(m.time)}
+              <div className="chat-messages" ref={messagesRef}>
+                {chat.length === 0
+                  ? <div style={{fontSize:12,color:'#9ca3af',textAlign:'center',padding:'20px 0'}}>Stuur een bericht om het gesprek te starten.</div>
+                  : chat.map((m, i) => (
+                    <div key={i}>
+                      <div className={`chat-msg ${m.from==='client'?'client':'admin'}`}>{m.message}</div>
+                      <div className="chat-msg-meta" style={{textAlign:m.from==='client'?'right':'left',fontSize:10,color:'#9ca3af',margin:'2px 4px'}}>
+                        {m.from==='admin'?(m.name||'Accountmanager'):(m.name||'U')} · {fmtS(m.time)}
+                      </div>
+                    </div>
+                  ))}
               </div>
-            </div>`).join('');
-          el.scrollTop = el.scrollHeight;
-        }
-      }
-      // Also update the Berichten tab thread
-      const tab = document.getElementById('tabChatThread');
-      if (tab) {
-        if (chat.length === 0) {
-          tab.innerHTML = '<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0">Nog geen berichten. Stuur ons een bericht!</div>';
-        } else {
-          tab.innerHTML = chat.map(m => `
-            <div style="max-width:85%;padding:8px 12px;border-radius:12px;font-size:13px;line-height:1.5;${m.from==='client'?'background:var(--accent);color:#fff;align-self:flex-end;border-bottom-right-radius:4px;margin-left:auto':'background:#f3f4f6;color:#111;align-self:flex-start;border-bottom-left-radius:4px'}">
-              ${(m.message||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-              <div style="font-size:10px;margin-top:3px;opacity:.65">${m.from==='admin'?(m.name||'Accountmanager'):(m.name||'U')} · ${fmtS(m.time)}</div>
-            </div>`).join('');
-        }
-      }
+              <div className="chat-name-row">
+                <input type="text" placeholder="Uw naam" value={chatName}
+                  onChange={e => { setChatName(e.target.value); localStorage.setItem('portalChatName', e.target.value); }} />
+              </div>
+              <div className="chat-input-area">
+                <textarea
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+                  placeholder="Schrijf een bericht..."
+                  rows="1"
+                  style={{height:'auto'}}
+                />
+                <button className="chat-send-btn" onClick={send}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      );
     }
 
-    async function pollChat(token) {
-      try {
-        const res = await fetch('/api/portal/' + token + '/chat');
-        if (!res.ok) return;
-        const data = await res.json();
-        const chat = data.chat || [];
-        const adminMsgs = chat.filter(m => m.from === 'admin');
-        const newAdminCount = adminMsgs.length;
-        if (!_chatOpen && newAdminCount > 0) {
-          const badge = document.getElementById('chatFabBadge');
-          if (badge) { badge.textContent = newAdminCount; badge.style.display = 'flex'; }
-        }
-        renderChatMessages(chat);
-        _lastMsgCount = chat.length;
-      } catch { /* ignore */ }
-      _chatPollTimer = setTimeout(() => pollChat(token), 30000);
+    // ── Main App ──────────────────────────────────────────────────────────
+    function App() {
+      const [data, setData]       = useState(null);
+      const [error, setError]     = useState('');
+      const [activeTab, setActiveTab] = useState('overview');
+      const token = getToken();
+
+      useEffect(() => {
+        if (!token || token === 'portal') { setError('Geen portaallink gevonden.'); return; }
+        fetch(`/api/portal/${token}`)
+          .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+          .then(d => setData(d))
+          .catch(() => setError('Portaal niet gevonden. Controleer de link.'));
+      }, [token]);
+
+      if (error) return (
+        <div className="center-page">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <h2>Niet gevonden</h2><p>{error}</p>
+        </div>
+      );
+
+      if (!data) return (
+        <div className="center-page">
+          <div className="spinner" />
+          <p>Laden...</p>
+        </div>
+      );
+
+      document.title = `Projectstatus – ${data.companyName || ''}`;
+
+      const cur      = data.currentPhase || 1;
+      const payments = data.payments  || [];
+      const docs     = data.documents || [];
+      const openCount= payments.filter(p => p.status !== 'paid' && p.status !== 'cancelled').length;
+      const svcs     = (data.projectServices?.length ? data.projectServices : data.services) || [];
+      const hasMonthly = svcs.some(s => s.billing !== 'eenmalig');
+
+      const CalSvg = () => (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+      );
+
+      const tabs = [
+        { key: 'overview',   label: 'Overzicht' },
+        { key: 'leveringen', label: 'Leveringen' },
+        { key: 'facturen',   label: <>Facturen{openCount > 0 && <span style={{background:'#ef4444',color:'#fff',borderRadius:99,fontSize:10,padding:'1px 5px',fontWeight:700,marginLeft:3}}>{openCount}</span>}</> },
+        { key: 'documenten', label: <>Documenten{docs.length > 0 && <span style={{background:'var(--accent)',color:'#fff',borderRadius:99,fontSize:10,padding:'1px 5px',fontWeight:700,marginLeft:3}}>{docs.length}</span>}</> },
+        { key: 'resultaten', label: 'Resultaten' },
+        { key: 'berichten',  label: 'Berichten' },
+      ];
+
+      return (
+        <>
+          <div className="agency-header">
+            <div className="agency-logo">
+              {data.agencyLogo
+                ? <img src={data.agencyLogo} style={{width:26,height:26,objectFit:'contain',borderRadius:4}} alt={data.agencyName} />
+                : <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>}
+            </div>
+            <div className="agency-name">{data.agencyName}</div>
+          </div>
+
+          <div className="project-banner">
+            <div className="company-name">{data.companyName}</div>
+            <div className="company-sub">Bijgewerkt door {data.myName || data.agencyName}</div>
+            <PhaseTracker current={cur} />
+            {data.estimatedCompletion && (
+              <div className="date-row"><CalSvg /> Verwachte afronddatum: <strong>{fmt(data.estimatedCompletion)}</strong></div>
+            )}
+          </div>
+
+          {cur === 5 && (
+            <div style={{margin:'14px 0',padding:'16px 18px',borderRadius:12,background:hasMonthly?'linear-gradient(135deg,#f0fdf4,#dcfce7)':'linear-gradient(135deg,#eff6ff,#dbeafe)',border:`1.5px solid ${hasMonthly?'#86efac':'#bfdbfe'}`,display:'flex',gap:12,alignItems:'flex-start'}}>
+              <span style={{fontSize:22,flexShrink:0}}>{hasMonthly?'🤝':'🎉'}</span>
+              <div>
+                <div style={{fontSize:14,fontWeight:700,marginBottom:4}}>{hasMonthly?'We werken graag samen!':'Project afgerond!'}</div>
+                <div style={{fontSize:13,color:'#374151',lineHeight:1.6}}>{hasMonthly?'Fijn dat we al een tijdje samenwerken!':'Het project is afgerond! Wil je nog een vervolgproject starten?'}</div>
+              </div>
+            </div>
+          )}
+
+          <div className="tabs-wrap">
+            <nav className="tabs-nav">
+              {tabs.map(t => (
+                <button key={t.key} className={`tab-btn${activeTab===t.key?' active':''}`} onClick={() => setActiveTab(t.key)}>
+                  {t.label}
+                </button>
+              ))}
+            </nav>
+            <div className="tab-pane">
+              {activeTab === 'overview'   && <OverzichtTab data={data} token={token} />}
+              {activeTab === 'leveringen' && <LeveringenTab data={data} token={token} />}
+              {activeTab === 'facturen'   && <FacturenTab payments={payments} />}
+              {activeTab === 'documenten' && <DocumentenTab docs={docs} />}
+              {activeTab === 'resultaten' && <ResultatenTab analytics={data.analytics} />}
+              {activeTab === 'berichten'  && <BerichtenTab token={token} chat={data.portalChat||[]} />}
+            </div>
+          </div>
+
+          <ChatWidget token={token} initialChat={data.portalChat||[]} />
+        </>
+      );
     }
 
-    function toggleChatPanel() {
-      _chatOpen = !_chatOpen;
-      const panel = document.getElementById('chatPanel');
-      if (panel) panel.style.display = _chatOpen ? 'flex' : 'none';
-      if (_chatOpen) {
-        const badge = document.getElementById('chatFabBadge');
-        if (badge) badge.style.display = 'none';
-        setTimeout(() => {
-          const el = document.getElementById('chatMessages');
-          if (el) el.scrollTop = el.scrollHeight;
-        }, 50);
-      }
-    }
-
-    async function sendChatMsg(token) {
-      const msg  = document.getElementById('chatInput')?.value?.trim();
-      const name = document.getElementById('chatNameInput')?.value?.trim() || 'Klant';
-      if (!msg) return;
-      const inp = document.getElementById('chatInput');
-      if (inp) { inp.value = ''; inp.style.height = 'auto'; }
-      try {
-        await fetch('/api/portal/' + token + '/message', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, message: msg })
-        });
-        await pollChat(token);
-      } catch { alert('Versturen mislukt.'); }
-    }
-
-    load();
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
   </script>
 </body>
 </html>
