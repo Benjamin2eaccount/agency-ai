@@ -18,7 +18,8 @@ const jwt = require('jsonwebtoken');
 const cron = require('node-cron');
 const Stripe = require('stripe');
 const webpush = require('web-push');
-const WebSocket = require('ws');
+const WebSocket   = require('ws');
+const rateLimit   = require('express-rate-limit');
 const { readJSON, writeJSON, pgInitPromise } = require('./database');
 const dnsPromises = require('dns').promises;
 const PDFDocument = require('pdfkit');
@@ -237,6 +238,79 @@ async function sendPushToAll(title, body, url) {
 }
 
 app.use(cors());
+
+// ─── Rate limiters ────────────────────────────────────────────────────────────
+function _rlOnLimitReached(req, _res, _options) {
+  // Log to audit_log when a limit is hit
+  try {
+    const { getDb } = require('./database');
+    getDb().prepare('INSERT INTO audit_log (action, entity_type, entity_id, details) VALUES (?, ?, ?, ?)')
+      .run('rate_limit_hit', 'ip', req.ip, JSON.stringify({ path: req.path, method: req.method }));
+  } catch {}
+}
+
+// Global — 200 req / 15 min per IP (all routes)
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Te veel verzoeken. Probeer het over enkele minuten opnieuw.' },
+  skip: (req) => req.path === '/health' || req.path.startsWith('/track/'), // exempt health + pixel
+  handler: (req, res, next, options) => { _rlOnLimitReached(req, res, options); res.status(429).json(options.message); }
+}));
+
+// Auth login — 10 attempts / 15 min per IP (stricter)
+const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Te veel inlogpogingen. Wacht 15 minuten en probeer het opnieuw.' },
+  handler: (req, res, next, options) => { _rlOnLimitReached(req, res, options); res.status(429).json(options.message); }
+});
+app.use('/api/auth/login', authRateLimit);
+
+// Runs — 5 runs / hour per IP
+const runsRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Maximum 5 runs per uur bereikt. Probeer het over een uur opnieuw.' },
+  handler: (req, res, next, options) => { _rlOnLimitReached(req, res, options); res.status(429).json(options.message); }
+});
+app.use('/api/find-leads', runsRateLimit);
+app.use('/api/runs', runsRateLimit);
+
+// Email sending — 50 emails / hour per IP
+const emailRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Maximum 50 emails per uur bereikt. Probeer het over een uur opnieuw.' },
+  handler: (req, res, next, options) => { _rlOnLimitReached(req, res, options); res.status(429).json(options.message); }
+});
+app.use('/api/leads', (req, res, next) => {
+  if (/\/send-/i.test(req.path) && req.method === 'POST') return emailRateLimit(req, res, next);
+  next();
+});
+
+// Builds — 20 builds / hour per IP
+const buildRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Maximum 20 builds per uur bereikt. Probeer het over een uur opnieuw.' },
+  handler: (req, res, next, options) => { _rlOnLimitReached(req, res, options); res.status(429).json(options.message); }
+});
+app.use('/api/leads', (req, res, next) => {
+  if (/\/build-all-services|\/agent-chat/i.test(req.path) && req.method === 'POST') return buildRateLimit(req, res, next);
+  next();
+});
+
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
