@@ -7394,6 +7394,19 @@ function openProjectConfigModal(leadId, editMode) {
       </div>
       <input type="date" id="projBirthday" class="form-input" style="max-width:200px" value="${esc(lead.clientBirthday || '')}">
 
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:16px 0 8px">
+        Eigen domein <span style="font-weight:400;text-transform:none">(optioneel — klant kan eigen domeinnaam koppelen)</span>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <input type="text" id="projCustomDomain" class="form-input" style="flex:1;max-width:320px"
+          value="${esc(lead.customDomain || '')}"
+          placeholder="www.klantnaam.nl">
+        ${lead.customDomain ? `<span style="font-size:12px;padding:3px 10px;border-radius:20px;font-weight:600;${lead.customDomainStatus === 'active' ? 'background:#f0fdf4;color:#16a34a' : lead.customDomainStatus === 'error' ? 'background:#fef2f2;color:#dc2626' : 'background:#fffbeb;color:#d97706'}">
+          ${lead.customDomainStatus === 'active' ? '✓ Actief' : lead.customDomainStatus === 'error' ? '✗ Fout' : '⏳ In afwachting'}
+        </span>` : ''}
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Het klantportaal toont automatisch de DNS-instructies voor dit domein.</div>
+
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
@@ -7464,8 +7477,9 @@ async function confirmStartProject(leadId, editMode) {
   const duration  = parseInt(document.getElementById('projDuration')?.value) || 0;
   const startDate = document.getElementById('projStartDate')?.value || new Date().toISOString().split('T')[0];
   const endDate   = document.getElementById('projEndDate')?.value || '';
-  const notes     = document.getElementById('projNotes')?.value?.trim() || '';
-  const birthday  = document.getElementById('projBirthday')?.value || '';
+  const notes        = document.getElementById('projNotes')?.value?.trim() || '';
+  const birthday     = document.getElementById('projBirthday')?.value || '';
+  const customDomain = document.getElementById('projCustomDomain')?.value?.trim().toLowerCase().replace(/^https?:\/\//,'') || '';
 
   const patch = {
     estimatedValue: price, servicePrice: price,
@@ -7474,7 +7488,8 @@ async function confirmStartProject(leadId, editMode) {
     projectNotes: notes,
     selectedProblems: selectedProblems,
     projectServices: projectServices,
-    ...(birthday ? { clientBirthday: birthday } : {})
+    ...(birthday ? { clientBirthday: birthday } : {}),
+    ...(customDomain !== (lead.customDomain || '') ? { customDomain, customDomainStatus: customDomain ? 'pending' : null } : {})
   };
   if (services.length) patch.services = services;
 

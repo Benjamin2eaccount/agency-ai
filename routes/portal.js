@@ -83,7 +83,9 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
         .map(f => ({ id: f.id, name: f.name, type: f.type, url: f.url, fullUrl: f.fullUrl, createdAt: f.createdAt })),
       projectServices:      enrichedSvcs,
       contactSubmissions:   (lead.contactSubmissions || []).slice(0, 20),
-      clientUploads:        (lead.clientUploads || []).map(({ content: _c, ...f }) => f)
+      clientUploads:        (lead.clientUploads || []).map(({ content: _c, ...f }) => f),
+      customDomain:         lead.customDomain || null,
+      customDomainStatus:   lead.customDomainStatus || (lead.customDomain ? 'pending' : null),
     });
   });
 
