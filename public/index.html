@@ -188,6 +188,9 @@
   <!-- ── Modal container ───────────────────────────────────────── -->
   <div id="modalContainer"></div>
 
+  <!-- core.js must load first: shared state, auth, routing, lazy loader, init -->
+  <script src="/core.js"></script>
+  <!-- app.js kept for backward compat (now a stub) -->
   <script src="/app.js"></script>
 </body>
 </html>

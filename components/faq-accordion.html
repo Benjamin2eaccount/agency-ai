@@ -1,0 +1,29 @@
+<!-- COMPONENT: faq-accordion | Placeholders: {{PRIMARY_COLOR}}, {{EMAIL}} -->
+<style>
+  .faq-section { padding: 80px 24px; background: #f9fafb; }
+  .faq-section .inner { max-width: 700px; margin: 0 auto; }
+  .faq-section h2 { font-size: 2rem; font-weight: 800; text-align: center; margin-bottom: 40px; }
+  .faq-item { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+  .faq-question { padding: 18px 20px; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+  .faq-question::after { content: '+'; font-size: 1.4rem; color: {{PRIMARY_COLOR}}; transition: transform .2s; }
+  .faq-item.open .faq-question::after { transform: rotate(45deg); }
+  .faq-answer { display: none; padding: 0 20px 18px; color: #6b7280; line-height: 1.6; }
+  .faq-item.open .faq-answer { display: block; }
+</style>
+<section id="faq" class="faq-section">
+  <div class="inner">
+    <h2>Veelgestelde Vragen</h2>
+    <div class="faq-item" onclick="this.classList.toggle('open')">
+      <div class="faq-question">Hoe snel kan ik starten?</div>
+      <div class="faq-answer">U kunt direct starten. Na uw aanvraag nemen we binnen 24 uur contact op voor een kennismaking.</div>
+    </div>
+    <div class="faq-item" onclick="this.classList.toggle('open')">
+      <div class="faq-question">Wat zijn de kosten?</div>
+      <div class="faq-answer">De kosten zijn afhankelijk van uw wensen. We stellen een offerte op maat samen na het kennismakingsgesprek.</div>
+    </div>
+    <div class="faq-item" onclick="this.classList.toggle('open')">
+      <div class="faq-question">Zit er een contract aan vast?</div>
+      <div class="faq-answer">We werken met flexibele contracten. Maandelijks opzegbaar, zodat u altijd in controle bent.</div>
+    </div>
+  </div>
+</section>

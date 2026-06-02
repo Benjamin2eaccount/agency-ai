@@ -1,0 +1,21 @@
+<!-- COMPONENT: services-grid | Placeholders: {{PRIMARY_COLOR}}, {{EMAIL}} -->
+<style>
+  .services-grid { padding: 80px 24px; background: #f9fafb; }
+  .services-grid .section-title { text-align: center; font-size: 2rem; font-weight: 800; margin-bottom: 12px; }
+  .services-grid .section-sub { text-align: center; color: #6b7280; margin-bottom: 48px; }
+  .services-grid .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); gap: 24px; max-width: 1000px; margin: 0 auto; }
+  .services-grid .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 28px; transition: transform .2s, box-shadow .2s; }
+  .services-grid .card:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(0,0,0,.08); border-color: {{PRIMARY_COLOR}}; }
+  .services-grid .card-icon { font-size: 2.5rem; margin-bottom: 16px; }
+  .services-grid .card h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
+  .services-grid .card p { color: #6b7280; font-size: .9rem; line-height: 1.6; }
+</style>
+<section id="diensten" class="services-grid">
+  <h2 class="section-title">Onze Diensten</h2>
+  <p class="section-sub">Wat kunnen we voor u betekenen?</p>
+  <div class="grid">
+    <div class="card"><div class="card-icon">⭐</div><h3>Dienst 1</h3><p>Beschrijving van de eerste dienst die we aanbieden.</p></div>
+    <div class="card"><div class="card-icon">🚀</div><h3>Dienst 2</h3><p>Beschrijving van de tweede dienst met concrete voordelen.</p></div>
+    <div class="card"><div class="card-icon">💡</div><h3>Dienst 3</h3><p>Derde dienst met specifieke details over de aanpak.</p></div>
+  </div>
+</section>

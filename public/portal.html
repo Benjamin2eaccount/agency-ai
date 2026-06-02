@@ -6,6 +6,10 @@
   <title>Projectstatus</title>
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
   <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="manifest" href="/portal-manifest.json">
+  <meta name="theme-color" content="#6366f1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -927,6 +931,76 @@
     }
 
     // ── Domein Tab ────────────────────────────────────────────────────────
+    // ── Meer Diensten Tab (Task 14) ──────────────────────────────────────────────
+    function MeerDienstenTab({ token }) {
+      const [services, setServices] = React.useState([]);
+      const [ordered, setOrdered] = React.useState(new Set());
+      const [loading, setLoading] = React.useState(true);
+      React.useEffect(() => {
+        fetch('/api/services').then(r => r.json()).then(d => { setServices(Array.isArray(d) ? d : []); setLoading(false); }).catch(() => setLoading(false));
+      }, []);
+      function order(svc) {
+        if (ordered.has(svc.name)) return;
+        const msg = `Wil je "${svc.name}" toevoegen voor €${svc.price || '?'} per maand?`;
+        if (!confirm(msg)) return;
+        fetch('/api/portal/' + token + '/order-service', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ serviceName: svc.name, servicePrice: svc.price }) })
+          .then(r => r.json()).then(() => { setOrdered(prev => new Set([...prev, svc.name])); alert('✅ Aanvraag verstuurd! We nemen binnen 24 uur contact op.'); });
+      }
+      if (loading) return React.createElement('div', {style:{padding:'40px',textAlign:'center',color:'var(--muted)'}}, 'Laden...');
+      return React.createElement('div', {style:{padding:'24px 0'}},
+        React.createElement('h3', {style:{fontWeight:700,marginBottom:8}}, '+ Meer diensten'),
+        React.createElement('p', {style:{color:'var(--muted)',marginBottom:24,fontSize:14}}, 'Voeg extra diensten toe aan je pakket. We nemen contact op om alles in te richten.'),
+        React.createElement('div', {style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:16}},
+          services.slice(0,12).map(svc => React.createElement('div', {key:svc.name, style:{border:'1px solid var(--border)',borderRadius:10,padding:16,background:'#fff'}},
+            React.createElement('div', {style:{fontWeight:700,marginBottom:4,fontSize:14}}, svc.name),
+            React.createElement('div', {style:{fontSize:12,color:'var(--muted)',marginBottom:12}}, svc.description || ''),
+            React.createElement('div', {style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+              React.createElement('span', {style:{fontWeight:700,color:'var(--accent)'}}, svc.price ? `€${svc.price}` : ''),
+              React.createElement('button', {
+                onClick:() => order(svc),
+                disabled: ordered.has(svc.name),
+                style:{background: ordered.has(svc.name)?'#e5e7eb':'var(--accent)',color: ordered.has(svc.name)?'#9ca3af':'#fff',border:'none',borderRadius:6,padding:'6px 12px',fontSize:12,fontWeight:600,cursor: ordered.has(svc.name)?'default':'pointer'}
+              }, ordered.has(svc.name) ? '✓ Aangevraagd' : 'Voeg toe')
+            )
+          ))
+        )
+      );
+    }
+
+    // ── Abonnement Tab (Task 10) ─────────────────────────────────────────────────
+    function AbonnementTab({ token, data }) {
+      const [reqType, setReqType] = React.useState('');
+      const [reqMsg, setReqMsg] = React.useState('');
+      const [sent, setSent] = React.useState(false);
+      function sendRequest(type) {
+        setReqType(type);
+        const msg = type === 'add_service' ? prompt('Welke dienst wil je toevoegen?') : '';
+        if (type !== 'add_service' && !confirm(type === 'pause' ? 'Wil je je abonnement pauzeren?' : 'Wil je je abonnement opzeggen?')) return;
+        fetch('/api/portal/' + token + '/subscription-request', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type, serviceName: msg || '', message: reqMsg }) })
+          .then(r => r.json()).then(() => { setSent(true); setTimeout(() => setSent(false), 5000); });
+      }
+      const services = data?.services || [];
+      return React.createElement('div', {style:{padding:'24px 0'}},
+        React.createElement('h3', {style:{fontWeight:700,marginBottom:8}}, '📋 Mijn Abonnement'),
+        sent && React.createElement('div', {style:{background:'#dcfce7',border:'1px solid #16a34a',borderRadius:8,padding:12,marginBottom:16,color:'#15803d',fontSize:14}}, '✓ Verzoek verstuurd! We nemen snel contact op.'),
+        React.createElement('div', {style:{background:'#f9fafb',border:'1px solid var(--border)',borderRadius:10,padding:20,marginBottom:20}},
+          React.createElement('div', {style:{fontWeight:700,marginBottom:12}}, 'Huidige diensten'),
+          services.length === 0 ? React.createElement('p', {style:{color:'var(--muted)',fontSize:14}}, 'Nog geen actieve diensten.') :
+            React.createElement('ul', {style:{listStyle:'none',padding:0}},
+              services.map((s,i) => React.createElement('li', {key:i, style:{padding:'8px 0',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',fontSize:14}},
+                React.createElement('span', null, typeof s === 'string' ? s : s.name),
+                React.createElement('span', {style:{color:'var(--accent)',fontWeight:600}}, typeof s === 'object' && s.price ? `€${s.price}` : '')
+              ))
+            )
+        ),
+        React.createElement('div', {style:{display:'flex',gap:10,flexWrap:'wrap'}},
+          React.createElement('button', {onClick:() => sendRequest('add_service'), style:{background:'var(--accent)',color:'#fff',border:'none',borderRadius:8,padding:'10px 18px',fontWeight:600,fontSize:13,cursor:'pointer'}}, '+ Dienst toevoegen'),
+          React.createElement('button', {onClick:() => sendRequest('pause'), style:{background:'#fff',border:'1px solid var(--border)',color:'#374151',borderRadius:8,padding:'10px 18px',fontWeight:600,fontSize:13,cursor:'pointer'}}, '⏸ Pauzeer abonnement'),
+          React.createElement('button', {onClick:() => sendRequest('cancel'), style:{background:'#fff',border:'1px solid #ef4444',color:'#ef4444',borderRadius:8,padding:'10px 18px',fontWeight:600,fontSize:13,cursor:'pointer'}}, '✕ Opzeggen')
+        )
+      );
+    }
+
     function DomeinTab({ domain, status }) {
       const [copied, setCopied] = useState(false);
       function copyVal(val) {
@@ -1044,6 +1118,8 @@
         { key: 'documenten', label: <>Documenten{docs.length > 0 && <span style={{background:'var(--accent)',color:'#fff',borderRadius:99,fontSize:10,padding:'1px 5px',fontWeight:700,marginLeft:3}}>{docs.length}</span>}</> },
         { key: 'resultaten', label: 'Resultaten' },
         { key: 'berichten',  label: 'Berichten' },
+        { key: 'meer',       label: '+ Meer diensten' },
+        { key: 'abonnement', label: '📋 Abonnement' },
         ...(data.customDomain ? [{ key: 'domein', label: <>Domein{data.customDomainStatus === 'active' ? ' ✓' : ' ⏳'}</> }] : []),
       ];
 
@@ -1092,6 +1168,8 @@
               {activeTab === 'documenten' && <DocumentenTab docs={docs} />}
               {activeTab === 'resultaten' && <ResultatenTab analytics={data.analytics} />}
               {activeTab === 'berichten'  && <BerichtenTab token={token} chat={data.portalChat||[]} />}
+              {activeTab === 'meer'       && <MeerDienstenTab token={token} />}
+              {activeTab === 'abonnement' && <AbonnementTab token={token} data={data} />}
               {activeTab === 'domein'     && <DomeinTab domain={data.customDomain} status={data.customDomainStatus} />}
             </div>
           </div>
@@ -1104,5 +1182,59 @@
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
   </script>
+
+  <script>
+    // ── PWA: Service worker registration ─────────────────────────────────────────
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/portal-sw.js').catch(() => {});
+    }
+
+    // ── PWA: Install prompt ───────────────────────────────────────────────────────
+    let _installPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      _installPrompt = e;
+      // Show install button
+      const btn = document.getElementById('pwaInstallBtn');
+      if (btn) btn.style.display = 'flex';
+    });
+    window.addEventListener('appinstalled', () => {
+      const btn = document.getElementById('pwaInstallBtn');
+      if (btn) btn.style.display = 'none';
+      _installPrompt = null;
+    });
+    window.installPWA = function() {
+      if (!_installPrompt) return;
+      _installPrompt.prompt();
+      _installPrompt.userChoice.then(() => { _installPrompt = null; });
+    };
+  </script>
+
+  <!-- PWA install button (hidden until beforeinstallprompt fires) -->
+  <style>
+    #pwaInstallBtn {
+      display: none;
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 20px rgba(99,102,241,0.4);
+      z-index: 9999;
+      font-family: inherit;
+    }
+    #pwaInstallBtn:hover { background: #4f46e5; }
+  </style>
+  <button id="pwaInstallBtn" onclick="installPWA()">
+    📱 Installeer app
+  </button>
 </body>
 </html>

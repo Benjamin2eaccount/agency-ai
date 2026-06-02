@@ -1,0 +1,19 @@
+<!-- COMPONENT: nav-sticky | Placeholders: {{COMPANY_NAME}}, {{PRIMARY_COLOR}}, {{PHONE}} -->
+<style>
+  .nav-sticky { position: sticky; top: 0; background: rgba(255,255,255,.95); backdrop-filter: blur(10px); border-bottom: 1px solid #e5e7eb; z-index: 100; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .nav-sticky .logo { font-weight: 800; font-size: 1.1rem; color: {{PRIMARY_COLOR}}; text-decoration: none; }
+  .nav-sticky .links { display: flex; gap: 24px; list-style: none; }
+  .nav-sticky .links a { color: #374151; text-decoration: none; font-weight: 500; font-size: 0.95rem; }
+  .nav-sticky .links a:hover { color: {{PRIMARY_COLOR}}; }
+  .nav-sticky .cta { background: {{PRIMARY_COLOR}}; color: #fff; padding: 8px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.9rem; }
+  @media (max-width: 768px) { .nav-sticky .links { display: none; } }
+</style>
+<nav class="nav-sticky">
+  <a href="#" class="logo">{{COMPANY_NAME}}</a>
+  <ul class="links">
+    <li><a href="#diensten">Diensten</a></li>
+    <li><a href="#over">Over ons</a></li>
+    <li><a href="#contact">Contact</a></li>
+  </ul>
+  <a href="tel:{{PHONE}}" class="cta">📞 Bel direct</a>
+</nav>

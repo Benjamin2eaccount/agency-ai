@@ -1,0 +1,16 @@
+<!-- COMPONENT: hero-light | Placeholders: {{COMPANY_NAME}}, {{PRIMARY_COLOR}}, {{TAGLINE}}, {{PHONE}} -->
+<style>
+  .hero-light { background: #fff; color: #111; min-height: 80vh; display: flex; align-items: center; padding: 60px 24px; }
+  .hero-light .inner { max-width: 760px; margin: 0 auto; text-align: center; }
+  .hero-light h1 { font-size: clamp(2rem,5vw,3.5rem); font-weight: 800; margin-bottom: 20px; color: #111; }
+  .hero-light h1 span { color: {{PRIMARY_COLOR}}; }
+  .hero-light p { font-size: 1.15rem; color: #6b7280; margin-bottom: 36px; max-width: 540px; margin-left: auto; margin-right: auto; }
+  .hero-light .btn-p { background: {{PRIMARY_COLOR}}; color: #fff; padding: 14px 32px; border-radius: 10px; font-weight: 700; text-decoration: none; display: inline-block; }
+</style>
+<section class="hero-light">
+  <div class="inner">
+    <h1><span>{{COMPANY_NAME}}</span> — {{TAGLINE}}</h1>
+    <p>Welkom! Neem vandaag nog contact op.</p>
+    <a href="#contact" class="btn-p">Direct contact →</a>
+  </div>
+</section>

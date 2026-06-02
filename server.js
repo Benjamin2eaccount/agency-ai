@@ -342,6 +342,7 @@ app.use('/api/leads', (req, res, next) => {
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+app.use('/components', express.static(path.join(__dirname, 'components')));
 
 // ── Custom domain middleware — serve site when Host matches a lead's domain ──
 app.use((req, res, next) => {
@@ -1694,6 +1695,7 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
 
   leads[idx].intakeAnswers = req.body.answers || {};
   leads[idx].intakeSubmittedAt = new Date().toISOString();
+  trackFunnelEvent(leads[idx].id, 'intake_completed');
   // Advance to Fase 2 — Uitvoering on intake submission
   if ((leads[idx].currentPhase || 1) < 2) leads[idx].currentPhase = 2;
   addLeadHistory(leads, leads[idx].id, { event: 'intakeSubmitted', label: 'Intake ingevuld door klant' });
@@ -1811,6 +1813,7 @@ app.get('/track/open/:token', (req, res) => {
         leads[idx].emailOpened = true;
         addLeadHistory(leads, leads[idx].id, { event: 'opened', label: 'Email geopend' });
         addActivity('open', 'Email geopend door ' + (leads[idx].companyName || 'Onbekend'), { meta: { leadId: leads[idx].id } });
+        trackFunnelEvent(leads[idx].id, 'email_opened');
         console.log(`[Tracking] Email geopend: ${leads[idx].companyName}`);
       }
       leads[idx].openCount = (leads[idx].openCount || 0) + 1;
@@ -3241,6 +3244,7 @@ Antwoord ALLEEN als JSON: { "tasks": [{ "title": "string", "description": "strin
     lead.status = 'client';
     lead.projectStartedAt = new Date().toISOString();
     lead.projectPlan = projectPlan;
+    trackFunnelEvent(lead.id, 'project_started');
     lead.contentCalendar = contentCalendar;
     lead.onboardingScript = onboardingScript || null;
     lead.tasks = (tasks?.tasks || []).map(t => ({
@@ -5694,6 +5698,15 @@ Add this in the <head>: <style>@media print { nav, header nav, .nav, .navbar, .c
 SCHEMA MARKUP (REQUIRED FOR LOCAL BUSINESS WEBSITES):
 Add LocalBusiness JSON-LD in <head>: <script type="application/ld+json">{"@context":"https://schema.org","@type":"LocalBusiness","name":"[bedrijfsnaam uit intake]","address":{"@type":"PostalAddress","addressLocality":"[stad]","addressCountry":"NL"},"telephone":"[telefoon als bekend]","url":"[website URL]","description":"[1 zin beschrijving van het bedrijf]"}</script>. Also add FAQPage schema if the page includes FAQ items.
 
+PERFORMANCE REQUIRED:
+- All images: loading='lazy' except first above-fold image (loading='eager')
+- Add in <head>: <link rel='preconnect' href='https://fonts.googleapis.com'><link rel='dns-prefetch' href='//fonts.googleapis.com'>
+- Always include: <meta name='viewport' content='width=device-width, initial-scale=1'>
+
+AVAILABLE COMPONENT PATTERNS (use as inspiration for sections):
+hero-dark, hero-light, nav-sticky, services-grid, booking-simple,
+contact-form, faq-accordion, footer-full, chatbot-widget,
+testimonials, stats-bar, cta-section
 `;
 
 // ── Build all services for a lead (SSE) ──────────────────────────────────────
@@ -6100,6 +6113,7 @@ ${bookingDel.html.substring(0, 8000)}`).catch(() => '');
 
     sse({ type: 'all_done', count: toSave.length, deliverables: toSave });
     broadcastWS('build_complete', { leadId: req.params.id, count: toSave.length });
+    if (toSave.length > 0) trackFunnelEvent(req.params.id, 'first_build', { count: toSave.length });
     // Mark build job complete
     try { if (_buildJobId) { const { getDb } = require('./database'); getDb().prepare("UPDATE job_queue SET status='completed', completed_at=? WHERE id=?").run(new Date().toISOString(), _buildJobId); } } catch {}
   } catch (err) {
@@ -6539,7 +6553,7 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
     if (item.type !== 'referral') {
       leads[leadIdx].status = inbox[idx].status;
       leads[leadIdx].sentAt = inbox[idx].sentAt;
-      if (inbox[idx].status === 'sent') leads[leadIdx].sentVersion = version;
+      if (inbox[idx].status === 'sent') { leads[leadIdx].sentVersion = version; trackFunnelEvent(item.leadId || leads[leadIdx].id, 'lead_emailed'); }
       if (inbox[idx].trackingToken) leads[leadIdx].trackingToken = inbox[idx].trackingToken;
       if (item.type === 'followup1' && inbox[idx].status === 'sent') leads[leadIdx].followup1SentAt = inbox[idx].sentAt;
       if (item.type === 'followup2' && inbox[idx].status === 'sent') leads[leadIdx].followup2SentAt = inbox[idx].sentAt;
@@ -6699,6 +6713,7 @@ app.patch('/api/settings/account', requireAdmin, async (req, res) => {
   }
   const { gaId } = req.body;
   if (gaId !== undefined) settings.gaId = gaId;
+  if (req.body.onboardingCompleted !== undefined) settings.onboardingCompleted = !!req.body.onboardingCompleted;
 
   if (newPassword) {
     if (!currentPassword) return res.status(400).json({ error: 'Huidig wachtwoord verplicht' });
@@ -7187,6 +7202,7 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
     if (!leads[idx].payments) leads[idx].payments = [];
     leads[idx].payments.push(...newPayments);
     addLeadHistory(leads, leads[idx].id, { event: 'paymentCreated', label: `${newPayments.length > 1 ? `Gesplitste betaling (${splitParts} delen)` : type || 'Betaallink'}: €${amount}` });
+    trackFunnelEvent(leads[idx].id, 'invoice_sent', { amount });
     writeJSON('leads.json', leads);
 
     // Auto-send professional invoice email with PDF to client
@@ -7263,6 +7279,7 @@ app.patch('/api/leads/:id/payments/:payId', requireAdmin, (req, res) => {
   leads[idx].payments[pIdx] = { ...leads[idx].payments[pIdx], ...req.body };
   if (req.body.status === 'paid' && !leads[idx].payments[pIdx].paidAt) leads[idx].payments[pIdx].paidAt = new Date().toISOString();
   if (req.body.status === 'paid' && prevPayStatus !== 'paid') {
+    trackFunnelEvent(leads[idx].id, 'payment_received');
     const pay = leads[idx].payments[pIdx];
     addNotification('payment_received', `Betaling ontvangen: ${leads[idx].companyName}`,
       `€${(pay.amount || 0).toLocaleString('nl-NL')}${pay.description ? ' — ' + pay.description : ''}`,
@@ -9023,6 +9040,7 @@ CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
       const { item, leadRecord } = result;
       inboxItems.push(item);
       newLeads.push(leadRecord);
+      trackFunnelEvent(leadRecord.id, 'lead_found', { source: leadRecord.leadSource || 'web' });
       found++;
       _runState.found = found;
       runLog(`✓ ${lead.companyName} — score ${item.score}${src}`);
@@ -9988,6 +10006,7 @@ async function checkReplies() {
         matched.lastReplyText = replyText || '';
         matched.lastReplyAt   = matched.repliedAt;
         matched.lastReplyFrom = fromRaw || matched.contactEmail || '';
+        trackFunnelEvent(matched.id, 'email_replied');
 
         addLeadHistory(leads, matched.id, {
           event: 'replied',
@@ -11856,6 +11875,373 @@ app.get('/api/sites/:slug/domain-config', requireAdmin, (req, res) => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// TASK 10 — Subscription management
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/subscriptions/:leadId — get or create subscription for a lead
+app.get('/api/subscriptions/:leadId', requireAdmin, (req, res) => {
+  const { getDb } = require('./database');
+  const db = getDb();
+  let sub = db.prepare('SELECT * FROM subscriptions WHERE project_id = ? LIMIT 1').get(req.params.leadId);
+  if (!sub) {
+    const leads = readJSON('leads.json') || [];
+    const lead = leads.find(l => l.id === req.params.leadId);
+    const price = lead?.estimatedValue || 0;
+    const nextDate = new Date(); nextDate.setMonth(nextDate.getMonth() + 1);
+    db.prepare('INSERT INTO subscriptions (project_id, plan, status, billing_cycle, next_billing_date, price_per_month, services) VALUES (?,?,?,?,?,?,?)').run(
+      req.params.leadId, 'basic', 'active', 'monthly',
+      nextDate.toISOString().slice(0,10), price,
+      JSON.stringify(lead?.services?.map(s => (typeof s === 'string' ? s : s.name)) || [])
+    );
+    sub = db.prepare('SELECT * FROM subscriptions WHERE project_id = ? LIMIT 1').get(req.params.leadId);
+  }
+  if (sub && sub.services) try { sub.services = JSON.parse(sub.services); } catch { sub.services = []; }
+  res.json(sub);
+});
+
+// POST /api/subscriptions/:leadId — create/update subscription
+app.post('/api/subscriptions/:leadId', requireAdmin, (req, res) => {
+  const { getDb } = require('./database');
+  const db = getDb();
+  const { plan, status, billing_cycle, next_billing_date, price_per_month, services } = req.body;
+  const existing = db.prepare('SELECT id FROM subscriptions WHERE project_id = ? LIMIT 1').get(req.params.leadId);
+  if (existing) {
+    db.prepare('UPDATE subscriptions SET plan=?,status=?,billing_cycle=?,next_billing_date=?,price_per_month=?,services=? WHERE project_id=?').run(
+      plan, status, billing_cycle, next_billing_date, price_per_month, JSON.stringify(services || []), req.params.leadId);
+  } else {
+    db.prepare('INSERT INTO subscriptions (project_id,plan,status,billing_cycle,next_billing_date,price_per_month,services) VALUES (?,?,?,?,?,?,?)').run(
+      req.params.leadId, plan || 'basic', status || 'active', billing_cycle || 'monthly',
+      next_billing_date, price_per_month, JSON.stringify(services || []));
+  }
+  res.json({ ok: true });
+});
+
+// POST /api/portal/:token/subscription-request — client requests change (public)
+app.post('/api/portal/:token/subscription-request', async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.portalToken === req.params.token);
+  if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
+  const { type, serviceName, message } = req.body;
+  if (!type || !['add_service','pause','cancel'].includes(type)) return res.status(400).json({ error: 'Ongeldig verzoek' });
+
+  const request = { id: crypto.randomUUID(), type, serviceName: serviceName || '', message: message || '', createdAt: new Date().toISOString(), status: 'pending' };
+  if (!lead.subscriptionRequests) lead.subscriptionRequests = [];
+  lead.subscriptionRequests.push(request);
+  writeJSON('leads.json', leads);
+  addNotification('client_question', `Abonnement verzoek: ${lead.companyName}`,
+    `${type === 'add_service' ? 'Wil ' + serviceName + ' toevoegen' : type === 'pause' ? 'Wil pauzeren' : 'Wil opzeggen'}`,
+    lead.id, `project:${lead.id}`);
+
+  const settings = readJSON('settings.json') || {};
+  if (isResendReady(settings)) {
+    await sendEmail({ to: settings.gmailAddress, subject: `Abonnement verzoek: ${lead.companyName}`,
+      body: `<p><strong>${lead.companyName}</strong> heeft een verzoek ingediend:<br><br>Type: <strong>${type}</strong><br>${serviceName ? 'Dienst: ' + serviceName + '<br>' : ''}Bericht: ${message || '—'}</p>`,
+      noCalendly: true });
+  }
+  res.json({ ok: true });
+});
+
+// PATCH /api/subscriptions/:leadId/requests/:reqId — admin approve/reject
+app.patch('/api/subscriptions/:leadId/requests/:reqId', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.id === req.params.leadId);
+  if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
+  const request = (lead.subscriptionRequests || []).find(r => r.id === req.params.reqId);
+  if (!request) return res.status(404).json({ error: 'Verzoek niet gevonden' });
+  request.status = req.body.status; // 'approved' or 'rejected'
+  request.resolvedAt = new Date().toISOString();
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TASK 11 — Conversion funnel events
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function trackFunnelEvent(leadId, event, metadata = {}) {
+  try {
+    const { getDb } = require('./database');
+    getDb().prepare('INSERT INTO funnel_events (lead_id, event, metadata) VALUES (?,?,?)').run(
+      String(leadId), event, JSON.stringify(metadata));
+  } catch (e) { console.warn('[Funnel] Track error:', e.message); }
+}
+
+app.get('/api/stats/funnel', requireAdmin, (req, res) => {
+  const { getDb } = require('./database');
+  const db = getDb();
+  const STAGES = ['lead_found','lead_emailed','email_opened','email_replied','project_started','intake_completed','first_build','invoice_sent','payment_received'];
+  const result = STAGES.map(event => {
+    const row = db.prepare('SELECT COUNT(DISTINCT lead_id) as c FROM funnel_events WHERE event=?').get(event);
+    return { event, count: row ? row.c : 0 };
+  });
+  // Compute conversion rates between consecutive stages
+  for (let i = 1; i < result.length; i++) {
+    const prev = result[i-1].count;
+    result[i].conversionRate = prev > 0 ? Math.round((result[i].count / prev) * 100) : 0;
+  }
+  result[0].conversionRate = 100;
+  res.json({ stages: result });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TASK 14 — Client service ordering from portal
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// POST /api/portal/:token/order-service — client orders a new service
+app.post('/api/portal/:token/order-service', async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.portalToken === req.params.token);
+  if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
+  const { serviceName, servicePrice } = req.body;
+  if (!serviceName) return res.status(400).json({ error: 'Dienst vereist' });
+
+  const { getDb } = require('./database');
+  getDb().prepare('INSERT INTO service_orders (project_id, lead_id, service_name, service_price, status) VALUES (?,?,?,?,?)').run(
+    lead.id, lead.id, serviceName, servicePrice || 0, 'pending');
+
+  addNotification('client_question', `Nieuwe dienst aanvraag: ${lead.companyName}`,
+    `Wil "${serviceName}" toevoegen`, lead.id, `project:${lead.id}`);
+
+  const settings = readJSON('settings.json') || {};
+  if (isResendReady(settings)) {
+    await sendEmail({ to: settings.gmailAddress,
+      subject: `Nieuwe dienst aanvraag van ${lead.companyName}`,
+      body: `<p><strong>${esc(lead.companyName)}</strong> wil de volgende dienst toevoegen:<br><br><strong>${esc(serviceName)}</strong>${servicePrice ? ' — €' + servicePrice : ''}</p><p><a href="${BASE_URL}/app">Bekijk in dashboard →</a></p>`,
+      noCalendly: true });
+  }
+  res.json({ ok: true });
+});
+
+// GET /api/service-orders — admin view pending orders
+app.get('/api/service-orders', requireAdmin, (req, res) => {
+  const { getDb } = require('./database');
+  const orders = getDb().prepare('SELECT * FROM service_orders ORDER BY created_at DESC').all();
+  res.json(orders);
+});
+
+// PATCH /api/service-orders/:id — admin approve/reject
+app.patch('/api/service-orders/:id', requireAdmin, async (req, res) => {
+  const { getDb } = require('./database');
+  const db = getDb();
+  const order = db.prepare('SELECT * FROM service_orders WHERE id=?').get(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Niet gevonden' });
+  const { status } = req.body;
+  db.prepare('UPDATE service_orders SET status=? WHERE id=?').run(status, req.params.id);
+  if (status === 'approved') {
+    const leads = readJSON('leads.json') || [];
+    const lead = leads.find(l => l.id === order.lead_id);
+    if (lead) {
+      if (!lead.services) lead.services = [];
+      lead.services.push({ name: order.service_name, price: order.service_price, billing: 'maandelijks' });
+      writeJSON('leads.json', leads);
+    }
+  }
+  res.json({ ok: true });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TASK 17 — CSV lead import
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/leads/template.csv', (req, res) => {
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="leads-template.csv"');
+  res.send('Bedrijf,Email,Website,Telefoon,Locatie,Niche,Notities\nVoorbeeld BV,info@voorbeeld.nl,https://voorbeeld.nl,0612345678,Amsterdam,beauty,Notitie hier\n');
+});
+
+app.post('/api/leads/import', requireAdmin, async (req, res) => {
+  const { csv } = req.body;
+  if (!csv) return res.status(400).json({ error: 'CSV data vereist' });
+
+  const lines = csv.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return res.status(400).json({ error: 'CSV heeft geen data rijen' });
+
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+  const emailIdx    = headers.findIndex(h => h === 'email');
+  const bedrijfIdx  = headers.findIndex(h => h === 'bedrijf' || h === 'company');
+  const websiteIdx  = headers.findIndex(h => h === 'website');
+  const telefoonIdx = headers.findIndex(h => h === 'telefoon' || h === 'phone');
+  const locatieIdx  = headers.findIndex(h => h === 'locatie' || h === 'location');
+  const nicheIdx    = headers.findIndex(h => h === 'niche');
+  const notitiesIdx = headers.findIndex(h => h === 'notities' || h === 'notes');
+
+  if (emailIdx === -1 || bedrijfIdx === -1) {
+    return res.status(400).json({ error: 'CSV moet "Bedrijf" en "Email" kolommen hebben' });
+  }
+
+  const leads = readJSON('leads.json') || [];
+  const existingEmails = new Set(leads.map(l => (l.contactEmail || '').toLowerCase()));
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  let imported = 0, skipped = 0;
+  const errors = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+    const bedrijf = cells[bedrijfIdx] || '';
+    const email   = cells[emailIdx] || '';
+
+    if (!bedrijf) { errors.push(`Rij ${i+1}: Bedrijfsnaam ontbreekt`); continue; }
+    if (!email || !emailRegex.test(email)) { errors.push(`Rij ${i+1}: Ongeldig emailadres`); continue; }
+    if (existingEmails.has(email.toLowerCase())) { skipped++; continue; }
+
+    const newLead = {
+      id: crypto.randomUUID(),
+      companyName: bedrijf,
+      contactEmail: email,
+      websiteUrl: websiteIdx >= 0 ? cells[websiteIdx] : '',
+      phone: telefoonIdx >= 0 ? cells[telefoonIdx] : '',
+      location: locatieIdx >= 0 ? cells[locatieIdx] : '',
+      niche: nicheIdx >= 0 ? cells[nicheIdx] : 'overig',
+      notes: notitiesIdx >= 0 ? cells[notitiesIdx] : '',
+      status: 'imported',
+      score: 5,
+      source: 'csv_import',
+      createdAt: new Date().toISOString(),
+      history: [{ event: 'Geïmporteerd via CSV', at: new Date().toISOString() }]
+    };
+    leads.push(newLead);
+    existingEmails.add(email.toLowerCase());
+    trackFunnelEvent(newLead.id, 'lead_found', { source: 'csv_import' });
+    imported++;
+  }
+
+  writeJSON('leads.json', leads);
+  res.json({ imported, skipped, errors: errors.slice(0, 20) });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TASK 18 — Revenue forecasting
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/stats/forecast', requireAdmin, (req, res) => {
+  const leads    = readJSON('leads.json') || [];
+  const clients  = leads.filter(l => l.status === 'client');
+  const settings = readJSON('settings.json') || {};
+  const activity = readJSON('activity.json') || [];
+
+  // MRR: sum monthly payments from clients
+  let current_mrr = 0;
+  for (const lead of clients) {
+    const paidMonthly = (lead.payments || []).filter(p => p.status === 'paid' && p.billing === 'maandelijks');
+    if (paidMonthly.length) {
+      current_mrr += paidMonthly.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+    } else if (lead.estimatedValue > 0) {
+      current_mrr += lead.estimatedValue;
+    }
+  }
+
+  // Pipeline value: open invoices
+  let pipeline_value = 0;
+  for (const lead of leads) {
+    const openInvoices = (lead.payments || []).filter(p => p.status === 'pending' || p.status === 'sent');
+    pipeline_value += openInvoices.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+  }
+
+  const current_arr = current_mrr * 12;
+  const forecast_30d = current_mrr + (pipeline_value * 0.3);
+
+  // Growth rate: compare this month vs last month revenue from activity
+  const now = new Date();
+  const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const lastMonth = new Date(now); lastMonth.setMonth(lastMonth.getMonth()-1);
+  const lastMonthKey = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth()+1).padStart(2,'0')}`;
+  const revByMonth = {};
+  for (const a of activity) {
+    if (a.type !== 'payment') continue;
+    const key = (a.at || '').slice(0,7);
+    revByMonth[key] = (revByMonth[key] || 0) + (parseFloat(a.amount) || 0);
+  }
+  const thisRev = revByMonth[thisMonthKey] || current_mrr;
+  const lastRev = revByMonth[lastMonthKey] || current_mrr;
+  const growth_rate = lastRev > 0 ? (thisRev - lastRev) / lastRev : 0;
+  const forecast_90d = current_mrr * Math.pow(1 + growth_rate, 3);
+
+  const churn_risk_count = clients.filter(l => {
+    const lastActivity = l.history?.slice(-1)[0]?.at;
+    if (!lastActivity) return false;
+    return Date.now() - new Date(lastActivity).getTime() > 45 * 86400000;
+  }).length;
+
+  // Last 6 months actual revenue
+  const months_actual = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(); d.setMonth(d.getMonth() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const label = d.toLocaleDateString('nl-NL', { month: 'short', year: '2-digit' });
+    months_actual.push({ key, label, revenue: revByMonth[key] || (i === 0 ? current_mrr : 0) });
+  }
+  // Next 3 months projected
+  const months_projected = [];
+  for (let i = 1; i <= 3; i++) {
+    const d = new Date(); d.setMonth(d.getMonth() + i);
+    const label = d.toLocaleDateString('nl-NL', { month: 'short', year: '2-digit' });
+    months_projected.push({ label, revenue: Math.round(current_mrr * Math.pow(1 + growth_rate, i)) });
+  }
+
+  res.json({
+    current_mrr: Math.round(current_mrr),
+    current_arr: Math.round(current_arr),
+    pipeline_value: Math.round(pipeline_value),
+    forecast_30d: Math.round(forecast_30d),
+    forecast_90d: Math.round(forecast_90d),
+    churn_risk_count,
+    growth_rate: Math.round(growth_rate * 100),
+    months_actual,
+    months_projected
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TASK 19 — Component library
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/components', requireAdmin, (req, res) => {
+  const componentsDir = path.join(__dirname, 'components');
+  if (!fs.existsSync(componentsDir)) return res.json([]);
+  const files = fs.readdirSync(componentsDir).filter(f => f.endsWith('.html'));
+  const components = files.map(f => ({
+    name: f.replace('.html', ''),
+    filename: f,
+    url: `/components/${f}`
+  }));
+  res.json(components);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TASK 20 — Template library
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/templates', requireAdmin, (req, res) => {
+  const { getDb } = require('./database');
+  const templates = getDb().prepare('SELECT * FROM website_templates ORDER BY id').all();
+  res.json(templates);
+});
+
+app.post('/api/templates', requireAdmin, (req, res) => {
+  const { getDb } = require('./database');
+  const { name, niche, description, primary_color, accent_color, bg_color, font_heading, font_body, style_description } = req.body;
+  if (!name || !niche) return res.status(400).json({ error: 'Naam en niche vereist' });
+  const result = getDb().prepare('INSERT INTO website_templates (name,niche,description,primary_color,accent_color,bg_color,font_heading,font_body,style_description) VALUES (?,?,?,?,?,?,?,?,?)').run(
+    name, niche, description||'', primary_color||'#111', accent_color||'#6366f1', bg_color||'#fff', font_heading||'Inter', font_body||'Inter', style_description||'');
+  res.json({ id: result.lastInsertRowid, ok: true });
+});
+
+app.patch('/api/templates/:id', requireAdmin, (req, res) => {
+  const { getDb } = require('./database');
+  const { name, niche, description, primary_color, accent_color, bg_color, font_heading, font_body, style_description } = req.body;
+  getDb().prepare('UPDATE website_templates SET name=?,niche=?,description=?,primary_color=?,accent_color=?,bg_color=?,font_heading=?,font_body=?,style_description=? WHERE id=?').run(
+    name, niche, description, primary_color, accent_color, bg_color, font_heading, font_body, style_description, req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/templates/:id', requireAdmin, (req, res) => {
+  const { getDb } = require('./database');
+  getDb().prepare('DELETE FROM website_templates WHERE id=?').run(req.params.id);
+  res.json({ ok: true });
+});
+
 // ─── SPA fallback ─────────────────────────────────────────────────────────────
 
 app.get('*', (req, res) => {
@@ -11884,7 +12270,7 @@ function broadcastWS(event, data = {}) {
   }
 }
 
-pgInitPromise.then(() => {
+if (require.main === module || process.env.NODE_ENV !== 'test') pgInitPromise.then(() => {
   const server = app.listen(PORT, () => {
     const s = readJSON('settings.json') || {};
     const runTime      = s.dailyRunTime      || '09:00';
@@ -11956,3 +12342,6 @@ pgInitPromise.then(() => {
   });
   console.log('[WS] WebSocket server actief op /ws');
 });
+
+// Export app for testing
+module.exports = app;

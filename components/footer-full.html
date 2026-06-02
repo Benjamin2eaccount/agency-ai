@@ -1,0 +1,30 @@
+<!-- COMPONENT: footer-full | Placeholders: {{COMPANY_NAME}}, {{PRIMARY_COLOR}}, {{PHONE}}, {{EMAIL}} -->
+<style>
+  .footer-full { background: #111; color: #9ca3af; padding: 60px 24px 24px; }
+  .footer-full .grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 40px; max-width: 1000px; margin: 0 auto 40px; }
+  .footer-full h4 { color: #fff; font-size: 1rem; font-weight: 700; margin-bottom: 16px; }
+  .footer-full p, .footer-full a { font-size: .9rem; line-height: 1.8; color: #9ca3af; text-decoration: none; display: block; }
+  .footer-full a:hover { color: {{PRIMARY_COLOR}}; }
+  .footer-full .bottom { text-align: center; padding-top: 24px; border-top: 1px solid #2d2d2d; font-size: .85rem; }
+  @media (max-width: 600px) { .footer-full .grid { grid-template-columns: 1fr; } }
+</style>
+<footer class="footer-full">
+  <div class="grid">
+    <div>
+      <h4>{{COMPANY_NAME}}</h4>
+      <p>Professionele dienstverlening met aandacht voor detail en kwaliteit.</p>
+    </div>
+    <div>
+      <h4>Contact</h4>
+      <a href="tel:{{PHONE}}">📞 {{PHONE}}</a>
+      <a href="mailto:{{EMAIL}}">✉️ {{EMAIL}}</a>
+    </div>
+    <div>
+      <h4>Links</h4>
+      <a href="#diensten">Diensten</a>
+      <a href="#over">Over ons</a>
+      <a href="#contact">Contact</a>
+    </div>
+  </div>
+  <div class="bottom">© <script>document.write(new Date().getFullYear())</script> {{COMPANY_NAME}}. Alle rechten voorbehouden.</div>
+</footer>

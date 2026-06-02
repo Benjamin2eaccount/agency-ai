@@ -4210,3 +4210,19 @@ input[type="range"] { height: auto; padding: 0; border: none; width: 100%; accen
 }
 /* ── Toast warning type ── */
 .toast-warning { background: #d97706; }
+
+/* ─── Skeleton loader (Task 16) ─────────────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0ef 25%, #e8e8e7 50%, #f0f0ef 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+[data-theme="dark"] .skeleton {
+  background: linear-gradient(90deg, #2a2a2a 25%, #3a3a3a 50%, #2a2a2a 75%);
+  background-size: 200% 100%;
+}
