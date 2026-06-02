@@ -10,6 +10,15 @@ const db = new Database(path.join(DATA_DIR, 'agency.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
 
+// ── Run pending migrations before creating any tables ────────────────────────
+try {
+  require('./lib/migrations')(db);
+} catch (e) {
+  console.error('[Migrations] Kritieke fout — server kan niet starten:', e.message);
+  process.exit(1);
+}
+
+// ── Fallback CREATE IF NOT EXISTS (safety net for non-migration deployments) ──
 db.exec(`
   CREATE TABLE IF NOT EXISTS store (
     key        TEXT PRIMARY KEY,

@@ -11512,6 +11512,23 @@ cron.schedule('30 9 * * *', async () => {
 });
 
 // ─── Admin data stats ────────────────────────────────────────────────────────
+app.get('/api/admin/migrations', requireAdmin, (req, res) => {
+  try {
+    const { getDb } = require('./database');
+    const db = getDb();
+    const applied = db.prepare('SELECT * FROM schema_migrations ORDER BY id').all();
+    const migrationsDir = path.join(__dirname, 'migrations');
+    const allFiles = fs.existsSync(migrationsDir)
+      ? fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort()
+      : [];
+    const appliedSet = new Set(applied.map(m => m.filename));
+    const pending    = allFiles.filter(f => !appliedSet.has(f));
+    res.json({ applied, pending, total: allFiles.length, upToDate: pending.length === 0 });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/admin/data-stats', requireAdmin, (req, res) => {
   try {
     const leads = readJSON('leads.json') || [];
