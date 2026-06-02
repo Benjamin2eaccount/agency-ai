@@ -239,6 +239,34 @@ async function sendPushToAll(title, body, url) {
 
 app.use(cors());
 
+// ─── API version header on every response ────────────────────────────────────
+const API_VERSION = '1.0.0';
+app.use((req, res, next) => {
+  res.setHeader('X-API-Version', API_VERSION);
+  next();
+});
+
+// ─── GET /api/version (public, no auth) ──────────────────────────────────────
+app.get('/api/version', (req, res) => {
+  res.json({
+    version: API_VERSION,
+    environment: process.env.NODE_ENV || 'production',
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString()
+  });
+});
+
+// ─── /api/v1/* alias — forwards to /api/* (backwards compatible versioning) ──
+// Allows clients to use /api/v1/leads instead of /api/leads.
+// When /api/v2 is created, /api/ will alias to it and /api/v1 stays frozen.
+app.use('/api/v1', (req, res, next) => {
+  if (req._v1Aliased) return next(); // prevent infinite loop
+  req._v1Aliased = true;
+  req.url = '/api' + req.url;
+  req.originalUrl = req.url;
+  app.handle(req, res, next);
+});
+
 // ─── Rate limiters ────────────────────────────────────────────────────────────
 function _rlOnLimitReached(req, _res, _options) {
   // Log to audit_log when a limit is hit
