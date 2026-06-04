@@ -1316,3 +1316,17 @@ function prevProjectTab() {
   const idx = tabs.indexOf(current);
   if (idx > 0) switchProjectTab && switchProjectTab(tabs[idx - 1]);
 }
+
+// ─── Safety stubs — real implementations in page files override these ─────────
+// These prevent "X is not defined" errors when a page file that defines the
+// real function hasn't been lazy-loaded yet.
+window.updateSidebarLogo    = window.updateSidebarLogo    || function() {};
+window.updateInboxBadge     = window.updateInboxBadge     || function() {};
+window.startInboxCountdown  = window.startInboxCountdown  || function() {};
+window.stopRunProgressPoll  = window.stopRunProgressPoll  || function() {};
+window.startRunProgressPoll = window.startRunProgressPoll || function() {};
+window.fireConfetti         = window.fireConfetti         || function() {};
+window.initKanbanDrag       = window.initKanbanDrag       || function() {};
+window.renderKanban         = window.renderKanban         || function() {};
+window.getNextRunTime       = window.getNextRunTime       || function() { return { label: '—', countdown: '—', target: null }; };
+window.startCountdown       = window.startCountdown       || function() {};

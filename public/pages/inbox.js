@@ -34,7 +34,7 @@ async function renderInbox() {
 
   const pending = inbox.filter(i => i.status === 'pending');
   const trashed = inbox.filter(i => i.status === 'disapproved');
-  updateInboxBadge(pending.length);
+  if (typeof updateInboxBadge === 'function') updateInboxBadge(pending.length);
 
   const container = document.getElementById('inboxContent');
 
@@ -49,7 +49,9 @@ async function renderInbox() {
   }
 
   if (pending.length === 0) {
-    const nextRun = getNextRunTime(state.settings?.dailyRunTime || '09:00');
+    const nextRun = typeof getNextRunTime === 'function'
+      ? getNextRunTime(state.settings?.dailyRunTime || '09:00')
+      : { label: '—', countdown: '—', target: null };
     container.innerHTML = `
       <div class="empty-card">
         <i class="ti ti-inbox-off" style="font-size:48px;color:var(--border);margin-bottom:12px"></i>
@@ -723,7 +725,7 @@ async function approve(id, opts = {}) {
     card.style.opacity = '0';
     card.style.transform = 'translateY(-8px)';
     setTimeout(() => card.remove(), 300);
-    updateInboxBadge(document.querySelectorAll('.inbox-card').length - 1);
+    if (typeof updateInboxBadge === 'function') updateInboxBadge(document.querySelectorAll('.inbox-card').length - 1);
   }, 400);
 }
 
@@ -751,7 +753,7 @@ async function scheduleApprove(id) {
     card.style.opacity = '0';
     card.style.transform = 'translateY(-8px)';
     setTimeout(() => card.remove(), 300);
-    updateInboxBadge(document.querySelectorAll('.inbox-card').length - 1);
+    if (typeof updateInboxBadge === 'function') updateInboxBadge(document.querySelectorAll('.inbox-card').length - 1);
   }, 400);
 }
 
@@ -767,7 +769,7 @@ async function disapprove(id) {
     card.style.opacity = '0';
     card.style.transform = 'translateY(-8px)';
     setTimeout(() => { card.remove(); renderInbox(); }, 300);
-    updateInboxBadge(document.querySelectorAll('.inbox-card').length - 1);
+    if (typeof updateInboxBadge === 'function') updateInboxBadge(document.querySelectorAll('.inbox-card').length - 1);
   }, 400);
 }
 

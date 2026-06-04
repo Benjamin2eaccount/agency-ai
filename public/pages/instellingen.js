@@ -451,7 +451,7 @@ async function startCustomRun() {
   if (barEl)    barEl.style.display = '';
   if (timerEl)  { timerEl.textContent = 'Bezig: 0:00'; timerEl.style.display = ''; }
 
-  if (document.getElementById('liveRunCard')) startRunProgressPoll();
+  if (document.getElementById('liveRunCard') && typeof startRunProgressPoll === 'function') startRunProgressPoll();
 
   const t0 = Date.now();
   const timer = setInterval(() => {
@@ -2165,7 +2165,7 @@ async function triggerFindLeads() {
 
   toast('Run gestart', 'info');
   // Start progress polling so the live card shows up right away
-  if (document.getElementById('liveRunCard')) startRunProgressPoll();
+  if (document.getElementById('liveRunCard') && typeof startRunProgressPoll === 'function') startRunProgressPoll();
 
   try {
     const res = await api('/api/find-leads', { method: 'POST' });

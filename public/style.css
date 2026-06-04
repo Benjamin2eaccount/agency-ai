@@ -225,7 +225,7 @@ input, select, textarea { font-family: inherit; }
 
 .sidebar-nav {
   flex: 1;
-  padding: 4px 8px 12px;
+  padding: 0 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -4270,7 +4270,7 @@ button, .btn, a.btn, [class*="btn"] {
 
 /* Task 5 — Global search */
 .global-search-wrap {
-  position: relative; margin: 8px 12px 4px;
+  position: relative; margin: 8px 12px 12px;
 }
 .global-search-input {
   width: 100%; padding: 8px 12px 8px 34px;
