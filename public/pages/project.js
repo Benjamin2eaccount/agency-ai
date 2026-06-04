@@ -1,11 +1,11 @@
 // ─── Project Page ─────────────────────────────────────────────────────────────
 
-function openProjectPage(id) {
+window.openProjectPage = function openProjectPage(id) {
   state.currentLeadId = id;
   setView('project');
-}
+};
 
-function switchProjectTab(tab) {
+window.switchProjectTab = function switchProjectTab(tab) {
   window._projectTab = tab;
   document.querySelectorAll('.project-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.project-tab-content').forEach(c => {
@@ -2858,7 +2858,7 @@ async function loadRealAnalytics(leadId) {
 
 function renderLeadDetail(id) { openLeadDetail(id); }
 
-function openLeadDetail(id) {
+window.openLeadDetail = function openLeadDetail(id) {
   const lead = state.leads.find(l => l.id === id);
   if (!lead) return;
   state.currentLeadId = id;
@@ -3547,7 +3547,7 @@ function openLeadDetail(id) {
   });
 }
 
-function switchDetailTab(tabName) {
+window.switchDetailTab = function switchDetailTab(tabName) {
   document.querySelectorAll('.detail-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
   document.querySelectorAll('.detail-tab-content').forEach(c => {
     c.style.display = c.dataset.tabContent === tabName ? '' : 'none';

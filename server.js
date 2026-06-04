@@ -299,17 +299,23 @@ const authRateLimit = rateLimit({
 });
 app.use('/api/auth/login', authRateLimit);
 
-// Runs — 5 runs / hour per IP
-const runsRateLimit = rateLimit({
+// Runs read/write — separate limits: reading run history is frequent (dashboard polls it)
+const runsReadLimit = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
+  max: 60,                          // GET /api/runs — dashboard + runs page poll this
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Te veel verzoeken. Probeer het opnieuw.' },
+  handler: (req, res, next, options) => { _rlOnLimitReached(req, res, options); res.status(429).json(options.message); }
+});
+const runsTriggerLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,                           // POST /api/find-leads — actual AI run trigger, keep strict
+  standardHeaders: true, legacyHeaders: false,
   message: { error: 'Maximum 5 runs per uur bereikt. Probeer het over een uur opnieuw.' },
   handler: (req, res, next, options) => { _rlOnLimitReached(req, res, options); res.status(429).json(options.message); }
 });
-app.use('/api/find-leads', runsRateLimit);
-app.use('/api/runs', runsRateLimit);
+app.use('/api/find-leads', runsTriggerLimit);
+app.use('/api/runs', runsReadLimit);
 
 // Email sending — 50 emails / hour per IP
 const emailRateLimit = rateLimit({

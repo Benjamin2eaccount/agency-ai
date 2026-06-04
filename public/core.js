@@ -75,6 +75,8 @@ async function api(path, options = {}) {
 async function apiJSON(path, options = {}) {
   const res = await api(path, options);
   if (!res) return null;
+  if (res.status === 429) { console.warn('[API] 429 Too Many Requests:', path); return null; }
+  if (!res.ok) return null;
   return res.json();
 }
 
@@ -1329,11 +1331,44 @@ function prevProjectTab() {
   if (idx > 0) switchProjectTab && switchProjectTab(tabs[idx - 1]);
 }
 
+// ─── Global constants used across multiple page files ────────────────────────
+window.STATUS_LABELS = window.STATUS_LABELS || {
+  new: 'Nieuw', inbox: 'Inbox', pending: 'In beoordeling', approved: 'Goedgekeurd',
+  disapproved: 'Afgewezen', scheduled: 'Ingepland', sent: 'Verstuurd',
+  replied: 'Gereageerd', client: 'Klant', dead: 'Dead',
+  archived: 'Gearchiveerd', imported: 'Geïmporteerd', besteld: 'Besteld'
+};
+
 // ─── Safety stubs — real implementations in page files override these ─────────
 // These prevent "X is not defined" errors when a page file that defines the
 // real function hasn't been lazy-loaded yet.
-window.triggerFindLeads     = window.triggerFindLeads     || function() {};
-window.updateSidebarLogo    = window.updateSidebarLogo    || function() {};
+// Cross-page function stubs (defined in page files, may be called before that page loads)
+window.triggerFindLeads       = window.triggerFindLeads       || function() {};
+window.openLeadDetail         = window.openLeadDetail         || function() {};
+window.openProjectPage        = window.openProjectPage        || function() {};
+window.buildAllServicesForLead= window.buildAllServicesForLead|| function() {};
+window.startProject           = window.startProject           || function() {};
+window.createPayment          = window.createPayment          || function() {};
+window.sendClientEmail        = window.sendClientEmail        || function() {};
+window.generateDeliveryEmail  = window.generateDeliveryEmail  || function() {};
+window.generateSite           = window.generateSite           || function() {};
+window.setSiteStatus          = window.setSiteStatus          || function() {};
+window.resendWelcomeEmail     = window.resendWelcomeEmail     || function() {};
+window.switchDetailTab        = window.switchDetailTab        || function() {};
+window.switchProjectTab       = window.switchProjectTab       || function() {};
+window.switchPipelineView     = window.switchPipelineView     || function() {};
+window.sendContractEmail      = window.sendContractEmail      || function() {};
+window.sendProposalEmail      = window.sendProposalEmail      || function() {};
+window.sendDeliveryEmail      = window.sendDeliveryEmail      || function() {};
+window.sendAdminInstructions  = window.sendAdminInstructions  || function() {};
+window.sendWeeklyUpdate       = window.sendWeeklyUpdate       || function() {};
+window.selectSubject          = window.selectSubject          || function() {};
+window.selectVersion          = window.selectVersion          || function() {};
+window.toggleDeliverableChat  = window.toggleDeliverableChat  || function() {};
+window.copyText               = window.copyText               || function() {};
+window.triggerReplyCheck      = window.triggerReplyCheck      || function() {};
+window.loadBackupList         = window.loadBackupList         || function() {};
+window.updateSidebarLogo      = window.updateSidebarLogo      || function() {};
 window.updateInboxBadge     = window.updateInboxBadge     || function() {};
 window.startInboxCountdown  = window.startInboxCountdown  || function() {};
 window.stopRunProgressPoll  = window.stopRunProgressPoll  || function() {};

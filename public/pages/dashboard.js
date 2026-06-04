@@ -38,7 +38,7 @@ async function renderDashboard() {
   const nextRun = typeof getNextRunTime === 'function'
     ? getNextRunTime(settings?.dailyRunTime || '09:00')
     : { label: '—', countdown: '—', target: null };
-  const recentRuns = (runs || []).slice(0, 10);
+  const recentRuns = (Array.isArray(runs) ? runs : []).slice(0, 10);
 
   const weekLabels = getLast7Days();
   const weekCounts = getWeekCounts(stats.weeklyData || [], weekLabels);

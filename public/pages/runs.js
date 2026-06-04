@@ -22,7 +22,7 @@ async function renderRuns() {
     apiJSON('/api/runs') || [],
     apiJSON('/api/settings') || {}
   ]);
-  const safeRuns = runs || [];
+  const safeRuns = Array.isArray(runs) ? runs : [];
 
   const totalRuns  = safeRuns.length;
   const totalLeads = safeRuns.reduce((s, r) => s + (r.leadsFound   || 0), 0);

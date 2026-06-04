@@ -1,13 +1,15 @@
 // ─── Pipeline tracker ─────────────────────────────────────────────────────────
 
-const STATUS_LABELS = {
+// Extend the global STATUS_LABELS stub (from core.js) with pipeline-specific labels
+window.STATUS_LABELS = Object.assign(window.STATUS_LABELS || {}, {
   inbox: 'Inbox', approved: 'Goedgekeurd', sent: 'Verstuurd',
   'auto-approved': 'Auto-goedgekeurd', scheduled: 'Ingepland',
   followup1: 'Follow-up 1', followup2: 'Follow-up 2',
   replied: 'Gereageerd', meeting: 'Afspraak',
   client: 'Klant ✓', disapproved: 'Afgewezen', dead: 'Dead',
   bounced: 'Niet aangekomen', delivery_delayed: 'Vertraagd'
-};
+});
+const STATUS_LABELS = window.STATUS_LABELS;
 
 const STATUS_COLORS = {
   inbox: 'gray', approved: 'blue', sent: 'indigo', 'auto-approved': 'indigo',
@@ -137,6 +139,7 @@ function buildKanbanCard(l) {
 }
 
 function renderKanban(leads, container) {
+  if (!container) return;
   const KANBAN_PAGE_SIZE = 10;
   const colLeads = {};
   KANBAN_COLS.forEach(col => {
