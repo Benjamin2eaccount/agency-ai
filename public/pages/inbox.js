@@ -37,6 +37,7 @@ async function renderInbox() {
   if (typeof updateInboxBadge === 'function') updateInboxBadge(pending.length);
 
   const container = document.getElementById('inboxContent');
+  if (!container) return;
 
   if (!settings.resendConfigured) {
     container.innerHTML += `

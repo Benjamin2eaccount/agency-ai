@@ -93,15 +93,23 @@ const _pageDeps = {
   project:  ['leads'],
 };
 
+// View name → actual filename in public/pages/ (when they differ)
+const _pageFileMap = {
+  stats:    'statistieken',
+  contacts: 'contacten',
+  settings: 'instellingen',
+};
+
 function loadPage(view) {
   if (_loadedPages.has(view)) return Promise.resolve();
   const deps = _pageDeps[view] || [];
   const loadDeps = deps.length ? Promise.all(deps.map(d => loadPage(d))) : Promise.resolve();
+  const filename = _pageFileMap[view] || view;
   return loadDeps.then(() => new Promise(resolve => {
     const s = document.createElement('script');
-    s.src = '/pages/' + view + '.js';
+    s.src = '/pages/' + filename + '.js';
     s.onload  = () => { _loadedPages.add(view); resolve(); };
-    s.onerror = () => { console.error('[Page] Failed to load:', view); _loadedPages.add(view); resolve(); };
+    s.onerror = () => { console.error('[Page] Failed to load:', filename + '.js'); _loadedPages.add(view); resolve(); };
     document.head.appendChild(s);
   }));
 }
@@ -1320,6 +1328,7 @@ function prevProjectTab() {
 // ─── Safety stubs — real implementations in page files override these ─────────
 // These prevent "X is not defined" errors when a page file that defines the
 // real function hasn't been lazy-loaded yet.
+window.triggerFindLeads     = window.triggerFindLeads     || function() {};
 window.updateSidebarLogo    = window.updateSidebarLogo    || function() {};
 window.updateInboxBadge     = window.updateInboxBadge     || function() {};
 window.startInboxCountdown  = window.startInboxCountdown  || function() {};

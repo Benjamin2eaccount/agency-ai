@@ -1033,11 +1033,12 @@ async function saveNote(leadId) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Task 13 — Tags/labels system
 // ═══════════════════════════════════════════════════════════════════════════════
-const PRESET_TAGS = [
+window.PRESET_TAGS = window.PRESET_TAGS || [
   { label: 'Warm lead', color: 'red' }, { label: 'Teruggebeld', color: 'orange' },
   { label: 'Geïnteresseerd', color: 'green' }, { label: 'Offerte verstuurd', color: 'blue' },
   { label: 'Wacht op beslissing', color: 'yellow' }, { label: 'VIP', color: 'purple' }
 ];
+const PRESET_TAGS = window.PRESET_TAGS;
 
 function renderLeadTags(tags = []) {
   return tags.map(t => `<span class="lead-tag tag-${t.color||'gray'}">${esc(t.label)}</span>`).join('');
