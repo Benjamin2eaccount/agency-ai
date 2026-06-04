@@ -2181,7 +2181,7 @@ async function triggerFindLeads() {
   } finally {
     state.runningPipeline = false;
     btns.forEach(btn => { btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> Run nu'; }); // runNowBtn2 restore
-    stopRunProgressPoll();
+    if (typeof stopRunProgressPoll === 'function') stopRunProgressPoll();
     const card = document.getElementById('liveRunCard');
     if (card) card.style.display = 'none';
   }

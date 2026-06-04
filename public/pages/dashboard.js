@@ -29,13 +29,15 @@ async function renderDashboard() {
   const earned = stats.totalEarned || 0;
 
   const pending = state.inbox.filter(i => !i.status || i.status === 'pending').length;
-  updateInboxBadge(pending);
+  if (typeof updateInboxBadge === 'function') updateInboxBadge(pending);
 
   const settings = await apiJSON('/api/settings');
   state.settings = settings || {};
-  updateSidebarLogo(settings?.agencyLogo || '');
+  if (typeof updateSidebarLogo === 'function') updateSidebarLogo(settings?.agencyLogo || '');
 
-  const nextRun = getNextRunTime(settings?.dailyRunTime || '09:00');
+  const nextRun = typeof getNextRunTime === 'function'
+    ? getNextRunTime(settings?.dailyRunTime || '09:00')
+    : { label: '—', countdown: '—', target: null };
   const recentRuns = (runs || []).slice(0, 10);
 
   const weekLabels = getLast7Days();
@@ -215,7 +217,7 @@ async function renderDashboard() {
   }).join('');
 
   // Countdown timer
-  startCountdown(nextRun.target);
+  if (typeof startCountdown === 'function' && nextRun.target) startCountdown(nextRun.target);
 
   // Upsell kansen
   const upsells = await apiJSON('/api/upsell') || [];

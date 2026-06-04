@@ -70,7 +70,7 @@ async function renderInbox() {
         </div>
       </div>
     `;
-    startInboxCountdown(nextRun.target);
+    if (typeof startInboxCountdown === 'function') startInboxCountdown(nextRun.target);
     return;
   }
 

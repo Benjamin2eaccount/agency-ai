@@ -520,6 +520,17 @@ function showShortcutsOverlay() {
   `);
 }
 
+// ─── Sidebar logo (used by dashboard + settings; must live in core) ──────────
+function updateSidebarLogo(logoUrl) {
+  const logoIcon = document.querySelector('.logo-icon');
+  if (!logoIcon) return;
+  if (logoUrl) {
+    logoIcon.innerHTML = `<img src="${logoUrl}" style="width:26px;height:26px;object-fit:contain;border-radius:4px;display:block">`;
+  } else {
+    logoIcon.innerHTML = '<i class="ti ti-bolt"></i>';
+  }
+}
+
 // ─── Inbox badge ──────────────────────────────────────────────────────────────
 function updateInboxBadge(count) {
   ['inboxBadge', 'inboxBadgeMobile'].forEach(id => {
