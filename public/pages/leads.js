@@ -991,3 +991,187 @@ async function handleCsvFile(file) {
   };
   reader.readAsText(file);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Task 12 — Lead notes
+// ═══════════════════════════════════════════════════════════════════════════════
+async function openNotesModal(leadId) {
+  const lead = (state.leads||[]).find(l => l.id === leadId);
+  if (!lead) return;
+  const notes = lead.notes || [];
+  openModal(`
+    <div class="modal-header">
+      <h3 class="modal-title">📝 Notities — ${esc(lead.companyName)}</h3>
+      <button onclick="closeModal()" class="modal-close">×</button>
+    </div>
+    <div id="notesList" style="max-height:280px;overflow-y:auto;margin-bottom:12px;">
+      ${notes.length === 0 ? '<p style="color:var(--text-secondary);font-size:13px;">Nog geen notities.</p>' :
+        notes.map(n => `<div class="note-item">
+          <div class="note-text">${esc(n.text)}</div>
+          <div class="note-meta">${formatDateTime(n.at)} · ${esc(n.by||'Admin')}</div>
+        </div>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;">
+      <textarea id="newNoteText" class="input-field" rows="2" placeholder="Nieuwe notitie…" style="flex:1;resize:none;"></textarea>
+      <button onclick="saveNote('${leadId}')" class="btn btn-primary btn-sm" style="align-self:flex-end;">Opslaan</button>
+    </div>
+  `);
+}
+
+async function saveNote(leadId) {
+  const text = document.getElementById('newNoteText')?.value?.trim();
+  if (!text) return;
+  const lead = (state.leads||[]).find(l => l.id === leadId);
+  if (!lead) return;
+  if (!lead.notes) lead.notes = [];
+  lead.notes.push({ id: Date.now().toString(36), text, at: new Date().toISOString(), by: localStorage.getItem('myName') || 'Admin' });
+  await api(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify({ notes: lead.notes }) });
+  toast('Notitie opgeslagen');
+  openNotesModal(leadId);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Task 13 — Tags/labels system
+// ═══════════════════════════════════════════════════════════════════════════════
+const PRESET_TAGS = [
+  { label: 'Warm lead', color: 'red' }, { label: 'Teruggebeld', color: 'orange' },
+  { label: 'Geïnteresseerd', color: 'green' }, { label: 'Offerte verstuurd', color: 'blue' },
+  { label: 'Wacht op beslissing', color: 'yellow' }, { label: 'VIP', color: 'purple' }
+];
+
+function renderLeadTags(tags = []) {
+  return tags.map(t => `<span class="lead-tag tag-${t.color||'gray'}">${esc(t.label)}</span>`).join('');
+}
+
+async function openTagsModal(leadId) {
+  const lead = (state.leads||[]).find(l => l.id === leadId);
+  if (!lead) return;
+  const currentTags = lead.tags || [];
+  openModal(`
+    <div class="modal-header">
+      <h3 class="modal-title">🏷️ Tags — ${esc(lead.companyName)}</h3>
+      <button onclick="closeModal()" class="modal-close">×</button>
+    </div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Klik om toe te voegen of te verwijderen.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+      ${PRESET_TAGS.map(t => {
+        const active = currentTags.some(ct => ct.label === t.label);
+        return `<button onclick="toggleTag('${leadId}','${t.label}','${t.color}')" class="lead-tag tag-${t.color}" style="cursor:pointer;opacity:${active?1:0.45};border-width:2px;">${esc(t.label)}</button>`;
+      }).join('')}
+    </div>
+    <div style="display:flex;gap:8px;">
+      <input id="customTagInput" class="input-field" placeholder="Eigen tag…" style="flex:1;">
+      <select id="customTagColor" class="input-field" style="width:120px;">
+        ${['gray','red','orange','yellow','green','blue','purple'].map(c => `<option value="${c}">${c}</option>`).join('')}
+      </select>
+      <button onclick="addCustomTag('${leadId}')" class="btn btn-primary btn-sm">Toevoegen</button>
+    </div>
+  `);
+}
+
+async function toggleTag(leadId, label, color) {
+  const lead = (state.leads||[]).find(l => l.id === leadId);
+  if (!lead) return;
+  if (!lead.tags) lead.tags = [];
+  const idx = lead.tags.findIndex(t => t.label === label);
+  if (idx >= 0) lead.tags.splice(idx, 1);
+  else lead.tags.push({ label, color });
+  await api(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify({ tags: lead.tags }) });
+  openTagsModal(leadId);
+}
+
+async function addCustomTag(leadId) {
+  const label = document.getElementById('customTagInput')?.value?.trim();
+  const color = document.getElementById('customTagColor')?.value || 'gray';
+  if (!label) return;
+  await toggleTag(leadId, label, color);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Task 14 — Favorite leads
+// ═══════════════════════════════════════════════════════════════════════════════
+async function toggleFavorite(leadId) {
+  const lead = (state.leads||[]).find(l => l.id === leadId);
+  if (!lead) return;
+  lead.favorite = !lead.favorite;
+  await api(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify({ favorite: lead.favorite }) });
+  toast(lead.favorite ? '⭐ Favoriet toegevoegd' : 'Favoriet verwijderd');
+  renderLeads();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Task 11 — Bulk email + bulk archive + bulk delete
+// ═══════════════════════════════════════════════════════════════════════════════
+async function bulkEmailSelected() {
+  const ids = [...document.querySelectorAll('.lead-select-cb:checked')].map(cb => cb.dataset.leadId);
+  if (!ids.length) { toast('Selecteer eerst leads', 'error'); return; }
+  openModal(`
+    <div class="modal-header">
+      <h3 class="modal-title">📧 Bulk email — ${ids.length} leads</h3>
+      <button onclick="closeModal()" class="modal-close">×</button>
+    </div>
+    <div style="margin-bottom:16px;">
+      <label class="form-label">Onderwerp</label>
+      <input id="bulkEmailSubj" class="input-field" style="width:100%;" placeholder="Onderwerp…">
+    </div>
+    <div style="margin-bottom:16px;">
+      <label class="form-label">Bericht</label>
+      <textarea id="bulkEmailBody" class="input-field" rows="5" style="width:100%;" placeholder="Email tekst…"></textarea>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;">
+      <button onclick="closeModal()" class="btn btn-secondary">Annuleren</button>
+      <button onclick="_sendBulkEmail(${JSON.stringify(ids)})" class="btn btn-primary">Verstuur naar ${ids.length} leads</button>
+    </div>
+  `);
+}
+
+async function _sendBulkEmail(ids) {
+  const subj = document.getElementById('bulkEmailSubj')?.value?.trim();
+  const body = document.getElementById('bulkEmailBody')?.value?.trim();
+  if (!subj || !body) { toast('Vul onderwerp en bericht in', 'error'); return; }
+  closeModal();
+  let sent = 0;
+  for (const id of ids) {
+    await api(`/api/leads/${id}/manual-email`, { method: 'POST', body: JSON.stringify({ subject: subj, body }) });
+    sent++;
+  }
+  toast(`📧 ${sent} emails verstuurd`);
+}
+
+async function bulkArchiveSelected() {
+  const ids = [...document.querySelectorAll('.lead-select-cb:checked')].map(cb => cb.dataset.leadId);
+  if (!ids.length) { toast('Selecteer eerst leads', 'error'); return; }
+  confirmAction(`${ids.length} leads archiveren?`, async () => {
+    for (const id of ids) await api(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'archived', archivedAt: new Date().toISOString(), archiveReason: 'bulk_archived' }) });
+    toast(`${ids.length} leads gearchiveerd`);
+    renderLeads();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Task 17 — Project archiving (Archive tab in Pipeline shown via renderPipeline)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Task 46 — Inline editing of lead name/email
+// ═══════════════════════════════════════════════════════════════════════════════
+function makeInlineEditable(el, leadId, field, currentValue) {
+  el.setAttribute('contenteditable', 'true');
+  el.style.outline = '1px dashed var(--accent)';
+  el.style.borderRadius = '4px';
+  el.style.padding = '2px 4px';
+  el.focus();
+  const save = async () => {
+    el.removeAttribute('contenteditable');
+    el.style.outline = '';
+    el.style.padding = '';
+    const newVal = el.textContent.trim();
+    if (newVal === currentValue) return;
+    await api(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify({ [field]: newVal }) });
+    const lead = (state.leads||[]).find(l => l.id === leadId);
+    if (lead) lead[field] = newVal;
+    toast('Opgeslagen');
+  };
+  el.onblur = save;
+  el.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } if (e.key === 'Escape') { el.textContent = currentValue; el.blur(); } };
+}

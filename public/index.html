@@ -30,6 +30,10 @@
 
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- Sortable.js (Task 15 — drag-and-drop pipeline) -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+  <!-- canvas-confetti (Task 8) -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -63,6 +67,15 @@
         <i class="ti ti-bell"></i>
         <span class="notif-badge" id="notifBadge" style="display:none">0</span>
       </button>
+    </div>
+
+    <!-- Task 5 — Global search -->
+    <div class="global-search-wrap">
+      <i class="ti ti-search global-search-icon"></i>
+      <input type="text" class="global-search-input" id="globalSearch" placeholder="Zoeken…" autocomplete="off"
+        oninput="globalSearchInput(this.value)" onfocus="globalSearchInput(this.value)"
+        onblur="setTimeout(()=>document.getElementById('searchResults')?.remove(),200)">
+      <div id="searchResults" class="search-results-dropdown" style="display:none"></div>
     </div>
 
     <nav class="sidebar-nav">
@@ -136,7 +149,8 @@
           <div class="user-role" id="userRole">Admin</div>
         </div>
       </div>
-      <button class="btn-theme" id="themeBtn" title="Dark/light mode">
+      <!-- Task 7 — Theme toggle always visible -->
+      <button class="theme-toggle-btn" id="themeBtn" data-tooltip="Dark/light mode">
         <i class="ti ti-moon"></i>
       </button>
       <button class="btn-logout" id="logoutBtn" title="Uitloggen">

@@ -11444,6 +11444,16 @@ scheduleCron();
 scheduleBriefingCron();
 scheduleBackupCron();
 
+// Task 43 — Nightly backup at 03:00
+cron.schedule('0 3 * * *', () => {
+  runNightlyBackup();
+});
+
+// Task 29 — Weekly admin report: every Monday 08:00
+cron.schedule('0 8 * * 1', () => {
+  runWeeklyAdminReport().catch(e => console.error('[Cron WeeklyReport]', e.message));
+});
+
 // ─── Monthly auto-invoice + overdue reminder ──────────────────────────────────
 
 cron.schedule('0 9 * * *', async () => {
@@ -12241,6 +12251,442 @@ app.delete('/api/templates/:id', requireAdmin, (req, res) => {
   getDb().prepare('DELETE FROM website_templates WHERE id=?').run(req.params.id);
   res.json({ ok: true });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BATCH 3 — New routes
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Task 22 — Portal profile update
+app.put('/api/portal/:token/profile', (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.portalToken === req.params.token);
+  if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
+  const { contactName, phone, address } = req.body;
+  if (contactName) lead.contactName = contactName;
+  if (phone)       lead.phone = phone;
+  if (address)     lead.address = address;
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+// Task 23 — Portal password change
+app.post('/api/portal/:token/change-password', async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.portalToken === req.params.token);
+  if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
+  const { newPassword } = req.body;
+  if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'Wachtwoord minimaal 6 tekens' });
+  lead.portalPassword = await bcrypt.hash(newPassword, 10);
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+// Task 21 — Set portal theme color (admin)
+app.patch('/api/leads/:id/portal-theme', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Niet gevonden' });
+  leads[idx].portalThemeColor = req.body.color || '#6366f1';
+  writeJSON('leads.json', leads);
+  res.json({ ok: true });
+});
+
+// Task 30 — Export project as PDF
+app.post('/api/leads/:id/export-pdf', requireAdmin, async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
+  const settings = readJSON('settings.json') || {};
+
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  const chunks = [];
+  doc.on('data', c => chunks.push(c));
+  doc.on('end', () => {
+    const buf = Buffer.concat(chunks);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="project-${lead.id}.pdf"`);
+    res.send(buf);
+  });
+
+  // Header
+  doc.fontSize(24).font('Helvetica-Bold').text(settings.agencyName || 'Agency AI', 50, 50);
+  doc.fontSize(10).font('Helvetica').fillColor('#6b7280').text(`Project rapport — gegenereerd ${new Date().toLocaleDateString('nl-NL')}`, 50, 80);
+  doc.moveTo(50, 100).lineTo(545, 100).strokeColor('#e5e7eb').stroke();
+
+  // Lead info
+  doc.fontSize(18).font('Helvetica-Bold').fillColor('#111').text(lead.companyName || 'Onbekend', 50, 120);
+  doc.fontSize(11).font('Helvetica').fillColor('#374151');
+  doc.text(`Status: ${lead.status || '—'}`, 50, 148);
+  doc.text(`Email: ${lead.contactEmail || '—'}`, 50, 163);
+  doc.text(`Locatie: ${lead.location || '—'}`, 50, 178);
+  doc.text(`Score: ${lead.score || '—'}`, 50, 193);
+  doc.text(`Project gestart: ${lead.projectStartedAt ? new Date(lead.projectStartedAt).toLocaleDateString('nl-NL') : '—'}`, 50, 208);
+
+  // Services
+  if (lead.services?.length) {
+    doc.fontSize(14).font('Helvetica-Bold').fillColor('#111').text('Diensten', 50, 240);
+    lead.services.forEach((svc, i) => {
+      const name = typeof svc === 'string' ? svc : (svc.name || '');
+      const price = typeof svc === 'object' ? svc.price : '';
+      doc.fontSize(11).font('Helvetica').fillColor('#374151').text(`• ${name}${price ? ` — €${price}` : ''}`, 50, 262 + i * 16);
+    });
+  }
+
+  // Payments
+  const payments = lead.payments || [];
+  if (payments.length) {
+    const yStart = 380;
+    doc.fontSize(14).font('Helvetica-Bold').fillColor('#111').text('Betalingen', 50, yStart);
+    payments.slice(0,10).forEach((p, i) => {
+      doc.fontSize(10).font('Helvetica').fillColor('#374151')
+        .text(`${p.description || 'Betaling'} — €${p.amount || 0} (${p.status || '—'})`, 50, yStart + 22 + i * 16);
+    });
+  }
+
+  doc.end();
+});
+
+// Task 31 — Export statistics as CSV
+app.get('/api/stats/export.csv', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const rows = [['Bedrijf','Email','Status','Score','Locatie','Niche','Verstuurd','Reply','Klant sinds','Omzet'].join(',')];
+  leads.forEach(l => {
+    const revenue = (l.payments||[]).filter(p=>p.status==='paid').reduce((s,p)=>s+(p.amount||0),0);
+    rows.push([
+      `"${(l.companyName||'').replace(/"/g,'""')}"`,
+      `"${(l.contactEmail||'').replace(/"/g,'""')}"`,
+      l.status||'',
+      l.score||'',
+      `"${(l.location||'').replace(/"/g,'""')}"`,
+      l.niche||'',
+      l.sentAt?.slice(0,10)||'',
+      l.repliedAt?.slice(0,10)||'',
+      l.projectStartedAt?.slice(0,10)||'',
+      revenue
+    ].join(','));
+  });
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="stats-export.csv"');
+  res.send(rows.join('\n'));
+});
+
+// Task 33 — Heatmap best send times
+app.get('/api/stats/heatmap', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const grid = {};
+  const days = ['Zo','Ma','Di','Wo','Do','Vr','Za'];
+  days.forEach(d => { grid[d] = {}; for (let h=0; h<24; h++) grid[d][h] = { sent:0, replied:0 }; });
+  leads.forEach(l => {
+    if (!l.sentAt) return;
+    const d = new Date(l.sentAt);
+    const day = days[d.getDay()]; const hour = d.getHours();
+    if (grid[day]?.[hour]) {
+      grid[day][hour].sent++;
+      if (l.repliedAt) grid[day][hour].replied++;
+    }
+  });
+  const result = days.map(day => ({
+    day,
+    hours: Array.from({length:24},(_,h) => ({
+      hour:h,
+      sent: grid[day][h].sent,
+      replied: grid[day][h].replied,
+      rate: grid[day][h].sent > 0 ? Math.round(grid[day][h].replied/grid[day][h].sent*100) : 0
+    }))
+  }));
+  res.json({ heatmap: result });
+});
+
+// Task 34 — Top 10 best performing email subjects
+app.get('/api/stats/top-subjects', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const subjects = {};
+  leads.forEach(l => {
+    const subj = l.emailA?.subject || l.subjectOptions?.[0] || l.emailSubject || '';
+    if (!subj) return;
+    if (!subjects[subj]) subjects[subj] = { subject: subj, sent: 0, opened: 0, replied: 0 };
+    subjects[subj].sent++;
+    if (l.openedAt) subjects[subj].opened++;
+    if (l.repliedAt) subjects[subj].replied++;
+  });
+  const result = Object.values(subjects)
+    .filter(s => s.sent >= 2)
+    .map(s => ({ ...s, replyRate: Math.round(s.replied/s.sent*100), openRate: Math.round(s.opened/s.sent*100) }))
+    .sort((a,b) => b.replyRate - a.replyRate)
+    .slice(0, 10);
+  res.json({ subjects: result });
+});
+
+// Task 35 — Niche performance comparison
+app.get('/api/stats/niches', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const niches = {};
+  leads.forEach(l => {
+    const n = l.niche || 'overig';
+    if (!niches[n]) niches[n] = { niche: n, found: 0, emailed: 0, replied: 0, clients: 0, revenue: 0 };
+    niches[n].found++;
+    if (['sent','replied','client','scheduled'].includes(l.status)) niches[n].emailed++;
+    if (['replied','client'].includes(l.status)) niches[n].replied++;
+    if (l.status === 'client') niches[n].clients++;
+    niches[n].revenue += (l.payments||[]).filter(p=>p.status==='paid').reduce((s,p)=>s+(p.amount||0),0);
+  });
+  const result = Object.values(niches)
+    .map(n => ({ ...n, replyRate: n.emailed > 0 ? Math.round(n.replied/n.emailed*100) : 0 }))
+    .sort((a,b) => b.replyRate - a.replyRate);
+  res.json({ niches: result });
+});
+
+// Task 36 — Lead source tracking per run
+app.get('/api/stats/sources', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const sources = {};
+  leads.forEach(l => {
+    const src = l.source || l.leadSource || 'web';
+    if (!sources[src]) sources[src] = { source: src, found: 0, approved: 0, replied: 0, client: 0 };
+    sources[src].found++;
+    if (!['pending','new'].includes(l.status||'')) sources[src].approved++;
+    if (['replied','client'].includes(l.status)) sources[src].replied++;
+    if (l.status === 'client') sources[src].client++;
+  });
+  res.json({ sources: Object.values(sources) });
+});
+
+// Task 37 — Blacklist CSV import
+app.post('/api/blacklist/import', requireAdmin, (req, res) => {
+  const { csv, type = 'domain' } = req.body;
+  if (!csv) return res.status(400).json({ error: 'CSV vereist' });
+  const blacklist = readJSON('blacklist.json') || [];
+  const existing = new Set(blacklist.map(b => b.value?.toLowerCase()));
+  const lines = csv.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  let added = 0, skipped = 0;
+  lines.forEach(val => {
+    const clean = val.toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
+    if (!clean || existing.has(clean)) { skipped++; return; }
+    blacklist.unshift({ id: `bl-csv-${Date.now()}-${added}`, type, value: clean, reason: 'CSV import', addedAt: new Date().toISOString() });
+    existing.add(clean);
+    added++;
+  });
+  writeJSON('blacklist.json', blacklist);
+  res.json({ added, skipped });
+});
+
+// Task 38 — Levenshtein duplicate detection
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({length:m+1}, (_,i) => Array.from({length:n+1}, (_,j) => i===0?j:j===0?i:0));
+  for (let i=1;i<=m;i++) for (let j=1;j<=n;j++)
+    dp[i][j] = a[i-1]===b[j-1] ? dp[i-1][j-1] : 1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[m][n];
+}
+
+app.get('/api/leads/fuzzy-duplicates', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const threshold = parseInt(req.query.threshold) || 3;
+  const dupes = [];
+  for (let i=0;i<leads.length;i++) {
+    for (let j=i+1;j<leads.length;j++) {
+      const a = (leads[i].companyName||'').toLowerCase();
+      const b = (leads[j].companyName||'').toLowerCase();
+      if (Math.abs(a.length-b.length) > threshold*2) continue;
+      const dist = levenshtein(a,b);
+      if (dist <= threshold && dist > 0) dupes.push({ lead1: leads[i].id, name1: leads[i].companyName, lead2: leads[j].id, name2: leads[j].companyName, distance: dist });
+    }
+  }
+  res.json({ duplicates: dupes.slice(0,50) });
+});
+
+// Task 39 — Resend bounce webhook
+app.post('/api/webhooks/resend-bounce', async (req, res) => {
+  res.json({ ok: true }); // respond immediately
+  const event = req.body;
+  if (!event?.type?.includes('bounce')) return;
+  const email = event?.data?.email_id ? (event?.data?.to?.[0] || '') : (event?.email || '');
+  if (!email) return;
+  const leads = readJSON('leads.json') || [];
+  const idx = leads.findIndex(l => (l.contactEmail||'').toLowerCase() === email.toLowerCase());
+  if (idx === -1) return;
+  leads[idx].emailBounced = true;
+  leads[idx].bouncedAt = new Date().toISOString();
+  addLeadHistory(leads, leads[idx].id, { event: 'bounced', label: `Email hard gebounced (Resend webhook)` });
+  writeJSON('leads.json', leads);
+  const domain = email.split('@')[1];
+  if (domain) autoBlacklist(domain, 'Hard bounce via Resend webhook');
+});
+
+// Task 40 — Cron log table
+function logCron(jobName, status = 'ok', details = '') {
+  try {
+    const { getDb } = require('./database');
+    getDb().prepare('INSERT INTO cron_logs (job_name, status, details) VALUES (?,?,?)').run(jobName, status, details || null);
+  } catch {}
+}
+
+app.get('/api/cron-logs', requireAdmin, (req, res) => {
+  try {
+    const { getDb } = require('./database');
+    const logs = getDb().prepare('SELECT * FROM cron_logs ORDER BY ran_at DESC LIMIT 200').all();
+    res.json(logs);
+  } catch { res.json([]); }
+});
+
+// Task 41 — Extended health check
+app.get('/health', (req, res) => {
+  const settings = readJSON('settings.json') || {};
+  const hasClaudeKey = !!(process.env.CLAUDE_API_KEY && process.env.CLAUDE_API_KEY !== 'your_anthropic_api_key_here');
+  const gmailOk = isGmailReady(settings);
+  const resendOk = isResendReady(settings);
+  const pgOk = !!process.env.DATABASE_URL;
+
+  // DB ping
+  let dbOk = false;
+  try { const { getDb } = require('./database'); getDb().prepare('SELECT 1').get(); dbOk = true; } catch {}
+
+  // IMAP check
+  const imapOk = !!(settings.gmailAddress && settings.gmailPassword !== '__encrypted__' ? settings.gmailPassword : null) || !!settings.gmailPasswordEncrypted;
+
+  const status = dbOk && hasClaudeKey ? 'ok' : 'degraded';
+  const uptime = process.uptime();
+  const h = Math.floor(uptime/3600), m = Math.floor((uptime%3600)/60);
+  res.json({
+    status,
+    uptime: Math.floor(uptime),
+    uptimeLabel: `${h}u ${m}m`,
+    memUsageMb: Math.round(process.memoryUsage().heapUsed/1024/1024),
+    heapUsedMb: Math.round(process.memoryUsage().heapUsed/1024/1024),
+    nodeVersion: process.version,
+    checks: {
+      claude_api: hasClaudeKey ? 'ok' : 'missing',
+      resend: resendOk ? 'ok' : 'not_configured',
+      gmail_imap: imapOk ? 'configured' : 'not_configured',
+      database: dbOk ? 'ok' : 'error',
+      postgresql: pgOk ? 'configured' : 'sqlite_only'
+    },
+    lastRun: (readJSON('runs.json')||[]).slice(-1)[0]?.startedAt || null,
+    aiCallsToday: _aiCallLog.filter(t => Date.now()-t < 86400000).length,
+    stats: {
+      totalLeads: (readJSON('leads.json')||[]).length,
+      clients: (readJSON('leads.json')||[]).filter(l=>l.status==='client').length,
+      pending: (readJSON('inbox.json')||[]).filter(i=>!i.sentAt&&!i.declinedAt).length
+    },
+    agencyName: settings.agencyName || 'Agency AI',
+    recentErrors: RUN_ERRORS.slice(0,5),
+    checkedAt: new Date().toISOString()
+  });
+});
+
+// Task 42 — Settings export/import
+app.get('/api/settings/export', requireAdmin, (req, res) => {
+  const settings = readJSON('settings.json') || {};
+  const safe = { ...settings };
+  delete safe.password; delete safe.gmailPassword; delete safe.gmailPasswordEncrypted;
+  delete safe.claudeApiKeyEncrypted; delete safe.resendApiKey; delete safe.stripeSecretKey;
+  delete safe.mollieApiKey; delete safe.vapidPrivateKey;
+  res.setHeader('Content-Disposition', 'attachment; filename="agency-ai-settings.json"');
+  res.json(safe);
+});
+
+app.post('/api/settings/import', requireAdmin, (req, res) => {
+  const imported = req.body;
+  if (!imported || typeof imported !== 'object') return res.status(400).json({ error: 'Ongeldig JSON' });
+  const settings = readJSON('settings.json') || {};
+  // Only import safe fields
+  const SAFE = ['agencyName','myName','myTitle','agencyAddress','calendlyUrl','gaId','services','targetNiches','targetSubNiches','autoArchiveDays','autoArchiveEnabled','fixedCosts','btwEnabled','btwRate','btwNumber'];
+  SAFE.forEach(k => { if (imported[k] !== undefined) settings[k] = imported[k]; });
+  writeJSON('settings.json', settings);
+  res.json({ ok: true });
+});
+
+// Task 43 — Nightly backup cron (additional cron at 03:00 keeping 7 days)
+// Note: main backup cron already exists; this registers an additional export
+function runNightlyBackup() {
+  try {
+    const DATA_BACKUP_DIR = path.join(__dirname, 'data', 'backups');
+    if (!fs.existsSync(DATA_BACKUP_DIR)) fs.mkdirSync(DATA_BACKUP_DIR, { recursive: true });
+    const stamp = new Date().toISOString().slice(0,10);
+    const files = ['leads.json','inbox.json','settings.json','memory.json','blacklist.json','activity.json'];
+    const bundle = {};
+    files.forEach(f => { try { bundle[f] = readJSON(f); } catch {} });
+    fs.writeFileSync(path.join(DATA_BACKUP_DIR, `nightly-${stamp}.json`), JSON.stringify(bundle, null, 2));
+    // Keep only 7 most recent nightly backups
+    const nightlyFiles = fs.readdirSync(DATA_BACKUP_DIR).filter(f => f.startsWith('nightly-')).sort();
+    while (nightlyFiles.length > 7) { fs.unlinkSync(path.join(DATA_BACKUP_DIR, nightlyFiles.shift())); }
+    logCron('nightly_backup', 'ok', `${files.length} bestanden`);
+    console.log('[Backup] Nachtelijke backup opgeslagen:', stamp);
+  } catch (e) { logCron('nightly_backup', 'error', e.message); console.error('[Backup] Fout:', e.message); }
+}
+
+// Task 44 — IP whitelist for admin login
+function checkIpWhitelist(req, settings) {
+  const whitelist = settings.adminIpWhitelist;
+  if (!whitelist || !Array.isArray(whitelist) || whitelist.length === 0) return true;
+  const clientIp = req.ip || req.connection?.remoteAddress || '';
+  return whitelist.some(ip => clientIp.includes(ip));
+}
+
+app.get('/api/settings/ip-whitelist', requireAdmin, (req, res) => {
+  const settings = readJSON('settings.json') || {};
+  res.json({ whitelist: settings.adminIpWhitelist || [] });
+});
+
+app.post('/api/settings/ip-whitelist', requireAdmin, (req, res) => {
+  const settings = readJSON('settings.json') || {};
+  settings.adminIpWhitelist = Array.isArray(req.body.whitelist) ? req.body.whitelist : [];
+  writeJSON('settings.json', settings);
+  res.json({ ok: true });
+});
+
+// Task 29 — Weekly admin report cron (Monday 08:00)
+async function runWeeklyAdminReport() {
+  const settings = readJSON('settings.json') || {};
+  if (!isResendReady(settings)) { logCron('weekly_admin_report','skipped','Resend not ready'); return; }
+  const leads = readJSON('leads.json') || [];
+  const now = new Date(); const weekAgo = new Date(now - 7*86400000);
+  const newLeads = leads.filter(l => l.createdAt && new Date(l.createdAt) > weekAgo);
+  const replies = leads.filter(l => l.repliedAt && new Date(l.repliedAt) > weekAgo);
+  const revenue = leads.reduce((s,l) => s + (l.payments||[]).filter(p=>p.status==='paid'&&p.paidAt&&new Date(p.paidAt)>weekAgo).reduce((ps,p)=>ps+(p.amount||0),0), 0);
+  const openTasks = leads.reduce((s,l)=>s+(l.tasks||[]).filter(t=>t.status!=='klaar').length,0);
+
+  try {
+    await sendEmail({ to: settings.gmailAddress, subject: `📊 Weekrapport Agency AI — ${now.toLocaleDateString('nl-NL')}`,
+      body: `<h2>Weekrapport</h2><p><strong>Nieuwe leads:</strong> ${newLeads.length}<br><strong>Replies:</strong> ${replies.length}<br><strong>Omzet (week):</strong> €${revenue.toLocaleString('nl-NL')}<br><strong>Open taken:</strong> ${openTasks}</p>`,
+      noCalendly: true });
+    logCron('weekly_admin_report','ok',`${newLeads.length} leads, ${replies.length} replies`);
+  } catch(e) { logCron('weekly_admin_report','error',e.message); }
+}
+
+// Task 50 — Changelog entries
+const CHANGELOG = [
+  { version: '3.0', date: '2026-06-04', items: [
+    { type:'new', text: 'Multi-page app met lazy loading (core.js + 12 page files)' },
+    { type:'new', text: 'Subscription management met portaal tab' },
+    { type:'new', text: 'Conversion funnel analyse met Chart.js' },
+    { type:'new', text: 'Unit tests (jest + supertest, 15 tests)' },
+    { type:'new', text: 'Onboarding wizard 6 stappen' },
+    { type:'new', text: 'Client bijbestellen vanuit portaal' },
+    { type:'new', text: 'PWA klantportaal (service worker + offline page)' },
+    { type:'improve', text: 'Performance: debounce, apiCache, skeleton loaders' },
+    { type:'new', text: 'CSV lead import met drag-drop modal' },
+    { type:'new', text: 'Revenue forecasting dashboard met Chart.js' },
+    { type:'new', text: '12 HTML component bibliotheek' },
+    { type:'new', text: '10 website templates met DB opslag' },
+  ]},
+  { version: '2.0', date: '2026-06-02', items: [
+    { type:'new', text: 'API versioning (X-API-Version header + /api/v1/)' },
+    { type:'new', text: 'Database migratie systeem' },
+    { type:'new', text: 'Aangepaste domein koppeling' },
+    { type:'improve', text: 'API rate limiting met express-rate-limit' },
+    { type:'improve', text: 'Routes gesplitst in modules' },
+    { type:'new', text: 'Background job queue' },
+  ]},
+  { version: '1.0', date: '2025-01-01', items: [
+    { type:'new', text: 'Initiële release Agency AI' },
+    { type:'new', text: '7 AI agents voor lead outreach' },
+    { type:'new', text: 'Klantportaal + intake formulier' },
+    { type:'new', text: 'Gmail SMTP + Resend integratie' },
+  ]}
+];
+
+app.get('/api/changelog', requireAdmin, (req, res) => res.json(CHANGELOG));
 
 // ─── SPA fallback ─────────────────────────────────────────────────────────────
 

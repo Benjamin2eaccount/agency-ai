@@ -42,6 +42,12 @@ module.exports = function createAuthRouter({ readJSON, writeJSON, JWT_SECRET }) 
       return res.status(401).json({ error: 'Onjuiste gebruikersnaam of wachtwoord' });
     }
     const settings = readJSON('settings.json') || {};
+    // Task 44 — IP whitelist check
+    if (user.role === 'admin' && settings.adminIpWhitelist?.length > 0) {
+      const clientIp = req.ip || req.connection?.remoteAddress || '';
+      const allowed = settings.adminIpWhitelist.some(ip => clientIp.includes(ip));
+      if (!allowed) return res.status(403).json({ error: 'IP adres niet toegestaan' });
+    }
     const token = jwt.sign(
       { id: user.id, username: user.username, name: user.name, role: user.role,
         agencyName: settings.agencyName, myName: user.name },

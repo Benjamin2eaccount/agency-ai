@@ -6,6 +6,9 @@ async function renderDashboard() {
         <div class="page-label">Overzicht</div>
         <h1 class="page-title">Dashboard</h1>
       </div>
+      <button class="btn btn-ghost btn-sm" onclick="openWidgetSelector()" data-tooltip="Widgets aanpassen">
+        <i class="ti ti-layout-dashboard"></i> Widgets
+      </button>
     </div>
     <div id="dashboardContent"><div class="loading-state"><div class="spinner-lg"></div></div></div>
   `;
@@ -408,3 +411,52 @@ function buildClientHealthSection(leads) {
   </div>`;
 }
 
+
+// ─── Task 45 — Dashboard widget selector ──────────────────────────────────────
+const DEFAULT_WIDGETS = ['stats','inbox','clients','referral','upsell','forecast'];
+
+function getEnabledWidgets() {
+  try { return JSON.parse(localStorage.getItem('dashWidgets') || 'null') || DEFAULT_WIDGETS; }
+  catch { return DEFAULT_WIDGETS; }
+}
+
+function openWidgetSelector() {
+  const enabled = getEnabledWidgets();
+  const ALL = [
+    { key: 'stats',    label: 'Statistieken kaarten' },
+    { key: 'inbox',    label: 'Inbox overzicht' },
+    { key: 'clients',  label: 'Klant gezondheid' },
+    { key: 'referral', label: 'Referral programma' },
+    { key: 'upsell',   label: 'Upsell kansen' },
+    { key: 'forecast', label: '💰 Financieel overzicht' },
+    { key: 'chart',    label: 'Pipeline grafiek' },
+  ];
+  openModal(`
+    <div class="modal-header">
+      <h3 class="modal-title">⚙️ Dashboard widgets</h3>
+      <button onclick="closeModal()" class="modal-close">×</button>
+    </div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Kies welke widgets zichtbaar zijn op je dashboard.</p>
+    <div style="margin-bottom:20px;">
+      ${ALL.map(w => `
+        <div class="widget-toggle">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;">
+            <input type="checkbox" data-widget="${w.key}" ${enabled.includes(w.key)?'checked':''}>
+            <span style="font-size:14px;font-weight:500;">${w.label}</span>
+          </label>
+        </div>`).join('')}
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;">
+      <button onclick="closeModal()" class="btn btn-secondary">Annuleren</button>
+      <button onclick="_saveWidgetPrefs()" class="btn btn-primary">Opslaan</button>
+    </div>
+  `);
+}
+
+function _saveWidgetPrefs() {
+  const checked = [...document.querySelectorAll('[data-widget]:checked')].map(cb => cb.dataset.widget);
+  localStorage.setItem('dashWidgets', JSON.stringify(checked));
+  closeModal();
+  renderDashboard();
+  toast('Dashboard bijgewerkt');
+}

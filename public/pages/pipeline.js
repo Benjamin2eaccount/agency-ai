@@ -468,3 +468,77 @@ function applyPipelineGroupFilter(filter) {
   });
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Task 16 — Calendar view for appointments/follow-ups
+// ═══════════════════════════════════════════════════════════════════════════════
+let _calYear, _calMonth;
+
+function showCalendarView() {
+  const now = new Date();
+  _calYear = now.getFullYear();
+  _calMonth = now.getMonth();
+  _renderCalendarModal();
+}
+
+function _renderCalendarModal() {
+  const leads = state.leads || [];
+  const events = [];
+  leads.forEach(l => {
+    if (l.followup1SentAt) events.push({ date: l.followup1SentAt.slice(0,10), label: `FU1: ${l.companyName}`, color: 'var(--warning)' });
+    if (l.followup2SentAt) events.push({ date: l.followup2SentAt.slice(0,10), label: `FU2: ${l.companyName}`, color: 'var(--danger)' });
+    if (l.calendlyBooking?.startTime) events.push({ date: l.calendlyBooking.startTime.slice(0,10), label: `📅 ${l.companyName}`, color: 'var(--accent)' });
+  });
+  const evByDate = {};
+  events.forEach(e => { if (!evByDate[e.date]) evByDate[e.date] = []; evByDate[e.date].push(e); });
+
+  const firstDay = new Date(_calYear, _calMonth, 1).getDay();
+  const daysInMonth = new Date(_calYear, _calMonth + 1, 0).getDate();
+  const monthName = new Date(_calYear, _calMonth).toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' });
+  const today = new Date().toISOString().slice(0,10);
+  const dayLabels = ['Zo','Ma','Di','Wo','Do','Vr','Za'];
+
+  let cells = '';
+  for (let i = 0; i < firstDay; i++) cells += '<div class="cal-cell" style="background:var(--surface-2);opacity:.3;"></div>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${_calYear}-${String(_calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dayEvents = evByDate[dateStr] || [];
+    cells += `<div class="cal-cell${dateStr===today?' cal-today':''}">
+      <div class="cal-day-num">${d}</div>
+      ${dayEvents.slice(0,3).map(e => `<div class="cal-event" style="background:${e.color}" title="${esc(e.label)}">${esc(e.label)}</div>`).join('')}
+      ${dayEvents.length > 3 ? `<div style="font-size:10px;color:var(--text-secondary);">+${dayEvents.length-3} meer</div>` : ''}
+    </div>`;
+  }
+
+  openModal(`
+    <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;">
+      <h3 class="modal-title">📅 Kalender</h3>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button onclick="_calMonth--;if(_calMonth<0){_calMonth=11;_calYear--;}_renderCalendarModal()" class="btn btn-ghost btn-sm">‹</button>
+        <span style="font-weight:700;font-size:14px;">${monthName}</span>
+        <button onclick="_calMonth++;if(_calMonth>11){_calMonth=0;_calYear++;}_renderCalendarModal()" class="btn btn-ghost btn-sm">›</button>
+        <button onclick="closeModal()" class="modal-close" style="margin-left:8px;">×</button>
+      </div>
+    </div>
+    <div class="cal-grid" style="margin-top:12px;">
+      ${dayLabels.map(l => `<div class="cal-cell-header">${l}</div>`).join('')}
+      ${cells}
+    </div>
+  `);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Task 17 — Project archiving: add "Archief" button to pipeline header
+// ═══════════════════════════════════════════════════════════════════════════════
+// renderPipeline already has filter tabs; archived filter added via leads.js (status=archived)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Task 19 — Multi-column sorting
+// ═══════════════════════════════════════════════════════════════════════════════
+let _pipelineSort = { col: 'companyName', dir: 1 };
+
+function setSortCol(col) {
+  if (_pipelineSort.col === col) _pipelineSort.dir *= -1;
+  else { _pipelineSort.col = col; _pipelineSort.dir = 1; }
+  renderPipeline();
+}

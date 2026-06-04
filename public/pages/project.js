@@ -6018,3 +6018,70 @@ async function resolveServiceOrder(id, status) {
   toast(status === 'approved' ? 'Dienst toegevoegd aan klant' : 'Aanvraag afgewezen');
   renderProjectPage();
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Task 20 — Project timeline view
+// ═══════════════════════════════════════════════════════════════════════════════
+function buildProjectTimeline(lead) {
+  if (!lead) return '';
+  const events = [];
+  const add = (at, icon, title, body='') => { if (at) events.push({ at, icon, title, body }); };
+  add(lead.createdAt, '🔍', 'Lead gevonden', lead.niche || '');
+  add(lead.sentAt, '📧', 'Email verstuurd', lead.emailA?.subject || '');
+  add(lead.openedAt, '👁', 'Email geopend', '');
+  add(lead.repliedAt, '💬', 'Reply ontvangen', (lead.lastReplyText||'').slice(0,80));
+  add(lead.projectStartedAt, '🚀', 'Project gestart', '');
+  add(lead.intakeSubmittedAt, '📋', 'Intake ingevuld', '');
+  (lead.agentDeliverables||[]).filter(d=>d.builtAt).forEach(d => add(d.builtAt, '🏗️', `Build: ${d.service||''}`, ''));
+  (lead.payments||[]).filter(p=>p.paidAt).forEach(p => add(p.paidAt, '💰', `Betaling: €${p.amount||0}`, p.description||''));
+  events.sort((a,b) => new Date(a.at) - new Date(b.at));
+
+  if (!events.length) return `<div class="empty-state"><div class="empty-state-icon">📅</div><div class="empty-state-title">Geen events</div></div>`;
+  return `<div class="timeline">${events.map(e => `
+    <div class="timeline-item">
+      <div class="timeline-dot">${e.icon}</div>
+      <div class="timeline-content">
+        <div class="timeline-title">${esc(e.title)}</div>
+        <div class="timeline-time">${formatDateTime(e.at)}</div>
+        ${e.body ? `<div class="timeline-body">${esc(e.body)}</div>` : ''}
+      </div>
+    </div>`).join('')}</div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Task 24 — Deliverable progress percentage (set by admin)
+// ═══════════════════════════════════════════════════════════════════════════════
+async function setDeliverableProgress(leadId, dIdx, pct) {
+  const lead = (state.leads||[]).find(l => l.id === leadId);
+  if (!lead || !lead.agentDeliverables?.[dIdx]) return;
+  lead.agentDeliverables[dIdx].progress = parseInt(pct) || 0;
+  await api(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify({ agentDeliverables: lead.agentDeliverables }) });
+  toast(`Voortgang ingesteld: ${pct}%`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Task 25 — Deliverable comments by client
+// ═══════════════════════════════════════════════════════════════════════════════
+async function loadDeliverableComments(leadId, dIdx) {
+  const lead = (state.leads||[]).find(l => l.id === leadId);
+  if (!lead) return;
+  const comments = lead.agentDeliverables?.[dIdx]?.comments || [];
+  return comments;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Task 30 — Export project as PDF
+// ═══════════════════════════════════════════════════════════════════════════════
+async function exportProjectPDF(leadId) {
+  const btn = document.querySelector(`[onclick*="exportProjectPDF('${leadId}')"]`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Exporteren…'; }
+  const res = await api(`/api/leads/${leadId}/export-pdf`, { method: 'POST' });
+  if (btn) { btn.disabled = false; btn.textContent = '📄 Exporteer PDF'; }
+  if (!res?.ok) { toast('PDF export mislukt', 'error'); return; }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `project-${leadId}.pdf`; a.click();
+  URL.revokeObjectURL(url);
+  toast('PDF gedownload');
+}

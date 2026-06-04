@@ -54,6 +54,17 @@ db.exec(`
   )
 `);
 
+// ── Cron logs table (Task 40) ─────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS cron_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_name TEXT NOT NULL,
+    status TEXT DEFAULT 'ok',
+    details TEXT,
+    ran_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
 // ── Feature tables (Tasks 10, 11, 14, 20) ────────────────────────────────────
 db.exec(`
   CREATE TABLE IF NOT EXISTS subscriptions (

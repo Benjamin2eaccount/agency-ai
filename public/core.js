@@ -1126,3 +1126,182 @@ function skeletonRows(count = 5) {
     <div class="skeleton" style="height:56px;border-radius:8px;margin-bottom:8px;width:${85 + (i % 3) * 5}%;"></div>
   `).join('');
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BATCH 3 — UX, Admin, Portal, Extra features
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Task 2 — Empty state helper
+function emptyState(icon, title, sub, actionHtml = '') {
+  return `<div class="empty-state">
+    <div class="empty-state-icon">${icon}</div>
+    <div class="empty-state-title">${title}</div>
+    <div class="empty-state-sub">${sub}</div>
+    ${actionHtml ? `<div class="empty-state-action">${actionHtml}</div>` : ''}
+  </div>`;
+}
+
+// Task 4 — Breadcrumb builder
+function breadcrumb(items) {
+  return `<div class="breadcrumb">${items.map((item, i) => {
+    const isLast = i === items.length - 1;
+    return isLast
+      ? `<span class="breadcrumb-current">${item.label}</span>`
+      : `<span class="breadcrumb-item" onclick="${item.onClick || ''}">${item.label}</span>
+         <span class="breadcrumb-sep">›</span>`;
+  }).join('')}</div>`;
+}
+
+// Task 5 — Global search
+function globalSearchInput(val) {
+  const results = document.getElementById('searchResults');
+  if (!results) return;
+  if (!val || val.length < 2) { results.style.display = 'none'; return; }
+  const q = val.toLowerCase();
+  const leads = state.leads || [];
+  const hits = { leads: [], contacts: [], invoices: [] };
+
+  leads.slice(0, 200).forEach(l => {
+    const match = (l.companyName||'').toLowerCase().includes(q) ||
+                  (l.contactEmail||'').toLowerCase().includes(q) ||
+                  (l.location||'').toLowerCase().includes(q);
+    if (match) hits.leads.push(l);
+    (l.payments||[]).forEach(p => {
+      if ((p.description||'').toLowerCase().includes(q)) hits.invoices.push({ ...p, leadId: l.id, companyName: l.companyName });
+    });
+  });
+
+  let html = '';
+  if (hits.leads.length) {
+    html += `<div class="search-result-section">Leads</div>`;
+    hits.leads.slice(0,5).forEach(l => {
+      html += `<div class="search-result-item" onclick="closeSearchResults();setView('leads');setTimeout(()=>openLeadDetail&&openLeadDetail('${l.id}'),400)">
+        <div class="search-result-icon">${l.status === 'client' ? '👤' : '🏢'}</div>
+        <div><div class="search-result-main">${esc(l.companyName)}</div>
+        <div class="search-result-sub">${esc(l.location||'')} · ${esc(l.status||'')}</div></div>
+      </div>`;
+    });
+  }
+  if (hits.invoices.length) {
+    html += `<div class="search-result-section">Facturen</div>`;
+    hits.invoices.slice(0,3).forEach(p => {
+      html += `<div class="search-result-item" onclick="closeSearchResults();setView('betalingen')">
+        <div class="search-result-icon">💰</div>
+        <div><div class="search-result-main">${esc(p.description||'Factuur')}</div>
+        <div class="search-result-sub">${esc(p.companyName)} · €${p.amount||0}</div></div>
+      </div>`;
+    });
+  }
+  if (!html) html = `<div style="padding:16px;text-align:center;font-size:13px;color:var(--text-secondary);">Geen resultaten voor "${esc(val)}"</div>`;
+  results.innerHTML = html;
+  results.style.display = 'block';
+}
+
+function closeSearchResults() {
+  const r = document.getElementById('searchResults');
+  if (r) r.style.display = 'none';
+  const i = document.getElementById('globalSearch');
+  if (i) i.value = '';
+}
+
+// Task 8 — Confetti on first project start
+function fireConfetti() {
+  if (typeof confetti !== 'function') return;
+  confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 } });
+  setTimeout(() => confetti({ particleCount: 60, angle: 60, spread: 55, origin: { x: 0 } }), 250);
+  setTimeout(() => confetti({ particleCount: 60, angle: 120, spread: 55, origin: { x: 1 } }), 400);
+}
+
+// Task 9 — Show/hide overlay spinner on a container
+function showSpinner(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (el.querySelector('.loading-overlay')) return;
+  const ov = document.createElement('div');
+  ov.className = 'loading-overlay';
+  ov.innerHTML = '<div class="spinner spinner-lg"></div>';
+  el.style.position = 'relative';
+  el.appendChild(ov);
+}
+function hideSpinner(containerId) {
+  document.getElementById(containerId)?.querySelector('.loading-overlay')?.remove();
+}
+
+// Task 10 — Auto-scroll to top on tab switch
+function scrollToTop() { document.getElementById('content')?.scrollTo(0,0); window.scrollTo(0,0); }
+
+// Task 15 — Pipeline drag-and-drop setup helper (uses Sortable.js loaded in index.html)
+function initKanbanDrag() {
+  if (typeof Sortable === 'undefined') return;
+  document.querySelectorAll('.kanban-col-cards').forEach(col => {
+    if (col._sortable) return;
+    col._sortable = new Sortable(col, {
+      group: 'kanban', animation: 150, ghostClass: 'kanban-ghost',
+      onEnd(evt) {
+        const leadId = evt.item?.dataset?.leadId;
+        const newStatus = evt.to?.dataset?.status;
+        if (!leadId || !newStatus) return;
+        api(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) })
+          .then(() => { toast(`Lead verplaatst naar ${newStatus}`); const l = (state.leads||[]).find(x=>x.id===leadId); if(l) l.status = newStatus; });
+      }
+    });
+  });
+}
+
+// Task 18 — Context menu
+function showContextMenu(e, items) {
+  e.preventDefault();
+  document.querySelectorAll('.context-menu').forEach(m => m.remove());
+  const menu = document.createElement('div');
+  menu.className = 'context-menu';
+  menu.style.top = Math.min(e.clientY, window.innerHeight - 200) + 'px';
+  menu.style.left = Math.min(e.clientX, window.innerWidth - 200) + 'px';
+  items.forEach(item => {
+    if (item === 'divider') {
+      menu.insertAdjacentHTML('beforeend', '<div class="context-menu-divider"></div>');
+    } else {
+      const el = document.createElement('div');
+      el.className = 'context-menu-item' + (item.danger ? ' danger' : '');
+      el.innerHTML = `${item.icon ? '<span>' + item.icon + '</span>' : ''}<span>${esc(item.label)}</span>`;
+      el.onclick = () => { menu.remove(); item.action(); };
+      menu.appendChild(el);
+    }
+  });
+  document.body.appendChild(menu);
+  const close = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', close); } };
+  setTimeout(() => document.addEventListener('click', close), 10);
+}
+
+// Task 47 — Auto scroll to top on setView
+const _origSetView = setView;
+// (setView is already defined in this file — we patch it by wrapping the existing call)
+// Note: scrollToTop() is called inside renderXxx() functions that need it
+
+// Task 48 — Confirm dialog helper (replaces confirm())
+function confirmAction(msg, onConfirm, { danger = true, confirmText = 'Bevestigen', cancelText = 'Annuleren' } = {}) {
+  openModal(`
+    <div class="modal-header">
+      <h3 class="modal-title">${danger ? '⚠️ ' : ''}Bevestiging</h3>
+    </div>
+    <p style="margin-bottom:20px;color:var(--text-secondary);">${esc(msg)}</p>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button onclick="closeModal()" class="btn btn-secondary">${cancelText}</button>
+      <button onclick="closeModal();(window._confirmCb&&window._confirmCb())" class="btn ${danger?'btn-danger':'btn-primary'}" style="${danger?'background:#ef4444;':''}">${confirmText}</button>
+    </div>
+  `);
+  window._confirmCb = onConfirm;
+}
+
+// Task 49 — Project tab prev/next
+function nextProjectTab() {
+  const tabs = ['overzicht','emails','building','intake','betalingen','voorstel','contract','taken','bestanden','portaal'];
+  const current = document.querySelector('.proj-tab-btn.active')?.dataset?.tab || 'overzicht';
+  const idx = tabs.indexOf(current);
+  if (idx < tabs.length - 1) switchProjectTab && switchProjectTab(tabs[idx + 1]);
+}
+function prevProjectTab() {
+  const tabs = ['overzicht','emails','building','intake','betalingen','voorstel','contract','taken','bestanden','portaal'];
+  const current = document.querySelector('.proj-tab-btn.active')?.dataset?.tab || 'overzicht';
+  const idx = tabs.indexOf(current);
+  if (idx > 0) switchProjectTab && switchProjectTab(tabs[idx - 1]);
+}

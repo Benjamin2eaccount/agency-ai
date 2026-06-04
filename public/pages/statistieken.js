@@ -14,8 +14,12 @@ async function renderStats() {
         <div class="page-label">Analyse</div>
         <h1 class="page-title">Statistieken</h1>
       </div>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${[7,30,90].map(d => `<button class="btn btn-ghost btn-sm stats-range-btn${d===30?' active':''}" data-days="${d}">${d} dagen</button>`).join('')}
+        <button class="btn btn-ghost btn-sm" onclick="showPeriodComparison()"><i class="ti ti-git-compare"></i> Vergelijk</button>
+        <button class="btn btn-ghost btn-sm" onclick="showHeatmap()">🔥 Heatmap</button>
+        <button class="btn btn-ghost btn-sm" onclick="showTopSubjects()">📧 Top subjects</button>
+        <a href="/api/stats/export.csv" class="btn btn-ghost btn-sm" download><i class="ti ti-download"></i> CSV export</a>
       </div>
     </div>
     <div id="statsBody"><div class="loading-state"><div class="spinner-lg"></div></div></div>
@@ -31,6 +35,7 @@ async function renderStats() {
 
   loadStatsData(30);
   renderFunnelChart();
+  showNicheComparison();
 }
 
 async function loadStatsData(days) {
@@ -437,4 +442,186 @@ async function renderFunnelChart() {
 
   const container = document.getElementById('content');
   if (container) container.insertAdjacentHTML('beforeend', funnelHtml);
+}
+
+// ─── Task 32 — Period comparison ──────────────────────────────────────────────
+async function showPeriodComparison() {
+  openModal(`
+    <div class="modal-header">
+      <h3 class="modal-title">📊 Periode vergelijking</h3>
+      <button onclick="closeModal()" class="modal-close">×</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+      <div>
+        <label class="form-label" style="font-size:12px;font-weight:600;">Periode A</label>
+        <input type="date" id="cmpA1" class="input-field" style="width:100%;margin-bottom:6px;">
+        <input type="date" id="cmpA2" class="input-field" style="width:100%;">
+      </div>
+      <div>
+        <label class="form-label" style="font-size:12px;font-weight:600;">Periode B</label>
+        <input type="date" id="cmpB1" class="input-field" style="width:100%;margin-bottom:6px;">
+        <input type="date" id="cmpB2" class="input-field" style="width:100%;">
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;">
+      <button onclick="closeModal()" class="btn btn-secondary btn-sm">Annuleren</button>
+      <button onclick="_runComparison()" class="btn btn-primary btn-sm">Vergelijken</button>
+    </div>
+    <div id="cmpResult" style="margin-top:16px;"></div>
+  `);
+  // Default: current month vs previous month
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  document.getElementById('cmpA1').value = new Date(y, m-1, 1).toISOString().slice(0,10);
+  document.getElementById('cmpA2').value = new Date(y, m, 0).toISOString().slice(0,10);
+  document.getElementById('cmpB1').value = new Date(y, m, 1).toISOString().slice(0,10);
+  document.getElementById('cmpB2').value = now.toISOString().slice(0,10);
+}
+
+async function _runComparison() {
+  const a1 = document.getElementById('cmpA1').value;
+  const a2 = document.getElementById('cmpA2').value;
+  const b1 = document.getElementById('cmpB1').value;
+  const b2 = document.getElementById('cmpB2').value;
+  const leads = state.leads || [];
+  const inRange = (d, from, to) => d && d >= from && d <= to + 'T23:59:59';
+  const calc = (from, to) => ({
+    newLeads:  leads.filter(l => inRange(l.createdAt, from, to)).length,
+    emailed:   leads.filter(l => inRange(l.sentAt, from, to)).length,
+    replied:   leads.filter(l => inRange(l.repliedAt, from, to)).length,
+    clients:   leads.filter(l => inRange(l.projectStartedAt, from, to)).length,
+    revenue:   leads.reduce((s,l) => s + (l.payments||[]).filter(p=>p.paidAt&&inRange(p.paidAt,from,to)).reduce((ps,p)=>ps+(p.amount||0),0), 0)
+  });
+  const A = calc(a1, a2), B = calc(b1, b2);
+  const row = (label, av, bv, isEuro=false) => {
+    const diff = bv - av;
+    const color = diff > 0 ? '#16a34a' : diff < 0 ? '#ef4444' : 'var(--text-secondary)';
+    const fmt = isEuro ? v => '€' + v.toLocaleString('nl-NL') : v => v;
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 12px;font-weight:600;">${label}</td>
+      <td style="padding:8px 12px;text-align:right;">${fmt(av)}</td>
+      <td style="padding:8px 12px;text-align:right;">${fmt(bv)}</td>
+      <td style="padding:8px 12px;text-align:right;color:${color};font-weight:600;">${diff>0?'+':''}${fmt(diff)}</td>
+    </tr>`;
+  };
+  document.getElementById('cmpResult').innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="background:var(--surface-2);">
+        <th style="padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:var(--text-secondary);">Metric</th>
+        <th style="padding:8px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:var(--text-secondary);">Periode A</th>
+        <th style="padding:8px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:var(--text-secondary);">Periode B</th>
+        <th style="padding:8px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:var(--text-secondary);">Verschil</th>
+      </tr></thead>
+      <tbody>
+        ${row('Nieuwe leads', A.newLeads, B.newLeads)}
+        ${row('Emails verstuurd', A.emailed, B.emailed)}
+        ${row('Replies', A.replied, B.replied)}
+        ${row('Nieuwe klanten', A.clients, B.clients)}
+        ${row('Omzet', A.revenue, B.revenue, true)}
+      </tbody>
+    </table>`;
+}
+
+// ─── Task 33 — Heatmap best send times ────────────────────────────────────────
+async function showHeatmap() {
+  const data = await apiJSON('/api/stats/heatmap');
+  if (!data) { toast('Heatmap laden mislukt', 'error'); return; }
+  const maxRate = Math.max(...data.heatmap.flatMap(d => d.hours.map(h => h.rate)), 1);
+  const hours = Array.from({length:24}, (_,h) => String(h).padStart(2,'0'));
+
+  const cells = data.heatmap.map(row =>
+    row.hours.map(h => {
+      if (h.sent === 0) return `<div class="heatmap-cell" style="background:#f3f4f6;" title="${row.day} ${h.hour}:00 — geen data"></div>`;
+      const alpha = Math.round((h.rate / maxRate) * 90 + 10);
+      const color = h.rate > 20 ? `rgba(16,185,129,${alpha/100})` : h.rate > 10 ? `rgba(99,102,241,${alpha/100})` : `rgba(241,245,249,1)`;
+      return `<div class="heatmap-cell" style="background:${color};" title="${row.day} ${h.hour}:00 — ${h.rate}% reply rate (${h.sent} verstuurd)">${h.rate > 0 ? h.rate + '%' : ''}</div>`;
+    }).join('')
+  ).join('');
+
+  openModal(`
+    <div class="modal-header">
+      <h3 class="modal-title">🔥 Heatmap beste verzendtijden</h3>
+      <button onclick="closeModal()" class="modal-close">×</button>
+    </div>
+    <div style="overflow-x:auto;margin-top:12px;">
+      <div style="display:grid;grid-template-columns:40px repeat(24,32px);gap:2px;font-size:10px;">
+        <div></div>
+        ${hours.map(h => `<div style="text-align:center;color:var(--text-secondary);padding:2px 0;">${h}</div>`).join('')}
+        ${data.heatmap.map((row, ri) => `
+          <div style="color:var(--text-secondary);font-weight:600;line-height:24px;text-align:right;padding-right:6px;">${row.day}</div>
+          ${row.hours.map(h => {
+            if (h.sent === 0) return `<div class="heatmap-cell" style="background:#f3f4f6;"></div>`;
+            const alpha = Math.round((h.rate / maxRate) * 90 + 10);
+            const color = h.rate > 20 ? `rgba(16,185,129,${alpha/100})` : h.rate > 10 ? `rgba(99,102,241,${alpha/100})` : `rgba(241,245,249,1)`;
+            return `<div class="heatmap-cell" style="background:${color};font-size:9px;" title="${row.day} ${h.hour}:00 — ${h.rate}%">${h.rate||''}</div>`;
+          }).join('')}
+        `).join('')}
+      </div>
+    </div>
+    <div style="margin-top:12px;font-size:11px;color:var(--text-secondary);">Groen = hoge reply rate · Paars = gemiddeld · Grijs = geen data</div>
+  `);
+}
+
+// ─── Task 34 — Top subjects ────────────────────────────────────────────────────
+async function showTopSubjects() {
+  const data = await apiJSON('/api/stats/top-subjects');
+  const subjects = data?.subjects || [];
+  openModal(`
+    <div class="modal-header">
+      <h3 class="modal-title">📧 Top 10 email onderwerpen</h3>
+      <button onclick="closeModal()" class="modal-close">×</button>
+    </div>
+    ${!subjects.length ? '<p style="color:var(--text-secondary);font-size:13px;margin-top:12px;">Nog te weinig data (minimaal 2 per onderwerp).</p>' :
+    `<div style="overflow-x:auto;margin-top:12px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="background:var(--surface-2);">
+          <th style="padding:8px 12px;text-align:left;">Onderwerp</th>
+          <th style="padding:8px 12px;text-align:right;">Verstuurd</th>
+          <th style="padding:8px 12px;text-align:right;">Open%</th>
+          <th style="padding:8px 12px;text-align:right;color:#16a34a;">Reply%</th>
+        </tr></thead>
+        <tbody>${subjects.map(s => `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:8px 12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.subject)}</td>
+          <td style="padding:8px 12px;text-align:right;">${s.sent}</td>
+          <td style="padding:8px 12px;text-align:right;">${s.openRate}%</td>
+          <td style="padding:8px 12px;text-align:right;font-weight:700;color:#16a34a;">${s.replyRate}%</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`}
+  `);
+}
+
+// ─── Task 35 — Niche comparison ────────────────────────────────────────────────
+async function showNicheComparison() {
+  const data = await apiJSON('/api/stats/niches');
+  const niches = data?.niches || [];
+  const container = document.getElementById('content');
+  if (!container) return;
+  const html = `
+    <div class="card" style="margin-top:24px;">
+      <div class="card-header"><h3 class="card-title">🏢 Niche prestatie vergelijking</h3></div>
+      <div style="padding:0 20px 20px;overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr style="background:var(--surface-2);">
+            <th style="padding:8px 12px;text-align:left;">Niche</th>
+            <th style="padding:8px 12px;text-align:right;">Gevonden</th>
+            <th style="padding:8px 12px;text-align:right;">Verstuurd</th>
+            <th style="padding:8px 12px;text-align:right;">Replies</th>
+            <th style="padding:8px 12px;text-align:right;color:#16a34a;">Reply%</th>
+            <th style="padding:8px 12px;text-align:right;">Klanten</th>
+            <th style="padding:8px 12px;text-align:right;">Omzet</th>
+          </tr></thead>
+          <tbody>${niches.map(n => `<tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:8px 12px;font-weight:600;">${esc(n.niche)}</td>
+            <td style="padding:8px 12px;text-align:right;">${n.found}</td>
+            <td style="padding:8px 12px;text-align:right;">${n.emailed}</td>
+            <td style="padding:8px 12px;text-align:right;">${n.replied}</td>
+            <td style="padding:8px 12px;text-align:right;font-weight:700;color:${n.replyRate>10?'#16a34a':n.replyRate>5?'#d97706':'#374151'};">${n.replyRate}%</td>
+            <td style="padding:8px 12px;text-align:right;">${n.clients}</td>
+            <td style="padding:8px 12px;text-align:right;">€${(n.revenue||0).toLocaleString('nl-NL')}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
+  container.insertAdjacentHTML('beforeend', html);
 }

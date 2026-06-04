@@ -1003,6 +1003,8 @@ function switchSettingsTab(id) {
   if (id === 'auditlog') loadAuditLog();
   if (id === 'components') loadComponentsTab();
   if (id === 'templates') loadTemplatesTab();
+  if (id === 'changelog') loadChangelogTab();
+  if (id === 'ip-whitelist') loadIpWhitelistSection();
 }
 
 async function loadAuditLog() {
@@ -1057,6 +1059,7 @@ async function renderSettings() {
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="auditlog" onclick="switchSettingsTab('auditlog')"><i class="ti ti-list-search"></i> Audit log</button>` : ''}
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="components" onclick="switchSettingsTab('components')"><i class="ti ti-puzzle"></i> 🧩 Components</button>` : ''}
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="templates" onclick="switchSettingsTab('templates')"><i class="ti ti-palette"></i> 🎨 Templates</button>` : ''}
+      ${isAdmin() ? `<button class="settings-nav-item" data-tab="changelog" onclick="switchSettingsTab('changelog')"><i class="ti ti-history"></i> Changelog</button>` : ''}
       <div class="settings-nav-spacer"></div>
       <button class="settings-nav-item nav-danger" data-tab="danger" onclick="switchSettingsTab('danger')"><i class="ti ti-alert-triangle"></i> Gevaarlijke zone</button>
     </nav>
@@ -1842,6 +1845,17 @@ async function renderSettings() {
         </div>
       </div>
 
+      <!-- Changelog tab (Task 50) -->
+      <div class="settings-tab-pane" id="stab-changelog">
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title"><i class="ti ti-history" style="margin-right:6px"></i>Changelog</div>
+            <div class="stg-sub">Wat is er recent veranderd in het systeem</div>
+          </div>
+          <div id="changelogContent"><div style="color:var(--text-secondary);font-size:13px">Laden...</div></div>
+        </div>
+      </div>
+
     </div>
   </div>
   `;
@@ -2288,4 +2302,120 @@ function _injectOnboardingResetBtn() {
     <i class="ti ti-refresh"></i> Setup opnieuw doorlopen
   </button>`;
   accountTab.querySelector('.stg-section')?.appendChild(btn.firstElementChild);
+}
+
+// ─── Task 50 — Changelog ──────────────────────────────────────────────────────
+async function loadChangelogTab() {
+  const el = document.getElementById('changelogContent');
+  if (!el) return;
+  const entries = await apiJSON('/api/changelog') || [];
+  const TYPE_LABELS = { new: 'Nieuw', fix: 'Fix', improve: 'Verbeterd' };
+  el.innerHTML = entries.map(e => `
+    <div class="changelog-entry">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span class="changelog-version">v${esc(e.version)}</span>
+        <span class="changelog-date">${esc(e.date)}</span>
+      </div>
+      <ul class="changelog-items">
+        ${(e.items||[]).map(i => `<li><span class="changelog-badge badge-${i.type}">${TYPE_LABELS[i.type]||i.type}</span>${esc(i.text)}</li>`).join('')}
+      </ul>
+    </div>`).join('') || '<p style="color:var(--text-secondary);">Geen changelog gevonden.</p>';
+}
+
+// ─── Task 44 — IP Whitelist UI ────────────────────────────────────────────────
+async function loadIpWhitelistSection() {
+  const data = await apiJSON('/api/settings/ip-whitelist');
+  const list = data?.whitelist || [];
+  const el = document.getElementById('ipWhitelistContent');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="margin-bottom:12px;">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">Laat leeg om alle IPs toe te staan. Wanneer ingevuld, kunnen alleen deze IP-adressen inloggen als admin.</p>
+      <textarea id="ipWhitelistInput" class="input-field" rows="4" style="width:100%;font-family:monospace;font-size:13px;" placeholder="Één IP per regel, bijv.:\n192.168.1.100\n10.0.0.1">${list.join('\n')}</textarea>
+    </div>
+    <button onclick="saveIpWhitelist()" class="btn btn-primary btn-sm">Opslaan</button>`;
+}
+
+async function saveIpWhitelist() {
+  const val = document.getElementById('ipWhitelistInput')?.value || '';
+  const whitelist = val.split('\n').map(l=>l.trim()).filter(Boolean);
+  await api('/api/settings/ip-whitelist', { method:'POST', body: JSON.stringify({ whitelist }) });
+  toast('IP whitelist opgeslagen');
+}
+
+// ─── Task 37 — Blacklist CSV import UI ────────────────────────────────────────
+function openBlacklistCsvModal() {
+  openModal(`
+    <div class="modal-header">
+      <h3 class="modal-title">📋 Blacklist CSV importeren</h3>
+      <button onclick="closeModal()" class="modal-close">×</button>
+    </div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Eén domein of bedrijfsnaam per regel.</p>
+    <textarea id="blCsvInput" class="input-field" rows="8" style="width:100%;font-family:monospace;font-size:13px;" placeholder="voorbeeld.nl&#10;spambedrijf.com&#10;tegoed-oplichters.nl"></textarea>
+    <div style="margin-top:12px;display:flex;gap:8px;">
+      <select id="blCsvType" class="input-field" style="width:140px;">
+        <option value="domain">Domein</option>
+        <option value="company">Bedrijfsnaam</option>
+      </select>
+      <button onclick="_importBlacklistCsv()" class="btn btn-primary btn-sm">Importeren</button>
+    </div>
+    <div id="blCsvResult" style="margin-top:12px;"></div>
+  `);
+}
+
+async function _importBlacklistCsv() {
+  const csv = document.getElementById('blCsvInput')?.value;
+  const type = document.getElementById('blCsvType')?.value || 'domain';
+  const data = await apiJSON('/api/blacklist/import', { method:'POST', body: JSON.stringify({ csv, type }) });
+  const el = document.getElementById('blCsvResult');
+  if (el) el.innerHTML = `<div style="padding:10px;background:#dcfce7;border-radius:8px;font-size:13px;color:#15803d;">✓ ${data?.added||0} toegevoegd, ${data?.skipped||0} overgeslagen</div>`;
+}
+
+// ─── Task 42 — Settings export/import UI ─────────────────────────────────────
+function exportSettings() {
+  window.open('/api/settings/export', '_blank');
+}
+
+function openSettingsImportModal() {
+  openModal(`
+    <div class="modal-header">
+      <h3 class="modal-title">📥 Instellingen importeren</h3>
+      <button onclick="closeModal()" class="modal-close">×</button>
+    </div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Plak een eerder geëxporteerd settings.json hieronder.</p>
+    <textarea id="importSettingsJson" class="input-field" rows="10" style="width:100%;font-family:monospace;font-size:12px;" placeholder='{"agencyName":"...", "services": [...]}'></textarea>
+    <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:10px;">
+      <button onclick="closeModal()" class="btn btn-secondary">Annuleren</button>
+      <button onclick="_doImportSettings()" class="btn btn-primary">Importeren</button>
+    </div>
+  `);
+}
+
+async function _doImportSettings() {
+  try {
+    const json = JSON.parse(document.getElementById('importSettingsJson')?.value || '{}');
+    await api('/api/settings/import', { method:'POST', body: JSON.stringify(json) });
+    closeModal(); toast('Instellingen geïmporteerd — herlaad de pagina');
+  } catch { toast('Ongeldige JSON', 'error'); }
+}
+
+// ─── Task 38 — Fuzzy duplicate detection UI ───────────────────────────────────
+async function showFuzzyDuplicates() {
+  const data = await apiJSON('/api/leads/fuzzy-duplicates');
+  const dupes = data?.duplicates || [];
+  if (!dupes.length) { toast('Geen fuzzy duplicaten gevonden'); return; }
+  openModal(`
+    <div class="modal-header">
+      <h3 class="modal-title">🔍 Fuzzy duplicaten (${dupes.length})</h3>
+      <button onclick="closeModal()" class="modal-close">×</button>
+    </div>
+    <div style="max-height:400px;overflow-y:auto;">
+      ${dupes.map(d => `
+        <div style="padding:10px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:center;font-size:13px;">
+          <div style="flex:1;"><strong>${esc(d.name1)}</strong><br><strong>${esc(d.name2)}</strong></div>
+          <div style="color:var(--text-secondary);">Afstand: ${d.distance}</div>
+          <button onclick="quickDeleteLead&&quickDeleteLead('${d.lead2}','${d.name2}')" class="btn btn-ghost btn-sm" style="color:#ef4444;border-color:#ef4444;font-size:11px;">Verwijder 2e</button>
+        </div>`).join('')}
+    </div>
+  `);
 }
