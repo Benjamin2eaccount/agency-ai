@@ -14,7 +14,9 @@ async function renderRuns() {
     <div id="runsContent"><div class="loading-state"><div class="spinner-lg"></div></div></div>
   `;
 
-  document.getElementById('runNowBtn2').addEventListener('click', triggerFindLeads);
+  document.getElementById('runNowBtn2')?.addEventListener('click', () => {
+    if (typeof triggerFindLeads === 'function') triggerFindLeads();
+  });
 
   const [runs, settings] = await Promise.all([
     apiJSON('/api/runs') || [],
