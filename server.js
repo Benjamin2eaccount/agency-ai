@@ -2360,29 +2360,14 @@ app.get('/bestellen', (req, res) => {
 });
 
 // ── Desktop app download (public) ────────────────────────────────────────────
+const GITHUB_WIN_URL = 'https://github.com/Benjamin2eaccount/agency-ai/releases/download/v1.1.0/Agency-AI-1.1.0-Windows-x64.zip';
+
 app.get('/download/windows', (req, res) => {
-  const exe = path.join(__dirname, 'public', 'downloads', 'Agency AI Setup.exe');
-  const zip = path.join(__dirname, 'public', 'downloads', 'Agency-AI-Windows-x64.zip');
-  if (fs.existsSync(exe)) {
-    res.download(exe, 'Agency-AI-Setup.exe');
-  } else if (fs.existsSync(zip)) {
-    res.download(zip, 'Agency-AI-Windows.zip');
-  } else {
-    res.status(404).send('Download niet beschikbaar');
-  }
+  res.redirect(GITHUB_WIN_URL);
 });
 
 // ── Secret desktop app download links (not linked anywhere on the site) ──────
 app.get('/dl/agencyai-win-x64-v1', (req, res) => {
-  const zip = path.join(__dirname, 'public', 'downloads', 'Agency-AI-Windows-x64.zip');
-  if (!fs.existsSync(zip)) {
-    // Binary not deployed yet — return helpful JSON instead of blank 404
-    return res.status(503).json({
-      available: false,
-      version: DESKTOP_VERSION,
-      message: 'Download tijdelijk niet beschikbaar. Probeer het later opnieuw.',
-    });
-  }
   // Log the download
   try {
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
@@ -2391,7 +2376,7 @@ app.get('/dl/agencyai-win-x64-v1', (req, res) => {
       .prepare('INSERT INTO download_logs (platform, ip, user_agent) VALUES (?, ?, ?)')
       .run('windows', ip, ua);
   } catch (e) { console.warn('[Download] Log failed:', e.message); }
-  res.download(zip, `Agency-AI-${DESKTOP_VERSION}-Windows.zip`);
+  res.redirect(GITHUB_WIN_URL);
 });
 
 app.get('/dl/agencyai-mac-x64-v1', (req, res) => {
@@ -2412,7 +2397,7 @@ app.get('/update/latest', (req, res) => {
     releaseNotes: 'Bug fixes en verbeteringen',
     platforms: {
       win: {
-        url: `https://www.agencyai.info/dl/agencyai-win-x64-v1`,
+        url: GITHUB_WIN_URL,
         sha512: DESKTOP_WIN_SHA512,
         size: DESKTOP_WIN_SIZE,
       },
@@ -2427,7 +2412,7 @@ app.get('/update/latest.yml', (req, res) => {
     `releaseDate: '${DESKTOP_RELEASE_DATE}'`,
     `releaseNotes: Bug fixes en verbeteringen`,
     `files:`,
-    `  - url: ${DESKTOP_WIN_FILE}`,
+    `  - url: ${GITHUB_WIN_URL}`,
     `    sha512: ${DESKTOP_WIN_SHA512}`,
     `    size: ${DESKTOP_WIN_SIZE}`,
     `path: ${DESKTOP_WIN_FILE}`,
@@ -2440,9 +2425,7 @@ app.get('/update/latest.yml', (req, res) => {
 app.get('/update/:filename', (req, res) => {
   const allowed = /^Agency-AI-Windows(-x64)?\.zip$/;
   if (!allowed.test(req.params.filename)) return res.status(404).end();
-  const zip = path.join(__dirname, 'public', 'downloads', 'Agency-AI-Windows-x64.zip');
-  if (!fs.existsSync(zip)) return res.status(404).end();
-  res.download(zip, req.params.filename);
+  res.redirect(GITHUB_WIN_URL);
 });
 
 // Public order form — must be BEFORE app.use('/api', authMiddleware)
