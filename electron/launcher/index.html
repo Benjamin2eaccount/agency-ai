@@ -217,6 +217,68 @@
     }
     .footer-link:hover { color: var(--indigo); }
 
+    /* ── Update bar ──────────────────────────────────────────────────────── */
+    #updateBar { display: none; }
+
+    .update-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 11px 24px;
+      background: #1a1a3e;
+      border-bottom: 1px solid var(--indigo);
+      gap: 16px;
+      flex-shrink: 0;
+      -webkit-app-region: no-drag;
+    }
+    .update-bar-green {
+      background: #0a2e1a;
+      border-bottom-color: #22c55e;
+    }
+    .update-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .update-icon { font-size: 18px; line-height: 1; }
+    .update-title {
+      font-size: 13px; font-weight: 700; color: #fff;
+    }
+    .update-subtitle {
+      font-size: 11px; color: #888;
+      margin-top: 2px;
+    }
+    .btn-update {
+      background: var(--indigo); color: #fff;
+      border: none;
+      padding: 7px 15px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 12px; font-weight: 600;
+      white-space: nowrap;
+      font-family: inherit;
+      transition: background .15s;
+      flex-shrink: 0;
+    }
+    .btn-update:hover { background: var(--indigo-d); }
+    .btn-update-green { background: #22c55e; }
+    .btn-update-green:hover { background: #16a34a; }
+    .update-progress-bar {
+      width: 180px; height: 4px;
+      background: #2a2a4a;
+      border-radius: 2px;
+      margin-top: 5px;
+      overflow: hidden;
+    }
+    .update-progress-fill {
+      height: 100%;
+      background: var(--indigo);
+      border-radius: 2px;
+      width: 0%;
+      transition: width .3s ease;
+    }
+    .update-speed { font-size: 11px; color: #666; flex-shrink: 0; }
+
     /* ── States ──────────────────────────────────────────────────────────── */
     .state-msg {
       grid-column: 1/-1;
@@ -362,6 +424,47 @@
 <body>
   <div class="shell">
 
+    <!-- Update bar — hidden until update-available IPC fires -->
+    <div id="updateBar">
+      <!-- State 1: update available -->
+      <div id="updateAvailable" class="update-bar" style="display:none">
+        <div class="update-info">
+          <span class="update-icon">🔄</span>
+          <div>
+            <div class="update-title">Update beschikbaar — v<span id="updateVersion"></span></div>
+            <div class="update-subtitle">Nieuwe versie van Agency AI is beschikbaar</div>
+          </div>
+        </div>
+        <button id="downloadUpdateBtn" class="btn-update">⬇ Downloaden</button>
+      </div>
+
+      <!-- State 2: downloading -->
+      <div id="updateDownloading" class="update-bar" style="display:none">
+        <div class="update-info">
+          <span class="update-icon">⏳</span>
+          <div>
+            <div class="update-title">Downloaden… <span id="updatePercent">0</span>%</div>
+            <div class="update-progress-bar">
+              <div id="updateProgressFill" class="update-progress-fill"></div>
+            </div>
+          </div>
+        </div>
+        <span class="update-speed" id="updateSpeed"></span>
+      </div>
+
+      <!-- State 3: ready to install -->
+      <div id="updateReady" class="update-bar update-bar-green" style="display:none">
+        <div class="update-info">
+          <span class="update-icon">✅</span>
+          <div>
+            <div class="update-title">Update gereed om te installeren!</div>
+            <div class="update-subtitle">Herstart de app om bij te werken</div>
+          </div>
+        </div>
+        <button id="installUpdateBtn" class="btn-update btn-update-green">🚀 Nu installeren</button>
+      </div>
+    </div>
+
     <div class="topbar">
       <div class="logo-mark">A</div>
       <span class="app-name">Agency AI</span>
@@ -380,6 +483,7 @@
     <div class="footer">
       <span class="footer-link" id="manageLink">+ Account toevoegen</span>
       <span style="flex:1"></span>
+      <span id="appVersion" style="font-size:11px;color:var(--text-4)"></span>
       <span class="footer-link" id="websiteLink">agencyai.info ↗</span>
     </div>
 
@@ -695,12 +799,44 @@
     document.getElementById('websiteLink').addEventListener('click', () => shell.openExternal('https://www.agencyai.info'))
     document.getElementById('manageLink').addEventListener('click', showAddModal)
 
+    // ── Update bar ────────────────────────────────────────────────────────────
+    ipcRenderer.on('update-available', (e, info) => {
+      document.getElementById('updateBar').style.display = 'block'
+      document.getElementById('updateAvailable').style.display = 'flex'
+      document.getElementById('updateVersion').textContent = info.version || ''
+    })
+
+    ipcRenderer.on('update-progress', (e, progress) => {
+      document.getElementById('updateAvailable').style.display  = 'none'
+      document.getElementById('updateDownloading').style.display = 'flex'
+      const pct = Math.round(progress.percent || 0)
+      document.getElementById('updatePercent').textContent       = pct
+      document.getElementById('updateProgressFill').style.width  = pct + '%'
+      const kbps = Math.round((progress.bytesPerSecond || 0) / 1024)
+      document.getElementById('updateSpeed').textContent         = kbps > 0 ? kbps + ' KB/s' : ''
+    })
+
+    ipcRenderer.on('update-ready', () => {
+      document.getElementById('updateDownloading').style.display = 'none'
+      document.getElementById('updateReady').style.display       = 'flex'
+    })
+
+    document.getElementById('downloadUpdateBtn').addEventListener('click', () => {
+      ipcRenderer.invoke('start-download-update')
+    })
+
+    document.getElementById('installUpdateBtn').addEventListener('click', () => {
+      ipcRenderer.invoke('install-update')
+    })
+
     // ── Boot ─────────────────────────────────────────────────────────────────
     ;(async () => {
-      try {
-        const pkg = require('../package.json')
-        document.getElementById('versionPill').textContent = `v${pkg.version}`
-      } catch {}
+      // Use the real running version from main process
+      const version = await ipcRenderer.invoke('get-app-version').catch(() => null)
+      if (version) {
+        document.getElementById('versionPill').textContent = `v${version}`
+        document.getElementById('appVersion').textContent  = `v${version}`
+      }
 
       const accounts = await ipcRenderer.invoke('get-accounts')
       render(accounts)

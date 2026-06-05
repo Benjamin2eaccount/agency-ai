@@ -76,28 +76,25 @@ ipcMain.handle('delete-account', (e, id) => {
 
 // ── Auto-updater ──────────────────────────────────────────────────────────────
 autoUpdater.setFeedURL({ provider: 'generic', url: 'https://www.agencyai.info/update/' })
-autoUpdater.autoDownload        = true
+autoUpdater.autoDownload         = false  // user-controlled: "Download" button in launcher
 autoUpdater.autoInstallOnAppQuit = true
 
-autoUpdater.on('update-available', () => {
-  if (mainWindow) {
-    mainWindow.webContents.executeJavaScript(
-      `window.showToast && window.showToast('Update beschikbaar! Wordt gedownload...', 'info')`
-    ).catch(() => {})
-  }
-})
+// Helper: broadcast an IPC event to every open window
+function sendToAll(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload)
+  if (launcher   && !launcher.isDestroyed())   launcher.webContents.send(channel, payload)
+}
 
-autoUpdater.on('update-downloaded', () => {
-  dialog.showMessageBox({
-    type: 'info',
-    title: 'Update gereed',
-    message: 'Agency AI is bijgewerkt. Herstart om de update te installeren.',
-    buttons: ['Nu herstarten', 'Later'],
-    defaultId: 0,
-  }).then(r => { if (r.response === 0) autoUpdater.quitAndInstall() })
-})
-
+autoUpdater.on('update-available',  (info)     => sendToAll('update-available', info))
+autoUpdater.on('download-progress', (progress) => sendToAll('update-progress', progress))
+autoUpdater.on('update-downloaded', ()         => sendToAll('update-ready'))
 autoUpdater.on('error', err => console.warn('[Updater]', err.message))
+
+// IPC — update actions triggered from launcher UI
+ipcMain.handle('start-download-update', () => autoUpdater.downloadUpdate())
+ipcMain.handle('install-update',        () => autoUpdater.quitAndInstall())
+ipcMain.handle('check-for-updates',     () => autoUpdater.checkForUpdates())
+ipcMain.handle('get-app-version',       () => app.getVersion())
 
 // ── Launcher window ───────────────────────────────────────────────────────────
 function createLauncherWindow() {
@@ -143,7 +140,6 @@ function createWindow(url = 'https://www.agencyai.info/app/') {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
-    setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 3000)
   })
 
   mainWindow.on('closed', () => { mainWindow = null })
@@ -198,6 +194,9 @@ function createTray() {
 app.whenReady().then(() => {
   createLauncherWindow()   // show launcher first, not the main window
   createTray()
+
+  // Check for updates 3s after launch (launcher is visible by then)
+  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 3000)
 
   // ── Global keyboard shortcuts ───────────────────────────────────────────
   // F5 — reload the main app window
