@@ -31,7 +31,8 @@
     "files": [
       "main.js",
       "launch.js",
-      "assets/**"
+      "assets/**",
+      "launcher/**"
     ],
     "win": {
       "target": [
