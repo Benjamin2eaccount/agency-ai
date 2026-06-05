@@ -11,13 +11,15 @@ window.STATUS_LABELS = Object.assign(window.STATUS_LABELS || {}, {
 });
 const STATUS_LABELS = window.STATUS_LABELS;
 
-const STATUS_COLORS = {
+// Extend the global STATUS_COLORS (defined in core.js) with pipeline-specific values
+window.STATUS_COLORS = Object.assign(window.STATUS_COLORS || {}, {
   inbox: 'gray', approved: 'blue', sent: 'indigo', 'auto-approved': 'indigo',
   scheduled: 'amber',
   followup1: 'amber', followup2: 'orange', replied: 'green',
   meeting: 'purple', client: 'dark-green', disapproved: 'red', dead: 'gray',
   bounced: 'red', delivery_delayed: 'orange'
-};
+});
+const STATUS_COLORS = window.STATUS_COLORS;
 
 // Groups used by pipeline table view
 const PIPELINE_GROUPS = [

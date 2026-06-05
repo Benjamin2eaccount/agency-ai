@@ -865,8 +865,7 @@ async function handleNotificationClick(id, encodedLink) {
   if (link) {
     if (link.startsWith('project:')) {
       const leadId = link.split(':')[1];
-      setView('leads');
-      setTimeout(() => openLeadDetail(leadId), 300);
+      openProjectPage(leadId);
     } else {
       setView(link);
     }
@@ -1200,7 +1199,7 @@ function globalSearchInput(val) {
   if (hits.leads.length) {
     html += `<div class="search-result-section">Leads</div>`;
     hits.leads.slice(0,5).forEach(l => {
-      html += `<div class="search-result-item" onclick="closeSearchResults();setView('leads');setTimeout(()=>openLeadDetail&&openLeadDetail('${l.id}'),400)">
+      html += `<div class="search-result-item" onclick="closeSearchResults();openProjectPage&&openProjectPage('${l.id}')">
         <div class="search-result-icon">${l.status === 'client' ? '👤' : '🏢'}</div>
         <div><div class="search-result-main">${esc(l.companyName)}</div>
         <div class="search-result-sub">${esc(l.location||'')} · ${esc(l.status||'')}</div></div>
@@ -1338,14 +1337,39 @@ window.STATUS_LABELS = window.STATUS_LABELS || {
   replied: 'Gereageerd', client: 'Klant', dead: 'Dead',
   archived: 'Gearchiveerd', imported: 'Geïmporteerd', besteld: 'Besteld'
 };
+// STATUS_COLORS is used in project.js and pipeline.js — define globally so project page
+// works without pipeline.js being loaded first.
+window.STATUS_COLORS = window.STATUS_COLORS || {
+  new: 'gray', inbox: 'blue', pending: 'amber', approved: 'green',
+  disapproved: 'red', scheduled: 'purple', sent: 'blue',
+  replied: 'green', client: 'green', dead: 'gray',
+  archived: 'gray', imported: 'gray', besteld: 'amber'
+};
 
 // ─── Safety stubs — real implementations in page files override these ─────────
 // These prevent "X is not defined" errors when a page file that defines the
 // real function hasn't been lazy-loaded yet.
 // Cross-page function stubs (defined in page files, may be called before that page loads)
 window.triggerFindLeads       = window.triggerFindLeads       || function() {};
-window.openLeadDetail         = window.openLeadDetail         || function() {};
-window.openProjectPage        = window.openProjectPage        || function() {};
+// These stubs must do real work so that clicks fire BEFORE project.js lazy-loads.
+// project.js overwrites them with richer implementations once it loads.
+window.openProjectPage = window.openProjectPage || function(id) {
+  if (id) state.currentLeadId = id;
+  setView('project');
+};
+window.openLeadDetail = window.openLeadDetail || function(id) {
+  if (!id) return;
+  state.currentLeadId = id;
+  if (document.getElementById('detailPanel')) {
+    // On leads page — load project.js then let the real impl open the panel
+    loadPage('project').then(function() {
+      if (window.openLeadDetail) window.openLeadDetail(id);
+    });
+  } else {
+    // Elsewhere — just open the project page
+    setView('project');
+  }
+};
 window.buildAllServicesForLead= window.buildAllServicesForLead|| function() {};
 window.startProject           = window.startProject           || function() {};
 window.createPayment          = window.createPayment          || function() {};

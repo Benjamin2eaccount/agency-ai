@@ -278,7 +278,7 @@ async function renderDashboard() {
         ${referredLeads.length > 0 ? `
           <div class="card-label" style="margin-bottom:8px">Doorverwezen leads</div>
           ${referredLeads.slice(0, 5).map(l => `
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border-light);cursor:pointer" onclick="openLeadDetail('${l.id}')">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border-light);cursor:pointer" onclick="openProjectPage('${l.id}')">
               <div>
                 <div style="font-size:13px;font-weight:600">${esc(l.companyName)}</div>
                 <div style="font-size:11px;color:var(--text-muted)">via ${esc(l.referrerName)}</div>
@@ -390,11 +390,11 @@ function buildClientHealthSection(leads) {
     }
     const color = health === 'green' ? 'var(--success)' : health === 'orange' ? '#f59e0b' : 'var(--danger)';
     const label = health === 'green' ? 'Gezond' : health === 'orange' ? 'Aandacht' : 'Kritiek';
-    return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="setView('project');setTimeout(()=>openLeadDetail('${esc(l.id)}'),50)">
+    return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="openProjectPage('${esc(l.id)}')">
       <td style="padding:10px 14px;font-size:13px;font-weight:600">${esc(l.companyName)}</td>
       <td style="padding:10px 14px"><span style="display:inline-flex;align-items:center;gap:6px;background:${color}22;color:${color};border-radius:20px;padding:3px 10px;font-size:12px;font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0"></span>${label}</span></td>
       <td style="padding:10px 14px;font-size:13px;color:var(--text-secondary)">${esc(reason)}</td>
-      <td style="padding:10px 14px"><button class="btn btn-sm btn-outline" onclick="event.stopPropagation();setView('project');setTimeout(()=>openLeadDetail('${esc(l.id)}'),50)">Open →</button></td>
+      <td style="padding:10px 14px"><button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openProjectPage('${esc(l.id)}')">Open →</button></td>
     </tr>`;
   }).join('');
 

@@ -2870,6 +2870,11 @@ window.openLeadDetail = function openLeadDetail(id) {
   const inboxItem = state.inbox?.find?.(i => i.leadId === id) || null;
 
   const panel = document.getElementById('detailPanel');
+  if (!panel) {
+    // Not on the leads page — fall back to full project view
+    setView('project');
+    return;
+  }
   panel.classList.add('open');
 
   const timeline = buildTimeline(lead);
