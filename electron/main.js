@@ -46,9 +46,15 @@ ipcMain.handle('open-account', (e, account) => {
   const idx  = list.findIndex(a => a.id === account.id)
   if (idx !== -1) { list[idx].lastUsed = new Date().toISOString(); saveAccounts(list) }
 
-  // Close launcher → open main window with the chosen URL
-  if (launcher) { launcher.destroy(); launcher = null }
+  // Create main window first, close launcher only after it is ready to show
+  // (closing launcher before the window exists fires window-all-closed → app quits)
   createWindow(account.url)
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show()
+    if (launcher && !launcher.isDestroyed()) {
+      launcher.close()
+    }
+  })
 })
 
 ipcMain.handle('add-account', (e, account) => {
@@ -227,7 +233,11 @@ app.on('will-quit', () => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  const launcherOpen = launcher   && !launcher.isDestroyed()
+  const mainOpen     = mainWindow && !mainWindow.isDestroyed()
+  if (!launcherOpen && !mainOpen) {
+    if (process.platform !== 'darwin') app.quit()
+  }
 })
 
 app.on('activate', () => {
