@@ -438,3 +438,356 @@ async function loadSystemHealth() {
   `;
 }
 
+// ─── Run-page functions (moved from instellingen.js) ──────────────────────────
+
+const _ACTIVITY_ICONS  = { run: 'ti-player-play', email: 'ti-send', reply: 'ti-message-reply', backup: 'ti-database-export', followup: 'ti-clock-hour-4', bounce: 'ti-mail-off', ai_call: 'ti-brain' };
+const _ACTIVITY_COLORS = { run: '#2563eb', email: '#16a34a', reply: '#ea580c', backup: '#9b9b98', followup: '#7c3aed', bounce: '#dc2626', ai_call: '#7c3aed' };
+
+async function loadActivityLog() {
+  const container = document.getElementById('activityLog');
+  if (!container) return;
+  const filter = document.getElementById('activityFilter')?.value || '';
+  try {
+    const data = await apiJSON('/api/activity?limit=50');
+    if (!data) return;
+    let entries = data.activity || [];
+    if (filter) entries = entries.filter(e => e.type === filter);
+    if (!entries.length) {
+      container.innerHTML = '<div class="empty-state"><i class="ti ti-list"></i><p>Geen activiteiten gevonden</p></div>';
+      return;
+    }
+    container.innerHTML = entries.map(e => {
+      const icon  = _ACTIVITY_ICONS[e.type]  || 'ti-point';
+      const color = _ACTIVITY_COLORS[e.type] || 'var(--text-muted)';
+      const time  = new Date(e.timestamp).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      const dollarSign = String.fromCharCode(36);
+      const cost  = e.costUsd > 0 ? `<span class="text-muted" style="font-size:11px;margin-left:8px">${dollarSign}${e.costUsd.toFixed(4)}</span>` : '';
+      const tok   = e.tokensIn > 0 ? `<span class="text-muted" style="font-size:11px;margin-left:6px">${formatNumber(e.tokensIn + e.tokensOut)} tok</span>` : '';
+      return `<div class="activity-log-row">
+        <div class="activity-log-icon" style="background:${color}18;color:${color}">
+          <i class="ti ${icon}"></i>
+        </div>
+        <div class="activity-log-body">
+          <div class="activity-log-label">${esc(e.label)}${cost}${tok}</div>
+          <div class="activity-log-time">${time}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch { container.innerHTML = '<p class="text-muted" style="font-size:13px">Laden mislukt</p>'; }
+}
+
+function _runFmt(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+async function toggleLeadSource(key, value) {
+  const res = await api('/api/settings/automation', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ [key]: value }) });
+  if (res.ok) toast(value ? `${key === 'instagramTargeting' ? 'Instagram' : 'Google Maps'} targeting ingeschakeld` : `Targeting uitgeschakeld`, 'success');
+  else toast('Opslaan mislukt', 'error');
+}
+
+function showNewTemplateForm() {
+  const wrap = document.getElementById('templateFormWrap');
+  if (wrap) { wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none'; }
+}
+
+async function loadTemplates() {
+  const container = document.getElementById('templateList');
+  if (!container) return;
+  try {
+    const data = await apiJSON('/api/run-templates');
+    const templates = (data && data.templates) || [];
+    if (!templates.length) {
+      container.innerHTML = '<p class="text-muted" style="font-size:13px;margin:0">Geen sjablonen. Voeg er een toe om snel te herstarten.</p>';
+      return;
+    }
+    container.innerHTML = templates.map(t => {
+      const niches = (t.niches || []).join(', ') || '—';
+      const loc    = t.location ? ' · ' + t.location : '';
+      return `<div class="template-row">
+        <div class="template-row-info">
+          <div class="template-row-name">${esc(t.name)}</div>
+          <div class="template-row-meta">${esc(niches)}${loc} · ${t.count} leads</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="runTemplate('${t.id}', this)">
+          <i class="ti ti-player-play"></i> Uitvoeren
+        </button>
+        <button class="btn btn-ghost btn-sm btn-icon" onclick="deleteRunTemplate('${t.id}')">
+          <i class="ti ti-trash"></i>
+        </button>
+      </div>`;
+    }).join('');
+  } catch {
+    container.innerHTML = '<p class="text-muted" style="font-size:13px;margin:0">Laden mislukt</p>';
+  }
+}
+
+async function saveTemplate() {
+  const name     = document.getElementById('tmplName')?.value?.trim();
+  const niches   = document.getElementById('tmplNiches')?.value?.trim();
+  const count    = document.getElementById('tmplCount')?.value;
+  const location = document.getElementById('tmplLocation')?.value?.trim();
+  if (!name) { toast('Voer een naam in', 'error'); return; }
+  const res = await api('/api/run-templates', {
+    method: 'POST',
+    body: JSON.stringify({ name, niches, count, location })
+  });
+  if (res.ok) {
+    toast('Sjabloon opgeslagen', 'success');
+    document.getElementById('templateFormWrap').style.display = 'none';
+    document.getElementById('tmplName').value = '';
+    document.getElementById('tmplNiches').value = '';
+    document.getElementById('tmplCount').value = '10';
+    document.getElementById('tmplLocation').value = '';
+    await loadTemplates();
+  } else {
+    toast('Opslaan mislukt', 'error');
+  }
+}
+
+async function runTemplate(id, btn) {
+  if (!confirm('Run starten met dit sjabloon?')) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i> Bezig...'; }
+  try {
+    const res = await api('/api/run-templates/' + id + '/run', { method: 'POST', body: JSON.stringify({}) });
+    if (res.ok) {
+      const data = await res.json();
+      toast('Run klaar — ' + (data.found || 0) + ' leads gevonden', 'success');
+      await renderRuns();
+    } else {
+      toast('Run mislukt', 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> Uitvoeren'; }
+    }
+  } catch {
+    toast('Run mislukt', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> Uitvoeren'; }
+  }
+}
+
+async function deleteRunTemplate(id) {
+  if (!confirm('Sjabloon verwijderen?')) return;
+  const res = await api('/api/run-templates/' + id, { method: 'DELETE' });
+  if (res.ok) {
+    toast('Sjabloon verwijderd', 'success');
+    await loadTemplates();
+  } else {
+    toast('Verwijderen mislukt', 'error');
+  }
+}
+
+async function startCustomRun() {
+  const count    = parseInt(document.getElementById('runCount')?.value) || 15;
+  const niches   = document.getElementById('runNiches')?.value?.trim();
+  const nicheArr = niches ? niches.split(',').map(n => n.trim()).filter(Boolean) : [];
+  const btn      = document.getElementById('startRunBtn');
+  const statusEl = document.getElementById('run-status');
+  const barEl    = document.getElementById('run-progress-bar');
+  const timerEl  = document.getElementById('run-timer');
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...'; }
+  if (statusEl) { statusEl.textContent = 'Run gestart...'; statusEl.style.display = ''; statusEl.style.color = ''; }
+  if (barEl)    barEl.style.display = '';
+  if (timerEl)  { timerEl.textContent = 'Bezig: 0:00'; timerEl.style.display = ''; }
+
+  if (document.getElementById('liveRunCard') && typeof startRunProgressPoll === 'function') startRunProgressPoll();
+
+  const t0 = Date.now();
+  const timer = setInterval(() => {
+    if (timerEl) timerEl.textContent = `Bezig: ${_runFmt(Date.now() - t0)}`;
+  }, 1000);
+
+  try {
+    const res  = await api('/api/find-leads', { method: 'POST', body: JSON.stringify({ count, niches: nicheArr }) });
+    const data = await res.json().catch(() => ({}));
+    clearInterval(timer);
+    const duration = _runFmt(Date.now() - t0);
+
+    if (barEl)   barEl.style.display = 'none';
+    if (timerEl) timerEl.style.display = 'none';
+
+    if (res?.ok) {
+      if (statusEl) statusEl.textContent = `Klaar in ${duration} — ${data.found || 0} leads gevonden`;
+      toast(`Run klaar — ${data.found || 0} leads gevonden`, 'success');
+      renderRuns();
+    } else {
+      if (statusEl) { statusEl.textContent = data.error || 'Run mislukt — controleer logs'; statusEl.style.color = '#dc2626'; }
+      toast(data.error || 'Run mislukt — controleer server logs', 'error');
+    }
+  } catch (err) {
+    clearInterval(timer);
+    if (barEl)   barEl.style.display = 'none';
+    if (timerEl) timerEl.style.display = 'none';
+    if (statusEl) { statusEl.textContent = 'Fout: ' + err.message; statusEl.style.color = '#dc2626'; }
+    toast('Fout: ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> Start run'; }
+  }
+}
+
+let _dupCheckTimer = null;
+async function checkDuplicateLive() {
+  clearTimeout(_dupCheckTimer);
+  const nameEl = document.getElementById('custCompany');
+  const domainEl = document.getElementById('custWebsite');
+  const warn = document.getElementById('dupWarning');
+  if (!warn) return;
+  const name = nameEl?.value?.trim() || '';
+  const domain = domainEl?.value?.trim() || '';
+  if (!name && !domain) { warn.style.display = 'none'; return; }
+  _dupCheckTimer = setTimeout(async () => {
+    const params = new URLSearchParams();
+    if (name)   params.set('name', name);
+    if (domain) params.set('domain', domain);
+    const data = await apiJSON(`/api/leads/check-duplicate?${params}`);
+    if (data?.duplicate) {
+      warn.style.display = 'flex';
+      warn.innerHTML = `<i class="ti ti-alert-triangle" style="color:#f59e0b;flex-shrink:0"></i><span style="font-size:12px">Mogelijk duplicaat: <strong>${esc(data.companyName)}</strong> staat al in je pipeline (status: ${data.status || '?'})</span>`;
+    } else {
+      warn.style.display = 'none';
+    }
+  }, 500);
+}
+
+async function analyzeCustomCompany() {
+  const companyName = document.getElementById('custCompany')?.value?.trim();
+  if (!companyName) { toast('Vul een bedrijfsnaam in.', 'error'); return; }
+
+  const domain = document.getElementById('custWebsite')?.value?.trim() || '';
+  const dupParams = new URLSearchParams();
+  dupParams.set('name', companyName);
+  if (domain) dupParams.set('domain', domain);
+  const dupData = await apiJSON(`/api/leads/check-duplicate?${dupParams}`);
+  if (dupData?.duplicate) {
+    if (!confirm(`${companyName} staat al in je pipeline (status: ${dupData.status}). Toch toevoegen?`)) return;
+  }
+
+  const btn = document.getElementById('analyzeBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...'; }
+
+  const STEPS = [
+    { icon: 'ti-search',          name: 'Lead Finder',         sub: 'Bedrijf registreren' },
+    { icon: 'ti-world',           name: 'Website Checker',     sub: 'Website analyseren' },
+    { icon: 'ti-brand-instagram', name: 'Social Analyzer',     sub: 'Social media checken' },
+    { icon: 'ti-chart-bar',       name: 'Opportunity Scorer',  sub: 'Score berekenen' },
+    { icon: 'ti-chart-dots',      name: 'Competitor Analyzer', sub: 'Concurrenten zoeken' },
+    { icon: 'ti-mail',            name: 'Email Writer',        sub: 'Email schrijven' },
+    { icon: 'ti-brand-linkedin',  name: 'LinkedIn DM',         sub: 'LinkedIn DM schrijven' },
+  ];
+
+  const progressEl = document.getElementById('analyzeProgress');
+  if (progressEl) {
+    progressEl.style.display = '';
+    progressEl.innerHTML = `
+      <div class="analyze-progress-panel">
+        <div class="analyze-progress-header">
+          <span class="analyze-progress-title" id="analyzePanelTitle">Agent pipeline bezig...</span>
+          <div class="analyze-progress-bar-wrap"><div class="analyze-progress-bar" id="analyzeProgressBar" style="width:0%"></div></div>
+          <span class="analyze-progress-count" id="analyzeProgressCount">0 / ${STEPS.length}</span>
+        </div>
+        <div class="analyze-steps">
+          ${STEPS.map((s, i) => `
+            <div class="analyze-step step-pending" id="astep-${i}">
+              <span class="analyze-step-icon" id="astep-icon-${i}"><i class="ti ti-circle" style="color:var(--border)"></i></span>
+              <span class="analyze-step-name">${s.name}</span>
+              <span class="analyze-step-status" id="astep-status-${i}">${s.sub}</span>
+            </div>
+          `).join('')}
+        </div>
+        <div class="analyze-result" id="analyzeResult" style="display:none"></div>
+      </div>`;
+  }
+
+  let doneCount = 0;
+  function stepActive(i) {
+    const el = document.getElementById(`astep-${i}`);
+    const icon = document.getElementById(`astep-icon-${i}`);
+    const status = document.getElementById(`astep-status-${i}`);
+    if (el) el.className = 'analyze-step step-active';
+    if (icon) icon.innerHTML = '<i class="ti ti-loader-2 spin" style="color:var(--accent)"></i>';
+    if (status) status.textContent = 'Bezig...';
+  }
+  function stepDone(i) {
+    const el = document.getElementById(`astep-${i}`);
+    const icon = document.getElementById(`astep-icon-${i}`);
+    const status = document.getElementById(`astep-status-${i}`);
+    if (el) el.className = 'analyze-step step-done';
+    if (icon) icon.innerHTML = '<i class="ti ti-check" style="color:#16a34a"></i>';
+    if (status) status.textContent = 'Klaar';
+    doneCount++;
+    const pct = Math.round((doneCount / STEPS.length) * 100);
+    const bar = document.getElementById('analyzeProgressBar');
+    const cnt = document.getElementById('analyzeProgressCount');
+    if (bar) bar.style.width = pct + '%';
+    if (cnt) cnt.textContent = `${doneCount} / ${STEPS.length}`;
+  }
+
+  // Simulate step progress while real fetch runs (~5s per step)
+  const STEP_DELAYS = [0, 4000, 8000, 13000, 18000, 23000, 28000];
+  let activatedUpTo = -1;
+  let fetchComplete = false;
+  const timers = STEPS.map((_, i) => setTimeout(() => {
+    if (fetchComplete) return;
+    if (activatedUpTo >= 0) stepDone(activatedUpTo);
+    stepActive(i);
+    activatedUpTo = i;
+  }, STEP_DELAYS[i]));
+
+  // Real API call
+  let res = null, data = null;
+  try {
+    res = await api('/api/analyze-company', {
+      method: 'POST',
+      body: JSON.stringify({
+        companyName,
+        websiteUrl:      domain,
+        email:           document.getElementById('custEmail')?.value?.trim() || '',
+        instagramHandle: document.getElementById('custInstagram')?.value?.trim() || '',
+        niche:           document.getElementById('custNiche')?.value || 'retail',
+        location:        document.getElementById('custLocation')?.value?.trim() || 'Nederland',
+        country:         document.getElementById('custCountry')?.value?.trim() || 'NL'
+      })
+    });
+    if (res) data = await res.json();
+  } catch (_) {}
+
+  fetchComplete = true;
+  timers.forEach(t => clearTimeout(t));
+
+  // Fast-complete remaining steps
+  if (activatedUpTo >= 0) stepDone(activatedUpTo);
+  for (let i = activatedUpTo + 1; i < STEPS.length; i++) {
+    stepActive(i);
+    await new Promise(r => setTimeout(r, 70));
+    stepDone(i);
+  }
+
+  // Show result
+  const resultEl = document.getElementById('analyzeResult');
+  const titleEl  = document.getElementById('analyzePanelTitle');
+  if (!res || !res.ok) {
+    const errMsg = data?.error || `Fout ${res?.status || 'onbekend'}`;
+    if (resultEl) {
+      resultEl.style.display = '';
+      resultEl.className = 'analyze-result result-error';
+      resultEl.innerHTML = `<i class="ti ti-alert-circle"></i> ${esc(errMsg)}`;
+    }
+    if (titleEl) titleEl.textContent = 'Analyse mislukt';
+  } else {
+    const score = data?.item?.score != null ? Number(data.item.score).toFixed(1) : '?';
+    if (resultEl) {
+      resultEl.style.display = '';
+      resultEl.className = 'analyze-result result-success';
+      resultEl.innerHTML = `<strong>✓ ${esc(companyName)} toegevoegd!</strong> Score: ${score}/10 &nbsp;—&nbsp; <a href="#" onclick="event.preventDefault();setView('inbox')">Bekijk in inbox →</a>`;
+    }
+    if (titleEl) titleEl.textContent = 'Analyse voltooid';
+    ['custCompany','custWebsite','custEmail','custInstagram','custLocation'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+    const warn = document.getElementById('dupWarning');
+    if (warn) warn.style.display = 'none';
+  }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-wand"></i> Voeg toe en analyseer'; }
+}
+

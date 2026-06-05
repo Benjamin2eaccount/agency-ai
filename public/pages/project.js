@@ -3906,124 +3906,9 @@ function buildPortalTab(lead) {
   `;
 }
 
-async function testImapConnection() {
-  const btn = document.getElementById('testImapBtn');
-  const result = document.getElementById('imapTestResult');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner"></div> Verbinden...'; }
-  if (result) result.style.display = 'none';
-
-  try {
-    const res = await api('/api/settings/test-imap', { method: 'POST' });
-    const d   = await res.json();
-    if (result) {
-      result.style.display = '';
-      if (d.success) {
-        result.innerHTML = `<div class="inline-result inline-result-ok"><i class="ti ti-check"></i> ${esc(d.message)}</div>`;
-      } else {
-        result.innerHTML = `<div class="inline-result inline-result-err"><i class="ti ti-x"></i> ${esc(d.error)}</div>`;
-      }
-    }
-  } catch (e) {
-    if (result) {
-      result.style.display = '';
-      result.innerHTML = `<div class="inline-result inline-result-err"><i class="ti ti-x"></i> ${esc(e.message)}</div>`;
-    }
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-plug-connected"></i> Test IMAP verbinding'; }
-  }
-}
-
-function generateWebhookToken() {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let token = '';
-  for (let i = 0; i < 32; i++) token += chars[Math.floor(Math.random() * chars.length)];
-  const input = document.getElementById('webhookToken');
-  if (input) { input.value = token; updateWebhookUrl(); }
-}
-
-function updateWebhookUrl() {
-  const token = document.getElementById('webhookToken')?.value || '';
-  const display = document.getElementById('webhookUrlDisplay');
-  if (display) {
-    display.textContent = token
-      ? window.location.origin + '/api/gmail/webhook?token=' + token
-      : 'Sla eerst een token op';
-  }
-}
-
-async function saveWebhookSettings() {
-  const token = document.getElementById('webhookToken')?.value || '';
-  const enabled = document.getElementById('webhookEnabled')?.checked ?? false;
-  if (enabled && !token) { toast('Genereer eerst een token', 'error'); return; }
-  const res = await api('/api/settings/gmail', {
-    method: 'PATCH',
-    body: JSON.stringify({ webhookToken: token, webhookConfigured: enabled })
-  });
-  if (res.ok) {
-    updateWebhookUrl();
-    toast('Webhook instellingen opgeslagen', 'success');
-  } else {
-    toast('Opslaan mislukt', 'error');
-  }
-}
-
-function copyWebhookUrl() {
-  const url = document.getElementById('webhookUrlDisplay')?.textContent || '';
-  if (!url || url === 'Sla eerst een token op') { toast('Geen URL beschikbaar', 'error'); return; }
-  copyText(url, 'Webhook URL gekopieerd');
-}
-
-function toggleWebhookInstructions() {
-  const panel = document.getElementById('webhookInstructions');
-  const chevron = document.getElementById('webhookInstrChevron');
-  if (!panel) return;
-  const open = panel.style.display === 'none';
-  panel.style.display = open ? 'block' : 'none';
-  if (chevron) chevron.style.transform = open ? 'rotate(180deg)' : '';
-}
-
-
-async function triggerBackup() {
-  const btn = document.getElementById('backupNowBtn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i> Bezig...'; }
-  try {
-    const res = await api('/api/backup/run', { method: 'POST', body: JSON.stringify({}) });
-    if (res.ok) {
-      const data = await res.json();
-      toast('Backup aangemaakt: ' + (data.filename || ''), 'success');
-      await loadBackupList();
-    } else {
-      toast('Backup mislukt', 'error');
-    }
-  } catch (err) {
-    toast('Backup mislukt: ' + err.message, 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-database-export"></i> Backup nu uitvoeren'; }
-  }
-}
-
-async function loadBackupList() {
-  const container = document.getElementById('backupList');
-  if (!container) return;
-  try {
-    const res = await api('/api/backup/list');
-    if (!res.ok) return;
-    const data = await res.json();
-    const backups = data.backups || [];
-    if (!backups.length) { container.innerHTML = ''; return; }
-    const rows = backups.map(b => {
-      const kb = Math.round(b.size / 1024);
-      const date = new Date(b.createdAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
-      return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:13px">' +
-        '<i class="ti ti-file-description" style="color:var(--text-secondary);font-size:14px"></i>' +
-        '<span style="flex:1;color:var(--text-secondary)">' + b.filename + '</span>' +
-        '<span style="color:#9ca3af">' + kb + ' KB</span>' +
-        '<span style="color:#9ca3af">' + date + '</span>' +
-        '</div>';
-    }).join('');
-    container.innerHTML = '<div style="margin-top:4px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Recente backups</div>' + rows + '</div>';
-  } catch { /* ignore */ }
-}
+// testImapConnection, generateWebhookToken, updateWebhookUrl, saveWebhookSettings,
+// copyWebhookUrl, toggleWebhookInstructions, triggerBackup, loadBackupList
+// were moved to instellingen.js (they operate on settings-page DOM elements)
 
 
 async function generatePortalLink(leadId) {
@@ -4072,7 +3957,7 @@ function esc(str) {
 
 // ─── Upsell email ────────────────────────────────────────────────────────────
 
-async function generateUpsellEmail(leadId) {
+window.generateUpsellEmail = async function generateUpsellEmail(leadId) {
   openModal(`
     <div class="modal-header">
       <h3>Upsell email genereren</h3>
@@ -4839,15 +4724,7 @@ async function deleteDoc(leadId, docId) {
   } else toast('Verwijderen mislukt', 'error');
 }
 
-async function saveWeeklyUpdatesSetting(enabled) {
-  const res = await api('/api/settings/automation', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ weeklyUpdatesEnabled: enabled })
-  });
-  if (res?.ok) toast(enabled ? 'Weekupdates ingeschakeld' : 'Weekupdates uitgeschakeld', 'success');
-  else toast('Opslaan mislukt', 'error');
-}
+// saveWeeklyUpdatesSetting moved to instellingen.js (called from settings-page HTML)
 
 async function sendWeeklyUpdate(leadId) {
   const btn = document.querySelector(`button[onclick="sendWeeklyUpdate('${leadId}')"]`);

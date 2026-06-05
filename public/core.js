@@ -1378,3 +1378,7 @@ window.initKanbanDrag       = window.initKanbanDrag       || function() {};
 window.renderKanban         = window.renderKanban         || function() {};
 window.getNextRunTime       = window.getNextRunTime       || function() { return { label: '—', countdown: '—', target: null }; };
 window.startCountdown       = window.startCountdown       || function() {};
+window.generateUpsellEmail      = window.generateUpsellEmail      || function() {};
+window.sendUpsellEmail          = window.sendUpsellEmail          || function() {};
+window.openRetryEmailSection    = window.openRetryEmailSection    || function() {};
+window.submitRetryEmail         = window.submitRetryEmail         || function() {};

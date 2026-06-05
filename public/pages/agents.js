@@ -285,3 +285,10 @@ async function showAgentSummary(num, name, icon) {
   body.innerHTML = `<p style="font-size:14px;line-height:1.75;color:var(--text-primary)">${text.replace(/\n/g,'<br>')}</p>`;
 }
 
+async function resetAbMemory(key) {
+  if (!confirm('A/B data resetten voor deze niche? De auto-pick wordt gewist en beide versies worden weer afgewisseld.')) return;
+  const res = await api(`/api/memory/${encodeURIComponent(key)}/reset-ab`, { method: 'POST' });
+  if (res.ok) { toast('A/B reset — beide versies worden weer afgewisseld', 'success'); setView('agents'); }
+  else toast('Reset mislukt', 'error');
+}
+
