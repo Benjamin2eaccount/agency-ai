@@ -538,11 +538,8 @@ function showShortcutsOverlay() {
 function updateSidebarLogo(logoUrl) {
   const logoIcon = document.querySelector('.logo-icon');
   if (!logoIcon) return;
-  if (logoUrl) {
-    logoIcon.innerHTML = `<img src="${logoUrl}" style="width:26px;height:26px;object-fit:contain;border-radius:4px;display:block">`;
-  } else {
-    logoIcon.innerHTML = '<i class="ti ti-bolt"></i>';
-  }
+  const src = logoUrl || '/images/agency_ai_logo_dark.png';
+  logoIcon.innerHTML = `<img src="${src}" style="height:28px;max-width:120px;object-fit:contain;display:block">`;
 }
 
 // ─── Inbox badge ──────────────────────────────────────────────────────────────

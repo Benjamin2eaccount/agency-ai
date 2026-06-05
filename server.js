@@ -814,7 +814,7 @@ function buildEmailHTML(body, agencyName, myName, myTitle, trackingToken, opts) 
   opts = opts || {};
   const myEmail = opts.myEmail || '';
   const calendlyLink = opts.calendlyLink || '';
-  const logoUrl = opts.logoUrl || '';
+  const logoUrl = opts.logoUrl || (BASE_URL + '/images/agency_ai_logo_dark.png');
   const baseUrl = BASE_URL;
 
   const e = function(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };

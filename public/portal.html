@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Projectstatus</title>
-  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
-  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="icon" href="/images/agency_ai_logo_dark.png" type="image/png">
+  <link rel="apple-touch-icon" href="/images/agency_ai_logo_dark.png">
   <link rel="manifest" href="/portal-manifest.json">
   <meta name="theme-color" content="#6366f1">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1202,8 +1202,8 @@
           <div className="agency-header">
             <div className="agency-logo">
               {data.agencyLogo
-                ? <img src={data.agencyLogo} style={{width:26,height:26,objectFit:'contain',borderRadius:4}} alt={data.agencyName} />
-                : <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>}
+                ? <img src={data.agencyLogo} style={{height:32,maxWidth:120,objectFit:'contain',display:'block'}} alt={data.agencyName} />
+                : <img src="/images/agency_ai_logo_dark.png" style={{height:32,maxWidth:120,objectFit:'contain',display:'block'}} alt="Agency AI" />}
             </div>
             <div className="agency-name">{data.agencyName}</div>
           </div>
