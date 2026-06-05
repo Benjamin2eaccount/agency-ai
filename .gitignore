@@ -6,3 +6,5 @@ data/
 Thumbs.db
 weppy-project-sync/
 agency-ai/
+# Desktop app binaries — too large for git (>100MB), deploy to Railway separately
+public/downloads/

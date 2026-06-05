@@ -2375,7 +2375,14 @@ app.get('/download/windows', (req, res) => {
 // ── Secret desktop app download links (not linked anywhere on the site) ──────
 app.get('/dl/agencyai-win-x64-v1', (req, res) => {
   const zip = path.join(__dirname, 'public', 'downloads', 'Agency-AI-Windows-x64.zip');
-  if (!fs.existsSync(zip)) return res.status(404).send('Niet beschikbaar');
+  if (!fs.existsSync(zip)) {
+    // Binary not deployed yet — return helpful JSON instead of blank 404
+    return res.status(503).json({
+      available: false,
+      version: DESKTOP_VERSION,
+      message: 'Download tijdelijk niet beschikbaar. Probeer het later opnieuw.',
+    });
+  }
   // Log the download
   try {
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
@@ -2384,7 +2391,7 @@ app.get('/dl/agencyai-win-x64-v1', (req, res) => {
       .prepare('INSERT INTO download_logs (platform, ip, user_agent) VALUES (?, ?, ?)')
       .run('windows', ip, ua);
   } catch (e) { console.warn('[Download] Log failed:', e.message); }
-  res.download(zip, 'Agency-AI-Windows.zip');
+  res.download(zip, `Agency-AI-${DESKTOP_VERSION}-Windows.zip`);
 });
 
 app.get('/dl/agencyai-mac-x64-v1', (req, res) => {
@@ -2392,10 +2399,10 @@ app.get('/dl/agencyai-mac-x64-v1', (req, res) => {
 });
 
 // ── Auto-update feed routes (public, consumed by electron-updater) ────────────
-const DESKTOP_VERSION = '1.0.0';
+const DESKTOP_VERSION = '1.1.0';
 const DESKTOP_RELEASE_DATE = '2026-06-05';
-const DESKTOP_WIN_SHA512 = 'MgHjTRMkR5vbWWA2aWTnpL7Yo/pxfdlqOSTeyX9QsHG9vbOSl7LWErmw+FU10R+sXAeNAmlgG9OQud2vANeL+Q==';
-const DESKTOP_WIN_SIZE = 107486652;
+const DESKTOP_WIN_SHA512 = 'NR5BysHHn43ZsYhN6ZG5gHu9HS5mQalVsUbytzEoBjwucJ9CfppaVAGqGGP1WTP78eyLTMYb9gA9nKtk4xRVGw==';
+const DESKTOP_WIN_SIZE = 107963691;
 const DESKTOP_WIN_FILE = 'Agency-AI-Windows.zip';
 
 app.get('/update/latest', (req, res) => {
