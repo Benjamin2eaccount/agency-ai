@@ -117,6 +117,17 @@ db.exec(`
   )
 `);
 
+// ── Desktop app download logs ─────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS download_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform TEXT,
+    ip TEXT,
+    user_agent TEXT,
+    downloaded_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
 // Seed default templates if empty
 const tmplCount = db.prepare('SELECT COUNT(*) as c FROM website_templates').get();
 if (tmplCount.c === 0) {

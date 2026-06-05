@@ -1,9 +1,43 @@
-const { app, BrowserWindow, Menu, Tray, shell, nativeImage } = require('electron')
+const { app, BrowserWindow, Menu, Tray, shell, nativeImage, dialog } = require('electron')
+const { autoUpdater } = require('electron-updater')
 const path = require('path')
 
 let mainWindow
 let tray
 
+// ── Auto-updater config ───────────────────────────────────────────────────────
+autoUpdater.setFeedURL({
+  provider: 'generic',
+  url: 'https://www.agencyai.info/update/',
+})
+autoUpdater.autoDownload = true
+autoUpdater.autoInstallOnAppQuit = true
+
+autoUpdater.on('update-available', () => {
+  if (mainWindow) {
+    mainWindow.webContents.executeJavaScript(`
+      window.showToast && window.showToast('Update beschikbaar! Wordt gedownload...', 'info')
+    `).catch(() => {})
+  }
+})
+
+autoUpdater.on('update-downloaded', () => {
+  dialog.showMessageBox({
+    type: 'info',
+    title: 'Update gereed',
+    message: 'Agency AI is bijgewerkt. Herstart om de update te installeren.',
+    buttons: ['Nu herstarten', 'Later'],
+    defaultId: 0,
+  }).then(result => {
+    if (result.response === 0) autoUpdater.quitAndInstall()
+  })
+})
+
+autoUpdater.on('error', (err) => {
+  console.warn('[AutoUpdater] Error:', err.message)
+})
+
+// ── Window ────────────────────────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -24,6 +58,10 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
+    // Check for updates 3s after launch so the window is fully loaded
+    setTimeout(() => {
+      autoUpdater.checkForUpdatesAndNotify().catch(() => {})
+    }, 3000)
   })
 
   mainWindow.on('closed', () => {
@@ -31,6 +69,7 @@ function createWindow() {
   })
 }
 
+// ── System tray ───────────────────────────────────────────────────────────────
 function createTray() {
   const iconPath = path.join(__dirname, 'assets', 'icon.png')
   tray = new Tray(iconPath)
@@ -77,15 +116,14 @@ function createTray() {
   })
 }
 
+// ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   createWindow()
   createTray()
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('activate', () => {
