@@ -1,0 +1,61 @@
+{
+  "name": "agency-ai-desktop",
+  "version": "1.0.0",
+  "description": "Agency AI Desktop App",
+  "main": "main.js",
+  "author": "Benjamin van Hemert",
+  "scripts": {
+    "start": "node launch.js",
+    "build:win": "electron-builder --win nsis",
+    "build:win:zip": "electron-builder --win zip",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux AppImage",
+    "build:all": "electron-builder --win --mac"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "info.agencyai.app",
+    "productName": "Agency AI",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "launch.js",
+      "assets/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "sign": null,
+      "signingHashAlgorithms": null
+    },
+    "forceCodeSigning": false,
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Agency AI"
+    }
+  }
+}
