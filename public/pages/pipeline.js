@@ -61,6 +61,7 @@ async function renderPipeline() {
   state.leads = leads;
 
   const container = document.getElementById('pipelineContent');
+  if (!container) return;
 
   if (leads.length === 0) {
     container.innerHTML = `

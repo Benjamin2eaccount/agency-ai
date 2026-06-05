@@ -1689,6 +1689,7 @@ function attachSettingsHandlers(s) {
     const defaults = await apiJSON('/api/settings/services/defaults');
     if (!defaults) return toast('Laden mislukt', 'error');
     const table = document.getElementById('servicesTable');
+    if (!table) return toast('Diensten tabel niet gevonden', 'error');
     table.innerHTML = defaults.map((svc, i) => `
       <div class="service-row" data-idx="${i}">
         <input type="text" class="svc-name" value="${esc(svc.name)}" placeholder="Dienst naam">

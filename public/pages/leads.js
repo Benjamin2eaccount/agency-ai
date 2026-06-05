@@ -609,6 +609,7 @@ async function renderLeads() {
   if (lbl) lbl.textContent = `${(leads || []).length} BEDRIJVEN`;
 
   const container = document.getElementById('leadsContent');
+  if (!container) return;
 
   if (!leads || leads.length === 0) {
     container.innerHTML = `

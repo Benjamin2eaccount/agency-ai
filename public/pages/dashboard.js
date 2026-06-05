@@ -202,7 +202,9 @@ async function renderDashboard() {
     { label: 'Gereageerd',    count: stats.replies || 0,       color: '#ea580c' }
   ];
   const maxCount = Math.max(...funnelStages.map(s => s.count), 1);
-  document.getElementById('funnelChart').innerHTML = funnelStages.map((s, i) => {
+  const funnelEl = document.getElementById('funnelChart');
+  if (!funnelEl) return;
+  funnelEl.innerHTML = funnelStages.map((s, i) => {
     const width = Math.max(30, Math.round((s.count / maxCount) * 100));
     return `
       <div class="funnel-row">

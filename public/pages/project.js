@@ -4526,6 +4526,7 @@ async function savePayment(leadId) {
   const amount     = btwEnabled ? Math.round((amountExcl + btwAmt) * 100) / 100 : amountExcl;
   const description = btwEnabled ? `${desc} (incl. ${btwRate}% BTW)` : desc;
   const btn = document.getElementById('savePayBtn');
+  if (!btn) return;
   btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...';
   const res  = await api(`/api/leads/${leadId}/payments`, { method: 'POST', body: JSON.stringify({ type, amount, description, billing, method, dueDate, splitParts }) });
   const data = await res.json();

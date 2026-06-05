@@ -2580,12 +2580,22 @@ app.post('/api/claude', async (req, res) => {
       })
     });
 
-    const data = await response.json();
+    let data;
+    try { data = await response.json(); } catch { data = {}; }
+
     if (!response.ok) {
-      return res.status(500).json({ error: data.error?.message || 'Claude API fout' });
+      const errMsg = data.error?.message || data.error || `Claude API HTTP ${response.status}`;
+      console.error('[/api/claude] API error:', errMsg);
+      return res.status(502).json({ error: errMsg });
     }
 
-    const text = data.content[0].text;
+    const textBlock = Array.isArray(data.content) ? data.content.find(b => b.type === 'text') : null;
+    const text = textBlock?.text || '';
+    if (!text) {
+      console.error('[/api/claude] Empty response, stop_reason:', data.stop_reason, 'content:', JSON.stringify(data.content));
+      return res.status(500).json({ error: 'Leeg antwoord van Claude API' });
+    }
+
     if (expectJson) {
       const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
       try {
@@ -2598,7 +2608,7 @@ app.post('/api/claude', async (req, res) => {
     }
     res.json({ result: text });
   } catch (err) {
-    console.error('Claude error:', err.message);
+    console.error('[/api/claude] Unexpected error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
