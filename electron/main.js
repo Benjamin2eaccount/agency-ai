@@ -48,7 +48,7 @@ ipcMain.handle('open-account', (e, account) => {
 
   // Create main window first, close launcher only after it is ready to show
   // (closing launcher before the window exists fires window-all-closed → app quits)
-  createWindow(account.url)
+  createMainWindow(account.url, account.id)
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
     if (launcher && !launcher.isDestroyed()) {
@@ -118,6 +118,7 @@ function createLauncherWindow() {
       // This is safe: launcher only loads a local file, never remote content
       nodeIntegration:  true,
       contextIsolation: false,
+      partition: 'persist:launcher',
     },
   })
   launcher.loadFile(path.join(__dirname, 'launcher', 'index.html'))
@@ -125,7 +126,9 @@ function createLauncherWindow() {
 }
 
 // ── Main window ───────────────────────────────────────────────────────────────
-function createWindow(url = 'https://www.agencyai.info/app/') {
+// Each account gets its own isolated session via its id as the partition key.
+// "persist:" prefix means the session (cookies, localStorage) survives restarts.
+function createMainWindow(url = 'https://www.agencyai.info/app/', accountId = 'default') {
   mainWindow = new BrowserWindow({
     width:    1400,
     height:   900,
@@ -139,15 +142,11 @@ function createWindow(url = 'https://www.agencyai.info/app/') {
     webPreferences: {
       nodeIntegration:  false,
       contextIsolation: true,
+      partition: 'persist:account_' + accountId,
     },
   })
 
   mainWindow.loadURL(url)
-
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show()
-  })
-
   mainWindow.on('closed', () => { mainWindow = null })
 }
 
