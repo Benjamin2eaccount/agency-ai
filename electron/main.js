@@ -1,6 +1,6 @@
 const {
   app, BrowserWindow, Menu, Tray,
-  shell, dialog, ipcMain,
+  shell, dialog, ipcMain, globalShortcut,
 } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const path = require('path')
@@ -198,6 +198,33 @@ function createTray() {
 app.whenReady().then(() => {
   createLauncherWindow()   // show launcher first, not the main window
   createTray()
+
+  // ── Global keyboard shortcuts ───────────────────────────────────────────
+  // F5 — reload the main app window
+  globalShortcut.register('F5', () => {
+    if (mainWindow) mainWindow.reload()
+  })
+
+  // Ctrl/Cmd+Shift+A — close main window and go back to account launcher
+  globalShortcut.register('CommandOrControl+Shift+A', () => {
+    if (mainWindow) mainWindow.close()
+    createLauncherWindow()
+  })
+
+  // Ctrl/Cmd+Shift+I — toggle DevTools in the main window
+  globalShortcut.register('CommandOrControl+Shift+I', () => {
+    if (mainWindow) mainWindow.webContents.toggleDevTools()
+  })
+
+  // F11 — toggle fullscreen
+  globalShortcut.register('F11', () => {
+    if (mainWindow) mainWindow.setFullScreen(!mainWindow.isFullScreen())
+  })
+})
+
+// Unregister all shortcuts when the app is about to quit
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })
 
 app.on('window-all-closed', () => {
