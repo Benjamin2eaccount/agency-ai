@@ -363,9 +363,21 @@ app.use((req, res, next) => {
   const sitePath = path.join(__dirname, 'public', 'sites', siteSlug, 'website.html');
   const fallback = path.join(__dirname, 'public', 'sites', siteSlug, 'index.html');
   const file = fs.existsSync(sitePath) ? sitePath : fs.existsSync(fallback) ? fallback : null;
-  if (!file) return next();
-  console.log(`[CustomDomain] ${host} → ${file}`);
-  res.sendFile(file);
+  if (file) {
+    console.log(`[CustomDomain] ${host} → ${file}`);
+    return res.sendFile(file);
+  }
+  // Filesystem miss — try DB (Railway ephemeral FS resets on redeploy)
+  if (lead.generatedSite?.html) {
+    const restorePath = fallback;
+    try {
+      fs.mkdirSync(path.dirname(restorePath), { recursive: true });
+      fs.writeFileSync(restorePath, lead.generatedSite.html, 'utf8');
+    } catch (e) { /* ignore */ }
+    console.log(`[CustomDomain] ${host} → served from DB`);
+    return res.setHeader('Content-Type', 'text/html; charset=utf-8').send(lead.generatedSite.html);
+  }
+  return next();
 });
 
 // ─── Public config (no auth) ─────────────────────────────────────────────────
@@ -1786,7 +1798,7 @@ Use ${colors.primary} as accent color. Scroll-triggered animations. Mobile respo
         const updatedLeads = readJSON('leads.json') || [];
         const updIdx = updatedLeads.findIndex(l => l.id === freshLead.id);
         if (updIdx !== -1) {
-          updatedLeads[updIdx].generatedSite = { siteSlug, siteUrl, generatedAt: new Date().toISOString(), content, status: 'preview', feedback: [] };
+          updatedLeads[updIdx].generatedSite = { siteSlug, siteUrl, generatedAt: new Date().toISOString(), content, status: 'preview', feedback: [], html: siteHtml };
           addLeadHistory(updatedLeads, freshLead.id, { event: 'siteGenerated', label: `Website auto-gegenereerd na intake: ${siteUrl}` });
           writeJSON('leads.json', updatedLeads);
         }
@@ -4506,7 +4518,8 @@ Geef ALLEEN de volledige HTML terug. Geen uitleg, geen markdown, geen backticks.
       template,
       content, status: leads[idx].generatedSite?.status || 'preview',
       feedback: leads[idx].generatedSite?.feedback || [],
-      versions: leads[idx].generatedSite?.versions || []
+      versions: leads[idx].generatedSite?.versions || [],
+      html: siteHtml   // stored in DB so the file can be restored after Railway redeploy
     };
     addLeadHistory(leads, lead.id, { event: 'siteGenerated', label: `Website gegenereerd: ${siteUrl}` });
     writeJSON('leads.json', leads);
@@ -11868,10 +11881,27 @@ app.get('/extension-download', (req, res) => {
 
 // ─── Generated client sites ───────────────────────────────────────────────────
 app.get('/sites/:siteSlug', (req, res) => {
-  if (!/^[a-z0-9-]+$/.test(req.params.siteSlug)) return res.status(404).send('<h1>Website niet gevonden</h1>');
-  const sitePath = path.join(__dirname, 'public', 'sites', req.params.siteSlug, 'index.html');
-  if (!fs.existsSync(sitePath)) return res.status(404).send('<h1>Website niet gevonden</h1>');
-  res.sendFile(sitePath);
+  const slug = req.params.siteSlug;
+  if (!/^[a-z0-9-]+$/.test(slug)) return res.status(404).send('<h1>Website niet gevonden</h1>');
+  const sitePath = path.join(__dirname, 'public', 'sites', slug, 'index.html');
+  if (fs.existsSync(sitePath)) return res.sendFile(sitePath);
+
+  // Filesystem miss — try DB (Railway ephemeral FS resets on redeploy)
+  const leads = readJSON('leads.json') || [];
+  for (const lead of leads) {
+    const siteSlug = lead.generatedSite?.siteSlug ||
+      (lead.companyName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (siteSlug !== slug) continue;
+    if (lead.generatedSite?.html) {
+      try {
+        fs.mkdirSync(path.dirname(sitePath), { recursive: true });
+        fs.writeFileSync(sitePath, lead.generatedSite.html, 'utf8');
+      } catch (e) { /* ignore */ }
+      return res.setHeader('Content-Type', 'text/html; charset=utf-8').send(lead.generatedSite.html);
+    }
+  }
+
+  res.status(404).send('<h1>Website niet gevonden</h1>');
 });
 
 // ── GET /api/sites/:slug/domain-config — DNS setup instructions ──────────────
@@ -12703,6 +12733,52 @@ const CHANGELOG = [
 ];
 
 app.get('/api/changelog', requireAdmin, (req, res) => res.json(CHANGELOG));
+
+// ─── DB-backed fallback for built site files (Railway ephemeral filesystem) ───
+// Files in public/sites/ are lost on redeploy. Serve from DB if file missing.
+app.get('/sites/:slug/:filename', (req, res, next) => {
+  const { slug, filename } = req.params;
+  if (!/^[a-z0-9-]+$/.test(slug)) return next();
+  if (!/^[a-z0-9._-]+$/i.test(filename)) return next();
+
+  const leads = readJSON('leads.json') || [];
+
+  // 1. Search agentDeliverables (build-all-services output)
+  for (const lead of leads) {
+    for (const d of (lead.agentDeliverables || [])) {
+      if (!d.html) continue;
+      const dUrl = d.url || '';
+      if (dUrl.endsWith(`/${slug}/${filename}`) || dUrl.includes(`/sites/${slug}/${filename}`)) {
+        // Restore to disk as a cache so static middleware handles future hits
+        const filePath = path.join(__dirname, 'public', 'sites', slug, filename);
+        try {
+          fs.mkdirSync(path.dirname(filePath), { recursive: true });
+          fs.writeFileSync(filePath, d.html, 'utf8');
+          console.log(`[Sites] Restored ${slug}/${filename} from DB (${d.html.length} bytes)`);
+        } catch (e) { /* ignore write errors on read-only FS */ }
+        return res.setHeader('Content-Type', 'text/html; charset=utf-8').send(d.html);
+      }
+    }
+
+    // 2. Search generatedSite.html (generate-site output, stored since this fix)
+    if (filename === 'index.html' || filename === 'website.html') {
+      const siteSlug = lead.generatedSite?.siteSlug ||
+        (lead.companyName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      if (siteSlug === slug && lead.generatedSite?.html) {
+        const filePath = path.join(__dirname, 'public', 'sites', slug, filename);
+        try {
+          fs.mkdirSync(path.dirname(filePath), { recursive: true });
+          fs.writeFileSync(filePath, lead.generatedSite.html, 'utf8');
+          console.log(`[Sites] Restored ${slug}/${filename} from generatedSite DB`);
+        } catch (e) { /* ignore */ }
+        return res.setHeader('Content-Type', 'text/html; charset=utf-8').send(lead.generatedSite.html);
+      }
+    }
+  }
+
+  // Not found in DB — fall through to SPA catch-all
+  next();
+});
 
 // ─── SPA fallback ─────────────────────────────────────────────────────────────
 
