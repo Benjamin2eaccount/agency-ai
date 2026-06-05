@@ -10,18 +10,17 @@
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      --bg:        #0a0a0f;
-      --surface:   #131320;
-      --surface2:  #0f1019;
-      --border:    #1e2035;
-      --border2:   #252840;
-      --indigo:    #6366f1;
-      --indigo-d:  #4f46e5;
+      --bg:       #0a0a0f;
+      --surface:  #131320;
+      --border:   #1e2035;
+      --border2:  #252840;
+      --indigo:   #6366f1;
+      --indigo-d: #4f46e5;
       --indigo-xl: rgba(99,102,241,.12);
-      --text:      #f1f5f9;
-      --text-2:    #94a3b8;
-      --text-3:    #475569;
-      --text-4:    #2d3a52;
+      --text:     #f1f5f9;
+      --text-2:   #94a3b8;
+      --text-3:   #475569;
+      --text-4:   #2d3a52;
     }
 
     html, body {
@@ -33,7 +32,6 @@
       overflow: hidden;
     }
 
-    /* ── Layout ──────────────────────────────────────────────────────────── */
     .shell {
       display: flex;
       flex-direction: column;
@@ -49,7 +47,6 @@
       padding: 20px 28px 0;
       flex-shrink: 0;
     }
-
     .logo-mark {
       width: 34px; height: 34px;
       background: linear-gradient(135deg, var(--indigo) 0%, #8b5cf6 100%);
@@ -59,12 +56,10 @@
       flex-shrink: 0;
       box-shadow: 0 2px 8px rgba(99,102,241,.35);
     }
-
     .app-name {
       font-size: 16px; font-weight: 700; color: var(--text);
       letter-spacing: -.2px;
     }
-
     .version-pill {
       margin-left: auto;
       font-size: 11px; color: var(--text-3);
@@ -80,16 +75,8 @@
       padding: 22px 28px 18px;
       flex-shrink: 0;
     }
-
-    .heading {
-      font-size: 22px; font-weight: 800; color: var(--text);
-      letter-spacing: -.4px;
-    }
-
-    .sub-heading {
-      margin-top: 4px;
-      font-size: 13px; color: var(--text-3);
-    }
+    .heading     { font-size: 22px; font-weight: 800; color: var(--text); letter-spacing: -.4px; }
+    .sub-heading { margin-top: 4px; font-size: 13px; color: var(--text-3); }
 
     /* ── Cards grid ──────────────────────────────────────────────────────── */
     .cards-area {
@@ -101,7 +88,6 @@
       gap: 12px;
       align-content: start;
     }
-
     .cards-area::-webkit-scrollbar { width: 4px; }
     .cards-area::-webkit-scrollbar-track { background: transparent; }
     .cards-area::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
@@ -118,25 +104,20 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
-      min-height: 170px;
+      min-height: 180px;
       animation: cardIn .25s ease both;
     }
-
     @keyframes cardIn {
       from { opacity: 0; transform: translateY(8px); }
       to   { opacity: 1; transform: translateY(0); }
     }
-
     .acc-card:hover {
       border-color: var(--indigo);
       box-shadow: 0 0 0 3px var(--indigo-xl), 0 4px 16px rgba(0,0,0,.35);
       transform: translateY(-2px);
     }
 
-    .card-top {
-      display: flex; align-items: flex-start; gap: 11px;
-    }
-
+    .card-top { display: flex; align-items: flex-start; gap: 11px; }
     .avatar {
       width: 42px; height: 42px;
       border-radius: 11px;
@@ -144,19 +125,13 @@
       font-size: 16px; font-weight: 800; color: #fff;
       flex-shrink: 0;
     }
-
     .card-meta { flex: 1; min-width: 0; }
-
     .card-name {
       font-size: 13.5px; font-weight: 700; color: var(--text);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       line-height: 1.3;
     }
-
-    .card-last {
-      margin-top: 2px;
-      font-size: 11px; color: var(--text-4);
-    }
+    .card-last { margin-top: 2px; font-size: 11px; color: var(--text-4); }
 
     .role-badge {
       display: inline-flex; align-items: center;
@@ -165,7 +140,6 @@
       text-transform: uppercase; letter-spacing: .5px;
       align-self: flex-start;
     }
-
     .role-admin    { background: rgba(99,102,241,.15);  color: #a5b4fc; }
     .role-employee { background: rgba(59,130,246,.15);  color: #93c5fd; }
     .role-client   { background: rgba(232,108,44,.15);  color: #fdba74; }
@@ -174,10 +148,7 @@
       font-size: 11px; color: var(--text-3);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-
-    .card-actions {
-      display: flex; gap: 8px; margin-top: auto;
-    }
+    .card-actions { display: flex; gap: 8px; margin-top: auto; }
 
     .btn-open {
       flex: 1;
@@ -190,14 +161,17 @@
     .btn-open:hover  { background: var(--indigo-d); }
     .btn-open:active { transform: scale(.97); }
 
-    .btn-del {
+    /* Edit + delete icon buttons */
+    .btn-icon {
       width: 34px; height: 34px;
       background: transparent; color: var(--text-3);
       border: 1.5px solid var(--border); border-radius: 9px;
-      cursor: pointer; font-size: 16px; line-height: 1;
+      cursor: pointer; font-size: 14px; line-height: 1;
       transition: all .15s; font-family: inherit;
+      display: flex; align-items: center; justify-content: center;
     }
-    .btn-del:hover { background: rgba(248,113,113,.1); color: #f87171; border-color: #f87171; }
+    .btn-edit:hover { background: rgba(99,102,241,.12); color: #a5b4fc; border-color: var(--indigo); }
+    .btn-del:hover  { background: rgba(248,113,113,.1);  color: #f87171; border-color: #f87171; }
 
     /* Add card */
     .add-card {
@@ -213,10 +187,9 @@
       align-items: center;
       justify-content: center;
       gap: 10px;
-      min-height: 170px;
+      min-height: 180px;
     }
     .add-card:hover { border-color: var(--indigo); background: var(--indigo-xl); }
-
     .add-icon-ring {
       width: 42px; height: 42px;
       border: 2px dashed var(--border2);
@@ -226,11 +199,7 @@
       transition: border-color .18s, color .18s;
     }
     .add-card:hover .add-icon-ring { border-color: var(--indigo); color: #a5b4fc; }
-
-    .add-label {
-      font-size: 12.5px; font-weight: 600; color: var(--text-3);
-      text-align: center; line-height: 1.45;
-    }
+    .add-label { font-size: 12.5px; font-weight: 600; color: var(--text-3); text-align: center; line-height: 1.45; }
     .add-card:hover .add-label { color: #a5b4fc; }
 
     /* ── Footer ──────────────────────────────────────────────────────────── */
@@ -241,7 +210,6 @@
       flex-shrink: 0;
       gap: 16px;
     }
-
     .footer-link {
       font-size: 12px; color: var(--text-4);
       cursor: pointer; transition: color .15s;
@@ -249,7 +217,7 @@
     }
     .footer-link:hover { color: var(--indigo); }
 
-    /* ── Empty / Loading states ──────────────────────────────────────────── */
+    /* ── States ──────────────────────────────────────────────────────────── */
     .state-msg {
       grid-column: 1/-1;
       text-align: center;
@@ -258,11 +226,11 @@
       font-size: 13px;
     }
 
-    /* ── Add-account modal (Step 4 will fill this in) ────────────────────── */
+    /* ── Modal backdrop ──────────────────────────────────────────────────── */
     #addModal {
       display: none;
       position: fixed; inset: 0;
-      background: rgba(0,0,0,.7);
+      background: rgba(0,0,0,.72);
       z-index: 100;
       align-items: center; justify-content: center;
     }
@@ -273,7 +241,9 @@
       border: 1.5px solid var(--border2);
       border-radius: 16px;
       padding: 28px;
-      width: 400px;
+      width: 430px;
+      max-height: 90vh;
+      overflow-y: auto;
       animation: modalIn .2s ease;
     }
     @keyframes modalIn {
@@ -281,15 +251,28 @@
       to   { opacity: 1; transform: scale(1); }
     }
 
-    .modal-title {
-      font-size: 17px; font-weight: 800; color: var(--text);
+    .modal-header {
+      display: flex; align-items: center; gap: 10px;
       margin-bottom: 20px;
     }
+    .modal-title { font-size: 17px; font-weight: 800; color: var(--text); }
+    .modal-close {
+      margin-left: auto;
+      width: 28px; height: 28px;
+      background: transparent; color: var(--text-3);
+      border: none; border-radius: 6px;
+      cursor: pointer; font-size: 18px; line-height: 1;
+      transition: color .15s, background .15s;
+      font-family: inherit;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .modal-close:hover { background: var(--border); color: var(--text); }
 
+    /* Form fields */
     .form-row { margin-bottom: 14px; }
     .form-label {
       display: block;
-      font-size: 12px; font-weight: 600; color: var(--text-2);
+      font-size: 11.5px; font-weight: 600; color: var(--text-2);
       margin-bottom: 5px; text-transform: uppercase; letter-spacing: .5px;
     }
     .form-input, .form-select {
@@ -301,23 +284,63 @@
       outline: none;
     }
     .form-input:focus, .form-select:focus { border-color: var(--indigo); }
-
-    .color-row {
-      display: flex; gap: 8px; flex-wrap: wrap;
+    .form-input.err, .form-select.err     { border-color: #f87171; }
+    .form-error {
+      font-size: 11px; color: #f87171;
+      margin-top: 4px; min-height: 16px;
     }
+
+    /* Color swatches */
+    .color-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     .color-swatch {
-      width: 28px; height: 28px; border-radius: 7px;
-      cursor: pointer; border: 2px solid transparent;
-      transition: border-color .15s, transform .1s;
+      width: 30px; height: 30px; border-radius: 8px;
+      cursor: pointer; border: 2.5px solid transparent;
+      transition: border-color .15s, transform .12s;
+      flex-shrink: 0;
     }
-    .color-swatch.active, .color-swatch:hover {
-      border-color: #fff;
-      transform: scale(1.15);
+    .color-swatch.active, .color-swatch:hover { border-color: #fff; transform: scale(1.18); }
+
+    /* Live card preview */
+    .preview-wrap {
+      margin-bottom: 18px;
+    }
+    .preview-label {
+      font-size: 11.5px; font-weight: 600; color: var(--text-2);
+      margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px;
+    }
+    .preview-card {
+      background: var(--bg);
+      border: 1.5px solid var(--border2);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: border-color .2s;
+    }
+    .preview-avatar {
+      width: 38px; height: 38px;
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 800; color: #fff;
+      flex-shrink: 0;
+      transition: background .2s;
+    }
+    .preview-info { flex: 1; min-width: 0; }
+    .preview-name {
+      font-size: 13px; font-weight: 700; color: var(--text);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .preview-role-badge {
+      display: inline-flex;
+      font-size: 10px; font-weight: 600;
+      padding: 2px 7px; border-radius: 20px;
+      text-transform: uppercase; letter-spacing: .5px;
+      margin-top: 3px;
     }
 
-    .modal-actions {
-      display: flex; gap: 10px; margin-top: 22px;
-    }
+    /* Modal actions */
+    .modal-actions { display: flex; gap: 10px; margin-top: 22px; }
     .btn-modal-cancel {
       flex: 1;
       background: transparent; color: var(--text-2);
@@ -339,45 +362,58 @@
 <body>
   <div class="shell">
 
-    <!-- Top bar -->
     <div class="topbar">
       <div class="logo-mark">A</div>
       <span class="app-name">Agency AI</span>
       <span class="version-pill" id="versionPill">v1.0.0</span>
     </div>
 
-    <!-- Heading -->
     <div class="heading-wrap">
       <div class="heading">Selecteer een account</div>
       <div class="sub-heading">Kies een werkruimte om te openen</div>
     </div>
 
-    <!-- Cards -->
     <div class="cards-area" id="cardsArea">
       <div class="state-msg">Laden…</div>
     </div>
 
-    <!-- Footer -->
     <div class="footer">
-      <span class="footer-link" id="manageLink">Beheer accounts</span>
+      <span class="footer-link" id="manageLink">+ Account toevoegen</span>
       <span style="flex:1"></span>
       <span class="footer-link" id="websiteLink">agencyai.info ↗</span>
     </div>
 
-  </div><!-- .shell -->
+  </div>
 
-  <!-- Add-account modal -->
+  <!-- Add / Edit modal -->
   <div id="addModal">
     <div class="modal-box">
-      <div class="modal-title">+ Nieuw account toevoegen</div>
 
-      <div class="form-row">
-        <label class="form-label">Account naam</label>
-        <input id="fName" class="form-input" placeholder="bijv. Mijn Agency" maxlength="60">
+      <div class="modal-header">
+        <div class="modal-title" id="modalTitle">+ Nieuw account toevoegen</div>
+        <button class="modal-close" id="btnClose" title="Sluiten (Esc)">×</button>
+      </div>
+
+      <!-- Live card preview -->
+      <div class="preview-wrap">
+        <div class="preview-label">Voorbeeld</div>
+        <div class="preview-card" id="previewCard">
+          <div class="preview-avatar" id="previewAvatar" style="background:#6366f1">A</div>
+          <div class="preview-info">
+            <div class="preview-name" id="previewName">Account naam</div>
+            <span class="preview-role-badge role-admin" id="previewBadge">Admin</span>
+          </div>
+        </div>
       </div>
 
       <div class="form-row">
-        <label class="form-label">Type</label>
+        <label class="form-label" for="fName">Account naam</label>
+        <input id="fName" class="form-input" placeholder="bijv. Mijn Agency" maxlength="60">
+        <div class="form-error" id="errName"></div>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label" for="fRole">Type</label>
         <select id="fRole" class="form-select">
           <option value="admin">Admin</option>
           <option value="employee">Medewerker</option>
@@ -386,38 +422,44 @@
       </div>
 
       <div class="form-row">
-        <label class="form-label">URL</label>
+        <label class="form-label" for="fUrl">URL</label>
         <input id="fUrl" class="form-input" placeholder="https://www.agencyai.info/app/">
+        <div class="form-error" id="errUrl"></div>
       </div>
 
       <div class="form-row">
         <label class="form-label">Kleur</label>
-        <div class="color-row" id="colorRow">
-          <!-- swatches injected by JS -->
-        </div>
+        <div class="color-row" id="colorRow"></div>
       </div>
 
       <div class="modal-actions">
         <button class="btn-modal-cancel" id="btnCancel">Annuleren</button>
         <button class="btn-modal-save"   id="btnSave">Toevoegen</button>
       </div>
+
     </div>
   </div>
 
   <script>
-    /* global ipcRenderer, shell injected via nodeIntegration */
     const { ipcRenderer, shell } = require('electron')
 
     // ── Constants ─────────────────────────────────────────────────────────────
     const ROLE_LABELS = { admin: 'Admin', employee: 'Medewerker', client: 'Klant' }
-    const PRESET_COLORS = ['#6366f1','#3B82F6','#E86C2C','#10b981','#f59e0b','#ec4899']
+
+    // Default color per role — auto-selected when role dropdown changes
+    const ROLE_COLORS = { admin: '#6366f1', employee: '#3B82F6', client: '#E86C2C' }
+
+    const PRESET_COLORS = ['#6366f1', '#3B82F6', '#E86C2C', '#10b981', '#f59e0b', '#ec4899']
+
     const DEFAULT_URLS = {
       admin:    'https://www.agencyai.info/app/',
       employee: 'https://www.agencyai.info/app/',
       client:   'https://www.agencyai.info/portal?token=',
     }
-    let selectedColor = '#6366f1'
-    let _accounts = []
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    let selectedColor  = '#6366f1'
+    let editAccountId  = null   // null = add mode, string = edit mode
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     function esc(s) {
@@ -440,14 +482,53 @@
       return (name || '?').split(/\s+/).map(w => w[0] || '').join('').toUpperCase().slice(0, 2)
     }
 
-    // ── Render cards ──────────────────────────────────────────────────────────
+    // ── Live preview ──────────────────────────────────────────────────────────
+    function updatePreview() {
+      const name = document.getElementById('fName').value.trim() || 'Account naam'
+      const role = document.getElementById('fRole').value
+
+      document.getElementById('previewAvatar').style.background = selectedColor
+      document.getElementById('previewAvatar').textContent = initials(name)
+      document.getElementById('previewName').textContent = name
+
+      const badge = document.getElementById('previewBadge')
+      badge.textContent = ROLE_LABELS[role] || role
+      badge.className = `preview-role-badge role-${role}`
+
+      document.getElementById('previewCard').style.borderColor = selectedColor + '55'
+    }
+
+    // ── Color swatches ────────────────────────────────────────────────────────
+    function buildColorSwatches(forceColor) {
+      if (forceColor) selectedColor = forceColor
+      const row = document.getElementById('colorRow')
+      row.innerHTML = ''
+      PRESET_COLORS.forEach(c => {
+        const sw = document.createElement('div')
+        sw.className = 'color-swatch' + (c === selectedColor ? ' active' : '')
+        sw.style.background = c
+        sw.title = c
+        sw.addEventListener('click', () => {
+          selectedColor = c
+          document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'))
+          sw.classList.add('active')
+          updatePreview()
+        })
+        row.appendChild(sw)
+      })
+      updatePreview()
+    }
+
+    // ── Render account cards ──────────────────────────────────────────────────
     function render(accounts) {
-      _accounts = accounts
       const area = document.getElementById('cardsArea')
       area.innerHTML = ''
 
       if (!accounts.length) {
-        area.innerHTML = '<div class="state-msg">Geen accounts — voeg er een toe via het + kaartje.</div>'
+        const empty = document.createElement('div')
+        empty.className = 'state-msg'
+        empty.textContent = 'Geen accounts — klik "+ Account toevoegen" hieronder.'
+        area.appendChild(empty)
       }
 
       accounts.forEach((acc, i) => {
@@ -466,10 +547,15 @@
           <div class="card-url" title="${esc(acc.url)}">${esc(acc.url)}</div>
           <div class="card-actions">
             <button class="btn-open">Open →</button>
-            <button class="btn-del" title="Verwijder account">×</button>
+            <button class="btn-icon btn-edit" title="Bewerken">✎</button>
+            <button class="btn-icon btn-del"  title="Verwijder account">×</button>
           </div>
         `
         card.querySelector('.btn-open').addEventListener('click', () => openAccount(acc))
+        card.querySelector('.btn-edit').addEventListener('click', (e) => {
+          e.stopPropagation()
+          showEditModal(acc)
+        })
         card.querySelector('.btn-del').addEventListener('click', (e) => {
           e.stopPropagation()
           removeAccount(acc)
@@ -477,7 +563,7 @@
         area.appendChild(card)
       })
 
-      // "+" add card
+      // "+" add card at the end
       const addCard = document.createElement('div')
       addCard.className = 'add-card'
       addCard.innerHTML = `
@@ -499,70 +585,114 @@
       render(updated)
     }
 
-    // ── Add modal ─────────────────────────────────────────────────────────────
-    function buildColorSwatches() {
-      const row = document.getElementById('colorRow')
-      row.innerHTML = ''
-      PRESET_COLORS.forEach(c => {
-        const sw = document.createElement('div')
-        sw.className = 'color-swatch' + (c === selectedColor ? ' active' : '')
-        sw.style.background = c
-        sw.title = c
-        sw.addEventListener('click', () => {
-          selectedColor = c
-          document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'))
-          sw.classList.add('active')
-        })
-        row.appendChild(sw)
-      })
-    }
-
+    // ── Modal open / close ────────────────────────────────────────────────────
     function showAddModal() {
-      selectedColor = '#6366f1'
+      editAccountId = null
+      document.getElementById('modalTitle').textContent = '+ Nieuw account toevoegen'
+      document.getElementById('btnSave').textContent    = 'Toevoegen'
       document.getElementById('fName').value = ''
       document.getElementById('fRole').value = 'admin'
       document.getElementById('fUrl').value  = DEFAULT_URLS.admin
-      buildColorSwatches()
+      document.getElementById('errName').textContent = ''
+      document.getElementById('errUrl').textContent  = ''
+      document.getElementById('fName').classList.remove('err')
+      document.getElementById('fUrl').classList.remove('err')
+      buildColorSwatches(ROLE_COLORS.admin)   // start with admin indigo
       document.getElementById('addModal').classList.add('open')
       document.getElementById('fName').focus()
     }
 
-    function hideAddModal() {
-      document.getElementById('addModal').classList.remove('open')
+    function showEditModal(acc) {
+      editAccountId = acc.id
+      document.getElementById('modalTitle').textContent = '✎ Account bewerken'
+      document.getElementById('btnSave').textContent    = 'Opslaan'
+      document.getElementById('fName').value = acc.name
+      document.getElementById('fRole').value = acc.role
+      document.getElementById('fUrl').value  = acc.url
+      document.getElementById('errName').textContent = ''
+      document.getElementById('errUrl').textContent  = ''
+      document.getElementById('fName').classList.remove('err')
+      document.getElementById('fUrl').classList.remove('err')
+      buildColorSwatches(acc.color || ROLE_COLORS[acc.role] || '#6366f1')
+      document.getElementById('addModal').classList.add('open')
+      document.getElementById('fName').focus()
     }
 
-    async function saveNewAccount() {
+    function hideModal() {
+      document.getElementById('addModal').classList.remove('open')
+      editAccountId = null
+    }
+
+    // ── Save (add or edit) ────────────────────────────────────────────────────
+    async function saveAccount() {
       const name = document.getElementById('fName').value.trim()
       const role = document.getElementById('fRole').value
       const url  = document.getElementById('fUrl').value.trim()
-      if (!name) { document.getElementById('fName').focus(); return }
-      if (!url)  { document.getElementById('fUrl').focus();  return }
-      const updated = await ipcRenderer.invoke('add-account', { name, role, url, color: selectedColor })
-      hideAddModal()
+
+      // Validation
+      let valid = true
+      if (!name) {
+        document.getElementById('errName').textContent = 'Vul een naam in.'
+        document.getElementById('fName').classList.add('err')
+        document.getElementById('fName').focus()
+        valid = false
+      } else {
+        document.getElementById('errName').textContent = ''
+        document.getElementById('fName').classList.remove('err')
+      }
+      if (!url || !url.startsWith('http')) {
+        document.getElementById('errUrl').textContent = 'Vul een geldige URL in (begint met https://).'
+        document.getElementById('fUrl').classList.add('err')
+        if (valid) { document.getElementById('fUrl').focus(); valid = false }
+      } else {
+        document.getElementById('errUrl').textContent = ''
+        document.getElementById('fUrl').classList.remove('err')
+      }
+      if (!valid) return
+
+      let updated
+      if (editAccountId) {
+        updated = await ipcRenderer.invoke('edit-account', { id: editAccountId, name, role, url, color: selectedColor })
+      } else {
+        updated = await ipcRenderer.invoke('add-account', { name, role, url, color: selectedColor })
+      }
+      hideModal()
       render(updated)
     }
 
-    // Auto-fill URL when role changes
+    // ── Role change → auto-set URL + color swatch ─────────────────────────────
     document.getElementById('fRole').addEventListener('change', (e) => {
-      document.getElementById('fUrl').value = DEFAULT_URLS[e.target.value] || DEFAULT_URLS.admin
+      const role = e.target.value
+      document.getElementById('fUrl').value = DEFAULT_URLS[role] || DEFAULT_URLS.admin
+      // Auto-select the role's default color and re-render swatches
+      buildColorSwatches(ROLE_COLORS[role] || '#6366f1')
     })
 
-    document.getElementById('btnCancel').addEventListener('click', hideAddModal)
-    document.getElementById('btnSave').addEventListener('click', saveNewAccount)
+    // Live preview updates as user types
+    document.getElementById('fName').addEventListener('input', updatePreview)
+    document.getElementById('fRole').addEventListener('change', updatePreview)
 
-    // Close modal on backdrop click
+    // Submit handlers
+    document.getElementById('btnSave').addEventListener('click', saveAccount)
+    document.getElementById('btnCancel').addEventListener('click', hideModal)
+    document.getElementById('btnClose').addEventListener('click', hideModal)
+
+    // Backdrop click
     document.getElementById('addModal').addEventListener('click', (e) => {
-      if (e.target === document.getElementById('addModal')) hideAddModal()
+      if (e.target === document.getElementById('addModal')) hideModal()
     })
 
-    // Enter key in inputs
-    document.getElementById('fName').addEventListener('keydown', e => { if (e.key === 'Enter') saveNewAccount() })
-    document.getElementById('fUrl').addEventListener('keydown',  e => { if (e.key === 'Enter') saveNewAccount() })
+    // Enter key in text inputs
+    document.getElementById('fName').addEventListener('keydown', e => { if (e.key === 'Enter') saveAccount() })
+    document.getElementById('fUrl').addEventListener('keydown',  e => { if (e.key === 'Enter') saveAccount() })
+
+    // Escape key closes modal
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && document.getElementById('addModal').classList.contains('open')) hideModal()
+    })
 
     // Footer links
-    document.getElementById('websiteLink').addEventListener('click', () => {
-      shell.openExternal('https://www.agencyai.info')
-    })
+    document.getElementById('websiteLink').addEventListener('click', () => shell.openExternal('https://www.agencyai.info'))
     document.getElementById('manageLink').addEventListener('click', showAddModal)
 
     // ── Boot ─────────────────────────────────────────────────────────────────

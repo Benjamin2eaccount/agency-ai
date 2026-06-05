@@ -60,6 +60,14 @@ ipcMain.handle('add-account', (e, account) => {
   return list
 })
 
+ipcMain.handle('edit-account', (e, { id, name, role, url, color }) => {
+  const list = loadAccounts()
+  const idx  = list.findIndex(a => a.id === id)
+  if (idx !== -1) Object.assign(list[idx], { name, role, url, color })
+  saveAccounts(list)
+  return list
+})
+
 ipcMain.handle('delete-account', (e, id) => {
   const list = loadAccounts().filter(a => a.id !== id)
   saveAccounts(list)
