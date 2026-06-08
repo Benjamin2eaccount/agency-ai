@@ -1783,6 +1783,11 @@ app.use('/api/auth', require('./routes/auth')({ readJSON, writeJSON, JWT_SECRET 
 
 // ── Portal routes — migrated to routes/portal.js ────────────────────────────
 
+// Short-code aliases — must come before the catch-all /:token route
+const DEMO_PORTAL_TOKEN = 'demo-klant-portal-2026';
+app.get('/portal/demo',    (_, res) => res.redirect(302, `/portal/${DEMO_PORTAL_TOKEN}`));
+app.get('/portal/DEMO2026',(_, res) => res.redirect(302, `/portal/${DEMO_PORTAL_TOKEN}`));
+
 app.get('/portal/:token', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'portal.html'));
 });

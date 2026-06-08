@@ -353,11 +353,15 @@
         <li>Betaalde factuur zichtbaar</li>
         <li>Live chat met bureau</li>
       </ul>
-      <div class="creds">
-        <span class="creds-label">Toegang</span>
-        <code>Directe portaaltoegang</code>
+      <div class="creds" style="flex-direction:column;align-items:flex-start;gap:10px;">
+        <div style="display:flex;align-items:center;gap:8px;width:100%;">
+          <span class="creds-label">Portaalcode</span>
+          <code id="portalCode" style="font-size:15px;letter-spacing:.12em;color:#fff;background:rgba(249,115,22,.18);border:1px solid rgba(249,115,22,.35);flex:1;text-align:center;padding:4px 8px;">DEMO2026</code>
+          <button onclick="copyCode()" id="copyBtn" title="Kopieer code" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--muted);cursor:pointer;font-size:12px;white-space:nowrap;transition:color .15s">Kopieer</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);">Voer in op <a href="/client" style="color:#fdba74;text-decoration:none;font-weight:600">/client</a> — of open direct hieronder</div>
       </div>
-      <a href="/demo/klant" class="btn btn-client">Open als Klant →</a>
+      <a href="/demo/klant" class="btn btn-client">Open klantportaal →</a>
     </div>
 
   </section>
@@ -377,6 +381,26 @@
     <p>Agency AI &copy; <span id="yr"></span> &nbsp;·&nbsp; <a href="/">Terug naar website</a> &nbsp;·&nbsp; <a href="/login">Admin login</a></p>
     <script>document.getElementById('yr').textContent = new Date().getFullYear();</script>
   </footer>
+
+  <script>
+    function copyCode() {
+      navigator.clipboard.writeText('DEMO2026').then(() => {
+        const btn = document.getElementById('copyBtn');
+        btn.textContent = '✓ Gekopieerd';
+        btn.style.color = '#86efac';
+        setTimeout(() => { btn.textContent = 'Kopieer'; btn.style.color = ''; }, 2000);
+      }).catch(() => {
+        // Fallback for older browsers
+        const el = document.getElementById('portalCode');
+        const range = document.createRange();
+        range.selectNode(el);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        document.execCommand('copy');
+        window.getSelection().removeAllRanges();
+      });
+    }
+  </script>
 
 </body>
 </html>
