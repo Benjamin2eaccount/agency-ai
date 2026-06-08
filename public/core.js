@@ -905,6 +905,30 @@ document.addEventListener('DOMContentLoaded', () => {
   if (userAvatarEl) userAvatarEl.textContent = name[0].toUpperCase();
   if (userRoleEl) userRoleEl.textContent = role === 'admin' ? 'Admin' : 'Medewerker';
 
+  // Demo banner — shown when logged in via /demo/admin or /demo/medewerker
+  if (localStorage.getItem('demoMode') === '1') {
+    const banner = document.createElement('div');
+    banner.id = 'demoBanner';
+    banner.style.cssText = [
+      'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:9999',
+      'background:linear-gradient(90deg,#ea580c,#f97316)',
+      'color:#fff', 'text-align:center', 'padding:7px 40px',
+      'font-size:13px', 'font-weight:600', 'letter-spacing:.02em',
+      'display:flex', 'align-items:center', 'justify-content:center', 'gap:12px',
+    ].join(';');
+    banner.innerHTML = '🎯 Demo modus — dit is een demonstratie account &nbsp;<a href="/demo" style="color:#fff;opacity:.8;font-size:12px;text-decoration:underline">← terug naar demopagina</a>';
+    document.body.prepend(banner);
+    // Shift topbar + content down so banner doesn't overlap
+    document.documentElement.style.setProperty('--demo-banner-h', '34px');
+    const topbar = document.getElementById('topbar');
+    if (topbar) topbar.style.top = '34px';
+    const mainContent = document.getElementById('mainContent');
+    if (mainContent) {
+      const existing = getComputedStyle(mainContent).paddingTop;
+      mainContent.style.paddingTop = `calc(${existing} + 34px)`;
+    }
+  }
+
   // Hide admin-only nav items for employees
   if (!isAdmin()) {
     document.querySelectorAll('[data-admin-only]').forEach(el => el.style.display = 'none');

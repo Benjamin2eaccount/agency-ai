@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agency AI — Live Demo</title>
+  <link rel="icon" href="/images/agency_ai_logo_dark.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0a0a0f;
+      --surface:  #111118;
+      --card:     #16161f;
+      --border:   #232336;
+      --text:     #f0f0f5;
+      --muted:    #7b7b99;
+      --accent:   #6366f1;
+      --accent2:  #8b5cf6;
+      --orange:   #f97316;
+      --green:    #22c55e;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── top bar ── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 40px;
+      height: 64px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(10,10,15,.85);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo img { height: 28px; }
+    .logo-name { font-weight: 700; font-size: 16px; color: var(--text); }
+    .demo-pill {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .back-link {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color .15s;
+    }
+    .back-link:hover { color: var(--text); }
+
+    /* ── hero ── */
+    .hero {
+      text-align: center;
+      padding: 80px 24px 60px;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(99,102,241,.12);
+      border: 1px solid rgba(99,102,241,.3);
+      color: #a5b4fc;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 5px 14px;
+      border-radius: 20px;
+      margin-bottom: 24px;
+    }
+    .hero-badge::before { content: '●'; color: var(--accent); font-size: 8px; }
+    h1 {
+      font-size: clamp(32px, 5vw, 52px);
+      font-weight: 800;
+      line-height: 1.12;
+      background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 16px;
+    }
+    .hero-sub {
+      font-size: 18px;
+      color: var(--muted);
+      max-width: 480px;
+      margin: 0 auto 48px;
+      line-height: 1.6;
+    }
+
+    /* ── cards ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+    @media (max-width: 768px) {
+      .cards { grid-template-columns: 1fr; max-width: 440px; }
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      transition: border-color .2s, transform .2s, box-shadow .2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--card-glow, transparent);
+      opacity: 0;
+      transition: opacity .3s;
+      pointer-events: none;
+    }
+    .card:hover {
+      border-color: var(--card-accent, var(--accent));
+      transform: translateY(-4px);
+      box-shadow: 0 20px 60px rgba(0,0,0,.4);
+    }
+    .card:hover::before { opacity: 1; }
+
+    .card-admin   { --card-accent: #6366f1; --card-glow: radial-gradient(ellipse at top, rgba(99,102,241,.08), transparent 70%); }
+    .card-employee{ --card-accent: #22c55e; --card-glow: radial-gradient(ellipse at top, rgba(34,197,94,.08), transparent 70%); }
+    .card-client  { --card-accent: #f97316; --card-glow: radial-gradient(ellipse at top, rgba(249,115,22,.08), transparent 70%); }
+
+    .card-icon {
+      font-size: 32px;
+      line-height: 1;
+    }
+    .card-tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      padding: 3px 8px;
+      border-radius: 4px;
+      width: fit-content;
+    }
+    .tag-admin    { background: rgba(99,102,241,.15);  color: #a5b4fc; }
+    .tag-employee { background: rgba(34,197,94,.15);   color: #86efac; }
+    .tag-client   { background: rgba(249,115,22,.15);  color: #fdba74; }
+
+    .card h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.2;
+    }
+    .card p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+      flex: 1;
+    }
+    .card-features {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .card-features li {
+      font-size: 13px;
+      color: #9ca3b8;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .card-features li::before {
+      content: '✓';
+      color: var(--card-accent, var(--accent));
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .btn {
+      display: block;
+      text-align: center;
+      text-decoration: none;
+      padding: 13px 20px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      transition: opacity .15s, transform .1s;
+      cursor: pointer;
+      border: none;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-admin    { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; }
+    .btn-employee { background: linear-gradient(135deg, #16a34a, #22c55e); color: #fff; }
+    .btn-client   { background: linear-gradient(135deg, #ea580c, #f97316); color: #fff; }
+    .btn:hover { opacity: .88; }
+
+    /* ── credentials strip ── */
+    .creds {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-top: 4px;
+    }
+    .creds-label { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+    .creds code {
+      font-size: 12px;
+      color: #c4c4e0;
+      background: rgba(255,255,255,.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* ── info section ── */
+    .info-strip {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 48px 24px;
+      text-align: center;
+    }
+    .info-strip h3 { font-size: 18px; font-weight: 700; margin-bottom: 24px; color: var(--text); }
+    .info-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .info-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 20px;
+      font-size: 13px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .info-item strong { color: var(--text); }
+
+    /* ── footer ── */
+    footer {
+      text-align: center;
+      padding: 24px;
+      font-size: 12px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+    footer a { color: var(--muted); text-decoration: none; }
+    footer a:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+
+  <header class="topbar">
+    <a href="/" class="logo">
+      <img src="/images/agency_ai_logo_dark.png" alt="Agency AI">
+      <span class="logo-name">Agency AI</span>
+      <span class="demo-pill">Live Demo</span>
+    </a>
+    <a href="/" class="back-link">← Terug naar website</a>
+  </header>
+
+  <section class="hero">
+    <div class="hero-badge">Interactieve demonstratie</div>
+    <h1>Agency AI — Live Demo</h1>
+    <p class="hero-sub">Kies een rol om te demonstreren. Elke rol toont een ander perspectief van het platform.</p>
+  </section>
+
+  <section class="cards">
+
+    <!-- Admin -->
+    <div class="card card-admin">
+      <div class="card-icon">🔑</div>
+      <span class="card-tag tag-admin">Admin</span>
+      <h2>Volledig beheer</h2>
+      <p>Bekijk leads, inbox, projecten, agents, statistieken en instellingen — het complete platform.</p>
+      <ul class="card-features">
+        <li>12 leads klaar voor beoordeling</li>
+        <li>3 projecten in de pipeline</li>
+        <li>1 afgerond project met deliverables</li>
+        <li>Live statistieken &amp; grafieken</li>
+        <li>Agents &amp; automatisering</li>
+      </ul>
+      <div class="creds">
+        <span class="creds-label">Login</span>
+        <code>admin@demo.agencyai.info</code>
+        <code>Demo2026!</code>
+      </div>
+      <a href="/demo/admin" class="btn btn-admin">Open als Admin →</a>
+    </div>
+
+    <!-- Medewerker -->
+    <div class="card card-employee">
+      <div class="card-icon">👤</div>
+      <span class="card-tag tag-employee">Medewerker</span>
+      <h2>Team toegang</h2>
+      <p>Bekijk taken, klantprojecten en het inbox — zonder toegang tot instellingen en betalingen.</p>
+      <ul class="card-features">
+        <li>Inbox & leads bekijken</li>
+        <li>Projecten & taken beheren</li>
+        <li>Team chat</li>
+        <li>Beperkte rechten (geen admin)</li>
+      </ul>
+      <div class="creds">
+        <span class="creds-label">Login</span>
+        <code>medewerker@demo.agencyai.info</code>
+        <code>Demo2026!</code>
+      </div>
+      <a href="/demo/medewerker" class="btn btn-employee">Open als Medewerker →</a>
+    </div>
+
+    <!-- Klant -->
+    <div class="card card-client">
+      <div class="card-icon">🏢</div>
+      <span class="card-tag tag-client">Klant</span>
+      <h2>Portaal toegang</h2>
+      <p>Bekijk het klantportaal zoals een klant het ziet — project, deliverables, factuur en chat.</p>
+      <ul class="card-features">
+        <li>Project "Website &amp; Marketing"</li>
+        <li>Fase 3 van 5 in uitvoering</li>
+        <li>Website + SEO rapport (klaar)</li>
+        <li>Betaalde factuur zichtbaar</li>
+        <li>Live chat met bureau</li>
+      </ul>
+      <div class="creds">
+        <span class="creds-label">Toegang</span>
+        <code>Directe portaaltoegang</code>
+      </div>
+      <a href="/demo/klant" class="btn btn-client">Open als Klant →</a>
+    </div>
+
+  </section>
+
+  <section class="info-strip">
+    <h3>Over deze demo</h3>
+    <div class="info-grid">
+      <div class="info-item">🔒 <span><strong>Geen echte data</strong> — alle leads zijn fictief</span></div>
+      <div class="info-item">🔄 <span><strong>Live platform</strong> — dezelfde code als productie</span></div>
+      <div class="info-item">⚡ <span><strong>Instant toegang</strong> — klik en je bent binnen</span></div>
+      <div class="info-item">🎯 <span><strong>Volledig functioneel</strong> — alle features actief</span></div>
+      <div class="info-item">🛡️ <span><strong>Veilig</strong> — demo accounts zijn geïsoleerd</span></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Agency AI &copy; <span id="yr"></span> &nbsp;·&nbsp; <a href="/">Terug naar website</a> &nbsp;·&nbsp; <a href="/login">Admin login</a></p>
+    <script>document.getElementById('yr').textContent = new Date().getFullYear();</script>
+  </footer>
+
+</body>
+</html>

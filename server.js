@@ -426,6 +426,46 @@ app.get('/app/:page', (req, res) => {
 // Wildcard catch-all for deep /app/** paths — serves SPA shell, client router takes over
 app.get('/app/*', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
+// ─── Demo routes (public — no auth required) ──────────────────────────────────
+app.get('/demo', (_, res) => res.sendFile(path.join(__dirname, 'public', 'demo.html')));
+
+// Auto-login helper: builds a tiny HTML page that writes JWT + meta to localStorage then redirects
+function _demoAutoLogin(username, redirectTo, req, res) {
+  const users    = readJSON('users.json') || [];
+  const user     = users.find(u => u.username === username);
+  if (!user) return res.redirect('/demo');
+  const settings = readJSON('settings.json') || {};
+  const token    = jwt.sign(
+    { id: user.id, username: user.username, name: user.name, role: user.role,
+      agencyName: settings.agencyName || 'Agency AI', myName: user.name },
+    JWT_SECRET, { expiresIn: '7d' }
+  );
+  const agencyName = JSON.stringify(settings.agencyName || 'Agency AI');
+  const userName   = JSON.stringify(user.name);
+  const userRole   = JSON.stringify(user.role);
+  const userToken  = JSON.stringify(token);
+  res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Demo laden…</title>
+<style>body{margin:0;background:#0a0a0f;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#fff}
+.loader{text-align:center}.spinner{width:40px;height:40px;border:3px solid #333;border-top-color:#6366f1;border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 16px}
+@keyframes spin{to{transform:rotate(360deg)}}</style></head>
+<body><div class="loader"><div class="spinner"></div><p style="color:#9ca3af;font-size:14px">Demo laden…</p></div>
+<script>
+localStorage.setItem('agencyToken',  ${userToken});
+localStorage.setItem('myName',       ${userName});
+localStorage.setItem('agencyRole',   ${userRole});
+localStorage.setItem('agencyName',   ${agencyName});
+localStorage.setItem('demoMode',     '1');
+window.location.href = ${JSON.stringify(redirectTo)};
+</script></body></html>`);
+}
+
+app.get('/demo/admin',      (req, res) => _demoAutoLogin('admin@demo.agencyai.info',      '/app', req, res));
+app.get('/demo/medewerker', (req, res) => _demoAutoLogin('medewerker@demo.agencyai.info', '/app', req, res));
+app.get('/demo/klant', (req, res) => {
+  // Klant goes straight to the portal — no app login needed
+  res.redirect('/portal/demo-klant-portal-2026');
+});
+
 // readJSON / writeJSON are provided by database.js (SQLite-backed)
 
 function addActivity(type, label, opts) {
