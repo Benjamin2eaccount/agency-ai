@@ -51,9 +51,45 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
+      - name: Export IPA
+        working-directory: mobile/ios/App
+        run: |
+          mkdir -p build/ipa
+
+          cat > build/ExportOptions.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>ad-hoc</string>
+            <key>compileBitcode</key>
+            <false/>
+            <key>signingStyle</key>
+            <string>manual</string>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath $PWD/build/App.xcarchive \
+            -exportPath $PWD/build/ipa \
+            -exportOptionsPlist $PWD/build/ExportOptions.plist \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            || true
+
+          echo "=== Build output ==="
+          find build/ -name "*.ipa" -o -name "*.app" | head -20
+
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: AgencyAI-iOS
-          path: mobile/ios/App/build/
+          path: |
+            mobile/ios/App/build/ipa/
+            mobile/ios/App/build/*.xcarchive
           retention-days: 30
