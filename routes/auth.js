@@ -50,11 +50,12 @@ module.exports = function createAuthRouter({ readJSON, writeJSON, JWT_SECRET }) 
     }
     const token = jwt.sign(
       { id: user.id, username: user.username, name: user.name, role: user.role,
+        permissions: user.permissions || null,
         agencyName: settings.agencyName, myName: user.name },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
-    res.json({ token, myName: user.name, agencyName: settings.agencyName, role: user.role });
+    res.json({ token, myName: user.name, agencyName: settings.agencyName, role: user.role, permissions: user.permissions || null });
   });
 
   // ── GET /api/auth/verify ────────────────────────────────────────────────────

@@ -610,6 +610,90 @@ async function deleteWebhook(id) {
   loadWebhooksList();
 }
 
+// ─── Permission definitions ───────────────────────────────────────────────────
+const PERMISSION_GROUPS = [
+  { label: '📊 Data', items: [
+    { id: 'leads_view',    label: 'Leads bekijken' },
+    { id: 'leads_approve', label: 'Leads goedkeuren' },
+    { id: 'leads_delete',  label: 'Leads verwijderen' },
+  ]},
+  { label: '📧 Communicatie', items: [
+    { id: 'inbox_view',    label: 'Inbox bekijken' },
+    { id: 'inbox_reply',   label: 'Emails beantwoorden' },
+  ]},
+  { label: '🏗️ Projecten', items: [
+    { id: 'pipeline_view',   label: 'Pipeline bekijken' },
+    { id: 'projects_view',   label: 'Projecten bekijken' },
+    { id: 'projects_edit',   label: 'Projecten bewerken' },
+    { id: 'builds_create',   label: 'Websites bouwen' },
+    { id: 'builds_approve',  label: 'Deliverables goedkeuren' },
+  ]},
+  { label: '💰 Financieel', items: [
+    { id: 'invoices_view',   label: 'Facturen bekijken' },
+    { id: 'invoices_create', label: 'Facturen aanmaken' },
+    { id: 'billing_view',    label: 'Betalingen bekijken' },
+  ]},
+  { label: '⚙️ Systeem', items: [
+    { id: 'runs_view',      label: 'Runs bekijken' },
+    { id: 'runs_start',     label: 'Runs starten' },
+    { id: 'agents_view',    label: 'Agents bekijken' },
+    { id: 'stats_view',     label: 'Statistieken bekijken' },
+    { id: 'clients_view',   label: 'Klanten bekijken' },
+    { id: 'settings_view',  label: 'Instellingen bekijken' },
+    { id: 'team_manage',    label: 'Team beheren' },
+  ]},
+];
+const ALL_PERMISSIONS    = PERMISSION_GROUPS.flatMap(g => g.items.map(i => i.id));
+const PRESET_MEDEWERKER  = ['leads_view','inbox_view','inbox_reply','pipeline_view','projects_view','builds_create','stats_view','clients_view'];
+const PRESET_READONLY    = ['leads_view','inbox_view','pipeline_view','stats_view'];
+
+function buildPermissionsChecklist(prefix, currentPerms) {
+  const active = Array.isArray(currentPerms) ? currentPerms : [];
+  return `
+    <div style="margin-top:16px;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+      <div style="padding:10px 14px;background:var(--surface-2);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div style="font-size:13px;font-weight:700">Rechten</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button type="button" class="btn btn-ghost btn-xs" onclick="applyPermPreset('${prefix}','all')">Alles</button>
+          <button type="button" class="btn btn-ghost btn-xs" onclick="applyPermPreset('${prefix}','medewerker')">Medewerker</button>
+          <button type="button" class="btn btn-ghost btn-xs" onclick="applyPermPreset('${prefix}','readonly')">Alleen lezen</button>
+          <button type="button" class="btn btn-ghost btn-xs" onclick="applyPermPreset('${prefix}','none')">Geen</button>
+        </div>
+      </div>
+      <div style="padding:12px 14px;display:grid;gap:0">
+        ${PERMISSION_GROUPS.map(g => `
+          <div style="margin-bottom:10px">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${g.label}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              ${g.items.map(p => `
+                <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:${active.includes(p.id)?'var(--accent)':'var(--surface)'};color:${active.includes(p.id)?'#fff':'var(--text)'}">
+                  <input type="checkbox" name="${prefix}_perm" value="${p.id}" ${active.includes(p.id)?'checked':''} style="display:none"
+                    onchange="this.closest('label').style.background=this.checked?'var(--accent)':'var(--surface)';this.closest('label').style.color=this.checked?'#fff':'var(--text)'">
+                  ${p.label}
+                </label>`).join('')}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+function applyPermPreset(prefix, preset) {
+  const presets = { all: ALL_PERMISSIONS, medewerker: PRESET_MEDEWERKER, readonly: PRESET_READONLY, none: [] };
+  const target = presets[preset] || [];
+  document.querySelectorAll(`input[name="${prefix}_perm"]`).forEach(cb => {
+    cb.checked = target.includes(cb.value);
+    const label = cb.closest('label');
+    if (label) {
+      label.style.background = cb.checked ? 'var(--accent)' : 'var(--surface)';
+      label.style.color      = cb.checked ? '#fff' : 'var(--text)';
+    }
+  });
+}
+
+function getCheckedPerms(prefix) {
+  return [...document.querySelectorAll(`input[name="${prefix}_perm"]:checked`)].map(c => c.value);
+}
+
 // ─── Users management helpers ─────────────────────────────────────────────────
 
 async function loadUsersList() {
@@ -617,16 +701,27 @@ async function loadUsersList() {
   if (!el) return;
   const users = await apiJSON('/api/users');
   if (!users) return;
-  el.innerHTML = users.map(u => `
-    <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
-      <div style="width:32px;height:32px;border-radius:50%;background:${u.role==='admin'?'#111':'#6366f1'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${u.name[0].toUpperCase()}</div>
-      <div style="flex:1">
-        <div style="font-size:14px;font-weight:600">${esc(u.name)} <span style="font-size:11px;color:var(--text-secondary)">@${esc(u.username)}</span></div>
-        <span class="badge ${u.role==='admin'?'badge-gray':'badge-blue'}" style="font-size:10px">${u.role==='admin'?'Admin':'Medewerker'}</span>
+  el.innerHTML = users.map(u => {
+    const perms = Array.isArray(u.permissions) ? u.permissions : [];
+    const permBadges = u.role !== 'admin' && perms.length
+      ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${perms.slice(0,5).map(p => `<span style="font-size:10px;background:var(--surface-2);border:1px solid var(--border);padding:1px 6px;border-radius:4px;color:var(--text-muted)">${p}</span>`).join('')}${perms.length > 5 ? `<span style="font-size:10px;color:var(--text-muted)">+${perms.length-5} meer</span>` : ''}</div>`
+      : '';
+    return `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;background:var(--surface)">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:36px;height:36px;border-radius:50%;background:${u.role==='admin'?'#111':'#6366f1'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0">${(u.name||'?')[0].toUpperCase()}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600">${esc(u.name)} <span style="font-size:11px;color:var(--text-secondary)">@${esc(u.username)}</span></div>
+          <span class="badge ${u.role==='admin'?'badge-gray':'badge-blue'}" style="font-size:10px">${u.role==='admin'?'Admin':'Medewerker'}</span>
+          ${permBadges}
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          ${u.role !== 'admin' ? `<button class="btn btn-ghost btn-sm" onclick="openEditPermissions('${u.id}','${esc(u.name).replace(/'/g,"\\'")}',${JSON.stringify(JSON.stringify(perms))})"><i class="ti ti-shield"></i></button>` : ''}
+          ${u.id !== '1' ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteUser('${u.id}','${esc(u.name).replace(/'/g,"\\'")}')"><i class="ti ti-trash"></i></button>` : '<span style="font-size:11px;color:var(--text-secondary)">Hoofd-admin</span>'}
+        </div>
       </div>
-      ${u.id !== '1' ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteUser('${u.id}','${esc(u.name).replace(/'/g,"\\'")}')"><i class="ti ti-trash"></i></button>` : '<span style="font-size:11px;color:var(--text-secondary)">Hoofd-admin</span>'}
-    </div>
-  `).join('') || '<p class="text-secondary" style="font-size:13px">Geen gebruikers gevonden.</p>';
+    </div>`;
+  }).join('') || '<p class="text-secondary" style="font-size:13px">Geen gebruikers gevonden.</p>';
 }
 
 async function addUser() {
@@ -635,7 +730,8 @@ async function addUser() {
   const password = document.getElementById('newUserPassword')?.value;
   const role = document.getElementById('newUserRole')?.value;
   if (!name || !username || !password) { toast('Vul alle velden in.', 'error'); return; }
-  const res = await api('/api/users', { method: 'POST', body: JSON.stringify({ name, username, password, role }) });
+  const permissions = role === 'employee' ? getCheckedPerms('newUser') : null;
+  const res = await api('/api/users', { method: 'POST', body: JSON.stringify({ name, username, password, role, permissions }) });
   if (res?.ok) {
     toast(`${name} aangemaakt als ${role === 'admin' ? 'Admin' : 'Medewerker'}.`, 'success');
     ['newUserName','newUserUsername','newUserPassword'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
@@ -644,6 +740,27 @@ async function addUser() {
     const d = res ? await res.json().catch(() => ({})) : {};
     toast(d.error || 'Aanmaken mislukt.', 'error');
   }
+}
+
+function openEditPermissions(userId, userName, permsJson) {
+  const perms = JSON.parse(permsJson || '[]');
+  openModal(`
+    <div style="padding:20px;max-height:80vh;overflow-y:auto">
+      <div style="font-size:16px;font-weight:700;margin-bottom:4px">Rechten — ${esc(userName)}</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:0">Selecteer wat ${esc(userName)} mag doen:</div>
+      ${buildPermissionsChecklist('editUser', perms)}
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn btn-primary" onclick="saveUserPermissions('${userId}')">Opslaan</button>
+        <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
+      </div>
+    </div>`);
+}
+
+async function saveUserPermissions(userId) {
+  const permissions = getCheckedPerms('editUser');
+  const res = await api(`/api/users/${userId}`, { method: 'PATCH', body: JSON.stringify({ permissions }) });
+  if (res?.ok) { toast('Rechten opgeslagen.', 'success'); closeModal(); loadUsersList(); }
+  else toast('Opslaan mislukt.', 'error');
 }
 
 async function deleteUser(id, name) {
@@ -1447,7 +1564,15 @@ async function renderSettings() {
               <div class="stg-field"><label class="stg-label">NAAM</label><input type="text" class="stg-input" id="newUserName" placeholder="Jan Jansen"></div>
               <div class="stg-field"><label class="stg-label">GEBRUIKERSNAAM</label><input type="text" class="stg-input" id="newUserUsername" placeholder="jan"></div>
               <div class="stg-field"><label class="stg-label">WACHTWOORD</label><input type="password" class="stg-input" id="newUserPassword" placeholder="••••••••"></div>
-              <div class="stg-field"><label class="stg-label">ROL</label><select class="stg-input form-select" id="newUserRole"><option value="employee">Medewerker</option><option value="admin">Admin</option></select></div>
+              <div class="stg-field"><label class="stg-label">ROL</label>
+                <select class="stg-input form-select" id="newUserRole" onchange="document.getElementById('newUserPermsWrap').style.display=this.value==='employee'?'':'none'">
+                  <option value="employee">Medewerker</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+            </div>
+            <div id="newUserPermsWrap">
+              ${buildPermissionsChecklist('newUser', PRESET_MEDEWERKER)}
             </div>
             <button class="btn btn-primary btn-sm stg-save-btn" onclick="addUser()"><i class="ti ti-plus"></i> Gebruiker aanmaken</button>
           </div>

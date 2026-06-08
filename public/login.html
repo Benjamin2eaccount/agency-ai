@@ -448,6 +448,7 @@
         localStorage.setItem('agencyName', data.agencyName);
         localStorage.setItem('myName', data.myName);
         localStorage.setItem('agencyRole', data.role || 'admin');
+        localStorage.setItem('agencyPermissions', JSON.stringify(data.permissions || []));
 
         _redirecting = true; // block any further submits
         staffBtn.style.background = '#10b981';

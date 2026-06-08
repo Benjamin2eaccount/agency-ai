@@ -56,6 +56,16 @@ function isAdmin() {
   return getRole() === 'admin';
 }
 
+// Returns true if the current user has a specific permission.
+// Admins always pass. Employees need the permission in their stored list.
+function hasPermission(perm) {
+  if (isAdmin()) return true;
+  try {
+    const perms = JSON.parse(localStorage.getItem('agencyPermissions') || '[]');
+    return perms.includes(perm);
+  } catch { return false; }
+}
+
 // ─── API wrapper (always sends auth header) ───────────────────────────────────
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -932,6 +942,23 @@ document.addEventListener('DOMContentLoaded', () => {
   // Hide admin-only nav items for employees
   if (!isAdmin()) {
     document.querySelectorAll('[data-admin-only]').forEach(el => el.style.display = 'none');
+  }
+
+  // Granular permission-based sidebar hiding for employee-role users
+  if (!isAdmin()) {
+    const PERM_NAV = {
+      leads:      'leads_view',
+      inbox:      'inbox_view',
+      pipeline:   'pipeline_view',
+      stats:      'stats_view',
+      betalingen: 'billing_view',
+      runs:       'runs_view',
+      agents:     'agents_view',
+    };
+    document.querySelectorAll('[data-view]').forEach(el => {
+      const perm = PERM_NAV[el.dataset.view];
+      if (perm && !hasPermission(perm)) el.style.display = 'none';
+    });
   }
 
   // Nav click handlers

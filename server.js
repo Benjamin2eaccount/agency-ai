@@ -450,11 +450,12 @@ function _demoAutoLogin(username, redirectTo, req, res) {
 @keyframes spin{to{transform:rotate(360deg)}}</style></head>
 <body><div class="loader"><div class="spinner"></div><p style="color:#9ca3af;font-size:14px">Demo laden…</p></div>
 <script>
-localStorage.setItem('agencyToken',  ${userToken});
-localStorage.setItem('myName',       ${userName});
-localStorage.setItem('agencyRole',   ${userRole});
-localStorage.setItem('agencyName',   ${agencyName});
-localStorage.setItem('demoMode',     '1');
+localStorage.setItem('agencyToken',       ${userToken});
+localStorage.setItem('myName',            ${userName});
+localStorage.setItem('agencyRole',        ${userRole});
+localStorage.setItem('agencyName',        ${agencyName});
+localStorage.setItem('agencyPermissions', JSON.stringify(${JSON.stringify(user.permissions || [])}));
+localStorage.setItem('demoMode',          '1');
 window.location.href = ${JSON.stringify(redirectTo)};
 </script></body></html>`);
 }
@@ -1743,6 +1744,30 @@ function requireAdmin(req, res, next) {
     return res.status(403).json({ error: 'Geen toegang — alleen admins' });
   }
   next();
+}
+
+// Returns true when the requesting user is a demo account.
+// Demo accounts use usernames containing 'demo' (e.g. admin@demo.agencyai.info).
+function isDemoUser(req) {
+  return (req.user?.username || '').includes('demo');
+}
+
+// Filters an array to only real items (non-demo) or only demo items,
+// depending on who is calling.
+function scopeToUser(items, req) {
+  const demo = isDemoUser(req);
+  return (items || []).filter(i => demo ? !!i.isDemo : !i.isDemo);
+}
+
+// Granular permission check for employee-role users.
+// Admins always pass. Employees need the specific permission in their JSON list.
+function requirePermission(perm) {
+  return (req, res, next) => {
+    if (req.user?.role === 'admin') return next();
+    const perms = JSON.parse(req.user?.permissions || '[]');
+    if (perms.includes(perm)) return next();
+    res.status(403).json({ error: `Geen toegang — rechten vereist: ${perm}` });
+  };
 }
 
 // Browser-friendly auth: redirects to /login for page navigations instead of returning JSON 401
@@ -3111,8 +3136,8 @@ app.get('/api/errors', requireAdmin, (req, res) => {
 
 app.get('/api/stats', (req, res) => {
   const stored = readJSON('stats.json') || {};
-  const leads  = readJSON('leads.json') || [];
-  const inbox  = readJSON('inbox.json') || [];
+  const leads  = scopeToUser(readJSON('leads.json'), req);
+  const inbox  = scopeToUser(readJSON('inbox.json'), req);
 
   const active = leads.filter(l => l.status !== 'disapproved' && l.status !== 'dead');
 
@@ -3144,7 +3169,7 @@ app.get('/api/stats', (req, res) => {
 // â"€â"€â"€ Leads â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 app.get('/api/stats/detailed', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = scopeToUser(readJSON('leads.json'), req);
   const days  = parseInt(req.query.days || '30', 10);
   const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
@@ -3208,11 +3233,11 @@ app.get('/api/stats/detailed', (req, res) => {
 });
 
 app.get('/api/leads', (req, res) => {
-  res.json(readJSON('leads.json') || []);
+  res.json(scopeToUser(readJSON('leads.json'), req));
 });
 
 app.get('/api/leads/export.csv', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = scopeToUser(readJSON('leads.json'), req);
   const status = req.query.status; // optional filter
   const filtered = status ? leads.filter(l => l.status === status) : leads;
 
@@ -6789,8 +6814,7 @@ app.post('/api/leads/:id/portal/reset-token', requireAdmin, (req, res) => {
 // ── Inbox ────────────────────────────────────────────────────────────────────
 
 app.get('/api/inbox', (req, res) => {
-  const inbox = readJSON('inbox.json') || [];
-  res.json(inbox);
+  res.json(scopeToUser(readJSON('inbox.json'), req));
 });
 
 app.patch('/api/inbox/:id/approve', async (req, res) => {
@@ -10692,7 +10716,7 @@ app.get('/api/stats/extended', authMiddleware, (req, res) => {
 // ─── A/B email stats ──────────────────────────────────────────────────────────
 
 app.get('/api/stats/ab', authMiddleware, (req, res) => {
-  const leads = (readJSON('leads.json') || []).filter(l => l.sentVersion);
+  const leads = scopeToUser(readJSON('leads.json'), req).filter(l => l.sentVersion);
   const sentStatuses = ['sent', 'replied', 'client', 'scheduled'];
 
   const empty = () => ({ sent: 0, replied: 0, opened: 0, bounced: 0 });
@@ -10747,7 +10771,7 @@ app.get('/api/stats/ab', authMiddleware, (req, res) => {
 });
 
 app.get('/api/stats/pnl', authMiddleware, (req, res) => {
-  const leads       = readJSON('leads.json')    || [];
+  const leads       = scopeToUser(readJSON('leads.json'), req);
   const settings    = readJSON('settings.json') || {};
   const activityLog = readJSON('activity.json') || [];
 
@@ -11014,17 +11038,24 @@ app.delete('/api/chat/dm/messages/:id', authMiddleware, (req, res) => {
 // ─── Users management ─────────────────────────────────────────────────────────
 
 app.get('/api/users', requireAdmin, (req, res) => {
-  const users = (readJSON('users.json') || []).map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role, createdAt: u.createdAt }));
+  const users = (readJSON('users.json') || []).map(u => ({
+    id: u.id, username: u.username, name: u.name, role: u.role,
+    permissions: u.permissions || null, createdAt: u.createdAt
+  }));
   res.json(users);
 });
 
 app.post('/api/users', requireAdmin, async (req, res) => {
-  const { username, password, name, role } = req.body;
+  const { username, password, name, role, permissions } = req.body;
   if (!username || !password || !name) return res.status(400).json({ error: 'username, password en name verplicht' });
   if (!['admin', 'employee'].includes(role)) return res.status(400).json({ error: 'Ongeldig role (admin of employee)' });
   const users = readJSON('users.json') || [];
   if (users.find(u => u.username === username)) return res.status(409).json({ error: 'Gebruikersnaam al in gebruik' });
-  const newUser = { id: Date.now().toString(), username, password: await bcrypt.hash(password, 12), name, role, createdAt: new Date().toISOString() };
+  const newUser = {
+    id: Date.now().toString(), username, password: await bcrypt.hash(password, 12),
+    name, role, permissions: Array.isArray(permissions) ? permissions : null,
+    createdAt: new Date().toISOString()
+  };
   users.push(newUser);
   writeJSON('users.json', users);
   res.json({ ok: true, id: newUser.id });
@@ -11034,10 +11065,11 @@ app.patch('/api/users/:id', requireAdmin, async (req, res) => {
   const users = readJSON('users.json') || [];
   const idx = users.findIndex(u => u.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Gebruiker niet gevonden' });
-  const { name, role, password } = req.body;
+  const { name, role, password, permissions } = req.body;
   if (name) users[idx].name = name;
   if (role && ['admin', 'employee'].includes(role)) users[idx].role = role;
   if (password) users[idx].password = await bcrypt.hash(password, 12);
+  if (Array.isArray(permissions)) users[idx].permissions = permissions;
   writeJSON('users.json', users);
   res.json({ ok: true });
 });
