@@ -701,17 +701,17 @@ async function loadUsersList() {
   if (!el) return;
   const users = await apiJSON('/api/users');
   if (!users) return;
+
+  // Cache full user objects by id so onclick handlers never pass complex
+  // values through HTML attributes (avoids all quote/encoding breakage).
+  window._usersCache = {};
+  users.forEach(u => { window._usersCache[u.id] = u; });
+
   el.innerHTML = users.map(u => {
     const perms = Array.isArray(u.permissions) ? u.permissions : [];
     const permBadges = u.role !== 'admin' && perms.length
       ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${perms.slice(0,5).map(p => `<span style="font-size:10px;background:var(--surface-2);border:1px solid var(--border);padding:1px 6px;border-radius:4px;color:var(--text-muted)">${p}</span>`).join('')}${perms.length > 5 ? `<span style="font-size:10px;color:var(--text-muted)">+${perms.length-5} meer</span>` : ''}</div>`
       : '';
-    // Build safe JS-string args for onclick — escape single quotes, double-JSON for perms array
-    const safeId   = u.id;
-    const safeName = esc(u.name).replace(/'/g, "\\'");
-    const safeUser = esc(u.username).replace(/'/g, "\\'");
-    const safeRole = u.role;
-    const permsArg = JSON.stringify(JSON.stringify(perms)); // double-encoded so onclick attribute stays valid
     return `
     <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;background:var(--surface)">
       <div style="display:flex;align-items:center;gap:12px">
@@ -723,10 +723,13 @@ async function loadUsersList() {
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
           ${u.id !== '1' ? `
-            <button class="btn btn-ghost btn-sm" title="Bewerken" onclick="openEditUser('${safeId}','${safeName}','${safeUser}','${safeRole}',${permsArg})">
+            <button class="btn btn-ghost btn-sm" title="Bewerken"
+              data-uid="${u.id}" onclick="openEditUser(this.dataset.uid)">
               <i class="ti ti-pencil"></i>
             </button>
-            <button class="btn btn-ghost btn-sm" style="color:var(--danger)" title="Verwijderen" onclick="deleteUser('${safeId}','${safeName}')">
+            <button class="btn btn-ghost btn-sm" style="color:var(--danger)" title="Verwijderen"
+              data-uid="${u.id}" data-name="${esc(u.name).replace(/"/g,'&quot;')}"
+              onclick="deleteUser(this.dataset.uid, this.dataset.name)">
               <i class="ti ti-trash"></i>
             </button>` : '<span style="font-size:11px;color:var(--text-secondary)">Hoofd-admin</span>'}
         </div>
@@ -753,9 +756,14 @@ async function addUser() {
   }
 }
 
-function openEditUser(userId, userName, userUsername, userRole, permsJson) {
-  const perms = JSON.parse(permsJson || '[]');
-  const isEmp = userRole === 'employee';
+function openEditUser(userId) {
+  const u = (window._usersCache || {})[userId];
+  if (!u) { toast('Gebruiker niet gevonden.', 'error'); return; }
+  const perms = Array.isArray(u.permissions) ? u.permissions : [];
+  const isEmp = u.role === 'employee';
+  const userName     = u.name;
+  const userUsername = u.username;
+  const userRole     = u.role;
   openModal(`
     <div style="padding:24px;max-height:88vh;overflow-y:auto;min-width:340px">
       <div style="font-size:16px;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:8px">
