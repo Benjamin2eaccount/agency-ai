@@ -11065,11 +11065,17 @@ app.patch('/api/users/:id', requireAdmin, async (req, res) => {
   const users = readJSON('users.json') || [];
   const idx = users.findIndex(u => u.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Gebruiker niet gevonden' });
-  const { name, role, password, permissions } = req.body;
+  const { name, username, role, password, permissions } = req.body;
   if (name) users[idx].name = name;
+  if (username) {
+    const clash = users.find(u => u.username === username && u.id !== req.params.id);
+    if (clash) return res.status(409).json({ error: 'Gebruikersnaam al in gebruik' });
+    users[idx].username = username;
+  }
   if (role && ['admin', 'employee'].includes(role)) users[idx].role = role;
   if (password) users[idx].password = await bcrypt.hash(password, 12);
   if (Array.isArray(permissions)) users[idx].permissions = permissions;
+  if (role === 'admin') users[idx].permissions = null; // admins have no perm restrictions
   writeJSON('users.json', users);
   res.json({ ok: true });
 });

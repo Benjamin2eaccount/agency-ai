@@ -706,6 +706,12 @@ async function loadUsersList() {
     const permBadges = u.role !== 'admin' && perms.length
       ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${perms.slice(0,5).map(p => `<span style="font-size:10px;background:var(--surface-2);border:1px solid var(--border);padding:1px 6px;border-radius:4px;color:var(--text-muted)">${p}</span>`).join('')}${perms.length > 5 ? `<span style="font-size:10px;color:var(--text-muted)">+${perms.length-5} meer</span>` : ''}</div>`
       : '';
+    // Build safe JS-string args for onclick — escape single quotes, double-JSON for perms array
+    const safeId   = u.id;
+    const safeName = esc(u.name).replace(/'/g, "\\'");
+    const safeUser = esc(u.username).replace(/'/g, "\\'");
+    const safeRole = u.role;
+    const permsArg = JSON.stringify(JSON.stringify(perms)); // double-encoded so onclick attribute stays valid
     return `
     <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;background:var(--surface)">
       <div style="display:flex;align-items:center;gap:12px">
@@ -716,8 +722,13 @@ async function loadUsersList() {
           ${permBadges}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
-          ${u.role !== 'admin' ? `<button class="btn btn-ghost btn-sm" onclick="openEditPermissions('${u.id}','${esc(u.name).replace(/'/g,"\\'")}',${JSON.stringify(JSON.stringify(perms))})"><i class="ti ti-shield"></i></button>` : ''}
-          ${u.id !== '1' ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteUser('${u.id}','${esc(u.name).replace(/'/g,"\\'")}')"><i class="ti ti-trash"></i></button>` : '<span style="font-size:11px;color:var(--text-secondary)">Hoofd-admin</span>'}
+          ${u.id !== '1' ? `
+            <button class="btn btn-ghost btn-sm" title="Bewerken" onclick="openEditUser('${safeId}','${safeName}','${safeUser}','${safeRole}',${permsArg})">
+              <i class="ti ti-pencil"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--danger)" title="Verwijderen" onclick="deleteUser('${safeId}','${safeName}')">
+              <i class="ti ti-trash"></i>
+            </button>` : '<span style="font-size:11px;color:var(--text-secondary)">Hoofd-admin</span>'}
         </div>
       </div>
     </div>`;
@@ -742,25 +753,70 @@ async function addUser() {
   }
 }
 
-function openEditPermissions(userId, userName, permsJson) {
+function openEditUser(userId, userName, userUsername, userRole, permsJson) {
   const perms = JSON.parse(permsJson || '[]');
+  const isEmp = userRole === 'employee';
   openModal(`
-    <div style="padding:20px;max-height:80vh;overflow-y:auto">
-      <div style="font-size:16px;font-weight:700;margin-bottom:4px">Rechten — ${esc(userName)}</div>
-      <div style="font-size:13px;color:var(--text-muted);margin-bottom:0">Selecteer wat ${esc(userName)} mag doen:</div>
-      ${buildPermissionsChecklist('editUser', perms)}
-      <div style="display:flex;gap:8px;margin-top:16px">
-        <button class="btn btn-primary" onclick="saveUserPermissions('${userId}')">Opslaan</button>
+    <div style="padding:24px;max-height:88vh;overflow-y:auto;min-width:340px">
+      <div style="font-size:16px;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:8px">
+        <i class="ti ti-user-edit"></i> Bewerk gebruiker
+      </div>
+
+      <div style="display:grid;gap:12px;margin-bottom:4px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Naam</label>
+          <input id="editUserName" class="stg-input" value="${esc(userName)}" placeholder="Volledige naam">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Gebruikersnaam / E-mail</label>
+          <input id="editUserUsername" class="stg-input" value="${esc(userUsername)}" placeholder="gebruiker of naam@bureau.nl">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Rol</label>
+          <select id="editUserRole" class="stg-input form-select"
+            onchange="var s=document.getElementById('editUserPermsSection');s.style.display=this.value==='employee'?'':'none'">
+            <option value="employee"${isEmp?' selected':''}>Medewerker</option>
+            <option value="admin"${!isEmp?' selected':''}>Admin</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">
+            Nieuw wachtwoord <span style="font-weight:400;text-transform:none">(leeg = ongewijzigd)</span>
+          </label>
+          <input id="editUserPassword" type="password" class="stg-input" placeholder="••••••••">
+        </div>
+      </div>
+
+      <div id="editUserPermsSection" style="${isEmp?'':'display:none'}">
+        ${buildPermissionsChecklist('editUser', perms)}
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:20px">
+        <button class="btn btn-primary" onclick="saveEditUser('${userId}')">
+          <i class="ti ti-check"></i> Opslaan
+        </button>
         <button class="btn btn-ghost" onclick="closeModal()">Annuleren</button>
       </div>
     </div>`);
 }
 
-async function saveUserPermissions(userId) {
-  const permissions = getCheckedPerms('editUser');
-  const res = await api(`/api/users/${userId}`, { method: 'PATCH', body: JSON.stringify({ permissions }) });
-  if (res?.ok) { toast('Rechten opgeslagen.', 'success'); closeModal(); loadUsersList(); }
-  else toast('Opslaan mislukt.', 'error');
+async function saveEditUser(userId) {
+  const name     = document.getElementById('editUserName')?.value?.trim();
+  const username = document.getElementById('editUserUsername')?.value?.trim();
+  const role     = document.getElementById('editUserRole')?.value;
+  const password = document.getElementById('editUserPassword')?.value;
+  const permissions = role === 'employee' ? getCheckedPerms('editUser') : null;
+
+  if (!name) { toast('Naam is verplicht.', 'error'); return; }
+
+  const patch = { name, role };
+  if (username) patch.username = username;
+  if (password) patch.password = password;
+  if (permissions !== null) patch.permissions = permissions;
+
+  const res = await api(`/api/users/${userId}`, { method: 'PATCH', body: JSON.stringify(patch) });
+  if (res?.ok) { toast('Gebruiker bijgewerkt.', 'success'); closeModal(); loadUsersList(); }
+  else { const d = res ? await res.json().catch(() => ({})) : {}; toast(d.error || 'Opslaan mislukt.', 'error'); }
 }
 
 async function deleteUser(id, name) {
