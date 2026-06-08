@@ -51,45 +51,23 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Export IPA
+      - name: Create IPA manually
         working-directory: mobile/ios/App
         run: |
-          mkdir -p build/ipa
+          mkdir -p build/ipa/Payload
 
-          cat > build/ExportOptions.plist << 'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>ad-hoc</string>
-            <key>compileBitcode</key>
-            <false/>
-            <key>signingStyle</key>
-            <string>manual</string>
-          </dict>
-          </plist>
-          PLIST
+          cp -r build/App.xcarchive/Products/Applications/App.app \
+                build/ipa/Payload/
 
-          xcodebuild \
-            -exportArchive \
-            -archivePath $PWD/build/App.xcarchive \
-            -exportPath $PWD/build/ipa \
-            -exportOptionsPlist $PWD/build/ExportOptions.plist \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            || true
+          cd build/ipa
+          zip -r ../AgencyAI.ipa Payload/
 
-          echo "=== Build output ==="
-          find build/ -name "*.ipa" -o -name "*.app" | head -20
+          echo "IPA created:"
+          ls -la ../AgencyAI.ipa
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: AgencyAI-iOS
-          path: |
-            mobile/ios/App/build/ipa/
-            mobile/ios/App/build/*.xcarchive
+          path: mobile/ios/App/build/AgencyAI.ipa
           retention-days: 30
