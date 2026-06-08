@@ -432,8 +432,159 @@
       );
     }
 
+    // ── Hosting Section (shown under website deliverables) ───────────────
+    function HostingSection({ token, deliverableService }) {
+      const [step, setStep]       = useState('choice');   // 'choice' | 'own-form' | 'agency-confirm' | 'done-own' | 'done-agency'
+      const [provider, setProvider] = useState('');
+      const [panelUrl, setPanelUrl] = useState('');
+      const [username, setUsername] = useState('');
+      const [password, setPassword] = useState('');
+      const [ftpData,  setFtpData]  = useState('');
+      const [notes,    setNotes]    = useState('');
+      const [loading,  setLoading]  = useState(false);
+      const [error,    setError]    = useState('');
+
+      const PROVIDERS = ['Hostinger', 'TransIP', 'SiteGround', 'cPanel', 'DirectAdmin', 'Anders'];
+
+      async function submitOwn(e) {
+        e.preventDefault();
+        if (!provider) { setError('Kies een hosting provider.'); return; }
+        setLoading(true); setError('');
+        try {
+          const r = await fetch(`/api/portal/${token}/hosting-request`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'own', provider, panelUrl, username, password, ftpData, notes }),
+          });
+          if (!r.ok) throw new Error('Fout bij versturen');
+          setStep('done-own');
+        } catch { setError('Versturen mislukt. Probeer opnieuw.'); }
+        finally { setLoading(false); }
+      }
+
+      async function submitAgency() {
+        setLoading(true); setError('');
+        try {
+          const r = await fetch(`/api/portal/${token}/hosting-request`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'agency', notes }),
+          });
+          if (!r.ok) throw new Error('Fout bij versturen');
+          setStep('done-agency');
+        } catch { setError('Versturen mislukt. Probeer opnieuw.'); }
+        finally { setLoading(false); }
+      }
+
+      const cardBase = { border:'1px solid var(--border)', borderRadius:10, padding:'16px 18px', background:'#fff', flex:1, minWidth:0, cursor:'pointer', transition:'border-color .15s,box-shadow .15s' };
+
+      if (step === 'done-own') return (
+        <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:10,padding:'14px 16px',marginTop:12,display:'flex',alignItems:'flex-start',gap:10}}>
+          <span style={{fontSize:20}}>✅</span>
+          <div><div style={{fontWeight:700,color:'#15803d',marginBottom:3}}>Ontvangen!</div><div style={{fontSize:13,color:'#166534'}}>We plaatsen je website binnen 24 uur. Je ontvangt een bevestiging per e-mail.</div></div>
+        </div>
+      );
+
+      if (step === 'done-agency') return (
+        <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:10,padding:'14px 16px',marginTop:12,display:'flex',alignItems:'flex-start',gap:10}}>
+          <span style={{fontSize:20}}>✅</span>
+          <div><div style={{fontWeight:700,color:'#15803d',marginBottom:3}}>Aanvraag ontvangen!</div><div style={{fontSize:13,color:'#166534'}}>Je ontvangt binnen 24 uur je inloggegevens per e-mail. Wij regelen alles voor je.</div></div>
+        </div>
+      );
+
+      return (
+        <div style={{marginTop:16,borderTop:'1px solid var(--border)',paddingTop:16}}>
+          <div style={{fontSize:13,fontWeight:700,color:'#111',marginBottom:10}}>🌐 Hoe wil je je website hosten?</div>
+
+          {step === 'choice' && (
+            <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+              {/* Optie 1 */}
+              <div style={{...cardBase,flex:'1 1 200px'}} onClick={() => setStep('own-form')}>
+                <div style={{fontSize:20,marginBottom:6}}>🔑</div>
+                <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>Ik heb al hosting</div>
+                <div style={{fontSize:12,color:'#6b7280',lineHeight:1.5,marginBottom:10}}>Geef ons de inloggegevens van jouw hosting provider en wij plaatsen de website voor je.</div>
+                <div style={{fontSize:12,fontWeight:600,color:'var(--accent)'}}>Inloggegevens doorgeven →</div>
+              </div>
+              {/* Optie 2 */}
+              <div style={{...cardBase,flex:'1 1 200px',borderColor:'#c7d2fe',background:'#fafafe'}} onClick={() => setStep('agency-confirm')}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+                  <span style={{fontSize:20}}>⚡</span>
+                  <span style={{fontSize:10,fontWeight:700,background:'#6366f1',color:'#fff',padding:'2px 7px',borderRadius:20}}>Aanbevolen</span>
+                </div>
+                <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>Hosting via Agency AI</div>
+                <div style={{fontSize:12,color:'#6b7280',lineHeight:1.5,marginBottom:6}}>Wij regelen professionele hosting voor je. Je krijgt eigen inloggegevens en beheert zelf je abonnement.</div>
+                <div style={{fontSize:12,fontWeight:700,color:'#6366f1',marginBottom:6}}>Vanaf €5/maand</div>
+                <div style={{fontSize:12,fontWeight:600,color:'var(--accent)'}}>Hosting aanvragen →</div>
+              </div>
+            </div>
+          )}
+
+          {step === 'own-form' && (
+            <form onSubmit={submitOwn} style={{background:'#f9fafb',border:'1px solid var(--border)',borderRadius:10,padding:'16px 18px'}}>
+              <div style={{fontWeight:700,fontSize:13,marginBottom:14}}>🔑 Hosting inloggegevens</div>
+              <div style={{marginBottom:10}}>
+                <label style={{fontSize:12,fontWeight:600,color:'#374151',display:'block',marginBottom:4}}>Hosting provider *</label>
+                <select value={provider} onChange={e=>setProvider(e.target.value)}
+                  style={{width:'100%',height:38,padding:'0 10px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:13,fontFamily:'inherit',background:'#fff'}}>
+                  <option value="">— Kies provider —</option>
+                  {PROVIDERS.map(p=><option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div style={{marginBottom:10}}>
+                <label style={{fontSize:12,fontWeight:600,color:'#374151',display:'block',marginBottom:4}}>URL van hosting panel</label>
+                <input value={panelUrl} onChange={e=>setPanelUrl(e.target.value)} placeholder="bijv. https://hpanel.hostinger.com" style={{width:'100%',height:38,padding:'0 10px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:13,fontFamily:'inherit'}} />
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+                <div>
+                  <label style={{fontSize:12,fontWeight:600,color:'#374151',display:'block',marginBottom:4}}>Gebruikersnaam</label>
+                  <input value={username} onChange={e=>setUsername(e.target.value)} style={{width:'100%',height:38,padding:'0 10px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:13,fontFamily:'inherit'}} />
+                </div>
+                <div>
+                  <label style={{fontSize:12,fontWeight:600,color:'#374151',display:'block',marginBottom:4}}>Wachtwoord</label>
+                  <input type="text" value={password} onChange={e=>setPassword(e.target.value)} style={{width:'100%',height:38,padding:'0 10px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:13,fontFamily:'inherit'}} />
+                </div>
+              </div>
+              <div style={{marginBottom:10}}>
+                <label style={{fontSize:12,fontWeight:600,color:'#374151',display:'block',marginBottom:4}}>FTP gegevens <span style={{fontWeight:400,color:'var(--muted)'}}>(optioneel)</span></label>
+                <input value={ftpData} onChange={e=>setFtpData(e.target.value)} placeholder="host, gebruiker, wachtwoord" style={{width:'100%',height:38,padding:'0 10px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:13,fontFamily:'inherit'}} />
+              </div>
+              <div style={{marginBottom:12}}>
+                <label style={{fontSize:12,fontWeight:600,color:'#374151',display:'block',marginBottom:4}}>Extra notities <span style={{fontWeight:400,color:'var(--muted)'}}>(optioneel)</span></label>
+                <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows="2" style={{width:'100%',padding:'8px 10px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:13,fontFamily:'inherit',resize:'vertical'}} />
+              </div>
+              {error && <div style={{color:'#dc2626',fontSize:12,marginBottom:8}}>{error}</div>}
+              <div style={{display:'flex',gap:8}}>
+                <button type="submit" disabled={loading} style={{flex:1,height:38,background:'#111',color:'#fff',border:'none',borderRadius:7,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                  {loading ? 'Versturen…' : 'Inloggegevens doorgeven →'}
+                </button>
+                <button type="button" onClick={()=>setStep('choice')} style={{height:38,padding:'0 14px',background:'none',border:'1px solid var(--border)',borderRadius:7,fontSize:13,cursor:'pointer',color:'var(--muted)'}}>Terug</button>
+              </div>
+            </form>
+          )}
+
+          {step === 'agency-confirm' && (
+            <div style={{background:'#f5f3ff',border:'1px solid #c4b5fd',borderRadius:10,padding:'16px 18px'}}>
+              <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>⚡ Hosting aanvragen via Agency AI</div>
+              <div style={{fontSize:13,color:'#4c1d95',lineHeight:1.6,marginBottom:12}}>
+                Wij regelen hosting voor je website bij Hostinger of TransIP. Je ontvangt binnen 24 uur een e-mail met alle inloggegevens en verdere instructies.
+              </div>
+              <div style={{marginBottom:12}}>
+                <label style={{fontSize:12,fontWeight:600,color:'#374151',display:'block',marginBottom:4}}>Notities <span style={{fontWeight:400,color:'var(--muted)'}}>(optioneel)</span></label>
+                <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows="2" placeholder="bijv. voorkeur voor bepaalde regio of extra wensen..." style={{width:'100%',padding:'8px 10px',border:'1.5px solid #c4b5fd',borderRadius:6,fontSize:13,fontFamily:'inherit',resize:'vertical',background:'#fff'}} />
+              </div>
+              {error && <div style={{color:'#dc2626',fontSize:12,marginBottom:8}}>{error}</div>}
+              <div style={{display:'flex',gap:8}}>
+                <button disabled={loading} onClick={submitAgency} style={{flex:1,height:38,background:'#6366f1',color:'#fff',border:'none',borderRadius:7,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                  {loading ? 'Versturen…' : 'Hosting aanvragen →'}
+                </button>
+                <button onClick={()=>setStep('choice')} style={{height:38,padding:'0 14px',background:'none',border:'1px solid #c4b5fd',borderRadius:7,fontSize:13,cursor:'pointer',color:'#6366f1'}}>Terug</button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     // ── Deliverable Card ─────────────────────────────────────────────────
-    function DeliverableCard({ d }) {
+    function DeliverableCard({ d, token }) {
       const [platform, setPlatform] = useState(0);
       const absUrl = !d.url ? '' : (d.url.startsWith('http') ? d.url : window.location.origin + d.url);
       const embedCode = absUrl ? `<iframe src="${absUrl}" width="100%" height="700" frameborder="0" style="border:none;border-radius:8px"></iframe>` : '';
@@ -492,6 +643,7 @@
                 </div>
               </div>
             </details>
+            {token && <HostingSection token={token} deliverableService={d.service} />}
           </>}
         </div>
       );
@@ -564,7 +716,7 @@
           {approvedDelivs.length > 0 && (
             <div className="inner-section">
               <div className="inner-label">Gebouwde leveringen</div>
-              {approvedDelivs.map((d, i) => <DeliverableCard key={i} d={d} />)}
+              {approvedDelivs.map((d, i) => <DeliverableCard key={i} d={d} token={token} />)}
             </div>
           )}
 

@@ -117,6 +117,23 @@ db.exec(`
   )
 `);
 
+// ── Website hosting requests (from client portal) ────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS hosting_requests (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id      TEXT NOT NULL,
+    type         TEXT NOT NULL,  -- 'own' | 'agency'
+    provider     TEXT,
+    panel_url    TEXT,
+    username     TEXT,
+    password     TEXT,
+    ftp_data     TEXT,
+    notes        TEXT,
+    status       TEXT DEFAULT 'pending',
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
 // ── Desktop app download logs ─────────────────────────────────────────────────
 db.exec(`
   CREATE TABLE IF NOT EXISTS download_logs (

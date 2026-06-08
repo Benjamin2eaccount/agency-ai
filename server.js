@@ -2789,8 +2789,102 @@ app.post('/api/sites/:siteSlug/contact', async (req, res) => {
   res.json({ success: true });
 });
 
+// ── Public: client submits hosting request from portal ────────────────────────
+app.post('/api/portal/:token/hosting-request', express.json(), async (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const lead  = leads.find(l => l.portalToken === req.params.token);
+  if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+  if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd' });
+
+  const { type, provider, panelUrl, username, password, ftpData, notes } = req.body || {};
+  if (!type || !['own', 'agency'].includes(type)) return res.status(400).json({ error: 'Ongeldig type' });
+
+  const db = getDb();
+  // Ensure table exists (migration safety)
+  db.exec(`CREATE TABLE IF NOT EXISTS hosting_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id TEXT NOT NULL, type TEXT NOT NULL,
+    provider TEXT, panel_url TEXT, username TEXT, password TEXT, ftp_data TEXT, notes TEXT,
+    status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  const row = db.prepare(`INSERT INTO hosting_requests
+    (lead_id, type, provider, panel_url, username, password, ftp_data, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(lead.id, type, provider||null, panelUrl||null, username||null, password||null, ftpData||null, notes||null);
+
+  addNotification('client_question',
+    type === 'own'
+      ? `${lead.companyName} heeft hosting inloggegevens gedeeld`
+      : `${lead.companyName} wil hosting via Agency AI`,
+    type === 'own' ? `Provider: ${provider || '?'}` : 'Hosting aanvraag via portaal',
+    lead.id
+  );
+
+  const settings = readJSON('settings.json') || {};
+  if (isResendReady(settings)) {
+    const subject = type === 'own'
+      ? `Hosting inloggegevens — ${lead.companyName}`
+      : `Hosting aanvraag via Agency AI — ${lead.companyName}`;
+    const bodyLines = type === 'own'
+      ? [`Klant ${lead.companyName} heeft hosting inloggegevens gedeeld voor hun project.`,
+         `Provider: ${provider || '?'}`, `Panel URL: ${panelUrl || '—'}`,
+         `Gebruikersnaam: ${username || '—'}`, `Wachtwoord: ${password || '—'}`,
+         `FTP: ${ftpData || '—'}`, `Notities: ${notes || '—'}`]
+      : [`Klant ${lead.companyName} wil hosting via Agency AI voor hun project.`,
+         `Regel een hosting account aan en mail de inloggegevens naar: ${lead.contactEmail}`,
+         `Notities: ${notes || '—'}`];
+    sendEmail({ to: settings.gmailAddress, subject, body: bodyLines.join('\n\n'), settings }).catch(() => {});
+  }
+
+  res.json({ ok: true, id: row.lastInsertRowid });
+});
+
 app.use('/api', authMiddleware);
 app.use('/data/uploads', authMiddleware, express.static(path.join(__dirname, 'data', 'uploads')));
+
+// ─── Hosting requests (admin) ─────────────────────────────────────────────────
+
+app.get('/api/hosting-requests', requireAdmin, (req, res) => {
+  const db = getDb();
+  db.exec(`CREATE TABLE IF NOT EXISTS hosting_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id TEXT NOT NULL, type TEXT NOT NULL,
+    provider TEXT, panel_url TEXT, username TEXT, password TEXT, ftp_data TEXT, notes TEXT,
+    status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  const { lead_id } = req.query;
+  const rows = lead_id
+    ? db.prepare('SELECT * FROM hosting_requests WHERE lead_id = ? ORDER BY created_at DESC').all(lead_id)
+    : db.prepare('SELECT * FROM hosting_requests ORDER BY created_at DESC').all();
+  res.json(rows);
+});
+
+app.patch('/api/hosting-requests/:id', requireAdmin, async (req, res) => {
+  const db = getDb();
+  const { status, clientEmail, companyName, hostingInfo } = req.body || {};
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Ongeldig id' });
+
+  const row = db.prepare('SELECT * FROM hosting_requests WHERE id = ?').get(id);
+  if (!row) return res.status(404).json({ error: 'Niet gevonden' });
+
+  if (status) {
+    db.prepare('UPDATE hosting_requests SET status = ? WHERE id = ?').run(status, id);
+  }
+
+  // When admin marks as done (status='done') for agency hosting, optionally email client
+  if (status === 'done' && clientEmail && hostingInfo) {
+    const settings = readJSON('settings.json') || {};
+    if (isResendReady(settings)) {
+      sendEmail({
+        to: clientEmail,
+        subject: `Je hosting is klaar — ${companyName || 'jouw project'}`,
+        body: `Goed nieuws! Je hostingaccount is aangemaakt.\n\n${hostingInfo}\n\nHeb je vragen? Neem contact op via je klantportaal.`,
+        settings,
+      }).catch(() => {});
+    }
+  }
+
+  res.json({ ok: true });
+});
 
 // ─── API Keys management ──────────────────────────────────────────────────────
 

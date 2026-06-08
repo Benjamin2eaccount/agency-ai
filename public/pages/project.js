@@ -25,6 +25,9 @@ window.switchProjectTab = function switchProjectTab(tab) {
   if (tab === 'portaal') {
     initPortalServices(lead.id);
   }
+  if (tab === 'hosting') {
+    loadHostingRequests(lead.id);
+  }
   if (tab === 'building') {
     // Refresh queue status badge
     apiJSON('/api/jobs').then(d => { if (d) window._jobQueueStatus = d; }).catch(() => {});
@@ -980,6 +983,21 @@ async function renderProjectPage() {
       </div>`;
   }
 
+  // ── Tab: Hosting ────────────────────────────────────────────────────────────
+  function buildHostingTab() {
+    const TYPE_LABELS = { own: '🔑 Eigen hosting', agency: '⚡ Hosting via Agency AI' };
+    const STATUS_LABELS = { pending: 'In behandeling', done: 'Afgerond' };
+
+    const initLoad = activeTab === 'hosting'
+      ? `<div style="font-size:13px;color:var(--text-muted);padding:12px 0">Laden…</div>`
+      : '';
+    return `
+    <div class="project-tab-content" data-tab-content="hosting" style="${activeTab !== 'hosting' ? 'display:none' : ''}">
+      <div class="project-section-title">Hosting aanvragen</div>
+      <div id="hostingRequestsContainer" style="margin-top:8px">${initLoad}</div>
+    </div>`;
+  }
+
   // ── Tab: Bestanden ──────────────────────────────────────────────────────────
   function buildProjectFilesTab() {
     const files = lead.projectFiles || [];
@@ -1419,6 +1437,7 @@ async function renderProjectPage() {
           <button class="project-tab${activeTab==='bestanden'?' active':''}" data-tab="bestanden" onclick="switchProjectTab('bestanden')"><i class="ti ti-files" style="margin-right:3px"></i>Bestanden${(lead.projectFiles||[]).length > 0 ? ` (${(lead.projectFiles||[]).length})` : ''}</button>
           <button class="project-tab${activeTab==='documenten'?' active':''}" data-tab="documenten" onclick="switchProjectTab('documenten')"><i class="ti ti-folder" style="margin-right:3px"></i>Documenten${(lead.documents||[]).length > 0 ? ` (${(lead.documents||[]).length})` : ''}</button>
           <button class="project-tab${activeTab==='portaal'?' active':''}" data-tab="portaal" onclick="switchProjectTab('portaal')">${(lead.portalChat||[]).filter(m=>m.from==='client'&&!m.readAt).length > 0 ? `<i class="ti ti-message-circle" style="color:var(--danger);margin-right:3px"></i>` : ''}Klantportaal</button>
+          <button class="project-tab${activeTab==='hosting'?' active':''}" data-tab="hosting" onclick="switchProjectTab('hosting')"><i class="ti ti-server" style="margin-right:3px"></i>Hosting</button>
           <button class="project-tab${activeTab==='geschiedenis'?' active':''}" data-tab="geschiedenis" onclick="switchProjectTab('geschiedenis')">Geschiedenis</button>
           <button class="project-tab${activeTab==='notities'?' active':''}" data-tab="notities" onclick="switchProjectTab('notities')">Notities</button>
         </div>
@@ -1434,6 +1453,7 @@ async function renderProjectPage() {
         ${tabAfspraken}
         ${tabDocumenten}
         ${tabPortaal}
+        ${buildHostingTab()}
         ${tabGeschiedenis}
         ${tabNotities}
         ${buildProjectFilesTab()}
@@ -1449,6 +1469,95 @@ async function renderProjectPage() {
   if (activeTab === 'portaal') {
     initPortalServices(lead.id);
   }
+
+  // Load hosting requests if hosting tab is active on initial render
+  if (activeTab === 'hosting') {
+    loadHostingRequests(lead.id);
+  }
+}
+
+// ── Hosting tab helpers ───────────────────────────────────────────────────────
+async function loadHostingRequests(leadId) {
+  const container = document.getElementById('hostingRequestsContainer');
+  if (!container) return;
+  try {
+    const rows = await apiJSON(`/api/hosting-requests?lead_id=${encodeURIComponent(leadId)}`);
+    if (!rows || !rows.length) {
+      container.innerHTML = `
+        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:20px;text-align:center;color:var(--text-muted);font-size:13px">
+          <div style="font-size:24px;margin-bottom:8px">🌐</div>
+          Nog geen hosting aanvraag ontvangen.<br>
+          <span style="font-size:12px">De klant ziet hosting opties in het portaal na het goedkeuren van een website deliverable.</span>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = rows.map(r => {
+      const typeLabel = r.type === 'own' ? '🔑 Eigen hosting' : '⚡ Hosting via Agency AI';
+      const statusColor = r.status === 'done' ? 'var(--success)' : 'var(--warning)';
+      const statusLabel = r.status === 'done' ? 'Afgerond' : 'In behandeling';
+      const createdAt   = r.created_at ? new Date(r.created_at).toLocaleDateString('nl-NL') : '';
+
+      const ownDetails = r.type === 'own' ? `
+        <div style="margin-top:12px;display:grid;gap:6px">
+          ${r.provider  ? `<div style="display:flex;gap:8px"><span style="font-size:12px;color:var(--text-muted);width:110px;flex-shrink:0">Provider</span><span style="font-size:12px;font-weight:600">${esc(r.provider)}</span></div>` : ''}
+          ${r.panel_url ? `<div style="display:flex;gap:8px"><span style="font-size:12px;color:var(--text-muted);width:110px;flex-shrink:0">Panel URL</span><a href="${esc(r.panel_url)}" target="_blank" style="font-size:12px;color:var(--accent)">${esc(r.panel_url)}</a></div>` : ''}
+          ${r.username  ? `<div style="display:flex;gap:8px"><span style="font-size:12px;color:var(--text-muted);width:110px;flex-shrink:0">Gebruikersnaam</span><code style="font-size:12px;background:var(--surface-2);padding:1px 6px;border-radius:4px">${esc(r.username)}</code></div>` : ''}
+          ${r.password  ? `<div style="display:flex;gap:8px"><span style="font-size:12px;color:var(--text-muted);width:110px;flex-shrink:0">Wachtwoord</span><code style="font-size:12px;background:var(--surface-2);padding:1px 6px;border-radius:4px">${esc(r.password)}</code></div>` : ''}
+          ${r.ftp_data  ? `<div style="display:flex;gap:8px"><span style="font-size:12px;color:var(--text-muted);width:110px;flex-shrink:0">FTP</span><code style="font-size:12px;background:var(--surface-2);padding:1px 6px;border-radius:4px;word-break:break-all">${esc(r.ftp_data)}</code></div>` : ''}
+          ${r.notes     ? `<div style="display:flex;gap:8px"><span style="font-size:12px;color:var(--text-muted);width:110px;flex-shrink:0">Notities</span><span style="font-size:12px">${esc(r.notes)}</span></div>` : ''}
+        </div>` : '';
+
+      const agencyDetails = r.type === 'agency' ? `
+        ${r.notes ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">Notities: ${esc(r.notes)}</div>` : ''}
+        ${r.status !== 'done' ? `
+          <div style="margin-top:14px;padding:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px">
+            <div style="font-size:12px;font-weight:600;margin-bottom:8px">Stuur hosting inloggegevens naar klant</div>
+            <textarea id="hostingInfoInput_${r.id}" rows="3" placeholder="Host: ...\nGebruikersnaam: ...\nWachtwoord: ..."
+              style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:12px;resize:vertical;background:var(--surface);color:var(--text)"></textarea>
+            <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="markHostingDone(${r.id},'${leadId}')">
+              <i class="ti ti-check"></i> Hosting aangemaakt — stuur naar klant
+            </button>
+          </div>` : ''}` : '';
+
+      return `
+        <div style="border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;background:var(--surface)">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+            <div style="font-size:14px;font-weight:700">${typeLabel}</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:11px;font-weight:700;color:${statusColor};background:${r.status==='done'?'var(--success-light)':'var(--warning-light)'};padding:2px 8px;border-radius:20px">${statusLabel}</span>
+              <span style="font-size:11px;color:var(--text-muted)">${createdAt}</span>
+            </div>
+          </div>
+          ${ownDetails}
+          ${agencyDetails}
+          ${r.status === 'done' ? `<div style="margin-top:10px;font-size:12px;color:var(--success);display:flex;align-items:center;gap:4px"><i class="ti ti-check"></i> Afgerond</div>` : ''}
+        </div>`;
+    }).join('');
+  } catch(e) {
+    container.innerHTML = `<div style="color:var(--danger);font-size:13px">Fout bij laden: ${esc(String(e))}</div>`;
+  }
+}
+
+async function markHostingDone(requestId, leadId) {
+  const lead   = (state.leads || []).find(l => l.id === leadId);
+  const infoEl = document.getElementById(`hostingInfoInput_${requestId}`);
+  const hostingInfo = infoEl ? infoEl.value.trim() : '';
+
+  const body = { status: 'done', hostingInfo };
+  if (lead) {
+    body.clientEmail  = lead.contactEmail;
+    body.companyName  = lead.companyName;
+  }
+
+  const r = await api(`/api/hosting-requests/${requestId}`, {
+    method: 'PATCH', body: JSON.stringify(body)
+  });
+  if (!r || !r.ok) { toast('Bijwerken mislukt', 'error'); return; }
+  toast('Hosting afgerond' + (body.clientEmail ? ' — email verstuurd' : ''), 'success');
+  // Reload the tab content
+  window[`_hostingTabInit_${leadId}`] = undefined;
+  loadHostingRequests(leadId);
 }
 
 function problemToKey(txt) {
