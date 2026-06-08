@@ -1,0 +1,12 @@
+{
+  "appId": "info.agencyai.app",
+  "appName": "Agency AI",
+  "webDir": "www",
+  "server": {
+    "url": "https://www.agencyai.info/app/",
+    "cleartext": false
+  },
+  "ios": {
+    "scheme": "Agency AI"
+  }
+}
