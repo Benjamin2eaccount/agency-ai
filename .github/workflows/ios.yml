@@ -1,0 +1,59 @@
+name: iOS Build
+
+on:
+  push:
+    tags:
+      - 'ios-v*'
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install Capacitor
+        working-directory: mobile
+        run: npm install
+
+      - name: Add iOS platform
+        working-directory: mobile
+        run: npx cap add ios
+
+      - name: Sync
+        working-directory: mobile
+        run: npx cap sync ios
+
+      - name: Install CocoaPods
+        working-directory: mobile/ios/App
+        run: pod install
+
+      - name: Build iOS (unsigned)
+        working-directory: mobile/ios/App
+        run: |
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath $PWD/build/App.xcarchive \
+            archive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AgencyAI-iOS
+          path: mobile/ios/App/build/
+          retention-days: 30
