@@ -33,8 +33,8 @@
 // ─── Auth guard — runs after DOM is ready so localStorage is fully committed ──
 document.addEventListener('DOMContentLoaded', async () => {
   if (!window.location.pathname.startsWith('/app')) return;
-  // sessionStorage wins for impersonated sessions (per-tab, not shared across tabs)
-  const token = sessionStorage.getItem('agencyToken') || localStorage.getItem('agencyToken');
+  // Use getToken() so impersonation tokens (sessionStorage + impToken_<slug>) are honoured
+  const token = getToken();
   if (!token) {
     window.location.href = '/login';
     return;
@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadSystemMessages() {
   try {
     const res = await fetch('/api/system-messages', {
-      headers: { 'Authorization': 'Bearer ' + (sessionStorage.getItem('agencyToken') || localStorage.getItem('agencyToken') || '') }
+      headers: { 'Authorization': 'Bearer ' + getToken() }
     });
     if (!res.ok) return;
     const messages = await res.json();
@@ -112,7 +112,7 @@ async function dismissSysMsg(id, bannerEl) {
   try {
     await fetch(`/api/system-messages/${id}/dismiss`, {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + (sessionStorage.getItem('agencyToken') || localStorage.getItem('agencyToken') || '') }
+      headers: { 'Authorization': 'Bearer ' + getToken() }
     });
   } catch {}
   bannerEl.remove();
@@ -783,7 +783,7 @@ let _ws = null;
 let _wsReconnectTimer = null;
 
 function initWebSocket() {
-  const token = sessionStorage.getItem('agencyToken') || localStorage.getItem('agencyToken');
+  const token = getToken();
   if (!token) return;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const url = `${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`;

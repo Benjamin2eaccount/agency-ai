@@ -546,6 +546,11 @@
         if (data.isSuperAdmin) {
           localStorage.setItem('superAdminToken', data.token);
         }
+        // Normal login clears any previous impersonation so getToken() won't return a stale
+        // impToken from a different workspace
+        const _prevWS = localStorage.getItem('currentWorkspace');
+        if (_prevWS) localStorage.removeItem('impToken_' + _prevWS);
+        localStorage.removeItem('currentWorkspace');
 
         _redirecting = true; // block any further submits
         staffBtn.style.background = '#10b981';
