@@ -414,6 +414,34 @@ app.get('/register/betaling', (_, res) => res.sendFile(path.join(__dirname, 'pub
 // Serve superadmin shell — JS inside verifies isSuperAdmin from JWT
 app.get('/superadmin', (_, res) => res.sendFile(path.join(__dirname, 'public', 'superadmin.html')));
 
+// Impersonation relay page — sets localStorage then redirects to /app/dashboard
+// Security: the token itself is the authorization (signed JWT, 2h TTL)
+app.get('/superadmin/impersonate-relay', (req, res) => {
+  const { token, slug, name } = req.query;
+  if (!token) return res.status(400).send('Missing token');
+  // Verify the token is a valid JWT before serving the relay page
+  try { jwt.verify(token, JWT_SECRET); } catch { return res.status(401).send('Invalid token'); }
+  const safeSlug = (slug || '').replace(/[^a-z0-9-]/gi, '');
+  const safeName = (name || 'Workspace').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const safeToken = token.replace(/</g, '').replace(/>/g, '').replace(/"/g, '');
+  res.setHeader('Content-Type', 'text/html');
+  res.send(`<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8">
+<title>Inloggen als ${safeName}…</title>
+<style>body{margin:0;background:#0a0f1e;display:flex;align-items:center;justify-content:center;height:100vh;font-family:Inter,sans-serif;color:#9ca3af;font-size:14px}</style>
+</head><body>
+<div>Inloggen als <strong style="color:#f9fafb">${safeName}</strong>…</div>
+<script>
+(function() {
+  localStorage.setItem('agencyToken', ${JSON.stringify(safeToken)});
+  localStorage.setItem('agencyRole', 'admin');
+  localStorage.setItem('workspaceSlug', ${JSON.stringify(safeSlug)});
+  localStorage.setItem('agencyName', ${JSON.stringify(safeName)});
+  window.location.replace('/app/dashboard');
+})();
+</script>
+</body></html>`);
+});
+
 // MPA routes — each /app/:page serves its own HTML file
 app.get('/app/:page', (req, res) => {
   const page = req.params.page;
@@ -3434,7 +3462,7 @@ app.post('/api/superadmin/workspaces/:id/impersonate', requireSuperAdmin, (req, 
     }, JWT_SECRET, { expiresIn: '2h' });
     const { logActivity } = require('./lib/workspace');
     logActivity(ws.id, req.user.id, 'impersonated', { by: req.user.email, target: wsUser.email });
-    res.json({ token, redirectUrl: `/app/dashboard` });
+    res.json({ token, slug: ws.slug, name: ws.branding_name || ws.name, redirectUrl: `/app/dashboard` });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

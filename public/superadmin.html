@@ -1103,17 +1103,30 @@ async function demoStatus(id, status) {
 }
 
 async function impersonate(id) {
-  if (!confirm('Inloggen als deze workspace admin?')) return;
+  if (!confirm('Inloggen als deze workspace admin? Dit opent een nieuw tabblad.')) return;
   const r = await saFetch(`/api/superadmin/workspaces/${id}/impersonate`, { method: 'POST' });
-  if (!r.ok) { const d = await r.json(); toast(d.error||'Fout','err'); return; }
+  if (!r.ok) { const d = await r.json(); toast(d.error || 'Fout', 'err'); return; }
   const d = await r.json();
-  // Open in new tab, auto-login
-  const w = window.open('about:blank', '_blank');
-  w.document.write(`<script>
-    localStorage.setItem('agencyToken','${d.token}');
-    localStorage.setItem('agencyRole','admin');
-    window.location.href='${d.redirectUrl}';
-  <\/script>`);
+
+  // Save super admin token so we can restore it after the new tab overwrites localStorage
+  const saToken = _token;
+
+  // Build relay URL — the relay page sets localStorage and redirects (server-rendered, no CSP issues)
+  const relayUrl = `/superadmin/impersonate-relay?token=${encodeURIComponent(d.token)}&slug=${encodeURIComponent(d.slug || '')}&name=${encodeURIComponent(d.name || 'Workspace')}`;
+
+  const newTab = window.open(relayUrl, '_blank');
+  if (!newTab) {
+    toast('Popups zijn geblokkeerd. Sta popups toe voor deze site en probeer opnieuw.', 'err');
+    return;
+  }
+
+  // Restore SA token in THIS tab after the new tab has had time to execute its relay script (~600ms)
+  setTimeout(() => {
+    localStorage.setItem('agencyToken', saToken);
+    localStorage.setItem('agencyRole', 'superadmin');
+  }, 600);
+
+  toast(`Workspace "${esc(d.name || d.slug)}" geopend in nieuw tabblad`);
 }
 
 // ── Workspace Detail Modal ─────────────────────────────────────────────────────
