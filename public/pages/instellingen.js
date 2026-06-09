@@ -1404,7 +1404,7 @@ async function renderSettings() {
             <label class="stg-label">BETAALMETHODE</label>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
               <label class="radio-card radio-card-active">
-                <input type="radio" name="preferredPayment" value="bank_transfer" checked style="display:none"><i class="ti ti-building-bank"></i> Bankoverschrijving <span class="stg-status-badge stg-badge-green">Actief</span>
+                <input type="radio" name="preferredPayment" value="bank_transfer" checked style="display:none"><i class="ti ti-building-bank"></i> Bankoverschrijving ${s.bankTransferIban ? '<span class="stg-status-badge stg-badge-green">Actief</span>' : '<span class="stg-status-badge stg-badge-amber">Instellen</span>'}
               </label>
               <div style="display:flex;align-items:center;gap:6px;padding:8px 14px;border:1.5px solid var(--border);border-radius:var(--radius);opacity:.5;font-size:13px;font-weight:600;color:var(--text-secondary);pointer-events:none">
                 <i class="ti ti-brand-stripe"></i> Stripe <span style="font-size:11px;background:var(--surface-2);padding:2px 6px;border-radius:4px;margin-left:2px">Binnenkort</span>
