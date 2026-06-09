@@ -409,6 +409,8 @@ app.get('/client-login', (_, res) => res.sendFile(path.join(__dirname, 'public',
 // and redirects to /login if missing. Server just serves the HTML shell.
 app.get('/app', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/status',       (_, res) => res.sendFile(path.join(__dirname, 'public', 'status.html')));
+app.get('/register',          (_, res) => res.sendFile(path.join(__dirname, 'public', 'register.html')));
+app.get('/register/betaling', (_, res) => res.sendFile(path.join(__dirname, 'public', 'betaling.html')));
 
 // MPA routes — each /app/:page serves its own HTML file
 app.get('/app/:page', (req, res) => {
@@ -2957,6 +2959,292 @@ app.post('/api/portal/:token/hosting-request', express.json(), async (req, res) 
 
   res.json({ ok: true, id: row.lastInsertRowid });
 });
+
+// ─── Registration routes — MUST be before app.use('/api', authMiddleware) ─────
+
+const PLAN_PRICES = { starter: 197, pro: 497, agency: 997 };
+const DISPOSABLE_DOMAINS = ['mailinator.com','guerrillamail.com','10minutemail.com','throwam.com','yopmail.com','trashmail.com','fakeinbox.com','sharklasers.com','guerrillamailblock.com','spam4.me','grr.la','guerrillamail.info'];
+
+function validateEmail(email) {
+  if (!email || typeof email !== 'string') return false;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return false;
+  const domain = email.split('@')[1].toLowerCase();
+  if (DISPOSABLE_DOMAINS.includes(domain)) return false;
+  return true;
+}
+
+function isEmailTaken(email) {
+  const db = getDb();
+  try {
+    const row = db.prepare('SELECT id FROM workspace_users WHERE email = ?').get(email.toLowerCase().trim());
+    return !!row;
+  } catch { return false; }
+}
+
+function uniqueWorkspaceSlug(baseslug) {
+  const db = getDb();
+  const { generateSlug } = require('./lib/workspace');
+  let slug = generateSlug(baseslug);
+  if (!slug) slug = 'workspace';
+  let candidate = slug;
+  let suffix = 2;
+  while (db.prepare('SELECT id FROM workspaces WHERE slug = ?').get(candidate)) {
+    candidate = `${slug}-${suffix}`;
+    suffix++;
+  }
+  return candidate;
+}
+
+// Registration email templates
+function buildRegEmail(type, data) {
+  const accent = '#2563eb';
+  const wrap = (content) => `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f2;font-family:Arial,Helvetica,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f2"><tr><td align="center" style="padding:32px 16px">
+<table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden">
+<tr><td style="background:#0a0f1e;padding:24px 32px">
+<span style="font-size:20px;font-weight:700;color:#fff;letter-spacing:-0.3px">⚡ Agency AI</span>
+</td></tr>
+<tr><td style="padding:32px">${content}</td></tr>
+<tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;text-align:center">
+<p style="margin:0;font-size:12px;color:#9ca3af">Agency AI · info@agencyai.info · <a href="https://agencyai.info" style="color:#6b7280">agencyai.info</a></p>
+</td></tr>
+</table>
+</td></tr></table></body></html>`;
+
+  if (type === 'welcome_payment') {
+    const { naam, plan, amount, ref } = data;
+    const planLabel = { starter: 'Starter', pro: 'Pro', agency: 'Agency' }[plan] || plan;
+    return {
+      subject: 'Welkom bij Agency AI — betaalinstructies',
+      html: wrap(`
+        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px;letter-spacing:-0.3px">Welkom, ${naam}! 👋</h2>
+        <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 20px">Je account is aangemaakt. Eén stap verwijderd van de start: maak de betaling over en we activeren je account binnen 2 uur.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8faff;border:1px solid #dbeafe;border-radius:10px;margin-bottom:24px">
+        <tr><td style="padding:20px 24px">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.06em">Betaalgegevens</p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px">
+          <tr><td style="font-size:13px;color:#6b7280;padding:6px 0;width:140px">IBAN</td><td style="font-size:13px;font-weight:700;color:#111;font-family:monospace">NL62RABO0301339430</td></tr>
+          <tr><td style="font-size:13px;color:#6b7280;padding:6px 0">Tenaamstelling</td><td style="font-size:13px;font-weight:600;color:#111">B. van Hemert</td></tr>
+          <tr><td style="font-size:13px;color:#6b7280;padding:6px 0">Bedrag</td><td style="font-size:18px;font-weight:800;color:#10b981">€${Number(amount).toLocaleString('nl-NL', {minimumFractionDigits:2})}/maand</td></tr>
+          <tr><td style="font-size:13px;color:#6b7280;padding:6px 0">Plan</td><td style="font-size:13px;font-weight:600;color:#111">${planLabel}</td></tr>
+          <tr><td style="font-size:13px;color:#6b7280;padding:6px 0;vertical-align:top">Referentie</td><td style="padding:6px 0"><span style="font-size:16px;font-weight:800;color:#2563eb;font-family:monospace;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:3px 10px">${ref}</span></td></tr>
+          </table>
+        </td></tr></table>
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:24px">
+          <p style="margin:0;font-size:13px;color:#92400e;line-height:1.5"><strong>Vermeld altijd de referentie</strong> bij je betaling zodat we je account automatisch kunnen activeren.</p>
+        </div>
+        <table cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="background:${accent};border-radius:8px">
+          <a href="${BASE_URL}/register/betaling?ref=${encodeURIComponent(ref)}&amount=${amount}&naam=${encodeURIComponent(naam)}" style="display:inline-block;padding:13px 28px;font-size:14px;font-weight:600;color:#fff;text-decoration:none">Bekijk betaalinstructies →</a>
+        </td></tr></table>`)
+    };
+  }
+
+  if (type === 'demo_confirm') {
+    const { naam, plan } = data;
+    return {
+      subject: 'Demo aanvraag ontvangen — Agency AI',
+      html: wrap(`
+        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Bedankt voor je interesse, ${naam}! 🙌</h2>
+        <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">We hebben je demo aanvraag ontvangen en nemen <strong>binnen 24 uur</strong> contact met je op voor een persoonlijk gesprek.</p>
+        <p style="font-size:14px;color:#6b7280;line-height:1.6;margin:0 0 24px">In de tussentijd kun je alvast kijken wat Agency AI voor jou kan betekenen.</p>
+        <table cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="background:${accent};border-radius:8px">
+          <a href="${BASE_URL}" style="display:inline-block;padding:13px 28px;font-size:14px;font-weight:600;color:#fff;text-decoration:none">Bekijk agency AI →</a>
+        </td></tr></table>`)
+    };
+  }
+
+  if (type === 'account_activated') {
+    const { naam, slug } = data;
+    return {
+      subject: 'Je Agency AI account is actief! 🚀',
+      html: wrap(`
+        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Gefeliciteerd, ${naam}! 🎉</h2>
+        <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">Je betaling is ontvangen en je Agency AI account is nu <strong>actief</strong>. Je kunt direct aan de slag!</p>
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;margin-bottom:24px"><tr><td style="padding:16px 20px">
+          <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#166534">Eerste stappen:</p>
+          <ol style="margin:0;padding-left:20px;font-size:13px;color:#374151;line-height:1.8">
+            <li>Login via <a href="${BASE_URL}/login" style="color:${accent}">${BASE_URL}/login</a></li>
+            <li>Stel je agency profiel in</li>
+            <li>Configureer je eerste AI run</li>
+            <li>Bekijk binnenkomende leads in je inbox</li>
+          </ol>
+        </td></tr></table>
+        <table cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="background:${accent};border-radius:8px">
+          <a href="${BASE_URL}/login" style="display:inline-block;padding:13px 28px;font-size:14px;font-weight:600;color:#fff;text-decoration:none">Log nu in →</a>
+        </td></tr></table>`)
+    };
+  }
+
+  if (type === 'account_paused') {
+    const { naam, amount, ref } = data;
+    return {
+      subject: 'Je Agency AI account is gepauzeerd',
+      html: wrap(`
+        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Account gepauzeerd</h2>
+        <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">Beste ${naam}, je Agency AI account is tijdelijk gepauzeerd omdat we nog geen betaling hebben ontvangen.</p>
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:18px 20px;margin-bottom:20px">
+          <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#9a3412">Maak de betaling over om direct te heractiveren:</p>
+          <table cellpadding="0" cellspacing="0" border="0" width="100%">
+          <tr><td style="font-size:13px;color:#7c3b1e;padding:4px 0;width:130px">IBAN</td><td style="font-size:13px;font-weight:700;font-family:monospace;color:#1c1917">NL62RABO0301339430</td></tr>
+          <tr><td style="font-size:13px;color:#7c3b1e;padding:4px 0">Bedrag</td><td style="font-size:14px;font-weight:700;color:#1c1917">€${Number(amount).toLocaleString('nl-NL', {minimumFractionDigits:2})}/maand</td></tr>
+          <tr><td style="font-size:13px;color:#7c3b1e;padding:4px 0">Referentie</td><td style="font-size:14px;font-weight:800;font-family:monospace;color:${accent}">${ref}</td></tr>
+          </table>
+        </div>
+        <p style="font-size:13px;color:#6b7280;margin:0 0 20px">Vragen? Neem contact op via <a href="mailto:info@agencyai.info" style="color:${accent}">info@agencyai.info</a></p>`)
+    };
+  }
+
+  if (type === 'account_blocked') {
+    return {
+      subject: 'Je Agency AI account is geblokkeerd',
+      html: wrap(`
+        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Account geblokkeerd</h2>
+        <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">Beste ${data.naam}, je Agency AI account is geblokkeerd na een periode van geen betaling.</p>
+        <p style="font-size:14px;color:#6b7280;line-height:1.6;margin:0 0 24px">Neem contact met ons op om je account te heractiveren.</p>
+        <table cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="background:#111;border-radius:8px">
+          <a href="mailto:info@agencyai.info?subject=Account heractiveren" style="display:inline-block;padding:13px 28px;font-size:14px;font-weight:600;color:#fff;text-decoration:none">Contact opnemen →</a>
+        </td></tr></table>`)
+    };
+  }
+
+  return { subject: 'Agency AI', html: wrap('<p>Bericht van Agency AI.</p>') };
+}
+
+// POST /api/register/demo — public
+app.post('/api/register/demo', async (req, res) => {
+  try {
+    const { naam, bedrijf, email, tel, klanten, plan, bericht } = req.body || {};
+    if (!naam || !bedrijf || !email) {
+      return res.status(400).json({ error: 'Naam, bedrijfsnaam en email zijn verplicht.' });
+    }
+    if (!validateEmail(email)) {
+      return res.status(400).json({ error: 'Ongeldig emailadres.' });
+    }
+
+    // Save to DB
+    const db = getDb();
+    db.exec(`CREATE TABLE IF NOT EXISTS demo_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT, company TEXT, email TEXT, phone TEXT, clients TEXT,
+      plan TEXT, message TEXT, status TEXT DEFAULT 'new',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+    db.prepare(`INSERT INTO demo_requests (name, company, email, phone, clients, plan, message)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(naam, bedrijf, email, tel || '', klanten || '', plan || 'starter', bericht || '');
+
+    // Notification
+    try { addNotification('contact_form', `Demo aanvraag: ${naam} — ${bedrijf}`, email, null, 'contacts'); } catch {}
+
+    res.json({ ok: true, type: 'demo' });
+
+    // Fire emails in background
+    const settings = readJSON('settings.json') || {};
+    if (isResendReady(settings)) {
+      const planLabel = { starter: 'Starter €197/m', pro: 'Pro €497/m', agency: 'Agency €997/m' }[plan] || plan;
+      // Email to admin
+      sendEmail({
+        to      : 'info@agencyai.info',
+        subject : `Nieuwe demo aanvraag: ${naam} — ${bedrijf}`,
+        body    : `Nieuwe demo aanvraag:\n\nNaam: ${naam}\nBedrijf: ${bedrijf}\nEmail: ${email}\nTel: ${tel||'—'}\nKlanten: ${klanten||'—'}\nPlan: ${planLabel}\n\nBericht:\n${bericht||'—'}`,
+        settings,
+      }).catch(() => {});
+      // Confirmation to applicant
+      const conf = buildRegEmail('demo_confirm', { naam, plan });
+      sendEmail({ to: email, subject: conf.subject, html: conf.html, settings }).catch(() => {});
+    }
+  } catch (err) {
+    console.error('[register/demo]', err.message);
+    res.status(500).json({ error: 'Er is iets misgegaan. Probeer het opnieuw.' });
+  }
+});
+
+// POST /api/register/direct — public
+app.post('/api/register/direct', async (req, res) => {
+  try {
+    const { naam, bedrijf, email, password, plan } = req.body || {};
+
+    // Validate
+    if (!naam || !bedrijf || !email || !password) {
+      return res.status(400).json({ error: 'Vul alle verplichte velden in.' });
+    }
+    if (!validateEmail(email)) {
+      return res.status(400).json({ error: 'Ongeldig emailadres.' });
+    }
+    if (password.length < 8 || !/\d/.test(password)) {
+      return res.status(400).json({ error: 'Wachtwoord: min. 8 tekens en minstens 1 cijfer.' });
+    }
+    if (isEmailTaken(email)) {
+      return res.status(400).json({ error: 'Dit emailadres is al geregistreerd.' });
+    }
+
+    const planKey    = ['starter','pro','agency'].includes(plan) ? plan : 'starter';
+    const amount     = PLAN_PRICES[planKey];
+    const slug       = uniqueWorkspaceSlug(bedrijf);
+
+    const { createWorkspace, createWorkspaceUser, generatePaymentReference } = require('./lib/workspace');
+    const ref = generatePaymentReference(bedrijf);
+
+    // Create workspace
+    const ws = createWorkspace({
+      slug,
+      name          : bedrijf,
+      owner_email   : email,
+      owner_name    : naam,
+      plan          : planKey,
+      status        : 'pending_payment',
+      billing_amount: amount,
+      payment_reference: ref,
+    });
+
+    // Create user
+    const hashedPwd = await bcrypt.hash(password, 12);
+    createWorkspaceUser(ws.id, {
+      email   : email,
+      password: hashedPwd,
+      name    : naam,
+      role    : 'admin',
+    });
+
+    // Create billing record
+    const db = getDb();
+    const billingId = crypto.randomBytes(8).toString('hex');
+    const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 7);
+    db.prepare(`INSERT INTO workspace_billing (id, workspace_id, amount, status, reference, due_date)
+      VALUES (?, ?, ?, 'pending', ?, ?)`).run(billingId, ws.id, amount, ref, dueDate.toISOString());
+
+    // Notification to admin
+    try {
+      addNotification('contact_form',
+        `Nieuwe registratie: ${naam} — ${bedrijf}`,
+        `Plan: ${planKey} €${amount}/m · Ref: ${ref}`,
+        null, 'contacts'
+      );
+    } catch {}
+
+    res.json({ ok: true, type: 'direct', paymentReference: ref, iban: 'NL62RABO0301339430', amount });
+
+    // Send emails in background
+    const settings = readJSON('settings.json') || {};
+    if (isResendReady(settings)) {
+      const welcome = buildRegEmail('welcome_payment', { naam, plan: planKey, amount, ref });
+      sendEmail({ to: email, subject: welcome.subject, html: welcome.html, settings }).catch(() => {});
+      sendEmail({
+        to      : 'info@agencyai.info',
+        subject : `Nieuwe registratie: ${naam} — ${bedrijf} (${planKey} €${amount}/m)`,
+        body    : `Nieuwe directe registratie:\n\nNaam: ${naam}\nBedrijf: ${bedrijf}\nEmail: ${email}\nPlan: ${planKey} €${amount}/maand\nWorkspace slug: ${slug}\nBetaalreferentie: ${ref}\n\nActiveer het account via het super admin panel.`,
+        settings,
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.error('[register/direct]', err.message);
+    res.status(500).json({ error: 'Er is iets misgegaan. Probeer het opnieuw.' });
+  }
+});
+
+// Export email builder for use by super admin activation
+global._buildRegEmail = buildRegEmail;
 
 app.use('/api', authMiddleware);
 app.use('/data/uploads', authMiddleware, express.static(path.join(__dirname, 'data', 'uploads')));

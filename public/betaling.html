@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Betaalinstructies — Agency AI</title>
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0a0f1e;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 700px;
+      height: 500px;
+      background: radial-gradient(ellipse, rgba(16,185,129,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .wrap {
+      width: 100%;
+      max-width: 500px;
+    }
+
+    /* ── Nav ── */
+    .nav {
+      display: flex;
+      align-items: center;
+      margin-bottom: 32px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: #2563eb;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .logo-icon svg {
+      width: 18px; height: 18px;
+      fill: none; stroke: #fff; stroke-width: 2;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    .logo-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: #f9fafb;
+      letter-spacing: -0.3px;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .hero-icon {
+      width: 64px; height: 64px;
+      background: rgba(16,185,129,0.15);
+      border: 1.5px solid rgba(16,185,129,0.3);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 28px;
+    }
+
+    .hero-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: #f9fafb;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+
+    .hero-sub {
+      font-size: 14px;
+      color: #9ca3af;
+      line-height: 1.5;
+    }
+
+    /* ── Payment card ── */
+    .pay-card {
+      background: #111827;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 20px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    }
+
+    .pay-card-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #6b7280;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    .pay-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 14px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      gap: 12px;
+    }
+
+    .pay-row:last-of-type { border-bottom: none; }
+
+    .pay-label {
+      font-size: 13px;
+      color: #6b7280;
+      font-weight: 500;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .pay-value {
+      font-size: 14px;
+      color: #f9fafb;
+      font-weight: 600;
+      text-align: right;
+      word-break: break-all;
+      font-family: 'Courier New', monospace;
+    }
+
+    .pay-value.accent { color: #60a5fa; }
+    .pay-value.big {
+      font-size: 22px;
+      font-weight: 800;
+      font-family: 'Inter', sans-serif;
+      color: #10b981;
+    }
+
+    /* ── Reference row with copy ── */
+    .ref-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(37,99,235,0.1);
+      border: 1px solid rgba(37,99,235,0.25);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-top: 20px;
+    }
+
+    .ref-code {
+      flex: 1;
+      font-size: 18px;
+      font-weight: 800;
+      color: #93c5fd;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 1px;
+    }
+
+    .copy-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 13px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .copy-btn:hover { background: #1d4ed8; }
+    .copy-btn.copied { background: #10b981; }
+
+    .copy-btn svg {
+      width: 13px; height: 13px;
+      fill: none; stroke: #fff; stroke-width: 2;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    /* ── Warning note ── */
+    .ref-note {
+      background: rgba(245,158,11,0.08);
+      border: 1px solid rgba(245,158,11,0.2);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #fcd34d;
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+
+    .ref-note strong { font-weight: 700; }
+
+    /* ── Steps ── */
+    .steps-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #6b7280;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin-bottom: 28px;
+    }
+
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      position: relative;
+    }
+
+    .step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 15px;
+      top: 36px;
+      bottom: -4px;
+      width: 2px;
+      background: rgba(255,255,255,0.06);
+    }
+
+    .step-dot {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      font-size: 13px;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+
+    .step-dot.done {
+      background: rgba(16,185,129,0.2);
+      border: 1.5px solid #10b981;
+      color: #10b981;
+    }
+
+    .step-dot.pending {
+      background: rgba(37,99,235,0.15);
+      border: 1.5px solid rgba(37,99,235,0.4);
+      color: #60a5fa;
+    }
+
+    .step-dot.future {
+      background: rgba(255,255,255,0.04);
+      border: 1.5px solid rgba(255,255,255,0.1);
+      color: #4b5563;
+    }
+
+    .step-body {
+      padding-bottom: 24px;
+    }
+
+    .step-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: #f9fafb;
+      margin-bottom: 2px;
+    }
+
+    .step-label.muted { color: #4b5563; }
+
+    .step-sub {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    /* ── Bottom info ── */
+    .bottom-info {
+      background: #111827;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 14px;
+      padding: 22px 24px;
+      text-align: center;
+    }
+
+    .bottom-info p {
+      font-size: 14px;
+      color: #9ca3af;
+      line-height: 1.6;
+      margin-bottom: 8px;
+    }
+
+    .bottom-info p:last-child { margin-bottom: 0; }
+
+    .bottom-info strong { color: #f9fafb; }
+
+    @media (max-width: 520px) {
+      .pay-card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+
+    <nav class="nav">
+      <a class="logo" href="/">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <span class="logo-name">Agency AI</span>
+      </a>
+    </nav>
+
+    <div class="hero">
+      <div class="hero-icon">🎉</div>
+      <div class="hero-title">Account bijna actief!</div>
+      <div class="hero-sub">Maak de betaling over om je account te activeren.<br>We activeren binnen 2 uur na ontvangst.</div>
+    </div>
+
+    <div class="pay-card">
+      <div class="pay-card-title">Betaalgegevens</div>
+
+      <div class="pay-row">
+        <span class="pay-label">IBAN</span>
+        <span class="pay-value accent" id="ibanVal">NL62RABO0301339430</span>
+      </div>
+      <div class="pay-row">
+        <span class="pay-label">Tenaamstelling</span>
+        <span class="pay-value">B. van Hemert</span>
+      </div>
+      <div class="pay-row">
+        <span class="pay-label">Bedrag</span>
+        <span class="pay-value big" id="amountVal">€197,00</span>
+      </div>
+
+      <div class="ref-row">
+        <span class="ref-code" id="refVal">AAI-2026-XXXX</span>
+        <button class="copy-btn" id="copyBtn" onclick="copyRef()">
+          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span id="copyTxt">Kopieer referentie</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="ref-note">
+      <strong>Belangrijk:</strong> Vermeld altijd de referentiecode bij je betaling zodat we je account automatisch kunnen activeren.
+    </div>
+
+    <div class="steps-title">Voortgang</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-dot done">✓</div>
+        <div class="step-body">
+          <div class="step-label">Account aangemaakt</div>
+          <div class="step-sub">Je gegevens zijn opgeslagen</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-dot pending">⏳</div>
+        <div class="step-body">
+          <div class="step-label">Betaling in afwachting</div>
+          <div class="step-sub">Maak het bedrag over met de referentie</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-dot future">3</div>
+        <div class="step-body">
+          <div class="step-label muted">Account activeren</div>
+          <div class="step-sub">Na ontvangst betaling — binnen 2 uur</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-dot future">4</div>
+        <div class="step-body">
+          <div class="step-label muted">Aan de slag!</div>
+          <div class="step-sub">Volledig toegang tot Agency AI</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bottom-info">
+      <p><strong>Betaling gedaan?</strong></p>
+      <p>We controleren betalingen meerdere keren per dag. Je ontvangt een bevestigingsmail zodra je account actief is.</p>
+      <p>Vragen? Mail ons op <strong>info@agencyai.info</strong></p>
+    </div>
+
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const ref    = params.get('ref')   || 'AAI-2026-XXXX';
+    const amt    = params.get('amount') || '197';
+    const naam   = params.get('naam')  || '';
+
+    document.getElementById('refVal').textContent    = ref;
+    document.getElementById('amountVal').textContent = '€' + Number(amt).toLocaleString('nl-NL', { minimumFractionDigits: 2 });
+
+    function copyRef() {
+      navigator.clipboard.writeText(ref).then(() => {
+        const btn = document.getElementById('copyBtn');
+        const txt = document.getElementById('copyTxt');
+        btn.classList.add('copied');
+        txt.textContent = '✓ Gekopieerd!';
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          txt.textContent = 'Kopieer referentie';
+        }, 2500);
+      }).catch(() => {
+        // Fallback
+        const ta = document.createElement('textarea');
+        ta.value = ref; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+        document.body.removeChild(ta);
+        document.getElementById('copyTxt').textContent = '✓ Gekopieerd!';
+        setTimeout(() => { document.getElementById('copyTxt').textContent = 'Kopieer referentie'; }, 2500);
+      });
+    }
+  </script>
+</body>
+</html>

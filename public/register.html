@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account aanmaken — Agency AI</title>
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --surface: #111827;
+      --surface-2: #1f2937;
+      --surface-3: #374151;
+      --border: rgba(255,255,255,0.08);
+      --text: #f9fafb;
+      --text-2: #9ca3af;
+      --text-3: #6b7280;
+      --success: #10b981;
+      --danger: #ef4444;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0a0f1e;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Background glow */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 600px;
+      background: radial-gradient(ellipse, rgba(37,99,235,0.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .wrap {
+      width: 100%;
+      max-width: 480px;
+      position: relative;
+    }
+
+    /* ── Nav bar ── */
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-icon svg {
+      width: 18px; height: 18px;
+      fill: none; stroke: #fff; stroke-width: 2;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    .logo-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.3px;
+    }
+
+    .nav-login {
+      font-size: 13px;
+      color: var(--text-2);
+      text-decoration: none;
+    }
+
+    .nav-login:hover { color: var(--text); }
+    .nav-login span { color: var(--accent); }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 32px 64px rgba(0,0,0,0.4);
+    }
+
+    .card-header {
+      padding: 32px 36px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .card-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.4px;
+      margin-bottom: 4px;
+    }
+
+    .card-sub {
+      font-size: 14px;
+      color: var(--text-2);
+    }
+
+    /* ── Toggle ── */
+    .toggle-wrap {
+      padding: 20px 36px 0;
+    }
+
+    .toggle {
+      display: flex;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 2px;
+    }
+
+    .toggle-btn {
+      flex: 1;
+      height: 36px;
+      border: none;
+      border-radius: 7px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      background: transparent;
+      color: var(--text-3);
+      transition: all 0.2s;
+    }
+
+    .toggle-btn.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    /* ── Form ── */
+    .form-wrap {
+      padding: 24px 36px 32px;
+    }
+
+    .form-section { display: none; }
+    .form-section.active { display: block; }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .form-group { margin-bottom: 14px; }
+
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-2);
+      margin-bottom: 5px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      height: 44px;
+      padding: 0 14px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    input::placeholder { color: var(--text-3); }
+    select { cursor: pointer; }
+    select option { background: #1f2937; color: #f9fafb; }
+
+    textarea {
+      height: 80px;
+      padding: 12px 14px;
+      resize: none;
+      line-height: 1.5;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+    }
+
+    input.err, select.err { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(239,68,68,0.1); }
+
+    /* Select arrow */
+    .select-wrap { position: relative; }
+    .select-wrap::after {
+      content: '';
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0; height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid var(--text-3);
+      pointer-events: none;
+    }
+
+    /* ── Password strength ── */
+    .pwd-hint {
+      font-size: 11px;
+      color: var(--text-3);
+      margin-top: 4px;
+    }
+
+    /* ── Plan cards ── */
+    .plan-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .plan-card {
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+      background: var(--surface-2);
+    }
+
+    .plan-card:hover { border-color: rgba(37,99,235,0.4); }
+    .plan-card.selected {
+      border-color: var(--accent);
+      background: rgba(37,99,235,0.12);
+    }
+
+    .plan-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+
+    .plan-price {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--accent);
+    }
+
+    .plan-cycle {
+      font-size: 10px;
+      color: var(--text-3);
+    }
+
+    /* Hidden radio behind plan cards */
+    .plan-radio { display: none; }
+
+    /* ── Error box ── */
+    .error-box {
+      display: none;
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      color: #fca5a5;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+
+    .error-box.visible { display: block; }
+
+    /* ── Success box ── */
+    .success-box {
+      display: none;
+      background: rgba(16,185,129,0.1);
+      border: 1px solid rgba(16,185,129,0.3);
+      color: #6ee7b7;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+
+    .success-box.visible { display: block; }
+
+    /* ── Submit button ── */
+    .btn {
+      width: 100%;
+      height: 48px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background 0.15s;
+      letter-spacing: -0.1px;
+    }
+
+    .btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .btn .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    .btn.loading .spinner { display: block; }
+    .btn.loading .btn-txt { display: none; }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 18px 36px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-3);
+    }
+
+    .footer a { color: var(--text-2); text-decoration: none; }
+    .footer a:hover { color: var(--text); }
+
+    /* ── Trust badges ── */
+    .trust {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--text-3);
+    }
+
+    .trust-item svg {
+      width: 14px; height: 14px;
+      fill: none; stroke: #10b981; stroke-width: 2;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 520px) {
+      .card-header, .toggle-wrap, .form-wrap { padding-left: 24px; padding-right: 24px; }
+      .footer { padding-left: 24px; padding-right: 24px; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+
+    <nav class="nav">
+      <a class="logo" href="/">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <span class="logo-name">Agency AI</span>
+      </a>
+      <a class="nav-login" href="/login">Al een account? <span>Inloggen →</span></a>
+    </nav>
+
+    <div class="card">
+
+      <div class="card-header">
+        <div class="card-title">Start vandaag nog</div>
+        <div class="card-sub">Kies hoe je wilt beginnen</div>
+      </div>
+
+      <!-- ── Toggle ── -->
+      <div class="toggle-wrap">
+        <div class="toggle">
+          <button class="toggle-btn active" id="btnDemo" onclick="switchTab('demo')">Demo aanvragen</button>
+          <button class="toggle-btn" id="btnDirect" onclick="switchTab('direct')">Direct starten</button>
+        </div>
+      </div>
+
+      <div class="form-wrap">
+
+        <!-- ══ DEMO AANVRAGEN ════════════════════════════════════════════ -->
+        <div class="form-section active" id="tabDemo">
+
+          <div id="demoError" class="error-box"></div>
+          <div id="demoSuccess" class="success-box"></div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Naam *</label>
+              <input type="text" id="demoNaam" placeholder="Jan Janssen" autocomplete="name">
+            </div>
+            <div class="form-group">
+              <label>Bedrijfsnaam *</label>
+              <input type="text" id="demoBedrijf" placeholder="Marketing Pro" autocomplete="organization">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Email *</label>
+              <input type="email" id="demoEmail" placeholder="jan@bedrijf.nl" autocomplete="email">
+            </div>
+            <div class="form-group">
+              <label>Telefoonnummer</label>
+              <input type="tel" id="demoTel" placeholder="+31 6 12345678" autocomplete="tel">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Huidig aantal klanten</label>
+              <div class="select-wrap">
+                <select id="demoKlanten">
+                  <option value="0-5">0 – 5 klanten</option>
+                  <option value="5-20">5 – 20 klanten</option>
+                  <option value="20-50">20 – 50 klanten</option>
+                  <option value="50+">50+ klanten</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Gewenst plan</label>
+              <div class="select-wrap">
+                <select id="demoPlan">
+                  <option value="starter">Starter — €197/m</option>
+                  <option value="pro">Pro — €497/m</option>
+                  <option value="agency">Agency — €997/m</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Bericht (optioneel)</label>
+            <textarea id="demoBericht" placeholder="Vertel ons over je uitdagingen..."></textarea>
+          </div>
+
+          <button class="btn" id="demoBtn" onclick="submitDemo()">
+            <div class="spinner"></div>
+            <span class="btn-txt">Demo aanvragen →</span>
+          </button>
+
+        </div>
+
+        <!-- ══ DIRECT STARTEN ════════════════════════════════════════════ -->
+        <div class="form-section" id="tabDirect">
+
+          <div id="directError" class="error-box"></div>
+          <div id="directSuccess" class="success-box"></div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Naam *</label>
+              <input type="text" id="dirNaam" placeholder="Jan Janssen" autocomplete="name">
+            </div>
+            <div class="form-group">
+              <label>Bedrijfsnaam *</label>
+              <input type="text" id="dirBedrijf" placeholder="Marketing Pro" autocomplete="organization">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Email *</label>
+            <input type="email" id="dirEmail" placeholder="jan@bedrijf.nl" autocomplete="email">
+          </div>
+
+          <div class="form-group">
+            <label>Wachtwoord * <span style="color:var(--text-3);text-transform:none;font-size:10px;letter-spacing:0">(min. 8 tekens, incl. cijfer)</span></label>
+            <input type="password" id="dirPwd" placeholder="••••••••" autocomplete="new-password">
+          </div>
+
+          <!-- Plan selector -->
+          <div style="margin-bottom:14px">
+            <label style="margin-bottom:8px">Gewenst plan *</label>
+            <div class="plan-grid">
+              <div class="plan-card selected" onclick="selectPlan('starter')" id="planStarter">
+                <div class="plan-name">Starter</div>
+                <div class="plan-price">€197</div>
+                <div class="plan-cycle">per maand</div>
+              </div>
+              <div class="plan-card" onclick="selectPlan('pro')" id="planPro">
+                <div class="plan-name">Pro</div>
+                <div class="plan-price">€497</div>
+                <div class="plan-cycle">per maand</div>
+              </div>
+              <div class="plan-card" onclick="selectPlan('agency')" id="planAgency">
+                <div class="plan-name">Agency</div>
+                <div class="plan-price">€997</div>
+                <div class="plan-cycle">per maand</div>
+              </div>
+            </div>
+            <input type="hidden" id="dirPlan" value="starter">
+          </div>
+
+          <button class="btn" id="dirBtn" onclick="submitDirect()">
+            <div class="spinner"></div>
+            <span class="btn-txt">Account aanmaken →</span>
+          </button>
+
+        </div>
+
+      </div><!-- /form-wrap -->
+
+      <div class="footer">
+        Door je te registreren ga je akkoord met onze
+        <a href="/">voorwaarden</a>.
+        Vragen? <a href="mailto:info@agencyai.info">info@agencyai.info</a>
+      </div>
+
+    </div><!-- /card -->
+
+    <div class="trust">
+      <div class="trust-item">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        Geen creditcard nodig
+      </div>
+      <div class="trust-item">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        Activering binnen 2 uur
+      </div>
+      <div class="trust-item">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        Maandelijks opzegbaar
+      </div>
+    </div>
+
+  </div><!-- /wrap -->
+
+  <script>
+    const PLAN_PRICES = { starter: 197, pro: 497, agency: 997 };
+    let _currentTab = 'demo';
+
+    function switchTab(tab) {
+      _currentTab = tab;
+      document.getElementById('tabDemo').classList.toggle('active', tab === 'demo');
+      document.getElementById('tabDirect').classList.toggle('active', tab === 'direct');
+      document.getElementById('btnDemo').classList.toggle('active', tab === 'demo');
+      document.getElementById('btnDirect').classList.toggle('active', tab === 'direct');
+      // Clear errors on tab switch
+      ['demoError','demoSuccess','directError','directSuccess'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.textContent = ''; el.classList.remove('visible'); }
+      });
+    }
+
+    function selectPlan(plan) {
+      document.getElementById('dirPlan').value = plan;
+      ['starter','pro','agency'].forEach(p => {
+        document.getElementById('plan' + p.charAt(0).toUpperCase() + p.slice(1))
+          .classList.toggle('selected', p === plan);
+      });
+    }
+
+    function setLoading(btnId, loading) {
+      const btn = document.getElementById(btnId);
+      btn.classList.toggle('loading', loading);
+      btn.disabled = loading;
+    }
+
+    function showError(boxId, msg) {
+      const el = document.getElementById(boxId);
+      el.textContent = msg;
+      el.classList.add('visible');
+      el.classList.remove('success-box');
+      el.classList.add('error-box');
+    }
+
+    function showSuccess(boxId, msg) {
+      const el = document.getElementById(boxId);
+      el.textContent = msg;
+      el.classList.add('visible');
+      el.classList.remove('error-box');
+      el.classList.add('success-box');
+    }
+
+    // ── Demo submit ──────────────────────────────────────────────────────────
+    async function submitDemo() {
+      const naam    = document.getElementById('demoNaam').value.trim();
+      const bedrijf = document.getElementById('demoBedrijf').value.trim();
+      const email   = document.getElementById('demoEmail').value.trim();
+      const tel     = document.getElementById('demoTel').value.trim();
+      const klanten = document.getElementById('demoKlanten').value;
+      const plan    = document.getElementById('demoPlan').value;
+      const bericht = document.getElementById('demoBericht').value.trim();
+
+      document.getElementById('demoError').classList.remove('visible');
+      document.getElementById('demoSuccess').classList.remove('visible');
+
+      if (!naam || !bedrijf || !email) {
+        showError('demoError', 'Naam, bedrijfsnaam en email zijn verplicht.');
+        return;
+      }
+
+      setLoading('demoBtn', true);
+      try {
+        const res  = await fetch('/api/register/demo', {
+          method : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body   : JSON.stringify({ naam, bedrijf, email, tel, klanten, plan, bericht })
+        });
+        const data = await res.json();
+        if (!res.ok) { showError('demoError', data.error || 'Er is iets misgegaan.'); return; }
+        showSuccess('demoSuccess', '✓ Demo aangevraagd! We nemen binnen 24 uur contact met je op.');
+        document.getElementById('demoBtn').disabled = true;
+        document.getElementById('demoBtn').querySelector('.btn-txt').textContent = '✓ Aangevraagd';
+      } catch {
+        showError('demoError', 'Verbindingsfout. Probeer het opnieuw.');
+      } finally {
+        setLoading('demoBtn', false);
+      }
+    }
+
+    // ── Direct submit ────────────────────────────────────────────────────────
+    async function submitDirect() {
+      const naam    = document.getElementById('dirNaam').value.trim();
+      const bedrijf = document.getElementById('dirBedrijf').value.trim();
+      const email   = document.getElementById('dirEmail').value.trim();
+      const pwd     = document.getElementById('dirPwd').value;
+      const plan    = document.getElementById('dirPlan').value;
+
+      document.getElementById('directError').classList.remove('visible');
+      document.getElementById('directSuccess').classList.remove('visible');
+
+      if (!naam || !bedrijf || !email || !pwd) {
+        showError('directError', 'Vul alle verplichte velden in.');
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        showError('directError', 'Voer een geldig emailadres in.');
+        return;
+      }
+      if (pwd.length < 8 || !/\d/.test(pwd)) {
+        showError('directError', 'Wachtwoord: min. 8 tekens en minstens 1 cijfer.');
+        return;
+      }
+
+      setLoading('dirBtn', true);
+      try {
+        const res  = await fetch('/api/register/direct', {
+          method : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body   : JSON.stringify({ naam, bedrijf, email, password: pwd, plan })
+        });
+        const data = await res.json();
+        if (!res.ok) { showError('directError', data.error || 'Er is iets misgegaan.'); return; }
+
+        // Redirect to payment page
+        const ref = encodeURIComponent(data.paymentReference || '');
+        const amt = data.amount || PLAN_PRICES[plan];
+        window.location.href = `/register/betaling?ref=${ref}&amount=${amt}&naam=${encodeURIComponent(naam)}`;
+      } catch {
+        showError('directError', 'Verbindingsfout. Probeer het opnieuw.');
+      } finally {
+        setLoading('dirBtn', false);
+      }
+    }
+
+    // Activate tab from URL hash
+    if (location.hash === '#direct') switchTab('direct');
+  </script>
+</body>
+</html>
