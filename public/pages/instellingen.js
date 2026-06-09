@@ -1179,7 +1179,7 @@ async function renderSettings() {
               { key: 'checkIn',        label: 'Halverwege check-in' },
             ].map(opt => `
               <label class="stg-toggle-item">
-                <input type="checkbox" id="ace_${opt.key}" ${(s.autoClientEmails?.[opt.key] !== false) ? 'checked' : ''}>
+                <input type="checkbox" id="ace_${opt.key}" ${(s.autoClientEmails?.[opt.key] === true) ? 'checked' : ''}>
                 <span class="toggle"></span>
                 <span class="toggle-label">${opt.label}</span>
               </label>`).join('')}

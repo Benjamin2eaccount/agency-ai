@@ -8150,8 +8150,11 @@ app.get('/api/settings', (req, res) => {
       autoArchiveDays:       ws_s.autoArchiveDays        || 30,
       automationPaused:      ws_s.automationPaused       || false,
 
-      // Client email toggles
-      autoClientEmails: ws_s.autoClientEmails || {},
+      // Client email toggles — all OFF by default for new workspaces
+      autoClientEmails: ws_s.autoClientEmails || {
+        welcome: false, intakeReceived: false, deliveryReady: false,
+        weekComplete: false, monthlyUpdate: false, checkIn: false,
+      },
 
       // Run settings
       dailyRunTime:    ws_s.dailyRunTime    || '09:00',
