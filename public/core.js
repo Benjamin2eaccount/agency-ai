@@ -4,12 +4,15 @@
 // populated before the auth guard fires.
 ;(function() {
   var h = window.location.hash;
+  console.log('[hash-import] hash:', h ? h.substring(0, 50) : '(empty)');
   if (h && h.indexOf('_imp=1') !== -1) {
     try {
       var params = new URLSearchParams(h.substring(1));
       var tok  = params.get('token');
       var slug = params.get('slug') || '';
       var nm   = params.get('name') || '';
+      console.log('[hash-import] token found:', !!tok);
+      console.log('[hash-import] slug:', slug);
       if (tok) {
         // sessionStorage: used while the tab is open
         sessionStorage.setItem('agencyToken',    tok);
@@ -26,7 +29,7 @@
         // Remove the hash so the token doesn't appear in the URL bar or browser history
         history.replaceState(null, '', '/app/');
       }
-    } catch(e) { /* ignore */ }
+    } catch(e) { console.warn('[hash-import] error:', e); }
   }
 })();
 
@@ -136,27 +139,28 @@ const state = {
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
 function getToken() {
-  // 1. sessionStorage — impersonated session active in this tab
-  var sess = sessionStorage.getItem('agencyToken');
+  const sess = sessionStorage.getItem('agencyToken');
+  console.log('[getToken] sessionStorage:', sess ? 'found' : 'empty');
   if (sess) return sess;
 
-  // 2. Workspace-specific impersonation token — survives Ctrl+R
-  //    currentWorkspace is set by the hash import IIFE when impersonation starts
-  var wsSlug = localStorage.getItem('currentWorkspace');
-  if (wsSlug) {
-    var impTok = localStorage.getItem('impToken_' + wsSlug);
-    if (impTok) {
-      // Re-populate sessionStorage so the rest of the app behaves consistently
-      sessionStorage.setItem('agencyToken',    impTok);
+  const currentWS = localStorage.getItem('currentWorkspace');
+  console.log('[getToken] currentWorkspace:', currentWS);
+
+  if (currentWS) {
+    const impToken = localStorage.getItem('impToken_' + currentWS);
+    console.log('[getToken] impToken_' + currentWS + ':', impToken ? 'found' : 'empty');
+    if (impToken) {
+      sessionStorage.setItem('agencyToken',    impToken);
       sessionStorage.setItem('agencyRole',     'admin');
-      sessionStorage.setItem('workspaceSlug',  wsSlug);
+      sessionStorage.setItem('workspaceSlug',  currentWS);
       sessionStorage.setItem('isImpersonating','1');
-      return impTok;
+      return impToken;
     }
   }
 
-  // 3. Normal login token
-  return localStorage.getItem('agencyToken') || '';
+  const local = localStorage.getItem('agencyToken');
+  console.log('[getToken] localStorage agencyToken:', local ? 'found' : 'empty');
+  return local;
 }
 
 function authHeaders() {
