@@ -7,14 +7,16 @@
 
 // ─── Auth guard — runs immediately, blocks page until verified ────────────────
 (async function checkAuth() {
-  const token = localStorage.getItem('agencyToken');
+  // Use getToken() (defined in api.js, loaded before auth.js) so impersonated
+  // sessions are honoured (sessionStorage → impToken_<slug> → localStorage)
+  const token = getToken();
   if (!token) { window.location.href = '/login'; return; }
   try {
     const res = await fetch('/api/auth/verify', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     const data = await res.json();
-    if (!data.valid) { localStorage.clear(); window.location.href = '/login'; return; }
+    if (!data.valid) { sessionStorage.clear(); localStorage.clear(); window.location.href = '/login'; return; }
   } catch {
     // Server unreachable — allow offline PWA use
   }
@@ -47,11 +49,12 @@ async function loadSidebar() {
     sidebar.querySelectorAll('[data-admin-only]').forEach(el => el.style.display = 'none');
   }
 
-  // Fill user info
-  const name = localStorage.getItem('agencyName') || 'Admin';
-  const role = localStorage.getItem('agencyRole') || 'admin';
+  // Fill user info — read from JWT so impersonated sessions show the correct user
+  const _pl   = getTokenPayload();
+  const name  = _pl?.name || _pl?.myName || localStorage.getItem('agencyName') || 'Admin';
+  const role  = _pl?.role || getRole();
   const el = id => sidebar.querySelector('#' + id);
-  if (el('userAvatar')) el('userAvatar').textContent = name.charAt(0).toUpperCase();
+  if (el('userAvatar')) el('userAvatar').textContent = (name.charAt(0) || '?').toUpperCase();
   if (el('userName'))   el('userName').textContent   = name;
   if (el('userRole'))   el('userRole').textContent   = role === 'admin' ? 'Admin' : 'Medewerker';
 

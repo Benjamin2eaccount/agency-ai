@@ -163,6 +163,17 @@ function getToken() {
   return local;
 }
 
+// Decode the current JWT payload without verifying signature (client-side display only)
+function getTokenPayload() {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    return JSON.parse(atob(token.split('.')[1]));
+  } catch(e) {
+    return null;
+  }
+}
+
 function authHeaders() {
   return {
     'Authorization': 'Bearer ' + getToken(),
@@ -1036,14 +1047,16 @@ document.addEventListener('DOMContentLoaded', () => {
   updateTopbarTime();
   setInterval(updateTopbarTime, 30000);
 
-  // Set user name + role badge from localStorage
-  const name = localStorage.getItem('myName') || 'Admin';
-  const role = getRole();
+  // Set user name + role badge — read from JWT payload so impersonated sessions
+  // show the correct workspace user, not the SA admin's localStorage values
+  const _pl = getTokenPayload();
+  const name = _pl?.name || _pl?.myName || localStorage.getItem('myName') || 'Admin';
+  const role = _pl?.role || getRole();
   const userNameEl = document.getElementById('userName');
   const userAvatarEl = document.getElementById('userAvatar');
   const userRoleEl = document.getElementById('userRole');
   if (userNameEl) userNameEl.textContent = name;
-  if (userAvatarEl) userAvatarEl.textContent = name[0].toUpperCase();
+  if (userAvatarEl) userAvatarEl.textContent = (name[0] || '?').toUpperCase();
   if (userRoleEl) userRoleEl.textContent = role === 'admin' ? 'Admin' : 'Medewerker';
 
   // Demo banner — shown when logged in via /demo/admin or /demo/medewerker
