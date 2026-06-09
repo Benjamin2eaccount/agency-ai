@@ -7151,14 +7151,20 @@ app.patch('/api/settings/account', requireAdmin, async (req, res) => {
 
   if (newPassword) {
     if (!currentPassword) return res.status(400).json({ error: 'Huidig wachtwoord verplicht' });
-    const ok = await bcrypt.compare(currentPassword, settings.password);
-    if (!ok) return res.status(401).json({ error: 'Huidig wachtwoord onjuist' });
-    const hashed = await bcrypt.hash(newPassword, 12);
-    settings.password = hashed;
-    // sync to users store
+
+    // Always verify against users.json — that is the source of truth for login.
+    // settings.password can drift; req.user.id is the reliable identifier from the JWT.
     const users = readJSON('users.json') || [];
-    const uIdx = users.findIndex(u => u.username === (settings.username || 'admin'));
-    if (uIdx !== -1) { users[uIdx].password = hashed; writeJSON('users.json', users); }
+    const uIdx  = users.findIndex(u => u.id === req.user.id);
+    if (uIdx === -1) return res.status(404).json({ error: 'Gebruiker niet gevonden' });
+
+    const ok = await bcrypt.compare(currentPassword, users[uIdx].password);
+    if (!ok) return res.status(401).json({ error: 'Huidig wachtwoord onjuist' });
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+    users[uIdx].password = hashed;
+    writeJSON('users.json', users);
+    settings.password = hashed; // keep settings.json in sync for legacy reads
   }
 
   writeJSON('settings.json', settings);
