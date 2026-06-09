@@ -8045,7 +8045,15 @@ app.get('/api/settings', (req, res) => {
     s = readJSON(`ws:${wId}:settings.json`);
     if (!s) {
       // New workspace — build clean defaults from workspaces table
-      s = { iban: '', bic: '', tenaamstelling: '', emailSignature: '', webhookToken: '', smtp: {}, niches: [], onboardingCompleted: false };
+      s = {
+        iban: '', bic: '', tenaamstelling: '', emailSignature: '', webhookToken: '',
+        smtp: {}, niches: [], onboardingCompleted: false,
+        // Explicitly false so `x !== false` patterns in the UI render as unchecked
+        replyDetection: false, dailyBriefingEnabled: false, weeklyUpdatesEnabled: false,
+        aiAutoReply: false, monthlyReports: false, backupEnabled: false,
+        autoArchiveEnabled: false, automationPaused: false,
+        resendApiKey: '', resendFromAddress: '', gmailAddress: '',
+      };
       try {
         const db = getDb();
         const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(wId);

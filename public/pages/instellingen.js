@@ -1028,7 +1028,7 @@ async function renderSettings() {
 
         <div class="stg-divider"></div>
 
-        <div class="stg-section">
+        ${isAgencyAI ? `<div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title"><i class="ti ti-brand-zapier" style="color:#ff4a00;margin-right:6px"></i>Zapier inkomend token</div>
             <div class="stg-sub">Voeg toe als header <code>x-zapier-token</code> in je Zapier webhook-actie</div>
@@ -1037,7 +1037,7 @@ async function renderSettings() {
             <code id="zapierTokenDisplay" class="stg-code-block" style="filter:blur(4px);transition:filter .2s;cursor:pointer" onclick="this.style.filter='none'" title="Klik om zichtbaar te maken">${esc(s.zapierIncomingToken || '—')}</code>
             <button class="btn btn-ghost btn-sm" onclick="copyZapierToken()"><i class="ti ti-copy"></i></button>
           </div>
-        </div>
+        </div>` : ''}
       </div>
 
 <!-- ── Email & versturen ── -->
@@ -1061,7 +1061,7 @@ async function renderSettings() {
             </div>
             <div class="stg-field stg-field-full">
               <label class="stg-label">AFZENDER E-MAILADRES <span class="stg-label-note">— moet geverifieerd zijn in Resend dashboard</span></label>
-              <input type="text" class="stg-input" id="resendFromAddress" value="${esc(s.resendFromAddress || '')}" placeholder="noreply@agencyai.info">
+              <input type="text" class="stg-input" id="resendFromAddress" value="${esc(s.resendFromAddress || '')}" placeholder="noreply@uwdomein.nl">
             </div>
           </div>
           <button class="btn btn-primary stg-save-btn" id="saveResendBtn"><i class="ti ti-device-floppy"></i> Opslaan &amp; testen</button>
@@ -1075,25 +1075,25 @@ async function renderSettings() {
             <div class="stg-title">IMAP — reply detectie
               ${s.gmailConfigured ? `<span class="stg-status-badge stg-badge-green"><i class="ti ti-check"></i> Ingesteld</span>` : `<span class="stg-status-badge stg-badge-amber"><i class="ti ti-alert-triangle"></i> Niet ingesteld</span>`}
             </div>
-            <div class="stg-sub">Verbind uw inbox om antwoorden van prospects automatisch te detecteren. Gebruik uw <strong>info@agencyai.info</strong> gegevens (Soverin — imap.soverin.net:993).</div>
+            <div class="stg-sub">Verbind uw eigen inbox voor automatische reply detectie. Werkt met Gmail, Outlook en andere IMAP providers.</div>
           </div>
           <div class="stg-grid-2">
             <div class="stg-field">
               <label class="stg-label">E-MAILADRES</label>
-              <input type="email" class="stg-input" id="gmailAddress" value="${s.gmailAddress || 'info@agencyai.info'}" placeholder="info@agencyai.info">
+              <input type="email" class="stg-input" id="gmailAddress" value="${esc(s.gmailAddress || '')}" placeholder="uw@emailadres.nl">
             </div>
             <div class="stg-field">
               <label class="stg-label">WACHTWOORD ${s.gmailPasswordSet ? '<span class="stg-status-badge stg-badge-green" style="font-size:10px">Ingesteld</span>' : ''}</label>
-              <input type="password" class="stg-input" id="gmailPassword" placeholder="${s.gmailPasswordSet ? '(laat leeg om ongewijzigd te laten)' : 'Wachtwoord van info@agencyai.info'}">
+              <input type="password" class="stg-input" id="gmailPassword" placeholder="${s.gmailPasswordSet ? '(laat leeg om ongewijzigd te laten)' : 'IMAP wachtwoord'}">
             </div>
           </div>
           <div class="stg-toggle-row">
             <label class="toggle-wrap">
-              <input type="checkbox" id="replyDetection" ${s.replyDetection !== false ? 'checked' : ''}>
+              <input type="checkbox" id="replyDetection" ${s.replyDetection === true ? 'checked' : ''}>
               <span class="toggle"></span>
               <span class="toggle-label">Reply detectie inschakelen</span>
             </label>
-            <p class="toggle-hint">Controleert elke 2 uur uw inbox (imap.soverin.net) op antwoorden van prospects</p>
+            <p class="toggle-hint">Controleert elke 2 uur uw inbox op antwoorden van prospects</p>
           </div>
           ${isAgencyAI ? `<div class="stg-toggle-row">
             <label class="toggle-wrap">
@@ -1625,7 +1625,7 @@ async function renderSettings() {
               <code id="zapierTriggerUrl" class="stg-code-block" style="flex:1">${window.location.origin}/api/zapier/trigger</code>
               <button class="btn btn-ghost btn-sm" onclick="copyZapierUrl()"><i class="ti ti-copy"></i></button>
             </div>
-            <p class="stg-sub" style="margin-top:6px">Header <code>x-zapier-token</code> + body: <code>action: "add_lead"</code>, <code>companyName</code>, optioneel <code>websiteUrl</code>, <code>niche</code></p>
+            <p class="stg-sub" style="margin-top:6px">Voeg je Zapier webhook URL toe om automatisch leads te ontvangen vanuit andere tools.</p>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
             <label class="stg-label" style="margin:0">UITGAANDE WEBHOOKS</label>
