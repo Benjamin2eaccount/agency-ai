@@ -1136,15 +1136,8 @@ async function impersonate(id) {
     return;
   }
 
-  // Note: superAdminToken is a dedicated key and is NOT overwritten by the relay page.
-  // The relay page only sets agencyToken/agencyRole/workspaceSlug/agencyName in the new tab.
-  // After 600ms we restore agencyToken in THIS tab so navigating to /app here still works as SA.
-  const saToken = _token;
-  setTimeout(() => {
-    localStorage.setItem('agencyToken', saToken);
-    localStorage.setItem('agencyRole', 'superadmin');
-  }, 600);
-
+  // Relay page uses sessionStorage (per-tab) so no localStorage restore is needed here.
+  // The SA token in superAdminToken remains untouched for this tab.
   toast(`Workspace "${esc(d.name || d.slug)}" geopend in nieuw tabblad`);
 }
 

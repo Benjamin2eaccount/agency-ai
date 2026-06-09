@@ -1,7 +1,8 @@
 // ─── Auth guard — runs after DOM is ready so localStorage is fully committed ──
 document.addEventListener('DOMContentLoaded', async () => {
   if (!window.location.pathname.startsWith('/app')) return;
-  const token = localStorage.getItem('agencyToken');
+  // sessionStorage wins for impersonated sessions (per-tab, not shared across tabs)
+  const token = sessionStorage.getItem('agencyToken') || localStorage.getItem('agencyToken');
   if (!token) {
     window.location.href = '/login';
     return;
@@ -12,6 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     const data = await res.json();
     if (!data.valid) {
+      sessionStorage.clear();
       localStorage.clear();
       window.location.href = '/login';
       return;
@@ -27,7 +29,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadSystemMessages() {
   try {
     const res = await fetch('/api/system-messages', {
-      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('agencyToken') || '') }
+      headers: { 'Authorization': 'Bearer ' + (sessionStorage.getItem('agencyToken') || localStorage.getItem('agencyToken') || '') }
     });
     if (!res.ok) return;
     const messages = await res.json();
@@ -78,7 +80,7 @@ async function dismissSysMsg(id, bannerEl) {
   try {
     await fetch(`/api/system-messages/${id}/dismiss`, {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('agencyToken') || '') }
+      headers: { 'Authorization': 'Bearer ' + (sessionStorage.getItem('agencyToken') || localStorage.getItem('agencyToken') || '') }
     });
   } catch {}
   bannerEl.remove();
@@ -102,7 +104,7 @@ const state = {
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
 function getToken() {
-  return localStorage.getItem('agencyToken') || '';
+  return sessionStorage.getItem('agencyToken') || localStorage.getItem('agencyToken') || '';
 }
 
 function authHeaders() {
@@ -113,12 +115,13 @@ function authHeaders() {
 }
 
 function logout() {
+  sessionStorage.clear();
   localStorage.clear();
   window.location.href = '/login';
 }
 
 function getRole() {
-  return localStorage.getItem('agencyRole') || 'admin';
+  return sessionStorage.getItem('agencyRole') || localStorage.getItem('agencyRole') || 'admin';
 }
 
 function isAdmin() {
@@ -725,7 +728,7 @@ let _ws = null;
 let _wsReconnectTimer = null;
 
 function initWebSocket() {
-  const token = localStorage.getItem('agencyToken');
+  const token = sessionStorage.getItem('agencyToken') || localStorage.getItem('agencyToken');
   if (!token) return;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const url = `${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`;

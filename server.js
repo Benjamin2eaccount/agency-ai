@@ -432,10 +432,11 @@ app.get('/superadmin/impersonate-relay', (req, res) => {
 <div>Inloggen als <strong style="color:#f9fafb">${safeName}</strong>…</div>
 <script>
 (function() {
-  localStorage.setItem('agencyToken', ${JSON.stringify(safeToken)});
-  localStorage.setItem('agencyRole', 'admin');
-  localStorage.setItem('workspaceSlug', ${JSON.stringify(safeSlug)});
-  localStorage.setItem('agencyName', ${JSON.stringify(safeName)});
+  // Use sessionStorage (per-tab) so the SA tab's token restore doesn't overwrite this session
+  sessionStorage.setItem('agencyToken', ${JSON.stringify(safeToken)});
+  sessionStorage.setItem('agencyRole', 'admin');
+  sessionStorage.setItem('workspaceSlug', ${JSON.stringify(safeSlug)});
+  sessionStorage.setItem('agencyName', ${JSON.stringify(safeName)});
   window.location.replace('/app/dashboard');
 })();
 </script>
@@ -1799,6 +1800,18 @@ function requireAdmin(req, res, next) {
     return res.status(403).json({ error: 'Geen toegang — alleen admins' });
   }
   next();
+}
+
+// ── Workspace-aware data read ──────────────────────────────────────────────────
+// For workspace tokens that are NOT ws_agencyai, read workspace-scoped data
+// with NO fallback to global data. This ensures impersonated sessions see only
+// their own workspace's data (empty for new workspaces) instead of Agency AI's.
+function wsRead(req, key, fallback = null) {
+  const wId = req.user?.workspaceId;
+  if (!wId || wId === 'ws_agencyai') {
+    return readJSON(key) ?? fallback; // legacy / agencyai: global data
+  }
+  return readJSON(`ws:${wId}:${key}`) ?? fallback; // isolated workspace data
 }
 
 // Returns true when the requesting user is a demo account.
@@ -3449,6 +3462,7 @@ app.post('/api/superadmin/workspaces/:id/impersonate', requireSuperAdmin, (req, 
     const db = getDb();
     const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(req.params.id);
     if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
+    console.log('[impersonate] workspace:', ws?.slug, '| id:', ws?.id);
 
     // Find admin user: first try workspace_users table, then fall back to users.json
     // (ws_agencyai's admin lives in users.json, not workspace_users)
@@ -3471,6 +3485,7 @@ app.post('/api/superadmin/workspaces/:id/impersonate', requireSuperAdmin, (req, 
       }
     }
 
+    console.log('[impersonate] user found:', wsUser?.email, '| role:', wsUser?.role, '| source:', wsUser ? 'workspace_users' : 'none');
     if (!wsUser) return res.status(404).json({ error: 'Geen admin gebruiker gevonden voor deze workspace. Maak eerst een gebruiker aan.' });
     const settings = readJSON('settings.json') || {};
     const token = jwt.sign({
@@ -3989,9 +4004,9 @@ app.get('/api/errors', requireAdmin, (req, res) => {
 // ── Stats ─────────────────────────────────────────────────────────────────────
 
 app.get('/api/stats', (req, res) => {
-  const stored = readJSON('stats.json') || {};
-  const leads  = scopeToUser(readJSON('leads.json'), req);
-  const inbox  = scopeToUser(readJSON('inbox.json'), req);
+  const stored = wsRead(req, 'stats.json', {});
+  const leads  = scopeToUser(wsRead(req, 'leads.json', []), req);
+  const inbox  = scopeToUser(wsRead(req, 'inbox.json', []), req);
 
   const active = leads.filter(l => l.status !== 'disapproved' && l.status !== 'dead');
 
@@ -4087,7 +4102,7 @@ app.get('/api/stats/detailed', (req, res) => {
 });
 
 app.get('/api/leads', (req, res) => {
-  res.json(scopeToUser(readJSON('leads.json'), req));
+  res.json(scopeToUser(wsRead(req, 'leads.json', []), req));
 });
 
 app.get('/api/leads/export.csv', (req, res) => {
@@ -7668,7 +7683,7 @@ app.post('/api/leads/:id/portal/reset-token', requireAdmin, (req, res) => {
 // ── Inbox ────────────────────────────────────────────────────────────────────
 
 app.get('/api/inbox', (req, res) => {
-  res.json(scopeToUser(readJSON('inbox.json'), req));
+  res.json(scopeToUser(wsRead(req, 'inbox.json', []), req));
 });
 
 app.patch('/api/inbox/:id/approve', async (req, res) => {
@@ -7925,8 +7940,28 @@ app.get('/api/run/progress', (req, res) => {
 // â"€â"€â"€ Settings â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 app.get('/api/settings', (req, res) => {
-  const s = readJSON('settings.json') || {};
+  // For non-agencyai workspaces: use workspace-specific settings if they exist,
+  // falling back to global settings only for non-sensitive config fields
+  const s = wsRead(req, 'settings.json') || readJSON('settings.json') || {};
   const safe = { ...s };
+
+  // Overlay workspace branding (name, color, logo) from workspaces table
+  const wId = req.user?.workspaceId;
+  if (wId && wId !== 'ws_agencyai') {
+    try {
+      const db = getDb();
+      const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(wId);
+      if (ws) {
+        if (ws.branding_name)         safe.agencyName  = ws.branding_name;
+        if (ws.branding_logo)         safe.agencyLogo  = ws.branding_logo;
+        if (ws.branding_color)        safe.brandColor  = ws.branding_color;
+        if (ws.branding_email_sender) safe.myName      = ws.branding_email_sender;
+        safe._workspaceName = ws.name;
+        safe._workspaceSlug = ws.slug;
+        safe._workspacePlan = ws.plan;
+      }
+    } catch {}
+  }
   delete safe.password;
   delete safe.gmailPassword;
   delete safe.gmailPasswordEncrypted;

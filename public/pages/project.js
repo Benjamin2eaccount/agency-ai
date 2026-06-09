@@ -1854,7 +1854,7 @@ window.runAgentsForLead = async function(leadId) {
   try {
     const res = await fetch(`/api/leads/${leadId}/run-agents`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('agencyToken')}` }
+      headers: { 'Authorization': `Bearer ${getToken()}` }
     });
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -2228,7 +2228,7 @@ window.buildAllServicesForLead = async function(leadId) {
     const res = await fetch(`/api/leads/${leadId}/build-all-services`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('agencyToken')}`,
+        'Authorization': `Bearer ${getToken()}`,
         'Content-Type': 'application/json'
       }
     });
@@ -2414,7 +2414,7 @@ window.retryBuildService = async function(leadId, serviceName) {
     const res = await fetch(`/api/leads/${leadId}/build-all-services`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('agencyToken')}`,
+        'Authorization': `Bearer ${getToken()}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ serviceNames: [serviceName] })
@@ -4505,7 +4505,7 @@ function _doStartProject(leadId) {
 
   fetch(`/api/leads/${leadId}/start-project`, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${localStorage.getItem('agencyToken')}` }
+    headers: { 'Authorization': `Bearer ${getToken()}` }
   }).then(res => {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -5149,7 +5149,7 @@ function generateDelivery(leadId) {
 
   fetch(`/api/leads/${leadId}/generate-delivery`, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${localStorage.getItem('agencyToken')}` }
+    headers: { 'Authorization': `Bearer ${getToken()}` }
   }).then(res => {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -5251,7 +5251,7 @@ function generateSite(leadId) {
 
   fetch(`/api/leads/${leadId}/generate-site`, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${localStorage.getItem('agencyToken')}`, 'Content-Type': 'application/json' },
+    headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ template: selectedTemplate })
   }).then(res => {
     const reader = res.body.getReader();
