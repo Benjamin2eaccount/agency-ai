@@ -25,6 +25,7 @@ const dnsPromises = require('dns').promises;
 const PDFDocument = require('pdfkit');
 
 const app = express();
+app.set('trust proxy', 1); // Railway sits behind a proxy; needed for correct req.ip in rate limiters
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'agency_ai_secret';
 if (!process.env.JWT_SECRET) console.warn('[Security] JWT_SECRET not set — using insecure default. Set JWT_SECRET in environment variables.');
@@ -3467,28 +3468,30 @@ app.post('/api/superadmin/workspaces/:id/impersonate', requireSuperAdmin, (req, 
     if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
     console.log('[impersonate] workspace:', ws?.slug, '| id:', ws?.id);
 
-    // Find admin user: first try workspace_users table, then fall back to users.json
-    // (ws_agencyai's admin lives in users.json, not workspace_users)
-    let wsUser = db.prepare("SELECT * FROM workspace_users WHERE workspace_id = ? AND role IN ('admin','superadmin') LIMIT 1").get(ws.id);
+    // Step 1: find admin in workspace_users (role = 'admin' exactly — exclude employees)
+    let wsUser = db.prepare(
+      "SELECT * FROM workspace_users WHERE workspace_id = ? AND role = 'admin' LIMIT 1"
+    ).get(ws.id);
 
-    if (!wsUser) {
+    // Step 2: agencyai-only fallback — the legacy admin lives in users.json
+    if (!wsUser && ws.slug === 'agencyai') {
       const legacyUsers = readJSON('users.json') || [];
       const lu = legacyUsers.find(u =>
-        (u.workspaceId === ws.id || ws.slug === 'agencyai') && u.role === 'admin'
+        u.role === 'admin' || u.role === 'owner'
       );
       if (lu) {
         wsUser = {
-          id         : lu.id,
-          email      : lu.email || lu.username,
-          name       : lu.name,
-          role       : 'admin',
+          id          : lu.id,
+          email       : lu.email || lu.username,
+          name        : lu.name,
+          role        : 'admin',
           workspace_id: ws.id,
-          permissions: lu.permissions || null,
+          permissions : lu.permissions || null,
         };
       }
     }
 
-    console.log('[impersonate] user found:', wsUser?.email, '| role:', wsUser?.role, '| source:', wsUser ? 'workspace_users' : 'none');
+    console.log('[impersonate] user found:', wsUser?.email, '| role:', wsUser?.role);
     if (!wsUser) return res.status(404).json({ error: 'Geen admin gebruiker gevonden voor deze workspace. Maak eerst een gebruiker aan.' });
     const settings = readJSON('settings.json') || {};
     const token = jwt.sign({

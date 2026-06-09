@@ -11,11 +11,18 @@
       var slug = params.get('slug') || '';
       var nm   = params.get('name') || '';
       if (tok) {
+        // sessionStorage: used while the tab is open
         sessionStorage.setItem('agencyToken',    tok);
         sessionStorage.setItem('agencyRole',     'admin');
         sessionStorage.setItem('workspaceSlug',  slug);
         sessionStorage.setItem('agencyName',     nm);
         sessionStorage.setItem('isImpersonating','1');
+        // localStorage: workspace-specific key so Ctrl+R can restore the session
+        // without colliding with the SA's own agencyToken
+        if (slug) {
+          localStorage.setItem('impToken_' + slug, tok);
+          localStorage.setItem('currentWorkspace',  slug);
+        }
         // Remove the hash so the token doesn't appear in the URL bar or browser history
         history.replaceState(null, '', '/app/');
       }
@@ -129,7 +136,27 @@ const state = {
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
 function getToken() {
-  return sessionStorage.getItem('agencyToken') || localStorage.getItem('agencyToken') || '';
+  // 1. sessionStorage — impersonated session active in this tab
+  var sess = sessionStorage.getItem('agencyToken');
+  if (sess) return sess;
+
+  // 2. Workspace-specific impersonation token — survives Ctrl+R
+  //    currentWorkspace is set by the hash import IIFE when impersonation starts
+  var wsSlug = localStorage.getItem('currentWorkspace');
+  if (wsSlug) {
+    var impTok = localStorage.getItem('impToken_' + wsSlug);
+    if (impTok) {
+      // Re-populate sessionStorage so the rest of the app behaves consistently
+      sessionStorage.setItem('agencyToken',    impTok);
+      sessionStorage.setItem('agencyRole',     'admin');
+      sessionStorage.setItem('workspaceSlug',  wsSlug);
+      sessionStorage.setItem('isImpersonating','1');
+      return impTok;
+    }
+  }
+
+  // 3. Normal login token
+  return localStorage.getItem('agencyToken') || '';
 }
 
 function authHeaders() {
@@ -140,6 +167,9 @@ function authHeaders() {
 }
 
 function logout() {
+  // Clean up workspace-specific impersonation keys before wiping storage
+  var wsSlug = localStorage.getItem('currentWorkspace');
+  if (wsSlug) localStorage.removeItem('impToken_' + wsSlug);
   sessionStorage.clear();
   localStorage.clear();
   window.location.href = '/login';
