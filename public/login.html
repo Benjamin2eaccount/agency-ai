@@ -541,11 +541,18 @@
         localStorage.setItem('myName', data.myName);
         localStorage.setItem('agencyRole', data.role || 'admin');
         localStorage.setItem('agencyPermissions', JSON.stringify(data.permissions || []));
+        if (data.workspaceSlug) localStorage.setItem('workspaceSlug', data.workspaceSlug);
 
         _redirecting = true; // block any further submits
         staffBtn.style.background = '#10b981';
         staffBtn.querySelector('.btn-text').textContent = '✓ Ingelogd';
-        setTimeout(() => { window.location.href = '/app/dashboard'; }, 100);
+
+        // Determine redirect destination
+        let dest = sessionStorage.getItem('_afterLogin') || '/app/dashboard';
+        sessionStorage.removeItem('_afterLogin');
+        if (data.isSuperAdmin) dest = '/superadmin';
+
+        setTimeout(() => { window.location.href = dest; }, 100);
 
       } catch {
         staffError.textContent = 'Kan geen verbinding maken met de server.';

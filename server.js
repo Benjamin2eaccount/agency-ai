@@ -14056,7 +14056,52 @@ function broadcastWS(event, data = {}) {
   }
 }
 
+// ── Auto-seed workspace tables on every startup ────────────────────────────
+// workspace_users / workspaces are SQLite-only (NOT synced to PG store table).
+// On Railway, SQLite is ephemeral — tables reset on every deploy.
+// This function re-creates the required rows every time they are missing.
+
+function ensureWorkspaceSeed() {
+  const db = getDb();
+  try {
+    // Workspace: superadmin
+    const saWs = db.prepare("SELECT id FROM workspaces WHERE slug = 'superadmin'").get();
+    if (!saWs) {
+      db.prepare(`INSERT INTO workspaces
+        (id, slug, name, owner_email, owner_name, plan, status, branding_color, activated_at)
+        VALUES (?,?,?,?,?,?,?,?,datetime('now'))`)
+        .run('ws_superadmin','superadmin','Agency AI Platform','info@agencyai.info','Benjamin van Hemert','agency','active','#2563EB');
+      console.log('[Seed] Workspace superadmin aangemaakt ✓');
+    }
+
+    // Workspace: agencyai
+    const aaiWs = db.prepare("SELECT id FROM workspaces WHERE slug = 'agencyai'").get();
+    if (!aaiWs) {
+      const ref = `AAI-${new Date().getFullYear()}-${crypto.randomBytes(2).toString('hex').toUpperCase().slice(0,4)}`;
+      db.prepare(`INSERT INTO workspaces
+        (id, slug, name, owner_email, owner_name, plan, status, branding_color, payment_reference, activated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))`)
+        .run('ws_agencyai','agencyai','Agency AI','benjamin.van.hemert2@gmail.com','Benjamin van Hemert','agency','active','#2563EB',ref);
+      console.log('[Seed] Workspace agencyai aangemaakt ✓');
+    }
+
+    // User: superadmin (info@agencyai.info)
+    const saUser = db.prepare("SELECT id FROM workspace_users WHERE workspace_id = 'ws_superadmin' AND email = 'info@agencyai.info'").get();
+    if (!saUser) {
+      const hash = bcrypt.hashSync('superadmin2024', 12);
+      db.prepare(`INSERT INTO workspace_users (id, workspace_id, email, password, name, role)
+        VALUES (?,?,?,?,?,?)`)
+        .run(crypto.randomBytes(8).toString('hex'), 'ws_superadmin', 'info@agencyai.info', hash, 'Benjamin van Hemert', 'superadmin');
+      console.log('[Seed] Super admin gebruiker aangemaakt (info@agencyai.info) ✓');
+      console.log('[Seed] ⚠️  Wijzig het wachtwoord na eerste login!');
+    }
+  } catch (err) {
+    console.warn('[Seed] ensureWorkspaceSeed fout:', err.message);
+  }
+}
+
 if (require.main === module || process.env.NODE_ENV !== 'test') pgInitPromise.then(() => {
+  ensureWorkspaceSeed(); // Run before server starts — safe on every deploy
   const server = app.listen(PORT, () => {
     const s = readJSON('settings.json') || {};
     const runTime      = s.dailyRunTime      || '09:00';

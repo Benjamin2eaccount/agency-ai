@@ -726,14 +726,22 @@
 
 // ── Auth guard ───────────────────────────────────────────────────────────────
 const _token = localStorage.getItem('agencyToken');
-if (!_token) { window.location.href = '/login'; }
-else {
+if (!_token) {
+  sessionStorage.setItem('_afterLogin', '/superadmin');
+  window.location.href = '/login';
+} else {
   try {
     const payload = JSON.parse(atob(_token.split('.')[1]));
-    if (!payload.isSuperAdmin) { window.location.href = '/login'; }
+    if (!payload.isSuperAdmin) {
+      sessionStorage.setItem('_afterLogin', '/superadmin');
+      window.location.href = '/login';
+    }
     document.getElementById('saEmail').textContent = payload.email || payload.username || '—';
     document.getElementById('topEmail').textContent = payload.email || payload.username || '';
-  } catch { window.location.href = '/login'; }
+  } catch {
+    sessionStorage.setItem('_afterLogin', '/superadmin');
+    window.location.href = '/login';
+  }
 }
 
 // ── State ────────────────────────────────────────────────────────────────────

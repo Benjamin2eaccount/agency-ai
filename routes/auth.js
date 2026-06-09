@@ -106,8 +106,9 @@ module.exports = function createAuthRouter({ readJSON, writeJSON, JWT_SECRET }) 
         db.prepare("UPDATE workspace_users SET last_login_at = datetime('now') WHERE id = ?")
           .run(wsUser.id);
       }
-    } catch {
-      // Table may not exist yet on first boot before migrations — fall through
+    } catch (wsErr) {
+      // Log so we can diagnose Railway / SQLite issues — fall through to users.json
+      console.warn('[Auth] workspace_users lookup fout (valt terug op users.json):', wsErr.message);
     }
 
     // ── Path 2: users.json (username-based, legacy) ──────────────────────────
