@@ -1,3 +1,28 @@
+// ─── Impersonation hash import — runs synchronously before DOMContentLoaded ──
+// Relay page redirects to /app/#_imp=1&token=...&slug=...&name=...
+// Reading here (before any DOMContentLoaded handler) guarantees sessionStorage is
+// populated before the auth guard fires.
+;(function() {
+  var h = window.location.hash;
+  if (h && h.indexOf('_imp=1') !== -1) {
+    try {
+      var params = new URLSearchParams(h.substring(1));
+      var tok  = params.get('token');
+      var slug = params.get('slug') || '';
+      var nm   = params.get('name') || '';
+      if (tok) {
+        sessionStorage.setItem('agencyToken',    tok);
+        sessionStorage.setItem('agencyRole',     'admin');
+        sessionStorage.setItem('workspaceSlug',  slug);
+        sessionStorage.setItem('agencyName',     nm);
+        sessionStorage.setItem('isImpersonating','1');
+        // Remove the hash so the token doesn't appear in the URL bar or browser history
+        history.replaceState(null, '', '/app/');
+      }
+    } catch(e) { /* ignore */ }
+  }
+})();
+
 // ─── Auth guard — runs after DOM is ready so localStorage is fully committed ──
 document.addEventListener('DOMContentLoaded', async () => {
   if (!window.location.pathname.startsWith('/app')) return;

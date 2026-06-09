@@ -414,30 +414,33 @@ app.get('/register/betaling', (_, res) => res.sendFile(path.join(__dirname, 'pub
 // Serve superadmin shell — JS inside verifies isSuperAdmin from JWT
 app.get('/superadmin', (_, res) => res.sendFile(path.join(__dirname, 'public', 'superadmin.html')));
 
-// Impersonation relay page — sets localStorage then redirects to /app/dashboard
-// Security: the token itself is the authorization (signed JWT, 2h TTL)
+// Impersonation relay page — verifies JWT server-side, then passes token to /app/ via URL hash.
+// Hash is client-side only (not logged by server). core.js reads it on load, stores in
+// sessionStorage, and clears the hash. This avoids sessionStorage-across-navigation issues.
 app.get('/superadmin/impersonate-relay', (req, res) => {
   const { token, slug, name } = req.query;
   if (!token) return res.status(400).send('Missing token');
-  // Verify the token is a valid JWT before serving the relay page
+  // Server-side JWT verification before serving the relay page (defence-in-depth)
   try { jwt.verify(token, JWT_SECRET); } catch { return res.status(401).send('Invalid token'); }
-  const safeSlug = (slug || '').replace(/[^a-z0-9-]/gi, '');
-  const safeName = (name || 'Workspace').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const safeToken = token.replace(/</g, '').replace(/>/g, '').replace(/"/g, '');
   res.setHeader('Content-Type', 'text/html');
   res.send(`<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8">
-<title>Inloggen als ${safeName}…</title>
+<title>Inloggen…</title>
 <style>body{margin:0;background:#0a0f1e;display:flex;align-items:center;justify-content:center;height:100vh;font-family:Inter,sans-serif;color:#9ca3af;font-size:14px}</style>
 </head><body>
-<div>Inloggen als <strong style="color:#f9fafb">${safeName}</strong>…</div>
+<div>Inloggen als workspace…</div>
 <script>
 (function() {
-  // Use sessionStorage (per-tab) so the SA tab's token restore doesn't overwrite this session
-  sessionStorage.setItem('agencyToken', ${JSON.stringify(safeToken)});
-  sessionStorage.setItem('agencyRole', 'admin');
-  sessionStorage.setItem('workspaceSlug', ${JSON.stringify(safeSlug)});
-  sessionStorage.setItem('agencyName', ${JSON.stringify(safeName)});
-  window.location.replace('/app/dashboard');
+  var p = new URLSearchParams(window.location.search);
+  var token = p.get('token');
+  var slug  = p.get('slug')  || '';
+  var name  = p.get('name')  || '';
+  if (!token) { document.body.textContent = 'Ongeldige link'; return; }
+  // Pass token via URL hash so it survives the navigation to /app/
+  // core.js reads the hash, writes to sessionStorage, then clears the hash
+  var hash = '#_imp=1&token=' + encodeURIComponent(token)
+           + '&slug='  + encodeURIComponent(slug)
+           + '&name='  + encodeURIComponent(name);
+  window.location.replace('/app/' + hash);
 })();
 </script>
 </body></html>`);
