@@ -3,25 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agency AI — Volledig AI-Gedreven Digitaal Bureau</title>
-  <meta name="description" content="Het AI-bureau dat volledig automatisch websites bouwt, content schrijft en digitale systemen opzet voor uw bedrijf.">
+  <title>Agency AI — De slimste AI-agency van Nederland</title>
+  <meta name="description" content="Geautomatiseerde outreach, websites en marketing — volledig op autopilot. 7 AI agents werken 24/7 voor uw bedrijf.">
   <link rel="icon" href="/images/agency_ai_logo_dark.png" type="image/png">
   <link rel="apple-touch-icon" href="/images/agency_ai_logo_dark.png">
-  <!-- OG / Twitter cards -->
   <meta property="og:image" content="https://www.agencyai.info/images/banner.png">
-  <meta property="og:logo" content="https://www.agencyai.info/images/agency_ai_logo_dark.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:image" content="https://www.agencyai.info/images/banner.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
     body {
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      background: #ffffff;
-      color: #111111;
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: #0F0F0F;
+      color: #F5F5F5;
       line-height: 1.6;
       -webkit-font-smoothing: antialiased;
       overflow-x: hidden;
@@ -30,912 +28,983 @@
     button { font-family: inherit; cursor: pointer; border: none; background: none; }
 
     :root {
-      --white: #ffffff;
-      --gray: #f8f9fa;
-      --black: #111111;
-      --indigo: #6366f1;
-      --indigo-dark: #4f46e5;
-      --text: #111111;
-      --text2: #555555;
-      --text3: #888888;
-      --border: #e5e7eb;
-      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04);
-      --shadow-md: 0 4px 12px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.06);
+      --bg: #0F0F0F;
+      --surface: #1A1A1A;
+      --surface-2: #222222;
+      --border: #2A2A2A;
+      --border-strong: #333333;
+      --text: #F5F5F5;
+      --text-2: #999999;
+      --text-3: #666666;
+      --accent: #2563EB;
+      --accent-hover: #1D4ED8;
+      --success: #16A34A;
       --max-w: 1100px;
-      --r: 10px;
+      --r: 8px;
     }
 
     .container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
-    .section { padding: 88px 0; }
-    .section-gray { background: var(--gray); }
 
     /* ── SCROLL REVEAL ── */
-    .reveal { opacity: 0; transform: translateY(20px); transition: opacity .5s ease, transform .5s ease; }
+    .reveal { opacity: 0; transform: translateY(16px); transition: opacity .45s ease, transform .45s ease; }
     .reveal.visible { opacity: 1; transform: translateY(0); }
-    .reveal-delay-1 { transition-delay: .08s; }
-    .reveal-delay-2 { transition-delay: .16s; }
-    .reveal-delay-3 { transition-delay: .24s; }
-    .reveal-delay-4 { transition-delay: .32s; }
+    .reveal-d1 { transition-delay: .06s; }
+    .reveal-d2 { transition-delay: .12s; }
+    .reveal-d3 { transition-delay: .18s; }
+    .reveal-d4 { transition-delay: .24s; }
 
     /* ── NAV ── */
     .nav {
       position: sticky; top: 0; z-index: 100;
-      background: var(--white); border-bottom: 1px solid var(--border);
+      background: rgba(15,15,15,0.95);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(8px);
     }
     .nav-inner {
       max-width: var(--max-w); margin: 0 auto; padding: 0 24px;
-      height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 32px;
+      height: 60px; display: flex; align-items: center; justify-content: space-between; gap: 32px;
     }
     .nav-logo {
       display: flex; align-items: center; gap: 10px;
-      font-size: 16px; font-weight: 800; color: var(--black); flex-shrink: 0;
+      font-size: 15px; font-weight: 700; color: var(--text); flex-shrink: 0;
     }
     .nav-logo-icon {
-      width: 32px; height: 32px; background: var(--black); border-radius: 8px;
+      width: 30px; height: 30px; background: var(--accent); border-radius: 6px;
       display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     }
-    .nav-logo-icon svg { width: 16px; height: 16px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-    .nav-logo img { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; display: none; }
+    .nav-logo-icon svg { width: 15px; height: 15px; fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .nav-logo img { width: 30px; height: 30px; border-radius: 6px; object-fit: cover; display: none; }
     .nav-links { display: flex; align-items: center; gap: 28px; list-style: none; }
-    .nav-links a { font-size: 14px; font-weight: 500; color: var(--text2); transition: color .15s; }
-    .nav-links a:hover { color: var(--black); }
-    .nav-actions { display: flex; align-items: center; gap: 16px; }
-    .nav-login { font-size: 14px; font-weight: 500; color: var(--text2); transition: color .15s; }
-    .nav-login:hover { color: var(--black); }
-    .btn-black {
+    .nav-links a { font-size: 13px; font-weight: 500; color: var(--text-2); transition: color .1s; }
+    .nav-links a:hover { color: var(--text); }
+    .nav-actions { display: flex; align-items: center; gap: 12px; }
+    .nav-login { font-size: 13px; font-weight: 500; color: var(--text-2); transition: color .1s; }
+    .nav-login:hover { color: var(--text); }
+    .btn-nav-cta {
       display: inline-flex; align-items: center; gap: 6px;
-      height: 36px; padding: 0 18px; background: var(--black); border-radius: 8px;
-      font-size: 14px; font-weight: 600; color: #fff; transition: background .15s;
+      height: 34px; padding: 0 16px; background: var(--accent); border-radius: 6px;
+      font-size: 13px; font-weight: 600; color: #fff; transition: background .1s;
     }
-    .btn-black:hover { background: #333; }
+    .btn-nav-cta:hover { background: var(--accent-hover); }
 
     .hamburger {
       display: none; flex-direction: column; gap: 5px;
       width: 36px; height: 36px; align-items: center; justify-content: center;
-      border: 1px solid var(--border); border-radius: 8px; padding: 7px;
+      border: 1px solid var(--border-strong); border-radius: 6px; padding: 7px;
     }
-    .hamburger span { display: block; width: 16px; height: 1.5px; background: var(--text2); transition: all .25s; }
+    .hamburger span { display: block; width: 16px; height: 1.5px; background: var(--text-2); transition: all .2s; }
     .hamburger.open span:nth-child(1) { transform: rotate(45deg) translate(4.5px, 4.5px); }
     .hamburger.open span:nth-child(2) { opacity: 0; }
     .hamburger.open span:nth-child(3) { transform: rotate(-45deg) translate(4.5px, -4.5px); }
 
     .mobile-menu {
-      display: none; position: fixed; top: 64px; left: 0; right: 0; bottom: 0; z-index: 99;
-      background: var(--white); border-top: 1px solid var(--border);
-      flex-direction: column; align-items: center; justify-content: center;
-      gap: 28px; padding: 40px 24px;
+      display: none; flex-direction: column; gap: 0;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 8px 0;
     }
     .mobile-menu.open { display: flex; }
-    .mobile-menu a { font-size: 20px; font-weight: 700; color: var(--black); }
-    .mobile-menu .mobile-btns { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 280px; margin-top: 8px; }
-    .mobile-menu .btn-black { justify-content: center; height: 48px; font-size: 16px; }
-    .mobile-menu .nav-login { font-size: 16px; text-align: center; }
+    .mobile-menu a {
+      padding: 12px 24px; font-size: 14px; font-weight: 500; color: var(--text-2);
+      border-bottom: 1px solid var(--border); transition: color .1s;
+    }
+    .mobile-menu a:last-child { border-bottom: none; }
+    .mobile-menu a:hover { color: var(--text); }
 
     /* ── HERO ── */
     .hero {
-      background: var(--white); padding: 80px 0 88px;
+      padding: 96px 0 80px;
+      text-align: center;
     }
-    .hero-inner { max-width: 680px; }
-    .hero-badge {
-      display: inline-flex; align-items: center; gap: 7px;
-      background: #f3f4f6; border-radius: 20px; padding: 5px 14px;
-      font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
-      color: var(--text2); margin-bottom: 28px;
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--accent); background: rgba(37,99,235,0.12); border: 1px solid rgba(37,99,235,0.25);
+      padding: 4px 12px; border-radius: 4px; margin-bottom: 24px;
     }
-    .hero h1 {
-      font-size: clamp(2.6rem, 5.5vw, 4rem); font-weight: 800;
-      color: var(--black); line-height: 1.1; letter-spacing: -0.02em; margin-bottom: 20px;
+    .hero-title {
+      font-size: clamp(36px, 6vw, 64px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      color: var(--text);
+      margin-bottom: 20px;
     }
+    .hero-title span { color: var(--accent); }
     .hero-sub {
-      font-size: 1.05rem; color: var(--text2); max-width: 480px;
-      line-height: 1.65; margin-bottom: 32px;
+      font-size: 18px;
+      color: var(--text-2);
+      max-width: 560px;
+      margin: 0 auto 36px;
+      line-height: 1.6;
     }
-    .btn-cta-large {
+    .hero-btns {
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      flex-wrap: wrap; margin-bottom: 40px;
+    }
+    .btn-hero-primary {
       display: inline-flex; align-items: center; gap: 8px;
-      height: 52px; padding: 0 28px; background: var(--black); border-radius: 10px;
-      font-size: 16px; font-weight: 700; color: #fff; transition: background .15s;
+      height: 46px; padding: 0 24px;
+      background: var(--accent); border-radius: var(--r);
+      font-size: 15px; font-weight: 600; color: #fff;
+      transition: background .1s;
     }
-    .btn-cta-large:hover { background: #333; }
-    .hero-checks {
-      display: flex; align-items: center; flex-wrap: wrap; gap: 6px 20px;
-      margin-top: 18px; font-size: 13px; color: var(--text3);
+    .btn-hero-primary:hover { background: var(--accent-hover); }
+    .btn-hero-secondary {
+      display: inline-flex; align-items: center; gap: 8px;
+      height: 46px; padding: 0 24px;
+      background: transparent; border: 1px solid var(--border-strong); border-radius: var(--r);
+      font-size: 15px; font-weight: 500; color: var(--text-2);
+      transition: background .1s, color .1s, border-color .1s;
     }
-    .hero-checks span { display: flex; align-items: center; gap: 5px; }
-    .hero-stats {
-      display: flex; align-items: stretch; flex-wrap: wrap;
-      margin-top: 60px; padding-top: 40px; border-top: 1px solid var(--border);
-      gap: 0;
+    .btn-hero-secondary:hover { background: var(--surface-2); color: var(--text); border-color: #444; }
+    .hero-proof {
+      display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap;
+      font-size: 13px; color: var(--text-3); font-weight: 500;
     }
-    .hero-stat {
-      flex: 1; min-width: 120px; padding: 0 28px;
-      border-right: 1px solid var(--border);
-    }
-    .hero-stat:first-child { padding-left: 0; }
-    .hero-stat:last-child { border-right: none; }
-    .hero-stat-num { font-size: 2rem; font-weight: 800; color: var(--black); line-height: 1; }
-    .hero-stat-label { font-size: 13px; color: var(--text3); margin-top: 4px; }
+    .hero-proof-item { display: flex; align-items: center; gap: 6px; }
+    .hero-proof-item svg { color: var(--success); flex-shrink: 0; }
+    .hero-proof-divider { width: 1px; height: 14px; background: var(--border-strong); }
 
-    /* ── SECTION HEADINGS ── */
-    .section-head { margin-bottom: 48px; }
-    .section-head.center { text-align: center; }
+    /* ── STATS BAR ── */
+    .stats-section { padding: 0 0 64px; }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+    .stat-item {
+      background: var(--surface);
+      padding: 28px 24px;
+      text-align: center;
+    }
+    .stat-num {
+      font-size: 36px; font-weight: 800; letter-spacing: -0.03em;
+      color: var(--text); line-height: 1;
+      margin-bottom: 6px;
+    }
+    .stat-label {
+      font-size: 12px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--text-3);
+    }
+
+    /* ── SECTION COMMON ── */
+    .section { padding: 80px 0; }
     .section-label {
-      font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
-      color: var(--indigo); margin-bottom: 10px; display: block;
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--accent); margin-bottom: 12px;
     }
-    .section-title { font-size: clamp(1.7rem, 3.5vw, 2.4rem); font-weight: 800; color: var(--black); letter-spacing: -0.02em; margin-bottom: 10px; }
-    .section-sub { font-size: 1rem; color: var(--text2); max-width: 500px; }
-    .center .section-sub { margin: 0 auto; }
-
-    /* ── DIENSTEN ── */
-    .filter-pills { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 36px; }
-    .filter-pill {
-      height: 34px; padding: 0 16px; border-radius: 20px;
-      font-size: 13px; font-weight: 500; color: var(--text2);
-      border: 1px solid var(--border); background: var(--white);
-      transition: all .15s; cursor: pointer;
+    .section-title {
+      font-size: clamp(24px, 4vw, 36px); font-weight: 800;
+      letter-spacing: -0.02em; color: var(--text); margin-bottom: 14px;
     }
-    .filter-pill.active { background: var(--black); border-color: var(--black); color: #fff; }
-    .filter-pill:hover:not(.active) { border-color: #aaa; color: var(--black); }
+    .section-sub {
+      font-size: 16px; color: var(--text-2); max-width: 520px; line-height: 1.6;
+    }
 
-    .services-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    /* ── HOW IT WORKS ── */
+    .how-it-works { padding: 80px 0; border-top: 1px solid var(--border); }
+    .how-header { text-align: center; margin-bottom: 56px; }
+    .how-steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+    .how-step {
+      background: var(--surface);
+      padding: 36px 32px;
+      position: relative;
+    }
+    .how-step-num {
+      font-size: 56px; font-weight: 800; letter-spacing: -0.04em;
+      color: var(--border-strong); line-height: 1;
+      margin-bottom: 20px;
+      font-variant-numeric: tabular-nums;
+    }
+    .how-step-title {
+      font-size: 17px; font-weight: 700; color: var(--text);
+      margin-bottom: 10px; letter-spacing: -0.01em;
+    }
+    .how-step-desc { font-size: 14px; color: var(--text-2); line-height: 1.6; }
+    .how-step-icon {
+      width: 36px; height: 36px; background: var(--accent);
+      border-radius: 6px; display: flex; align-items: center; justify-content: center;
+      margin-bottom: 16px;
+    }
+    .how-step-icon svg { width: 18px; height: 18px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* ── SERVICES ── */
+    .services-section { padding: 80px 0; border-top: 1px solid var(--border); }
+    .services-header { margin-bottom: 40px; }
+    .services-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
     .svc-card {
-      background: var(--white); border: 1px solid var(--border); border-radius: var(--r);
-      padding: 22px; cursor: pointer; transition: border-color .2s, box-shadow .2s, transform .2s;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 24px;
+      cursor: pointer;
+      transition: border-color .1s, background .1s;
     }
-    .svc-card:hover {
-      border-color: var(--black); box-shadow: var(--shadow-md);
-      transform: translateY(-2px);
-    }
-    .svc-card.hidden { display: none; }
-    .svc-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-    .svc-badge {
-      height: 20px; padding: 0 9px; border-radius: 20px;
-      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-    }
-    .svc-badge.build { background: #eef2ff; color: var(--indigo); }
-    .svc-badge.write { background: #f0fdf4; color: #16a34a; }
-    .svc-badge.analyze { background: #fffbeb; color: #d97706; }
-    .svc-name { font-size: 15px; font-weight: 700; color: var(--black); margin-bottom: 4px; }
-    .svc-desc { font-size: 13px; color: var(--text2); line-height: 1.45; }
-    .svc-price { margin-top: 14px; font-size: 15px; font-weight: 700; color: var(--indigo); }
-    .svc-price .billing { font-size: 12px; font-weight: 400; color: var(--text3); }
-
-    /* ── HOE HET WERKT ── */
-    .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 12px; position: relative; }
-    .steps::before {
-      content: ''; position: absolute; top: 24px; left: calc(12.5% + 16px); right: calc(12.5% + 16px);
-      height: 1px; background: var(--border);
-    }
-    .step { padding: 0 20px; position: relative; }
-    .step-num {
-      width: 48px; height: 48px; background: var(--black); border-radius: 50%;
+    .svc-card:hover { border-color: var(--accent); background: var(--surface-2); }
+    .svc-icon {
+      width: 40px; height: 40px; border-radius: 8px;
+      background: var(--surface-2); border: 1px solid var(--border-strong);
       display: flex; align-items: center; justify-content: center;
-      font-size: 16px; font-weight: 800; color: #fff; margin-bottom: 18px;
-      position: relative; z-index: 1;
+      font-size: 20px; margin-bottom: 14px;
     }
-    .step:first-child { padding-left: 0; }
-    .step-title { font-size: 15px; font-weight: 700; color: var(--black); margin-bottom: 8px; }
-    .step-desc { font-size: 13px; color: var(--text2); line-height: 1.55; }
-
-    /* ── WAAROM ── */
-    .waarom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
-    .usp-list { list-style: none; display: flex; flex-direction: column; gap: 16px; }
-    .usp-item { display: flex; align-items: flex-start; gap: 12px; }
-    .usp-check {
-      width: 22px; height: 22px; background: #f0fdf4; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
+    .svc-name { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .svc-price {
+      font-size: 13px; font-weight: 600; color: var(--accent);
+      margin-bottom: 8px;
     }
-    .usp-check svg { width: 12px; height: 12px; stroke: #16a34a; stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-    .usp-text { font-size: 15px; color: var(--text2); line-height: 1.5; }
-    .usp-text strong { color: var(--black); font-weight: 600; }
+    .svc-desc { font-size: 13px; color: var(--text-2); line-height: 1.5; }
 
-    .stats-card {
-      background: var(--white); border: 1px solid var(--border);
-      border-radius: var(--r); padding: 32px; box-shadow: var(--shadow);
+    /* ── PRICING ── */
+    .pricing-section { padding: 80px 0; border-top: 1px solid var(--border); }
+    .pricing-header { text-align: center; margin-bottom: 48px; }
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      max-width: 900px; margin: 0 auto;
     }
-    .stats-card-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text3); margin-bottom: 24px; }
-    .stats-items { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .stat-num { font-size: 2rem; font-weight: 800; color: var(--black); line-height: 1; display: block; }
-    .stat-label { font-size: 13px; color: var(--text2); margin-top: 3px; }
+    .pricing-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 28px 24px;
+      position: relative;
+    }
+    .pricing-card.featured {
+      border-color: var(--accent);
+      background: #0e1929;
+    }
+    .pricing-badge {
+      position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
+      background: var(--accent); color: #fff;
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 3px 12px; border-radius: 4px;
+      white-space: nowrap;
+    }
+    .pricing-tier {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--text-3); margin-bottom: 8px;
+    }
+    .pricing-price {
+      font-size: 36px; font-weight: 800; letter-spacing: -0.03em;
+      color: var(--text); line-height: 1; margin-bottom: 4px;
+    }
+    .pricing-price span { font-size: 16px; font-weight: 500; color: var(--text-2); margin-left: 2px; }
+    .pricing-desc { font-size: 13px; color: var(--text-2); margin-bottom: 20px; }
+    .pricing-features { list-style: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+    .pricing-features li {
+      display: flex; align-items: flex-start; gap: 8px;
+      font-size: 13px; color: var(--text-2); line-height: 1.4;
+    }
+    .pricing-features li svg { flex-shrink: 0; color: var(--success); margin-top: 1px; }
+    .btn-pricing {
+      display: block; width: 100%; text-align: center;
+      height: 40px; line-height: 40px;
+      border: 1px solid var(--border-strong); border-radius: 6px;
+      font-size: 13px; font-weight: 600; color: var(--text);
+      transition: background .1s, border-color .1s;
+    }
+    .btn-pricing:hover { background: var(--surface-2); border-color: #444; }
+    .btn-pricing-primary {
+      background: var(--accent); border-color: var(--accent); color: #fff;
+    }
+    .btn-pricing-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
-    /* ── RESULTATEN ── */
-    .results-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    /* ── RESULTS ── */
+    .results-section { padding: 80px 0; border-top: 1px solid var(--border); }
+    .results-header { text-align: center; margin-bottom: 48px; }
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
     .result-card {
-      background: var(--white); border: 1px solid var(--border); border-radius: var(--r);
-      padding: 28px 24px; box-shadow: var(--shadow); transition: box-shadow .2s, transform .2s;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 28px 24px;
     }
-    .result-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
-    .result-metric { font-size: 1.35rem; font-weight: 800; color: var(--black); margin-bottom: 6px; line-height: 1.25; }
-    .result-company { font-size: 14px; font-weight: 600; color: var(--text2); margin-bottom: 8px; }
-    .result-service {
-      display: inline-block; background: #eef2ff; border-radius: 20px;
-      padding: 3px 10px; font-size: 11px; font-weight: 600; color: var(--indigo); margin-bottom: 14px;
+    .result-metric {
+      font-size: 32px; font-weight: 800; letter-spacing: -0.02em;
+      color: var(--accent); margin-bottom: 4px;
     }
-    .result-stars { color: #f59e0b; font-size: 14px; margin-bottom: 10px; }
-    .result-quote { font-size: 13px; color: var(--text2); line-height: 1.6; font-style: italic; }
-    .results-disclaimer { text-align: center; font-size: 12px; color: var(--text3); margin-top: 24px; }
+    .result-company { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 12px; }
+    .result-tag {
+      display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--accent); background: rgba(37,99,235,0.12);
+      border: 1px solid rgba(37,99,235,0.2); padding: 2px 8px; border-radius: 4px;
+      margin-bottom: 14px;
+    }
+    .result-stars { color: #F59E0B; font-size: 14px; margin-bottom: 10px; letter-spacing: 2px; }
+    .result-quote { font-size: 13px; color: var(--text-2); line-height: 1.6; font-style: italic; }
+    .results-note { text-align: center; margin-top: 24px; font-size: 12px; color: var(--text-3); }
+
+    /* ── CTA ── */
+    .cta-section {
+      padding: 96px 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+    .cta-title {
+      font-size: clamp(28px, 4vw, 44px); font-weight: 800;
+      letter-spacing: -0.025em; color: var(--text);
+      margin-bottom: 14px;
+    }
+    .cta-sub { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+    .btn-cta {
+      display: inline-flex; align-items: center; gap: 8px;
+      height: 50px; padding: 0 32px;
+      background: var(--accent); border-radius: var(--r);
+      font-size: 16px; font-weight: 700; color: #fff;
+      transition: background .1s;
+    }
+    .btn-cta:hover { background: var(--accent-hover); }
 
     /* ── CONTACT ── */
-    .contact-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 56px; align-items: start; }
-    .contact-info-title { font-size: 1.1rem; font-weight: 700; color: var(--black); margin-bottom: 10px; }
-    .contact-info-sub { font-size: 14px; color: var(--text2); line-height: 1.7; margin-bottom: 28px; }
-    .contact-features { display: flex; flex-direction: column; gap: 16px; }
-    .contact-feature { display: flex; align-items: flex-start; gap: 12px; }
-    .contact-feature-icon {
-      width: 36px; height: 36px; background: var(--gray); border-radius: 8px;
-      display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;
-    }
-    .contact-feature-text strong { display: block; font-size: 14px; font-weight: 600; color: var(--black); margin-bottom: 1px; }
-    .contact-feature-text span { font-size: 13px; color: var(--text2); }
-    .calendly-wrap { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--border); }
-    .calendly-label { font-size: 13px; color: var(--text3); margin-bottom: 10px; }
-    .calendly-btn {
-      display: inline-flex; align-items: center; gap: 8px;
-      height: 40px; padding: 0 20px; border-radius: 8px; border: 1px solid var(--border);
-      font-size: 14px; font-weight: 500; color: var(--text2); transition: all .15s;
-    }
-    .calendly-btn:hover { border-color: var(--black); color: var(--black); }
-
-    .contact-form-card {
-      background: var(--white); border: 1px solid var(--border);
-      border-radius: var(--r); padding: 32px; box-shadow: var(--shadow);
+    .contact-section { padding: 80px 0; border-top: 1px solid var(--border); }
+    .contact-inner {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: start;
     }
     .contact-form { display: flex; flex-direction: column; gap: 14px; }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .form-group { display: flex; flex-direction: column; gap: 5px; }
-    .form-label { font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; }
+    .form-row { display: flex; flex-direction: column; gap: 6px; }
+    .form-label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--text-3);
+    }
     .form-input, .form-select, .form-textarea {
-      width: 100%; height: 42px; padding: 0 12px;
-      border: 1px solid var(--border); border-radius: 8px;
-      font-family: inherit; font-size: 14px; color: var(--black);
-      background: var(--white); transition: border-color .15s, box-shadow .15s; outline: none;
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      width: 100%;
+      transition: border-color .1s;
     }
-    .form-input::placeholder, .form-textarea::placeholder { color: #bbb; }
     .form-input:focus, .form-select:focus, .form-textarea:focus {
-      border-color: var(--black); box-shadow: 0 0 0 3px rgba(0,0,0,0.06);
+      outline: none; border-color: var(--accent);
     }
-    .form-select { appearance: none; cursor: pointer; }
-    .form-textarea { height: auto; padding: 10px 12px; resize: vertical; min-height: 90px; }
-    .btn-submit {
-      width: 100%; height: 48px; background: var(--black); border-radius: 8px;
-      font-size: 15px; font-weight: 700; color: #fff; margin-top: 4px; transition: background .15s;
+    .form-input::placeholder, .form-textarea::placeholder { color: var(--text-3); }
+    .form-select option { background: var(--surface); }
+    .form-textarea { resize: vertical; min-height: 120px; }
+    .btn-form {
+      display: inline-flex; align-items: center; gap: 6px;
+      height: 42px; padding: 0 20px;
+      background: var(--accent); border-radius: 6px;
+      font-size: 14px; font-weight: 600; color: #fff;
+      border: none; cursor: pointer;
+      transition: background .1s;
     }
-    .btn-submit:hover { background: #333; }
-    .btn-submit:disabled { background: #aaa; cursor: not-allowed; }
-    .form-success {
-      display: none; text-align: center; padding: 28px 20px;
-      background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--r);
-    }
-    .form-success-icon { font-size: 32px; margin-bottom: 10px; }
-    .form-success-title { font-size: 18px; font-weight: 700; color: var(--black); margin-bottom: 6px; }
-    .form-success-sub { font-size: 14px; color: var(--text2); }
-    .form-error {
-      display: none; padding: 10px 12px; background: #fef2f2; border: 1px solid #fecaca;
-      border-radius: 8px; font-size: 13px; color: #dc2626;
-    }
+    .btn-form:hover { background: var(--accent-hover); }
+    .form-success { color: #6ee7b7; font-size: 13px; font-weight: 600; }
 
     /* ── FOOTER ── */
-    footer { background: var(--black); padding: 56px 0 32px; }
-    .footer-inner { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 48px; }
-    .footer-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-    .footer-logo-icon { width: 28px; height: 28px; background: #fff; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
-    .footer-logo-icon svg { width: 14px; height: 14px; fill: none; stroke: var(--black); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-    .footer-logo-text { font-size: 15px; font-weight: 800; color: #fff; }
-    .footer-tagline { font-size: 13px; color: #888; line-height: 1.6; max-width: 200px; }
-    .footer-col-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #666; margin-bottom: 14px; }
-    .footer-links { list-style: none; display: flex; flex-direction: column; gap: 10px; }
-    .footer-links a { font-size: 14px; color: #aaa; transition: color .15s; }
-    .footer-links a:hover { color: #fff; }
-    .footer-bottom {
-      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
-      padding-top: 28px; border-top: 1px solid #222; font-size: 13px; color: #666;
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 56px 0 32px;
     }
-    .footer-bottom a { color: #666; transition: color .15s; }
-    .footer-bottom a:hover { color: #aaa; }
+    .footer-grid {
+      display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr;
+      gap: 48px; margin-bottom: 48px;
+    }
+    .footer-brand .nav-logo { margin-bottom: 14px; }
+    .footer-brand-desc { font-size: 13px; color: var(--text-3); line-height: 1.6; max-width: 220px; }
+    .footer-col-label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--text-3); margin-bottom: 16px;
+    }
+    .footer-links { display: flex; flex-direction: column; gap: 10px; }
+    .footer-links a { font-size: 13px; color: var(--text-2); transition: color .1s; }
+    .footer-links a:hover { color: var(--text); }
+    .footer-bottom {
+      border-top: 1px solid var(--border);
+      padding-top: 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px;
+      font-size: 12px; color: var(--text-3);
+    }
     .footer-bottom-links { display: flex; gap: 20px; }
+    .footer-bottom-links a { color: var(--text-3); transition: color .1s; }
+    .footer-bottom-links a:hover { color: var(--text-2); }
 
     /* ── RESPONSIVE ── */
     @media (max-width: 768px) {
-      .nav-links, .nav-actions { display: none; }
+      .nav-links { display: none; }
       .hamburger { display: flex; }
-      .hero-stats { flex-wrap: wrap; gap: 0; }
-      .hero-stat { min-width: 50%; border-right: none; border-bottom: 1px solid var(--border); padding: 16px 0; }
-      .hero-stat:nth-child(odd) { padding-right: 16px; border-right: 1px solid var(--border); }
-      .hero-stat:nth-child(3), .hero-stat:nth-child(4) { border-bottom: none; }
+      .nav-login { display: none; }
+      .hero { padding: 64px 0 56px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .how-steps { grid-template-columns: 1fr; }
       .services-grid { grid-template-columns: repeat(2, 1fr); }
-      .steps { grid-template-columns: 1fr 1fr; gap: 32px; }
-      .steps::before { display: none; }
-      .step { padding: 0; }
-      .waarom-grid { grid-template-columns: 1fr; gap: 36px; }
+      .pricing-grid { grid-template-columns: 1fr; max-width: 400px; }
       .results-grid { grid-template-columns: 1fr; }
-      .contact-grid { grid-template-columns: 1fr; gap: 36px; }
-      .contact-info { order: -1; }
-      .footer-inner { grid-template-columns: 1fr 1fr; gap: 32px; }
-      .form-row { grid-template-columns: 1fr; }
+      .contact-inner { grid-template-columns: 1fr; }
+      .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
+      .footer-brand { grid-column: 1 / -1; }
     }
     @media (max-width: 480px) {
-      .section { padding: 60px 0; }
-      .hero { padding: 56px 0 60px; }
-      .hero h1 { font-size: 2.2rem; }
-      .hero-stats { flex-direction: column; }
-      .hero-stat { min-width: 100%; border-right: none !important; padding: 14px 0 !important; }
-      .hero-stat:last-child { border-bottom: none; }
+      .container { padding: 0 16px; }
+      .hero-title { font-size: 32px; }
+      .hero-sub { font-size: 15px; }
+      .stats-grid { grid-template-columns: 1fr 1fr; }
       .services-grid { grid-template-columns: 1fr; }
-      .steps { grid-template-columns: 1fr; }
-      .stats-items { grid-template-columns: 1fr 1fr; }
-      .footer-inner { grid-template-columns: 1fr; }
-      .footer-col:not(:first-child) { display: none; }
+      .section-title { font-size: 24px; }
+      .footer-grid { grid-template-columns: 1fr; }
+      .footer-bottom { flex-direction: column; text-align: center; }
+      .btn-hero-primary, .btn-hero-secondary { width: 100%; justify-content: center; }
     }
   </style>
 </head>
 <body>
 
-  <!-- NAV -->
+  <!-- ── NAVBAR ─────────────────────────────────────────────────────────── -->
   <nav class="nav" id="mainNav">
     <div class="nav-inner">
       <a href="/" class="nav-logo">
-        <img src="/images/agency_ai_logo_dark.png" alt="Agency AI" style="height:36px;object-fit:contain" id="navLogoImg">
-        <span id="navLogoText">Agency AI</span>
+        <div class="nav-logo-icon" id="navLogoIcon">
+          <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <img id="navLogoImg" src="" alt="">
+        <span id="navLogoName">Agency AI</span>
       </a>
       <ul class="nav-links">
         <li><a href="#diensten">Diensten</a></li>
-        <li><a href="#hoe-het-werkt">Hoe het werkt</a></li>
-        <li><a href="#resultaten">Resultaten</a></li>
-        <li><a href="#contact">Contact</a></li>
+        <li><a href="#pricing">Prijzen</a></li>
+        <li><a href="#resultaten">Demo</a></li>
+        <li><a href="#contact">Over ons</a></li>
       </ul>
       <div class="nav-actions">
         <a href="/login" class="nav-login">Inloggen</a>
-        <a href="#contact" class="btn-black">Gratis audit →</a>
+        <a href="#contact" class="btn-nav-cta">Gratis Demo →</a>
+        <button class="hamburger" id="hamburger" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
       </div>
-      <button class="hamburger" id="hamburger" aria-label="Menu">
-        <span></span><span></span><span></span>
-      </button>
+    </div>
+    <div class="mobile-menu" id="mobileMenu">
+      <a href="#diensten">Diensten</a>
+      <a href="#pricing">Prijzen</a>
+      <a href="#resultaten">Resultaten</a>
+      <a href="#contact">Contact</a>
+      <a href="/login">Inloggen</a>
     </div>
   </nav>
 
-  <!-- MOBILE MENU -->
-  <div class="mobile-menu" id="mobileMenu">
-    <a href="#diensten" class="mob-link">Diensten</a>
-    <a href="#hoe-het-werkt" class="mob-link">Hoe het werkt</a>
-    <a href="#resultaten" class="mob-link">Resultaten</a>
-    <a href="#contact" class="mob-link">Contact</a>
-    <div class="mobile-btns">
-      <a href="/login" class="nav-login mob-link">Inloggen</a>
-      <a href="#contact" class="btn-black mob-link">Gratis audit aanvragen →</a>
-    </div>
-  </div>
-
-  <!-- HERO -->
+  <!-- ── HERO ────────────────────────────────────────────────────────────── -->
   <section class="hero">
     <div class="container">
-      <div class="hero-inner">
-        <div class="hero-badge reveal">AI-gedreven webbureau</div>
-        <img src="/images/banner.png" alt="Agency AI" class="hero-banner reveal" style="max-width:480px;width:100%;margin:0 auto 24px;display:block;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
-        <h1 class="reveal reveal-delay-1">Wij bouwen.<br>Wij groeien.<br>Wij beschermen.</h1>
-        <p class="hero-sub reveal reveal-delay-2">Het enige AI-bureau dat volledig automatisch websites bouwt en digitale systemen opzet voor uw bedrijf.</p>
-        <div class="hero-cta-row reveal reveal-delay-3">
-          <a href="#contact" class="btn-cta-large">Gratis audit aanvragen →</a>
-          <a href="/download/windows" class="btn-download-win">⬇ Download voor Windows</a>
+      <div class="hero-eyebrow reveal">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        7 AI agents. 24/7 actief.
+      </div>
+      <h1 class="hero-title reveal reveal-d1">
+        De slimste AI-agency<br>
+        van <span>Nederland</span>
+      </h1>
+      <p class="hero-sub reveal reveal-d2">
+        Geautomatiseerde outreach, websites en marketing — volledig op autopilot. Wij vinden leads, schrijven emails en bouwen oplossingen terwijl u slaapt.
+      </p>
+      <div class="hero-btns reveal reveal-d3">
+        <a href="#contact" class="btn-hero-primary">
+          Start gratis demo →
+        </a>
+        <a href="#how-it-works" class="btn-hero-secondary">
+          Bekijk hoe het werkt
+        </a>
+      </div>
+      <div class="hero-proof reveal reveal-d4">
+        <span class="hero-proof-item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          66+ diensten
+        </span>
+        <span class="hero-proof-divider"></span>
+        <span class="hero-proof-item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          7 AI agents
+        </span>
+        <span class="hero-proof-divider"></span>
+        <span class="hero-proof-item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Volledig automatisch
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── STATS BAR ──────────────────────────────────────────────────────── -->
+  <section class="stats-section">
+    <div class="container">
+      <div class="stats-grid reveal">
+        <div class="stat-item">
+          <div class="stat-num">66+</div>
+          <div class="stat-label">Diensten</div>
         </div>
-        <div class="hero-checks reveal reveal-delay-4">
-          <span>✓ Geen verplichtingen</span>
-          <span>✓ Binnen 24 uur reactie</span>
-          <span>✓ 30 dagen garantie</span>
+        <div class="stat-item">
+          <div class="stat-num">7</div>
+          <div class="stat-label">AI Agents</div>
         </div>
-        <div class="hero-stats reveal reveal-delay-4">
-          <div class="hero-stat">
-            <div class="hero-stat-num">60+</div>
-            <div class="hero-stat-label">Diensten beschikbaar</div>
-          </div>
-          <div class="hero-stat">
-            <div class="hero-stat-num">24/7</div>
-            <div class="hero-stat-label">Actief voor u</div>
-          </div>
-          <div class="hero-stat">
-            <div class="hero-stat-num">30d</div>
-            <div class="hero-stat-label">Garantie</div>
-          </div>
-          <div class="hero-stat">
-            <div class="hero-stat-num">100%</div>
-            <div class="hero-stat-label">AI-gedreven</div>
-          </div>
+        <div class="stat-item">
+          <div class="stat-num">100%</div>
+          <div class="stat-label">Automatisch</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num">24/7</div>
+          <div class="stat-label">Actief</div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- DIENSTEN -->
-  <section class="section section-gray" id="diensten">
+  <!-- ── HOW IT WORKS ───────────────────────────────────────────────────── -->
+  <section class="how-it-works" id="how-it-works">
     <div class="container">
-      <div class="section-head center">
-        <span class="section-label reveal">Diensten</span>
-        <h2 class="section-title reveal reveal-delay-1">Alles wat uw bedrijf nodig heeft</h2>
-        <p class="section-sub reveal reveal-delay-2">Van website tot chatbot, van content tot strategie — volledig automatisch gebouwd in 24–48 uur.</p>
+      <div class="how-header">
+        <div class="section-label reveal">Werkwijze</div>
+        <h2 class="section-title reveal reveal-d1">Hoe het werkt</h2>
+        <p class="section-sub reveal reveal-d2" style="margin: 0 auto;">Van lead tot klant, volledig geautomatiseerd in drie stappen.</p>
       </div>
-      <div class="filter-pills reveal reveal-delay-2" id="filterPills">
-        <button class="filter-pill active" data-cat="alle">Alle</button>
-        <button class="filter-pill" data-cat="build">Websites &amp; Tools</button>
-        <button class="filter-pill" data-cat="write">Teksten &amp; Content</button>
-        <button class="filter-pill" data-cat="analyze">Analyse &amp; Strategie</button>
+      <div class="how-steps">
+        <div class="how-step reveal">
+          <div class="how-step-num">01</div>
+          <div class="how-step-icon">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          </div>
+          <div class="how-step-title">Agent vindt leads</div>
+          <div class="how-step-desc">Onze AI scant dagelijks het internet en vindt 15 lokale bedrijven die uw diensten nodig hebben. Gescoord op kans, geselecteerd op potentieel.</div>
+        </div>
+        <div class="how-step reveal reveal-d1">
+          <div class="how-step-num">02</div>
+          <div class="how-step-icon">
+            <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <div class="how-step-title">AI schrijft en verstuurt</div>
+          <div class="how-step-desc">Claude AI schrijft gepersonaliseerde emails per bedrijf, in het Nederlands of Engels. U keurt goed in de inbox — daarna stuurt het systeem automatisch.</div>
+        </div>
+        <div class="how-step reveal reveal-d2">
+          <div class="how-step-num">03</div>
+          <div class="how-step-icon">
+            <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+          <div class="how-step-title">Systeem bouwt en levert</div>
+          <div class="how-step-desc">Als de klant akkoord gaat, bouwen onze agents automatisch de gevraagde website, chatbot of booking-systeem — klaar in minuten, niet weken.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── SERVICES GRID ──────────────────────────────────────────────────── -->
+  <section class="services-section" id="diensten">
+    <div class="container">
+      <div class="services-header">
+        <div class="section-label reveal">Diensten</div>
+        <h2 class="section-title reveal reveal-d1">Alles wat uw klant nodig heeft</h2>
+        <p class="section-sub reveal reveal-d2">Van website tot AI chatbot — 66 diensten beschikbaar.</p>
       </div>
       <div class="services-grid" id="servicesGrid">
-        <div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);">
-          <div style="width:28px;height:28px;border:2px solid var(--border);border-top-color:var(--black);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 12px;"></div>
-          Diensten laden...
+        <div class="svc-card reveal" onclick="scrollToContact('website')">
+          <div class="svc-icon">🌐</div>
+          <div class="svc-name">Website bouwen</div>
+          <div class="svc-price">Vanaf €495 eenmalig</div>
+          <div class="svc-desc">Complete, professionele website inclusief hosting en SSL-certificaat.</div>
+        </div>
+        <div class="svc-card reveal reveal-d1" onclick="scrollToContact('ai')">
+          <div class="svc-icon">🤖</div>
+          <div class="svc-name">AI Chatbot</div>
+          <div class="svc-price">€195/maand</div>
+          <div class="svc-desc">Intelligente chatbot die 24/7 vragen beantwoordt en leads vastlegt.</div>
+        </div>
+        <div class="svc-card reveal reveal-d2" onclick="scrollToContact('marketing')">
+          <div class="svc-icon">📢</div>
+          <div class="svc-name">Google Ads</div>
+          <div class="svc-price">€395/maand</div>
+          <div class="svc-desc">Betaalde advertenties die direct klanten opleveren. ROI-gericht.</div>
+        </div>
+        <div class="svc-card reveal reveal-d1" onclick="scrollToContact('marketing')">
+          <div class="svc-icon">📱</div>
+          <div class="svc-name">Social Media</div>
+          <div class="svc-price">€295/maand</div>
+          <div class="svc-desc">AI-gegenereerde content voor Instagram, LinkedIn en Facebook.</div>
+        </div>
+        <div class="svc-card reveal reveal-d2" onclick="scrollToContact('seo')">
+          <div class="svc-icon">🔍</div>
+          <div class="svc-name">SEO</div>
+          <div class="svc-price">€395/maand</div>
+          <div class="svc-desc">Organische groei in Google. Meer bezoekers zonder advertentiekosten.</div>
+        </div>
+        <div class="svc-card reveal reveal-d3" onclick="scrollToContact('marketing')">
+          <div class="svc-icon">✉️</div>
+          <div class="svc-name">Email Marketing</div>
+          <div class="svc-price">€245/maand</div>
+          <div class="svc-desc">Geautomatiseerde email sequences die leads omzetten in klanten.</div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- HOE HET WERKT -->
-  <section class="section" id="hoe-het-werkt">
+  <!-- ── PRICING ────────────────────────────────────────────────────────── -->
+  <section class="pricing-section" id="pricing">
     <div class="container">
-      <div class="section-head center">
-        <span class="section-label reveal">Werkwijze</span>
-        <h2 class="section-title reveal reveal-delay-1">Van eerste contact tot live website</h2>
-        <p class="section-sub reveal reveal-delay-2">In vier stappen van kennismaking naar een volledig werkende digitale aanwezigheid.</p>
+      <div class="pricing-header">
+        <div class="section-label reveal">Prijzen</div>
+        <h2 class="section-title reveal reveal-d1">Transparante tarieven</h2>
+        <p class="section-sub reveal reveal-d2" style="margin: 0 auto;">Geen verborgen kosten. Opzegbaar per maand.</p>
       </div>
-      <div class="steps">
-        <div class="step reveal">
-          <div class="step-num">1</div>
-          <div class="step-title">Gratis Audit</div>
-          <div class="step-desc">We analyseren uw online aanwezigheid en stellen een concreet plan op — geheel gratis.</div>
-        </div>
-        <div class="step reveal reveal-delay-1">
-          <div class="step-num">2</div>
-          <div class="step-title">Strategie op Maat</div>
-          <div class="step-desc">U kiest de diensten. Wij bepalen de aanpak en bespreken de verwachtingen.</div>
-        </div>
-        <div class="step reveal reveal-delay-2">
-          <div class="step-num">3</div>
-          <div class="step-title">Wij Bouwen</div>
-          <div class="step-desc">AI agents bouwen alles automatisch. U bekijkt het in uw portaal en keurt goed.</div>
-        </div>
-        <div class="step reveal reveal-delay-3">
-          <div class="step-num">4</div>
-          <div class="step-title">Groei &amp; Optimalisatie</div>
-          <div class="step-desc">Maandelijkse updates en verbeteringen terwijl uw bedrijf groeit.</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- WAAROM AGENCY AI -->
-  <section class="section section-gray" id="waarom">
-    <div class="container">
-      <div class="section-head">
-        <span class="section-label reveal">Waarom kiezen voor ons</span>
-        <h2 class="section-title reveal reveal-delay-1">Meer resultaat, minder gedoe</h2>
-      </div>
-      <div class="waarom-grid">
-        <ul class="usp-list">
-          <li class="usp-item reveal">
-            <div class="usp-check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
-            <div class="usp-text"><strong>Volledig AI-gedreven</strong> — geen duur bureau, geen trage processen</div>
-          </li>
-          <li class="usp-item reveal reveal-delay-1">
-            <div class="usp-check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
-            <div class="usp-text"><strong>Websites live in 24–48 uur</strong> — niet weken of maanden wachten</div>
-          </li>
-          <li class="usp-item reveal reveal-delay-2">
-            <div class="usp-check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
-            <div class="usp-text"><strong>Maandelijks opzegbaar</strong> — geen jaarcontracten of verborgen kosten</div>
-          </li>
-          <li class="usp-item reveal reveal-delay-3">
-            <div class="usp-check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
-            <div class="usp-text"><strong>Altijd inzicht via uw klantportaal</strong> — bekijk resultaten wanneer u wilt</div>
-          </li>
-          <li class="usp-item reveal reveal-delay-4">
-            <div class="usp-check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
-            <div class="usp-text"><strong>Persoonlijk contact</strong> — altijd een vast aanspreekpunt</div>
-          </li>
-          <li class="usp-item reveal reveal-delay-4">
-            <div class="usp-check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
-            <div class="usp-text"><strong>Resultaten meetbaar vanaf dag 1</strong> — transparante rapportages elke maand</div>
-          </li>
-        </ul>
-        <div class="stats-card reveal reveal-delay-2">
-          <div class="stats-card-label">Resultaten in cijfers</div>
-          <div class="stats-items">
-            <div>
-              <span class="stat-num">340%</span>
-              <div class="stat-label">Gem. groei boekingen</div>
-            </div>
-            <div>
-              <span class="stat-num">48u</span>
-              <div class="stat-label">Gemiddelde levertijd</div>
-            </div>
-            <div>
-              <span class="stat-num">30+</span>
-              <div class="stat-label">Klanten geholpen</div>
-            </div>
-            <div>
-              <span class="stat-num">98%</span>
-              <div class="stat-label">Klanttevredenheid</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- RESULTATEN -->
-  <section class="section" id="resultaten">
-    <div class="container">
-      <div class="section-head center">
-        <span class="section-label reveal">Resultaten</span>
-        <h2 class="section-title reveal reveal-delay-1">Wat onze klanten bereiken</h2>
-        <p class="section-sub reveal reveal-delay-2">Echte resultaten voor lokale ondernemers die kozen voor AI-gedreven groei.</p>
-      </div>
-      <div class="results-grid" id="resultsGrid"></div>
-      <div class="results-disclaimer reveal">* Voorbeeldresultaten op basis van vergelijkbare campagnes</div>
-    </div>
-  </section>
-
-  <!-- CONTACT -->
-  <section class="section section-gray" id="contact">
-    <div class="container">
-      <div class="section-head center">
-        <span class="section-label reveal">Contact</span>
-        <h2 class="section-title reveal reveal-delay-1">Klaar om te groeien?</h2>
-        <p class="section-sub reveal reveal-delay-2">Vraag een gratis audit aan. Geen verplichtingen, wel resultaat.</p>
-      </div>
-      <div class="contact-grid">
-        <div class="contact-info reveal">
-          <div class="contact-info-title">Wat u kunt verwachten</div>
-          <div class="contact-info-sub">Na uw aanvraag nemen we binnen 24 uur contact op voor een vrijblijvend gesprek. We analyseren uw situatie en stellen een concreet plan op.</div>
-          <div class="contact-features">
-            <div class="contact-feature">
-              <div class="contact-feature-icon">🔍</div>
-              <div class="contact-feature-text">
-                <strong>Gratis website audit</strong>
-                <span>We analyseren uw huidige online aanwezigheid</span>
-              </div>
-            </div>
-            <div class="contact-feature">
-              <div class="contact-feature-icon">📋</div>
-              <div class="contact-feature-text">
-                <strong>Concreet groeiplan op maat</strong>
-                <span>Voor uw branche, locatie en doelen</span>
-              </div>
-            </div>
-            <div class="contact-feature">
-              <div class="contact-feature-icon">⚡</div>
-              <div class="contact-feature-text">
-                <strong>Start binnen 48 uur</strong>
-                <span>Zodra u akkoord gaat gaan de agents aan het werk</span>
-              </div>
-            </div>
-            <div class="contact-feature">
-              <div class="contact-feature-icon">🛡️</div>
-              <div class="contact-feature-text">
-                <strong>30 dagen garantie</strong>
-                <span>Niet tevreden? Wij lossen het op of uw geld terug</span>
-              </div>
-            </div>
-          </div>
-          <div class="calendly-wrap" id="calendlyWrap" style="display:none">
-            <div class="calendly-label">Of plan direct een gesprek in:</div>
-            <a id="calendlyBtn" href="#" class="calendly-btn">📅 Plan een gratis gesprek →</a>
-          </div>
-        </div>
-        <div class="reveal reveal-delay-1">
-          <div class="contact-form-card">
-            <div id="contactSuccess" class="form-success">
-              <div class="form-success-icon">✅</div>
-              <div class="form-success-title">Bedankt!</div>
-              <div class="form-success-sub">We nemen binnen 24 uur contact met u op.</div>
-            </div>
-            <form id="contactForm" class="contact-form" novalidate>
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label" for="cNaam">Naam *</label>
-                  <input type="text" id="cNaam" class="form-input" placeholder="Jan de Vries" required>
-                </div>
-                <div class="form-group">
-                  <label class="form-label" for="cEmail">E-mail *</label>
-                  <input type="email" id="cEmail" class="form-input" placeholder="jan@bedrijf.nl" required>
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label" for="cBedrijf">Bedrijfsnaam *</label>
-                  <input type="text" id="cBedrijf" class="form-input" placeholder="Mijn Bedrijf" required>
-                </div>
-                <div class="form-group">
-                  <label class="form-label" for="cTel">Telefoon</label>
-                  <input type="tel" id="cTel" class="form-input" placeholder="+31 6 …">
-                </div>
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="cService">Dienst</label>
-                <select id="cService" class="form-select">
-                  <option value="">Kies een dienst…</option>
-                  <option value="website">Website bouwen</option>
-                  <option value="chatbot">AI Chatbot</option>
-                  <option value="content">Content &amp; Teksten</option>
-                  <option value="booking">Boekingssysteem</option>
-                  <option value="seo">SEO teksten</option>
-                  <option value="anders">Anders / Weet ik nog niet</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="cBericht">Bericht</label>
-                <textarea id="cBericht" class="form-textarea" placeholder="Vertel ons over uw bedrijf en wat u wilt bereiken…"></textarea>
-              </div>
-              <div id="contactError" class="form-error"></div>
-              <button type="submit" class="btn-submit" id="contactSubmit">Gratis audit aanvragen →</button>
-            </form>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- FOOTER -->
-  <footer>
-    <div class="container">
-      <div class="footer-inner">
-        <div>
-          <div class="footer-logo">
-            <img src="/images/agency_ai_logo_dark.png" alt="Agency AI" style="height:32px;object-fit:contain;filter:brightness(0) invert(1)">
-            <span class="footer-logo-text" id="footerLogoText">Agency AI</span>
-          </div>
-          <div class="footer-tagline">Het AI-bureau dat volledig automatisch websites bouwt voor lokale ondernemers.</div>
-        </div>
-        <div>
-          <div class="footer-col-title">Diensten</div>
-          <ul class="footer-links">
-            <li><a href="#diensten">Website bouwen</a></li>
-            <li><a href="#diensten">AI Chatbot</a></li>
-            <li><a href="#diensten">Content &amp; Teksten</a></li>
-            <li><a href="#diensten">Boekingssysteem</a></li>
-            <li><a href="/bestellen">Dienst bestellen</a></li>
+      <div class="pricing-grid">
+        <div class="pricing-card reveal">
+          <div class="pricing-tier">Starter</div>
+          <div class="pricing-price">€495<span>/maand</span></div>
+          <div class="pricing-desc">Voor kleine bedrijven die willen groeien.</div>
+          <ul class="pricing-features">
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              5 leads per dag
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              2 diensten naar keuze
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Inbox goedkeuring
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Email + follow-ups
+            </li>
           </ul>
+          <a href="#contact" class="btn-pricing">Beginnen →</a>
+        </div>
+        <div class="pricing-card featured reveal reveal-d1">
+          <div class="pricing-badge">Meest gekozen</div>
+          <div class="pricing-tier">Growth</div>
+          <div class="pricing-price">€995<span>/maand</span></div>
+          <div class="pricing-desc">Voor bedrijven die snel willen schalen.</div>
+          <ul class="pricing-features">
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              15 leads per dag
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              5 diensten naar keuze
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              AI website builder
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Klantportaal
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Statistieken + P&L
+            </li>
+          </ul>
+          <a href="#contact" class="btn-pricing btn-pricing-primary">Beginnen →</a>
+        </div>
+        <div class="pricing-card reveal reveal-d2">
+          <div class="pricing-tier">Agency</div>
+          <div class="pricing-price">€1995<span>/maand</span></div>
+          <div class="pricing-desc">Voor agencies die alles volledig automatiseren.</div>
+          <ul class="pricing-features">
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Onbeperkt leads
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Alle 66+ diensten
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Multi-user teams
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              White-label portaal
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Prioriteitsondersteuning
+            </li>
+          </ul>
+          <a href="#contact" class="btn-pricing">Contact opnemen →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── RESULTS ────────────────────────────────────────────────────────── -->
+  <section class="results-section" id="resultaten">
+    <div class="container">
+      <div class="results-header">
+        <div class="section-label reveal">Resultaten</div>
+        <h2 class="section-title reveal reveal-d1">Bewezen resultaten</h2>
+        <p class="section-sub reveal reveal-d2" style="margin: 0 auto;">Voorbeeldresultaten van klanten die met Agency AI werken.</p>
+      </div>
+      <div class="results-grid">
+        <div class="result-card reveal">
+          <div class="result-metric">+340%</div>
+          <div class="result-company">Bloom Beauty Studio</div>
+          <div class="result-tag">Social Media</div>
+          <div class="result-stars">★★★★★</div>
+          <div class="result-quote">"In 4 maanden groeide onze Instagram van 800 naar 3.500 volgers. De AI posts zijn beter dan wat wij zelf maakten."</div>
+        </div>
+        <div class="result-card reveal reveal-d1">
+          <div class="result-metric">€2.400/m</div>
+          <div class="result-company">Trattoria Bella Vista</div>
+          <div class="result-tag">SEO + Google Ads</div>
+          <div class="result-stars">★★★★★</div>
+          <div class="result-quote">"Vanaf maand 3 genereerde de SEO structureel €2.400 extra omzet per maand. Investering terugverdiend."</div>
+        </div>
+        <div class="result-card reveal reveal-d2">
+          <div class="result-metric">68 klanten</div>
+          <div class="result-company">FitLife Personal Training</div>
+          <div class="result-tag">Meta Ads + AI Chatbot</div>
+          <div class="result-stars">★★★★★</div>
+          <div class="result-quote">"De combinatie van Meta Ads en de AI chatbot leverde in 6 maanden 68 nieuwe klanten op. Ongekend."</div>
+        </div>
+      </div>
+      <div class="results-note reveal">* Resultaten zijn indicatief gebaseerd op vergelijkbare campagnes.</div>
+    </div>
+  </section>
+
+  <!-- ── CTA ────────────────────────────────────────────────────────────── -->
+  <section class="cta-section">
+    <div class="container">
+      <div class="reveal">
+        <div class="section-label" style="margin-bottom: 16px;">Klaar om te beginnen?</div>
+        <h2 class="cta-title">Start vandaag met Agency AI</h2>
+        <p class="cta-sub">Stel uw systeem in, laat de agents het werk doen.</p>
+        <a href="#contact" class="btn-cta">Plan een demo →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CONTACT ────────────────────────────────────────────────────────── -->
+  <section class="contact-section" id="contact">
+    <div class="container">
+      <div class="contact-inner">
+        <div>
+          <div class="section-label reveal">Contact</div>
+          <h2 class="section-title reveal reveal-d1">Neem contact op</h2>
+          <p class="section-sub reveal reveal-d2">Vragen over onze diensten of klaar om te starten? Stuur ons een bericht en we reageren binnen 24 uur.</p>
+        </div>
+        <form class="contact-form reveal" id="contactForm">
+          <div class="form-row">
+            <label class="form-label">Naam</label>
+            <input type="text" class="form-input" name="name" id="cName" placeholder="Uw naam" required>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-input" name="email" id="cEmail" placeholder="uw@email.nl" required>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Dienst</label>
+            <select class="form-select" name="service" id="cService">
+              <option value="">— Kies een dienst —</option>
+              <option value="website">Website bouwen</option>
+              <option value="marketing">Marketing & Ads</option>
+              <option value="ai">AI Tools</option>
+              <option value="seo">SEO</option>
+              <option value="other">Anders</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Bericht</label>
+            <textarea class="form-textarea" name="message" id="cMessage" placeholder="Vertel ons over uw project..."></textarea>
+          </div>
+          <div>
+            <button type="submit" class="btn-form" id="contactBtn">Verstuur bericht →</button>
+            <div id="contactSuccess" class="form-success" style="display:none;margin-top:12px;">✓ Bericht ontvangen — we nemen binnen 24 uur contact op!</div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FOOTER ─────────────────────────────────────────────────────────── -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="/" class="nav-logo" style="display:inline-flex;margin-bottom:14px;">
+            <div class="nav-logo-icon">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            </div>
+            <span id="footerAgencyName">Agency AI</span>
+          </a>
+          <p class="footer-brand-desc">De meest geavanceerde AI-agency van Nederland. Volledig geautomatiseerd, 24/7 actief.</p>
         </div>
         <div>
-          <div class="footer-col-title">Bedrijf</div>
-          <ul class="footer-links">
-            <li><a href="#hoe-het-werkt">Hoe het werkt</a></li>
-            <li><a href="#resultaten">Resultaten</a></li>
-            <li><a href="#waarom">Waarom wij</a></li>
-            <li><a href="#contact">Contact</a></li>
-          </ul>
+          <div class="footer-col-label">Diensten</div>
+          <div class="footer-links">
+            <a href="#diensten">Website bouwen</a>
+            <a href="#diensten">AI Chatbot</a>
+            <a href="#diensten">Google Ads</a>
+            <a href="#diensten">Social Media</a>
+            <a href="#diensten">SEO</a>
+          </div>
         </div>
         <div>
-          <div class="footer-col-title">Account</div>
-          <ul class="footer-links">
-            <li><a href="/login">Inloggen</a></li>
-            <li><a href="/login">Klantportaal</a></li>
-            <li><a href="/bestellen">Dienst bestellen</a></li>
-          </ul>
+          <div class="footer-col-label">Bedrijf</div>
+          <div class="footer-links">
+            <a href="#how-it-works">Hoe het werkt</a>
+            <a href="#pricing">Prijzen</a>
+            <a href="#resultaten">Resultaten</a>
+            <a href="#contact">Contact</a>
+          </div>
+        </div>
+        <div>
+          <div class="footer-col-label">Account</div>
+          <div class="footer-links">
+            <a href="/login">Inloggen</a>
+            <a href="/bestellen">Bestellen</a>
+            <a href="/status">Status</a>
+          </div>
         </div>
       </div>
       <div class="footer-bottom">
-        <span id="footerCopy">© 2026 Agency AI — Benjamin van Hemert</span>
+        <span>© <span id="footerYear">2026</span> Agency AI. Alle rechten voorbehouden.</span>
         <div class="footer-bottom-links">
           <a href="#">Privacy</a>
           <a href="#">Voorwaarden</a>
-          <a href="/bestellen">Bestellen</a>
+          <a href="#">Cookies</a>
         </div>
       </div>
     </div>
   </footer>
 
-  <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
-
   <script>
-    // ── SCROLL REVEAL ──────────────────────────────────────────────
-    const revealObs = new IntersectionObserver((entries) => {
-      entries.forEach(e => {
-        if (e.isIntersecting) { e.target.classList.add('visible'); revealObs.unobserve(e.target); }
-      });
-    }, { threshold: 0.08, rootMargin: '0px 0px -32px 0px' });
-    document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
+    // Footer year
+    document.getElementById('footerYear').textContent = new Date().getFullYear();
 
-    // ── HAMBURGER ─────────────────────────────────────────────────
+    // Hamburger
     const hamburger = document.getElementById('hamburger');
     const mobileMenu = document.getElementById('mobileMenu');
     hamburger.addEventListener('click', () => {
       hamburger.classList.toggle('open');
       mobileMenu.classList.toggle('open');
-      document.body.style.overflow = mobileMenu.classList.contains('open') ? 'hidden' : '';
     });
-    document.querySelectorAll('.mob-link').forEach(a => {
-      a.addEventListener('click', () => {
-        hamburger.classList.remove('open');
-        mobileMenu.classList.remove('open');
-        document.body.style.overflow = '';
-      });
-    });
+    mobileMenu.querySelectorAll('a').forEach(a => a.addEventListener('click', () => {
+      hamburger.classList.remove('open');
+      mobileMenu.classList.remove('open');
+    }));
 
-    // ── HELPERS ───────────────────────────────────────────────────
-    function _esc(s) {
-      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
-    function getSvcCategory(name) {
-      const n = (name || '').toLowerCase();
-      if (/website|chatbot|booking|boek|dashboard|landingspagina|kennisbank|faq.*assistent|onboarding|offerte/.test(n)) return 'build';
-      if (/content|tekst|blog|social|instagram|tiktok|linkedin|facebook|youtube|email|sms|campagne|seizoen|influencer|reels|script/.test(n)) return 'write';
-      return 'analyze';
-    }
-    function getSvcBadge(cat) {
-      if (cat === 'build') return '<span class="svc-badge build">AI Bouwt</span>';
-      if (cat === 'write') return '<span class="svc-badge write">AI Schrijft</span>';
-      return '<span class="svc-badge analyze">AI Analyseert</span>';
-    }
-    function scrollToContact(name) {
-      const sel = document.getElementById('cService');
-      if (sel && name) {
-        const n = name.toLowerCase();
-        const match = Array.from(sel.options).find(o => n.includes(o.value) || (o.value && n.includes(o.value)));
-        if (!match) {
-          if (/website|landing|pagina/.test(n)) sel.value = 'website';
-          else if (/chatbot|chat|kennisbank|faq/.test(n)) sel.value = 'chatbot';
-          else if (/tekst|blog|seo|content/.test(n)) sel.value = 'content';
-          else if (/boek|booking|afspraak/.test(n)) sel.value = 'booking';
-        }
-      }
-      document.getElementById('contact').scrollIntoView({ behavior: 'smooth' });
-    }
+    // Scroll reveal
+    const revealEls = document.querySelectorAll('.reveal');
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
+    }, { threshold: 0.1 });
+    revealEls.forEach(el => observer.observe(el));
 
-    // ── SERVICES ─────────────────────────────────────────────────
-    async function loadServices() {
-      const grid = document.getElementById('servicesGrid');
-      try {
-        const res = await fetch('/api/services');
-        const data = await res.json();
-        const services = Array.isArray(data) ? data : [];
-        if (!services.length) throw new Error('empty');
-
-        // Populate service dropdown
-        const sel = document.getElementById('cService');
-        if (sel) {
-          const baseOpts = sel.innerHTML;
-          sel.innerHTML = baseOpts;
-          services.slice(0, 24).forEach(s => {
-            const opt = document.createElement('option');
-            opt.value = (s.name || '').toLowerCase().replace(/\s+/g,'_').slice(0, 30);
-            opt.textContent = s.name || '';
-            sel.appendChild(opt);
-          });
-        }
-
-        grid.innerHTML = services.map((s, i) => {
-          const cat = getSvcCategory(s.name || '');
-          const billing = s.billing === 'eenmalig' ? 'eenmalig' : '/mnd';
-          return `<div class="svc-card reveal reveal-delay-${i % 3}" data-cat="${cat}" onclick="scrollToContact('${_esc(s.name || '')}')">
-            <div class="svc-top">${getSvcBadge(cat)}</div>
-            <div class="svc-name">${_esc(s.name || '')}</div>
-            <div class="svc-desc">${_esc(s.description || '')}</div>
-            <div class="svc-price">€${Number(s.price || 0).toLocaleString('nl-NL')}<span class="billing"> ${billing}</span></div>
-          </div>`;
-        }).join('');
-
-        grid.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
-
-        document.getElementById('filterPills').addEventListener('click', e => {
-          const pill = e.target.closest('.filter-pill');
-          if (!pill) return;
-          document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
-          pill.classList.add('active');
-          const cat = pill.dataset.cat;
-          grid.querySelectorAll('.svc-card').forEach(c => {
-            c.classList.toggle('hidden', cat !== 'alle' && c.dataset.cat !== cat);
-          });
-        });
-      } catch {
-        grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:48px 20px;">
-          <div style="font-size:14px;color:var(--text3);margin-bottom:16px">60+ diensten beschikbaar — van website tot chatbot tot content</div>
-          <a href="#contact" class="btn-black">Vraag een overzicht aan →</a>
-        </div>`;
-      }
-    }
-
-    // ── CASE STUDIES ─────────────────────────────────────────────
-    const DEMO_CASES = [
-      { metric: '+340% meer boekingen', company: 'Beauty Salon Amsterdam', service: 'Website + Chatbot',
-        quote: '"Binnen 6 weken zat mijn agenda vol. De AI chatbot beantwoordt alle vragen automatisch."' },
-      { metric: 'Pagina 4 → #1 in Google', company: 'Restaurant Rotterdam', service: 'Website + SEO teksten',
-        quote: '"Van nauwelijks zichtbaar naar elke dag nieuwe gasten via Google. Ongelofelijk snel."' },
-      { metric: 'Volledig volgeboekt', company: 'Personal Trainer Utrecht', service: 'Website + Content',
-        quote: '"Binnen 30 dagen al mijn plekken gevuld. Het boekingssysteem werkt perfect automatisch."' },
-    ];
-    async function loadCaseStudies() {
-      const grid = document.getElementById('resultsGrid');
-      let cases = DEMO_CASES;
-      try {
-        const res = await fetch('/api/case-studies');
-        if (res.ok) {
-          const d = await res.json();
-          if (Array.isArray(d) && d.length) cases = d;
-        }
-      } catch {}
-      grid.innerHTML = cases.map((c, i) => `
-        <div class="result-card reveal reveal-delay-${i}">
-          <div class="result-metric">${_esc(c.metric || c.result || '')}</div>
-          <div class="result-company">${_esc(c.company || c.companyName || '')}</div>
-          <span class="result-service">${_esc(c.service || '')}</span>
-          <div class="result-stars">★★★★★</div>
-          <div class="result-quote">${_esc(c.quote || c.testimonial || '')}</div>
-        </div>`).join('');
-      grid.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
-    }
-
-    // ── PUBLIC CONFIG ─────────────────────────────────────────────
-    async function loadConfig() {
-      try {
-        const res = await fetch('/api/public-config');
-        const cfg = await res.json();
-        if (cfg.agencyLogo) {
-          const img = document.getElementById('navLogoImg');
-          const icon = document.getElementById('navLogoIcon');
-          if (img && icon) { img.style.display = 'block'; icon.style.display = 'none'; }
-        }
-        if (cfg.agencyName) {
-          document.getElementById('navLogoText').textContent = cfg.agencyName;
-          document.getElementById('footerLogoText').textContent = cfg.agencyName;
-          document.getElementById('footerCopy').textContent =
-            `© ${new Date().getFullYear()} ${cfg.agencyName} — Benjamin van Hemert`;
-        }
-        if (cfg.calendlyUrl) {
-          const btn = document.getElementById('calendlyBtn');
-          const wrap = document.getElementById('calendlyWrap');
-          if (btn && wrap) { btn.href = cfg.calendlyUrl; btn.target = '_blank'; wrap.style.display = 'block'; }
-        }
-        if (cfg.gaId && /^G-[A-Z0-9]+$/i.test(cfg.gaId)) {
-          const s = document.createElement('script');
-          s.async = true; s.src = `https://www.googletagmanager.com/gtag/js?id=${cfg.gaId}`;
-          document.head.appendChild(s);
-          window.dataLayer = window.dataLayer || [];
-          window.gtag = function(){ dataLayer.push(arguments); };
-          gtag('js', new Date()); gtag('config', cfg.gaId, { anonymize_ip: true });
-          window._gaReady = true;
-        }
-      } catch {}
-    }
-
-    // ── CONTACT FORM ─────────────────────────────────────────────
+    // Contact form
     document.getElementById('contactForm').addEventListener('submit', async e => {
       e.preventDefault();
-      const btn = document.getElementById('contactSubmit');
-      const errEl = document.getElementById('contactError');
-      errEl.style.display = 'none';
-      const name    = document.getElementById('cNaam').value.trim();
-      const email   = document.getElementById('cEmail').value.trim();
-      const company = document.getElementById('cBedrijf').value.trim();
-      const phone   = document.getElementById('cTel').value.trim();
-      const service = document.getElementById('cService').value;
-      const message = document.getElementById('cBericht').value.trim();
-      if (!name || !email || !company) {
-        errEl.textContent = 'Vul alle verplichte velden in (naam, e-mail, bedrijfsnaam).';
-        errEl.style.display = 'block'; return;
-      }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        errEl.textContent = 'Voer een geldig e-mailadres in.';
-        errEl.style.display = 'block'; return;
-      }
-      btn.disabled = true; btn.textContent = 'Versturen…';
+      const btn = document.getElementById('contactBtn');
+      btn.disabled = true; btn.textContent = 'Bezig...';
       try {
         const res = await fetch('/api/contact', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, company, phone, service, message })
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: document.getElementById('cName').value,
+            email: document.getElementById('cEmail').value,
+            service: document.getElementById('cService').value,
+            message: document.getElementById('cMessage').value
+          })
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Er is iets misgegaan');
-        document.getElementById('contactForm').style.display = 'none';
-        document.getElementById('contactSuccess').style.display = 'block';
-        if (window._gaReady) gtag('event', 'generate_lead', { event_category: 'contact', event_label: service });
-      } catch (err) {
-        errEl.textContent = err.message; errEl.style.display = 'block';
-        btn.disabled = false; btn.textContent = 'Gratis audit aanvragen →';
-      }
+        if (res.ok) {
+          document.getElementById('contactSuccess').style.display = 'block';
+          document.getElementById('contactForm').reset();
+          btn.textContent = '✓ Verzonden';
+        } else { btn.disabled = false; btn.textContent = 'Verstuur bericht →'; }
+      } catch { btn.disabled = false; btn.textContent = 'Verstuur bericht →'; }
     });
 
-    // ── INIT ─────────────────────────────────────────────────────
-    loadConfig();
+    // Scroll to contact with pre-selected service
+    function scrollToContact(service) {
+      document.getElementById('contact').scrollIntoView({ behavior: 'smooth' });
+      if (service) {
+        setTimeout(() => {
+          const sel = document.getElementById('cService');
+          for (let opt of sel.options) { if (opt.value === service) { sel.value = service; break; } }
+        }, 400);
+      }
+    }
+
+    // GA4 init
+    async function initGA() {
+      try {
+        const res = await fetch('/api/public-config');
+        if (!res.ok) return;
+        const cfg = await res.json();
+
+        // Update agency name
+        if (cfg.agencyName) {
+          document.getElementById('navLogoName').textContent = cfg.agencyName;
+          document.getElementById('footerAgencyName').textContent = cfg.agencyName;
+        }
+
+        // Logo
+        if (cfg.agencyLogo) {
+          const logoImg = document.getElementById('navLogoImg');
+          logoImg.src = cfg.agencyLogo;
+          logoImg.style.display = 'block';
+          document.getElementById('navLogoIcon').style.display = 'none';
+        }
+
+        // GA4
+        if (cfg.gaId && /^G-[A-Z0-9]+$/i.test(cfg.gaId)) {
+          const s = document.createElement('script');
+          s.src = 'https://www.googletagmanager.com/gtag/js?id=' + cfg.gaId;
+          s.async = true; document.head.appendChild(s);
+          window.dataLayer = window.dataLayer || [];
+          window.gtag = function() { dataLayer.push(arguments); };
+          gtag('js', new Date());
+          gtag('config', cfg.gaId, { anonymize_ip: true });
+          window._gaReady = true;
+
+          document.querySelectorAll('.btn-hero-primary,.btn-nav-cta,.btn-cta').forEach(btn => {
+            btn.addEventListener('click', () => gtag('event', 'cta_click', { event_category: 'engagement', event_label: btn.textContent.trim() }));
+          });
+          document.getElementById('contactForm').addEventListener('submit', () => {
+            gtag('event', 'generate_lead', { event_category: 'form', event_label: 'contact' });
+          });
+        }
+      } catch {}
+    }
+    initGA();
+
+    // Services from API
+    async function loadServices() {
+      try {
+        const res = await fetch('/api/services');
+        if (!res.ok) return;
+        const services = await res.json();
+        if (!Array.isArray(services) || services.length === 0) return;
+        // Services grid already has 6 hardcoded cards — API can extend
+      } catch {}
+    }
     loadServices();
-    loadCaseStudies();
   </script>
 </body>
 </html>
