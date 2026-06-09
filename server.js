@@ -281,7 +281,7 @@ function _rlOnLimitReached(req, _res, _options) {
 // Global — 200 req / 15 min per IP (all routes)
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 500,  // generous for multi-workspace testing (each page load = ~10 API calls)
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Te veel verzoeken. Probeer het over enkele minuten opnieuw.' },
@@ -289,10 +289,10 @@ app.use(rateLimit({
   handler: (req, res, next, options) => { _rlOnLimitReached(req, res, options); res.status(429).json(options.message); }
 }));
 
-// Auth login — 10 attempts / 15 min per IP (stricter)
+// Auth login — 20 attempts / 15 min per IP
 const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Te veel inlogpogingen. Wacht 15 minuten en probeer het opnieuw.' },
@@ -8055,7 +8055,8 @@ app.get('/api/settings', (req, res) => {
 });
 
 app.patch('/api/settings/account', requireAdmin, async (req, res) => {
-  const settings = readJSON('settings.json');
+  // Use wsRead/wsWrite so non-agencyai workspaces save to their own scoped file
+  const settings = wsRead(req, 'settings.json', {});
   const { agencyName, myName, myTitle, username, newPassword, currentPassword, websiteTagline, websiteAbout, websiteContact, calendlyUrl, agencyLogo } = req.body;
 
   if (agencyName) settings.agencyName = agencyName;
@@ -8067,7 +8068,6 @@ app.patch('/api/settings/account', requireAdmin, async (req, res) => {
   if (websiteContact !== undefined) settings.websiteContact = websiteContact;
   if (calendlyUrl    !== undefined) settings.calendlyUrl    = calendlyUrl;
   if (agencyLogo     !== undefined) {
-    // Validate: must be empty string or a data URL (image/*)
     if (agencyLogo === '' || /^data:image\/(png|jpeg|jpg|gif|svg\+xml|webp);base64,/.test(agencyLogo)) {
       settings.agencyLogo = agencyLogo;
     }
@@ -8078,23 +8078,18 @@ app.patch('/api/settings/account', requireAdmin, async (req, res) => {
 
   if (newPassword) {
     if (!currentPassword) return res.status(400).json({ error: 'Huidig wachtwoord verplicht' });
-
-    // Always verify against users.json — that is the source of truth for login.
-    // settings.password can drift; req.user.id is the reliable identifier from the JWT.
     const users = readJSON('users.json') || [];
     const uIdx  = users.findIndex(u => u.id === req.user.id);
     if (uIdx === -1) return res.status(404).json({ error: 'Gebruiker niet gevonden' });
-
     const ok = await bcrypt.compare(currentPassword, users[uIdx].password);
     if (!ok) return res.status(401).json({ error: 'Huidig wachtwoord onjuist' });
-
     const hashed = await bcrypt.hash(newPassword, 12);
     users[uIdx].password = hashed;
     writeJSON('users.json', users);
-    settings.password = hashed; // keep settings.json in sync for legacy reads
+    settings.password = hashed;
   }
 
-  writeJSON('settings.json', settings);
+  wsWrite(req, 'settings.json', settings);
   res.json({ ok: true });
 });
 
@@ -8706,12 +8701,12 @@ app.delete('/api/settings/leads', requireAdmin, (req, res) => {
 });
 
 app.get('/api/upsell', (req, res) => {
-  const stats = readJSON('stats.json') || {};
+  const stats = wsRead(req, 'stats.json', {});
   res.json(stats.upsellOpportunities || []);
 });
 
 app.get('/api/referrals', authMiddleware, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const referredLeads = leads.filter(l => l.referredBy);
   const clients = leads.filter(l => l.referralEmailSent || referredLeads.some(r => r.referredBy === l.id));
   const data = clients.map(c => ({

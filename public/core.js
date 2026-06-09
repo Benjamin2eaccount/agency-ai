@@ -1154,11 +1154,20 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load initial view
   setView('dashboard');
 
-  // Onboarding wizard: show on first login if not completed
+  // Onboarding wizard: show on first login if not completed.
+  // Use a workspace-specific localStorage key as fast-path so Ctrl+R doesn't
+  // re-trigger the wizard while the PATCH is still propagating.
   setTimeout(async () => {
     if (!isAdmin()) return;
+    const _pl = getTokenPayload();
+    const _wsKey = 'onboarding_' + (_pl?.workspaceId || 'default');
+    if (localStorage.getItem(_wsKey) === '1') return; // already completed this session
     const s = await apiJSON('/api/settings');
-    if (s && !s.onboardingCompleted) showOnboardingWizard();
+    if (s && !s.onboardingCompleted) {
+      showOnboardingWizard();
+    } else if (s && s.onboardingCompleted) {
+      localStorage.setItem(_wsKey, '1'); // cache so Ctrl+R skips the API call
+    }
   }, 800);
 
   // Check for new replies and show toasts
@@ -1305,8 +1314,10 @@ window._obNext = async function() {
     if (window._ob_logoData) {
       await api('/api/settings/account', { method: 'PATCH', body: JSON.stringify({ agencyLogo: window._ob_logoData }) });
     }
-    // Mark onboarding complete
+    // Mark onboarding complete — persist to server AND workspace-specific localStorage key
     await api('/api/settings/account', { method: 'PATCH', body: JSON.stringify({ onboardingCompleted: true }) });
+    const _pl2 = getTokenPayload();
+    localStorage.setItem('onboarding_' + (_pl2?.workspaceId || 'default'), '1');
   }
   _onboardingStep++;
   _renderOnboardingStep();
