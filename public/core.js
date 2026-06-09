@@ -14,11 +14,80 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!data.valid) {
       localStorage.clear();
       window.location.href = '/login';
+      return;
     }
   } catch {
     // If server unreachable, allow offline PWA use
   }
+  // Load system messages in background (after auth confirmed)
+  loadSystemMessages();
 });
+
+// ─── System messages ──────────────────────────────────────────────────────────
+async function loadSystemMessages() {
+  try {
+    const res = await fetch('/api/system-messages', {
+      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('agencyToken') || '') }
+    });
+    if (!res.ok) return;
+    const messages = await res.json();
+    if (!messages.length) return;
+    renderSystemMessages(messages);
+  } catch { /* non-fatal */ }
+}
+
+function renderSystemMessages(messages) {
+  const existing = document.getElementById('_sysMsgContainer');
+  if (existing) existing.remove();
+
+  const colors = {
+    info:    { bg: 'rgba(37,99,235,0.12)',  border: 'rgba(37,99,235,0.3)',  text: '#93c5fd'  },
+    warning: { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)', text: '#fbbf24'  },
+    danger:  { bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.3)',  text: '#f87171'  },
+  };
+  const icons = { info: 'ℹ️', warning: '⚠️', danger: '🚨' };
+
+  const container = document.createElement('div');
+  container.id = '_sysMsgContainer';
+  container.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:8888;display:flex;flex-direction:column;gap:0';
+
+  messages.forEach(msg => {
+    const c = colors[msg.type] || colors.info;
+    const banner = document.createElement('div');
+    banner.dataset.msgId = msg.id;
+    banner.style.cssText = `background:${c.bg};border-bottom:1px solid ${c.border};color:${c.text};padding:10px 20px;display:flex;align-items:center;gap:12px;font-family:Inter,sans-serif;font-size:13px`;
+    banner.innerHTML = `
+      <span style="font-size:16px">${icons[msg.type]||'ℹ️'}</span>
+      <span style="font-weight:700;flex-shrink:0">${_esc(msg.title)}</span>
+      <span style="opacity:0.85;flex:1">${_esc(msg.message)}</span>
+      <button onclick="dismissSysMsg(${msg.id},this.parentElement)" style="background:transparent;border:none;color:${c.text};cursor:pointer;font-size:18px;line-height:1;opacity:0.7;flex-shrink:0" title="Sluiten">×</button>`;
+    container.appendChild(banner);
+  });
+
+  document.body.prepend(container);
+  // Push main content down
+  const mainEl = document.querySelector('.main-content, main, #main, .page-content');
+  if (mainEl) mainEl.style.paddingTop = container.offsetHeight + 'px';
+}
+
+function _esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function dismissSysMsg(id, bannerEl) {
+  try {
+    await fetch(`/api/system-messages/${id}/dismiss`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('agencyToken') || '') }
+    });
+  } catch {}
+  bannerEl.remove();
+  // Re-adjust padding
+  const container = document.getElementById('_sysMsgContainer');
+  const mainEl = document.querySelector('.main-content, main, #main, .page-content');
+  if (mainEl && container) mainEl.style.paddingTop = container.offsetHeight + 'px';
+  if (container && !container.children.length) container.remove();
+}
 
 // ─── State ────────────────────────────────────────────────────────────────────
 const state = {

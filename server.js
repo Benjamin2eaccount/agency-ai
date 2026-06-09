@@ -411,6 +411,8 @@ app.get('/app', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.h
 app.get('/status',       (_, res) => res.sendFile(path.join(__dirname, 'public', 'status.html')));
 app.get('/register',          (_, res) => res.sendFile(path.join(__dirname, 'public', 'register.html')));
 app.get('/register/betaling', (_, res) => res.sendFile(path.join(__dirname, 'public', 'betaling.html')));
+// Serve superadmin shell — JS inside verifies isSuperAdmin from JWT
+app.get('/superadmin', (_, res) => res.sendFile(path.join(__dirname, 'public', 'superadmin.html')));
 
 // MPA routes — each /app/:page serves its own HTML file
 app.get('/app/:page', (req, res) => {
@@ -3248,6 +3250,375 @@ global._buildRegEmail = buildRegEmail;
 
 app.use('/api', authMiddleware);
 app.use('/data/uploads', authMiddleware, express.static(path.join(__dirname, 'data', 'uploads')));
+
+// ─── Super admin middleware ────────────────────────────────────────────────────
+const requireSuperAdmin = (req, res, next) => {
+  if (!req.user?.isSuperAdmin) {
+    return res.status(403).json({ error: 'Super admin toegang vereist' });
+  }
+  next();
+};
+
+// ─── Super admin API ──────────────────────────────────────────────────────────
+
+// GET /api/superadmin/stats
+app.get('/api/superadmin/stats', requireSuperAdmin, (req, res) => {
+  try {
+    const db  = getDb();
+    const rows = db.prepare('SELECT status, billing_amount FROM workspaces').all();
+    const total        = rows.length;
+    const active       = rows.filter(r => r.status === 'active').length;
+    const pending      = rows.filter(r => r.status === 'pending_payment' || r.status === 'pending').length;
+    const paused       = rows.filter(r => r.status === 'paused').length;
+    const blocked      = rows.filter(r => r.status === 'blocked').length;
+    const mrr          = rows.filter(r => r.status === 'active').reduce((s, r) => s + (r.billing_amount || 0), 0);
+
+    const billPending  = db.prepare("SELECT COUNT(*) as c FROM workspace_billing WHERE status = 'pending'").get().c;
+    const thisMonth    = db.prepare("SELECT COUNT(*) as c FROM workspaces WHERE created_at >= date('now','start of month')").get().c;
+
+    let demoCount = 0;
+    try { demoCount = db.prepare('SELECT COUNT(*) as c FROM demo_requests WHERE status = ?').get('new').c; } catch {}
+
+    res.json({ total_workspaces: total, active, pending, paused, blocked, mrr, arr: mrr * 12, pending_payments: billPending, new_this_month: thisMonth, demo_requests: demoCount });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/superadmin/workspaces
+app.get('/api/superadmin/workspaces', requireSuperAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const workspaces = db.prepare('SELECT * FROM workspaces ORDER BY created_at DESC').all();
+    const result = workspaces.map(ws => {
+      const userCount = db.prepare('SELECT COUNT(*) as c FROM workspace_users WHERE workspace_id = ?').get(ws.id).c;
+      return { ...ws, user_count: userCount };
+    });
+    res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/superadmin/workspaces/:id
+app.get('/api/superadmin/workspaces/:id', requireSuperAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
+    const users    = db.prepare('SELECT id,email,name,role,created_at,last_login_at FROM workspace_users WHERE workspace_id = ?').all(ws.id);
+    const billing  = db.prepare('SELECT * FROM workspace_billing WHERE workspace_id = ? ORDER BY created_at DESC').all(ws.id);
+    const activity = db.prepare('SELECT * FROM workspace_activity WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 50').all(ws.id);
+    res.json({ ...ws, users, billing, activity });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PATCH /api/superadmin/workspaces/:id
+app.patch('/api/superadmin/workspaces/:id', requireSuperAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const { generateSlug } = require('./lib/workspace');
+    const allowed = ['status','plan','billing_amount','next_billing_date','notes','branding_name','branding_logo','branding_color','branding_email_sender','owner_email','owner_name'];
+    const fields  = Object.keys(req.body).filter(k => allowed.includes(k));
+    if (!fields.length) return res.status(400).json({ error: 'Geen geldige velden' });
+    const setClauses = fields.map(f => `${f} = ?`).join(', ');
+    db.prepare(`UPDATE workspaces SET ${setClauses} WHERE id = ?`).run(...fields.map(f => req.body[f]), req.params.id);
+    const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(req.params.id);
+    res.json(ws);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/superadmin/workspaces/:id/activate
+app.post('/api/superadmin/workspaces/:id/activate', requireSuperAdmin, async (req, res) => {
+  try {
+    const db = getDb();
+    const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
+    const nextBilling = new Date(); nextBilling.setDate(nextBilling.getDate() + 30);
+    db.prepare("UPDATE workspaces SET status='active', activated_at=datetime('now'), next_billing_date=?, paused_at=NULL, blocked_at=NULL WHERE id=?")
+      .run(nextBilling.toISOString(), ws.id);
+    const { logActivity } = require('./lib/workspace');
+    logActivity(ws.id, req.user.id, 'activated', { by: req.user.email });
+    res.json({ ok: true });
+    // Send activation email
+    const settings = readJSON('settings.json') || {};
+    if (isResendReady(settings)) {
+      const email = buildRegEmail('account_activated', { naam: ws.owner_name || ws.owner_email, slug: ws.slug });
+      sendEmail({ to: ws.owner_email, subject: email.subject, html: email.html, settings }).catch(() => {});
+    }
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/superadmin/workspaces/:id/pause
+app.post('/api/superadmin/workspaces/:id/pause', requireSuperAdmin, async (req, res) => {
+  try {
+    const db = getDb();
+    const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
+    db.prepare("UPDATE workspaces SET status='paused', paused_at=datetime('now') WHERE id=?").run(ws.id);
+    const { logActivity } = require('./lib/workspace');
+    logActivity(ws.id, req.user.id, 'paused', { by: req.user.email });
+    res.json({ ok: true });
+    const settings = readJSON('settings.json') || {};
+    if (isResendReady(settings)) {
+      const email = buildRegEmail('account_paused', { naam: ws.owner_name || ws.owner_email, amount: ws.billing_amount, ref: ws.payment_reference });
+      sendEmail({ to: ws.owner_email, subject: email.subject, html: email.html, settings }).catch(() => {});
+    }
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/superadmin/workspaces/:id/block
+app.post('/api/superadmin/workspaces/:id/block', requireSuperAdmin, async (req, res) => {
+  try {
+    const db = getDb();
+    const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
+    db.prepare("UPDATE workspaces SET status='blocked', blocked_at=datetime('now') WHERE id=?").run(ws.id);
+    const { logActivity } = require('./lib/workspace');
+    logActivity(ws.id, req.user.id, 'blocked', { by: req.user.email });
+    res.json({ ok: true });
+    const settings = readJSON('settings.json') || {};
+    if (isResendReady(settings)) {
+      const email = buildRegEmail('account_blocked', { naam: ws.owner_name || ws.owner_email });
+      sendEmail({ to: ws.owner_email, subject: email.subject, html: email.html, settings }).catch(() => {});
+    }
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/superadmin/workspaces/:id/unblock
+app.post('/api/superadmin/workspaces/:id/unblock', requireSuperAdmin, async (req, res) => {
+  try {
+    const db = getDb();
+    const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
+    const nextBilling = new Date(); nextBilling.setDate(nextBilling.getDate() + 30);
+    db.prepare("UPDATE workspaces SET status='active', blocked_at=NULL, activated_at=COALESCE(activated_at,datetime('now')), next_billing_date=? WHERE id=?")
+      .run(nextBilling.toISOString(), ws.id);
+    const { logActivity } = require('./lib/workspace');
+    logActivity(ws.id, req.user.id, 'unblocked', { by: req.user.email });
+    res.json({ ok: true });
+    const settings = readJSON('settings.json') || {};
+    if (isResendReady(settings)) {
+      const email = buildRegEmail('account_activated', { naam: ws.owner_name || ws.owner_email, slug: ws.slug });
+      sendEmail({ to: ws.owner_email, subject: email.subject, html: email.html, settings }).catch(() => {});
+    }
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /api/superadmin/workspaces/:id — soft delete
+app.delete('/api/superadmin/workspaces/:id', requireSuperAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
+    const anon = `deleted-${Date.now()}@removed.invalid`;
+    db.prepare("UPDATE workspaces SET status='deleted', owner_email=?, owner_name='[verwijderd]' WHERE id=?").run(anon, ws.id);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/superadmin/workspaces/:id/impersonate
+app.post('/api/superadmin/workspaces/:id/impersonate', requireSuperAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
+    // Find first admin user of this workspace
+    const wsUser = db.prepare("SELECT * FROM workspace_users WHERE workspace_id = ? AND role = 'admin' LIMIT 1").get(ws.id);
+    if (!wsUser) return res.status(404).json({ error: 'Geen admin gebruiker gevonden voor deze workspace' });
+    const settings = readJSON('settings.json') || {};
+    const token = jwt.sign({
+      id: wsUser.id, userId: wsUser.id, username: wsUser.email, name: wsUser.name,
+      role: wsUser.role, email: wsUser.email,
+      agencyName: settings.agencyName, myName: wsUser.name,
+      workspaceId: ws.id, workspaceSlug: ws.slug, workspaceStatus: ws.status,
+      isSuperAdmin: false, _impersonatedBy: req.user.email,
+    }, JWT_SECRET, { expiresIn: '2h' });
+    const { logActivity } = require('./lib/workspace');
+    logActivity(ws.id, req.user.id, 'impersonated', { by: req.user.email, target: wsUser.email });
+    res.json({ token, redirectUrl: `/app/dashboard` });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/superadmin/billing
+app.get('/api/superadmin/billing', requireSuperAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT wb.*, w.name as workspace_name, w.slug as workspace_slug,
+             w.owner_email, w.plan, w.status as workspace_status, w.payment_reference
+      FROM workspace_billing wb
+      LEFT JOIN workspaces w ON wb.workspace_id = w.id
+      ORDER BY wb.created_at DESC
+    `).all();
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/superadmin/billing/:id/confirm
+app.post('/api/superadmin/billing/:id/confirm', requireSuperAdmin, async (req, res) => {
+  try {
+    const db = getDb();
+    const bill = db.prepare('SELECT * FROM workspace_billing WHERE id = ?').get(req.params.id);
+    if (!bill) return res.status(404).json({ error: 'Betaling niet gevonden' });
+    const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(bill.workspace_id);
+    if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
+    // Mark billing record paid
+    db.prepare("UPDATE workspace_billing SET status='paid', paid_at=datetime('now'), confirmed_by=? WHERE id=?")
+      .run(req.user.email, bill.id);
+    // Update workspace
+    const nextBilling = new Date(); nextBilling.setDate(nextBilling.getDate() + 30);
+    const wasPaymentPending = ws.status === 'paused' || ws.status === 'pending_payment';
+    db.prepare("UPDATE workspaces SET next_billing_date=?, status=CASE WHEN status IN ('paused','pending_payment') THEN 'active' ELSE status END, activated_at=COALESCE(activated_at,datetime('now')), paused_at=NULL WHERE id=?")
+      .run(nextBilling.toISOString(), ws.id);
+    const { logActivity } = require('./lib/workspace');
+    logActivity(ws.id, req.user.id, 'payment_confirmed', { amount: bill.amount, by: req.user.email });
+    res.json({ ok: true, wasActivated: wasPaymentPending });
+    // Send activation email if workspace was pending/paused
+    if (wasPaymentPending) {
+      const settings = readJSON('settings.json') || {};
+      if (isResendReady(settings)) {
+        const email = buildRegEmail('account_activated', { naam: ws.owner_name || ws.owner_email, slug: ws.slug });
+        sendEmail({ to: ws.owner_email, subject: email.subject, html: email.html, settings }).catch(() => {});
+      }
+    }
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/superadmin/activity
+app.get('/api/superadmin/activity', requireSuperAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT wa.*, w.name as workspace_name, w.slug as workspace_slug
+      FROM workspace_activity wa
+      LEFT JOIN workspaces w ON wa.workspace_id = w.id
+      ORDER BY wa.created_at DESC LIMIT 200
+    `).all();
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/superadmin/demo-requests
+app.get('/api/superadmin/demo-requests', requireSuperAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    db.exec(`CREATE TABLE IF NOT EXISTS demo_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT, company TEXT, email TEXT, phone TEXT,
+      clients TEXT, plan TEXT, message TEXT,
+      status TEXT DEFAULT 'new', created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+    const rows = db.prepare('SELECT * FROM demo_requests ORDER BY created_at DESC').all();
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PATCH /api/superadmin/demo-requests/:id
+app.patch('/api/superadmin/demo-requests/:id', requireSuperAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const { status } = req.body;
+    if (!['new','contacted','rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Ongeldige status' });
+    }
+    db.prepare('UPDATE demo_requests SET status = ? WHERE id = ?').run(status, req.params.id);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/superadmin/messages
+app.post('/api/superadmin/messages', requireSuperAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const { workspace_id, title, message, type, expires_at } = req.body;
+    if (!title || !message) return res.status(400).json({ error: 'Titel en bericht zijn verplicht' });
+    const validTypes = ['info','warning','danger'];
+    const msgType = validTypes.includes(type) ? type : 'info';
+    const isGlobal = !workspace_id ? 1 : 0;
+    db.prepare(`INSERT INTO system_messages (workspace_id, title, message, type, is_global, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?)`).run(workspace_id || null, title, message, msgType, isGlobal, expires_at || null);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/superadmin/system
+app.get('/api/superadmin/system', requireSuperAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const leads  = readJSON('leads.json') || [];
+    const act    = readJSON('activity.json') || [];
+    const emailCount = act.filter(a => a.type === 'email').length;
+    const buildCount = act.filter(a => a.type === 'build').length;
+    const mem = process.memoryUsage();
+    res.json({
+      node_version    : process.version,
+      uptime_seconds  : Math.floor(process.uptime()),
+      memory_mb       : Math.round(mem.rss / 1024 / 1024),
+      heap_used_mb    : Math.round(mem.heapUsed / 1024 / 1024),
+      railway_env     : process.env.RAILWAY_ENVIRONMENT || 'local',
+      db_mode         : process.env.DATABASE_URL ? 'PostgreSQL' : 'SQLite',
+      total_leads     : leads.length,
+      total_emails_sent: emailCount,
+      total_builds    : buildCount,
+      version         : '1.1.2',
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/superadmin/system/force-status-check
+app.post('/api/superadmin/system/force-status-check', requireSuperAdmin, async (req, res) => {
+  try {
+    const { autoStatusCheck } = require('./lib/workspace');
+    const results = await autoStatusCheck({ sendEmail: typeof sendEmail !== 'undefined' ? sendEmail : null });
+    res.json({ ok: true, results });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── System messages (available to all authenticated users) ───────────────────
+
+// GET /api/system-messages — returns active messages for this workspace + globals
+app.get('/api/system-messages', (req, res) => {
+  try {
+    const db = getDb();
+    const workspaceId = req.user?.workspaceId || null;
+    const now = new Date().toISOString();
+    let rows;
+    if (workspaceId) {
+      rows = db.prepare(`
+        SELECT * FROM system_messages
+        WHERE (is_global = 1 OR workspace_id = ?)
+          AND (expires_at IS NULL OR expires_at > ?)
+        ORDER BY created_at DESC LIMIT 20
+      `).all(workspaceId, now);
+    } else {
+      rows = db.prepare(`
+        SELECT * FROM system_messages
+        WHERE is_global = 1 AND (expires_at IS NULL OR expires_at > ?)
+        ORDER BY created_at DESC LIMIT 20
+      `).all(now);
+    }
+    // Filter out messages dismissed by this user
+    const userId = req.user?.id || req.user?.userId || '';
+    const visible = rows.filter(r => {
+      try {
+        const dismissed = JSON.parse(r.dismissed_by || '[]');
+        return !dismissed.includes(userId);
+      } catch { return true; }
+    });
+    res.json(visible);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/system-messages/:id/dismiss
+app.post('/api/system-messages/:id/dismiss', (req, res) => {
+  try {
+    const db = getDb();
+    const msg = db.prepare('SELECT * FROM system_messages WHERE id = ?').get(req.params.id);
+    if (!msg) return res.status(404).json({ error: 'Bericht niet gevonden' });
+    const userId    = req.user?.id || req.user?.userId || '';
+    const dismissed = (() => { try { return JSON.parse(msg.dismissed_by || '[]'); } catch { return []; } })();
+    if (!dismissed.includes(userId)) dismissed.push(userId);
+    db.prepare('UPDATE system_messages SET dismissed_by = ? WHERE id = ?').run(JSON.stringify(dismissed), msg.id);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 // ─── Hosting requests (admin) ─────────────────────────────────────────────────
 

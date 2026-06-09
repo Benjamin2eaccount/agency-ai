@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Super Admin — Agency AI</title>
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0f1e;
+      --surface: #111827;
+      --surface-2: #1f2937;
+      --surface-3: #374151;
+      --border: rgba(255,255,255,0.07);
+      --text: #f9fafb;
+      --text-2: #9ca3af;
+      --text-3: #6b7280;
+      --accent: #2563eb;
+      --accent-h: #1d4ed8;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --sidebar-w: 220px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      position: sticky;
+      top: 0;
+    }
+
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 20px 18px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo-mark {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; font-weight: 800; color: #fff;
+      flex-shrink: 0;
+    }
+
+    .logo-text {
+      font-size: 13px; font-weight: 700; color: var(--text);
+      line-height: 1.2;
+    }
+
+    .logo-sub { font-size: 10px; color: var(--text-3); font-weight: 400; }
+
+    .sidebar-nav { flex: 1; padding: 10px 8px; overflow-y: auto; }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-2);
+      transition: all 0.15s;
+      margin-bottom: 2px;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+
+    .nav-item:hover { background: var(--surface-2); color: var(--text); }
+    .nav-item.active { background: rgba(37,99,235,0.15); color: #93c5fd; }
+    .nav-icon { font-size: 15px; width: 20px; text-align: center; }
+
+    .sidebar-footer {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-3);
+    }
+
+    .sidebar-footer strong { color: var(--text-2); font-size: 12px; }
+
+    /* ── Main area ── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Topbar ── */
+    .topbar {
+      height: 56px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      flex-shrink: 0;
+    }
+
+    .topbar-left { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: -0.2px; }
+    .topbar-left span { color: var(--text-3); font-weight: 400; font-size: 13px; margin-left: 8px; }
+
+    .topbar-right { display: flex; align-items: center; gap: 12px; }
+    .topbar-email { font-size: 12px; color: var(--text-2); }
+
+    .btn-logout {
+      padding: 6px 14px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-2);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
+
+    /* ── Content ── */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px;
+    }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .page-title {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.4px;
+      margin-bottom: 6px;
+    }
+
+    .page-sub { font-size: 13px; color: var(--text-2); margin-bottom: 24px; }
+
+    /* ── Stat cards ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+    }
+
+    .stat-label { font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+    .stat-val { font-size: 26px; font-weight: 800; color: var(--text); letter-spacing: -0.5px; }
+    .stat-val.accent { color: #60a5fa; }
+    .stat-val.success { color: var(--success); }
+    .stat-val.warning { color: var(--warning); }
+    .stat-val.danger { color: var(--danger); }
+
+    /* ── Section cards ── */
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section-title { font-size: 14px; font-weight: 700; color: var(--text); }
+    .section-sub { font-size: 12px; color: var(--text-3); margin-top: 1px; }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+    th {
+      padding: 10px 16px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-2);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      vertical-align: middle;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    /* ── Status badges ── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 9px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .badge-active  { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.25); }
+    .badge-pending { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.25); }
+    .badge-paused  { background: rgba(249,115,22,0.15); color: #fb923c; border: 1px solid rgba(249,115,22,0.25); }
+    .badge-blocked { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+    .badge-deleted { background: rgba(107,114,128,0.15); color: #9ca3af; border: 1px solid rgba(107,114,128,0.25); }
+    .badge-paid    { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.2); }
+    .badge-new     { background: rgba(37,99,235,0.15);  color: #93c5fd; border: 1px solid rgba(37,99,235,0.25); }
+    .badge-info    { background: rgba(37,99,235,0.1);   color: #93c5fd; border: 1px solid rgba(37,99,235,0.2); }
+    .badge-warning { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
+    .badge-danger  { background: rgba(239,68,68,0.12);  color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+
+    /* ── Action buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-primary  { background: var(--accent);  color: #fff; border-color: var(--accent); }
+    .btn-primary:hover  { background: var(--accent-h); }
+    .btn-success  { background: rgba(16,185,129,0.15); color: #34d399; border-color: rgba(16,185,129,0.3); }
+    .btn-success:hover  { background: rgba(16,185,129,0.25); }
+    .btn-warning  { background: rgba(245,158,11,0.15); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
+    .btn-warning:hover  { background: rgba(245,158,11,0.25); }
+    .btn-danger   { background: rgba(239,68,68,0.15);  color: #f87171; border-color: rgba(239,68,68,0.3); }
+    .btn-danger:hover   { background: rgba(239,68,68,0.25); }
+    .btn-ghost    { background: transparent; color: var(--text-2); border-color: var(--border); }
+    .btn-ghost:hover    { border-color: var(--text-3); color: var(--text); }
+    .btn-sm { padding: 4px 9px; font-size: 11px; }
+
+    .btn-group { display: flex; gap: 5px; }
+
+    /* ── Filters ── */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .filter-chip {
+      padding: 5px 13px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-2);
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+
+    .filter-chip:hover { border-color: var(--text-3); color: var(--text); }
+    .filter-chip.active { background: rgba(37,99,235,0.15); border-color: rgba(37,99,235,0.4); color: #93c5fd; }
+
+    .search-input {
+      flex: 1;
+      min-width: 180px;
+      max-width: 280px;
+      height: 34px;
+      padding: 0 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--text);
+      outline: none;
+      margin-left: auto;
+    }
+
+    .search-input:focus { border-color: var(--accent); }
+    .search-input::placeholder { color: var(--text-3); }
+
+    /* ── Modal ── */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .modal-backdrop.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 680px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 32px 64px rgba(0,0,0,0.5);
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--surface);
+      z-index: 1;
+    }
+
+    .modal-title { font-size: 16px; font-weight: 700; }
+    .modal-close {
+      width: 30px; height: 30px;
+      background: var(--surface-2);
+      border: none; border-radius: 6px;
+      color: var(--text-2);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .modal-body { padding: 20px 24px; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
+    /* ── Detail rows ── */
+    .detail-row { display: flex; gap: 8px; margin-bottom: 10px; font-size: 13px; }
+    .detail-label { color: var(--text-3); width: 140px; flex-shrink: 0; }
+    .detail-val { color: var(--text); font-weight: 500; word-break: break-all; }
+
+    /* ── Form elements ── */
+    .form-group { margin-bottom: 14px; }
+    label { display: block; font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
+    input, select, textarea {
+      width: 100%;
+      padding: 9px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--text);
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    select { appearance: none; cursor: pointer; }
+    textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
+
+    /* ── System cards ── */
+    .sys-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 20px; }
+    .sys-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+    .sys-key { font-size: 11px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .sys-val { font-size: 16px; font-weight: 700; color: var(--text); }
+
+    /* ── Danger zone ── */
+    .danger-zone { background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.2); border-radius: 12px; padding: 20px; }
+    .danger-title { font-size: 13px; font-weight: 700; color: var(--danger); margin-bottom: 12px; }
+
+    /* ── Message form ── */
+    .msg-type-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-bottom: 14px; }
+    .msg-type-btn { padding: 10px; border-radius: 8px; border: 1.5px solid var(--border); background: transparent; color: var(--text-2); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; transition: all 0.15s; }
+    .msg-type-btn.active.info { border-color: #93c5fd; background: rgba(37,99,235,0.12); color: #93c5fd; }
+    .msg-type-btn.active.warning { border-color: #fbbf24; background: rgba(245,158,11,0.12); color: #fbbf24; }
+    .msg-type-btn.active.danger  { border-color: #f87171; background: rgba(239,68,68,0.12); color: #f87171; }
+
+    /* ── Activity feed ── */
+    .activity-row td:first-child { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+
+    /* ── Billing summary ── */
+    .billing-summary {
+      display: grid;
+      grid-template-columns: repeat(3,1fr);
+      gap: 14px;
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--surface-2);
+    }
+
+    .bsummary-item { text-align: center; }
+    .bsummary-label { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .bsummary-val { font-size: 18px; font-weight: 800; color: var(--text); }
+    .bsummary-val.green { color: var(--success); }
+
+    /* ── Empty state ── */
+    .empty { padding: 40px; text-align: center; color: var(--text-3); font-size: 14px; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 20px;
+      font-size: 13px; color: var(--text);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      transform: translateY(80px); opacity: 0;
+      transition: all 0.3s; z-index: 9999;
+      max-width: 320px;
+    }
+
+    #toast.show { transform: translateY(0); opacity: 1; }
+
+    @media (max-width: 1100px) {
+      .stats-grid { grid-template-columns: repeat(3,1fr); }
+      .sys-grid { grid-template-columns: repeat(2,1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ Sidebar ══════════════════════════════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">SA</div>
+    <div>
+      <div class="logo-text">Super Admin</div>
+      <div class="logo-sub">Agency AI Platform</div>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <button class="nav-item active" onclick="setView('overzicht')" id="nav-overzicht">
+      <span class="nav-icon">📊</span> Overzicht
+    </button>
+    <button class="nav-item" onclick="setView('workspaces')" id="nav-workspaces">
+      <span class="nav-icon">🏢</span> Workspaces
+    </button>
+    <button class="nav-item" onclick="setView('betalingen')" id="nav-betalingen">
+      <span class="nav-icon">💰</span> Betalingen
+    </button>
+    <button class="nav-item" onclick="setView('demos')" id="nav-demos">
+      <span class="nav-icon">📋</span> Demo aanvragen
+    </button>
+    <button class="nav-item" onclick="setView('activiteit')" id="nav-activiteit">
+      <span class="nav-icon">📡</span> Activiteit
+    </button>
+    <button class="nav-item" onclick="setView('berichten')" id="nav-berichten">
+      <span class="nav-icon">📢</span> Berichten
+    </button>
+    <button class="nav-item" onclick="setView('systeem')" id="nav-systeem">
+      <span class="nav-icon">⚙️</span> Systeem
+    </button>
+  </nav>
+
+  <div class="sidebar-footer" id="sidebarFooter">
+    <strong>Ingelogd als</strong><br>
+    <span id="saEmail">—</span>
+  </div>
+</aside>
+
+<!-- ══ Main ══════════════════════════════════════════════════════════════════ -->
+<div class="main">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      Super Admin — Agency AI
+      <span id="topbarView">Overzicht</span>
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-email" id="topEmail"></span>
+      <button class="btn-logout" onclick="saLogout()">Uitloggen</button>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+
+    <!-- ══ OVERZICHT ══════════════════════════════════════════════════════ -->
+    <div class="view active" id="view-overzicht">
+      <div class="page-title">Overzicht</div>
+      <div class="page-sub">Platform statistieken en openstaande acties</div>
+
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card"><div class="stat-label">Workspaces</div><div class="stat-val" id="stTotal">—</div></div>
+        <div class="stat-card"><div class="stat-label">Actief</div><div class="stat-val success" id="stActive">—</div></div>
+        <div class="stat-card"><div class="stat-label">Wacht op betaling</div><div class="stat-val warning" id="stPending">—</div></div>
+        <div class="stat-card"><div class="stat-label">Gepauzeerd</div><div class="stat-val" id="stPaused">—</div></div>
+        <div class="stat-card"><div class="stat-label">MRR</div><div class="stat-val accent" id="stMrr">—</div></div>
+        <div class="stat-card"><div class="stat-label">Demo aanvragen</div><div class="stat-val" id="stDemo">—</div></div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <div><div class="section-title">Recent aangemeld</div><div class="section-sub">Nieuwste workspaces</div></div>
+          <button class="btn btn-ghost btn-sm" onclick="setView('workspaces')">Alle workspaces →</button>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Naam</th><th>Plan</th><th>Status</th><th>Aangemeld</th><th>Actie</th></tr></thead>
+          <tbody id="recentWsTable"><tr><td colspan="5" class="empty">Laden…</td></tr></tbody>
+        </table></div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <div><div class="section-title">Openstaande betalingen</div><div class="section-sub">Te bevestigen</div></div>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Workspace</th><th>Bedrag</th><th>Referentie</th><th>Vervaldatum</th><th>Actie</th></tr></thead>
+          <tbody id="pendingBillTable"><tr><td colspan="5" class="empty">Laden…</td></tr></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- ══ WORKSPACES ══════════════════════════════════════════════════════ -->
+    <div class="view" id="view-workspaces">
+      <div class="page-title">Workspaces</div>
+      <div class="page-sub">Beheer alle tenants</div>
+
+      <div class="section">
+        <div class="filter-bar">
+          <button class="filter-chip active" onclick="filterWs('all',this)">Alle</button>
+          <button class="filter-chip" onclick="filterWs('active',this)">Actief</button>
+          <button class="filter-chip" onclick="filterWs('pending_payment',this)">Pending</button>
+          <button class="filter-chip" onclick="filterWs('paused',this)">Gepauzeerd</button>
+          <button class="filter-chip" onclick="filterWs('blocked',this)">Geblokkeerd</button>
+          <input class="search-input" id="wsSearch" placeholder="Zoek op naam, email, slug…" oninput="renderWsTable()">
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Naam</th><th>Slug</th><th>Plan</th><th>Status</th><th>Owner</th><th>MRR</th><th>Aangemeld</th><th>Acties</th></tr></thead>
+          <tbody id="wsTable"><tr><td colspan="8" class="empty">Laden…</td></tr></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- ══ BETALINGEN ══════════════════════════════════════════════════════ -->
+    <div class="view" id="view-betalingen">
+      <div class="page-title">Betalingen</div>
+      <div class="page-sub">Facturatie overzicht</div>
+
+      <div class="section">
+        <div class="filter-bar">
+          <button class="filter-chip active" onclick="filterBill('all',this)">Alle</button>
+          <button class="filter-chip" onclick="filterBill('pending',this)">Openstaand</button>
+          <button class="filter-chip" onclick="filterBill('paid',this)">Betaald</button>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Workspace</th><th>Plan</th><th>Bedrag</th><th>Referentie</th><th>Vervaldatum</th><th>Status</th><th>Acties</th></tr></thead>
+          <tbody id="billTable"><tr><td colspan="7" class="empty">Laden…</td></tr></tbody>
+        </table></div>
+        <div class="billing-summary">
+          <div class="bsummary-item"><div class="bsummary-label">Totaal MRR</div><div class="bsummary-val green" id="sumMrr">—</div></div>
+          <div class="bsummary-item"><div class="bsummary-label">Totaal ARR</div><div class="bsummary-val" id="sumArr">—</div></div>
+          <div class="bsummary-item"><div class="bsummary-label">Openstaand</div><div class="bsummary-val warning" id="sumOpen">—</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ DEMO AANVRAGEN ══════════════════════════════════════════════════ -->
+    <div class="view" id="view-demos">
+      <div class="page-title">Demo aanvragen</div>
+      <div class="page-sub">Inkomende interesse</div>
+      <div class="section">
+        <div class="table-wrap"><table>
+          <thead><tr><th>Naam</th><th>Bedrijf</th><th>Email</th><th>Klanten</th><th>Plan</th><th>Status</th><th>Datum</th><th>Actie</th></tr></thead>
+          <tbody id="demoTable"><tr><td colspan="8" class="empty">Laden…</td></tr></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- ══ ACTIVITEIT ══════════════════════════════════════════════════════ -->
+    <div class="view" id="view-activiteit">
+      <div class="page-title">Activiteit</div>
+      <div class="page-sub">Real-time log van alle workspaces</div>
+      <div class="section">
+        <div class="filter-bar">
+          <select id="actWsFilter" onchange="renderActivityTable()" style="max-width:200px;height:34px">
+            <option value="">Alle workspaces</option>
+          </select>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Tijdstip</th><th>Workspace</th><th>Actie</th><th>Details</th><th>IP</th></tr></thead>
+          <tbody id="actTable"><tr><td colspan="5" class="empty">Laden…</td></tr></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- ══ BERICHTEN ══════════════════════════════════════════════════════ -->
+    <div class="view" id="view-berichten">
+      <div class="page-title">Systeem berichten</div>
+      <div class="page-sub">Stuur een bericht naar één of alle workspaces</div>
+      <div class="section">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Aan</label>
+            <select id="msgWs">
+              <option value="">Alle workspaces (global)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <div class="msg-type-grid">
+              <button class="msg-type-btn active info" onclick="setMsgType('info',this)">ℹ️ Info</button>
+              <button class="msg-type-btn warning" onclick="setMsgType('warning',this)">⚠️ Waarschuwing</button>
+              <button class="msg-type-btn danger" onclick="setMsgType('danger',this)">🚨 Storing</button>
+            </div>
+            <input type="hidden" id="msgType" value="info">
+          </div>
+          <div class="form-group">
+            <label>Titel</label>
+            <input type="text" id="msgTitle" placeholder="Onderhoud gepland op 15 juni">
+          </div>
+          <div class="form-group">
+            <label>Bericht</label>
+            <textarea id="msgBody" placeholder="Beschrijf het bericht…" rows="4"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Verloopt op (optioneel)</label>
+            <input type="datetime-local" id="msgExpires">
+          </div>
+          <button class="btn btn-primary" onclick="sendMessage()" style="width:100%;height:44px;font-size:14px;justify-content:center">Verstuur bericht</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SYSTEEM ══════════════════════════════════════════════════════ -->
+    <div class="view" id="view-systeem">
+      <div class="page-title">Systeem info</div>
+      <div class="page-sub">Server status en beheeracties</div>
+
+      <div class="sys-grid" id="sysGrid">
+        <div class="sys-card"><div class="sys-key">Node versie</div><div class="sys-val" id="sysNode">—</div></div>
+        <div class="sys-card"><div class="sys-key">Uptime</div><div class="sys-val" id="sysUptime">—</div></div>
+        <div class="sys-card"><div class="sys-key">Memory</div><div class="sys-val" id="sysMem">—</div></div>
+        <div class="sys-card"><div class="sys-key">Database</div><div class="sys-val" id="sysDb">—</div></div>
+        <div class="sys-card"><div class="sys-key">Railway env</div><div class="sys-val" id="sysRailway">—</div></div>
+        <div class="sys-card"><div class="sys-key">App versie</div><div class="sys-val" id="sysVersion">—</div></div>
+        <div class="sys-card"><div class="sys-key">Totaal leads</div><div class="sys-val" id="sysLeads">—</div></div>
+        <div class="sys-card"><div class="sys-key">Emails verstuurd</div><div class="sys-val" id="sysEmails">—</div></div>
+        <div class="sys-card"><div class="sys-key">Builds gedaan</div><div class="sys-val" id="sysBuilds">—</div></div>
+      </div>
+
+      <div class="section" style="margin-bottom:20px">
+        <div class="section-header"><div class="section-title">🔴 Gevaarlijke acties</div></div>
+        <div class="modal-body">
+          <div class="danger-zone">
+            <div class="danger-title">Let op — onomkeerbaar</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-danger" onclick="forceStatusCheck()">⚡ Forceer status check</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- ══ Workspace Detail Modal ════════════════════════════════════════════════ -->
+<div class="modal-backdrop" id="wsModal" onclick="closeWsModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span class="modal-title" id="wsModalTitle">Workspace details</span>
+      <button class="modal-close" onclick="closeWsModal()">×</button>
+    </div>
+    <div class="modal-body" id="wsModalBody">Laden…</div>
+    <div class="modal-footer" id="wsModalFooter"></div>
+  </div>
+</div>
+
+<!-- ══ Toast ════════════════════════════════════════════════════════════════ -->
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ── Auth guard ───────────────────────────────────────────────────────────────
+const _token = localStorage.getItem('agencyToken');
+if (!_token) { window.location.href = '/login'; }
+else {
+  try {
+    const payload = JSON.parse(atob(_token.split('.')[1]));
+    if (!payload.isSuperAdmin) { window.location.href = '/login'; }
+    document.getElementById('saEmail').textContent = payload.email || payload.username || '—';
+    document.getElementById('topEmail').textContent = payload.email || payload.username || '';
+  } catch { window.location.href = '/login'; }
+}
+
+// ── State ────────────────────────────────────────────────────────────────────
+let _workspaces = [];
+let _billing    = [];
+let _demos      = [];
+let _activity   = [];
+let _wsFilter   = 'all';
+let _billFilter = 'all';
+let _msgType    = 'info';
+let _currentView = 'overzicht';
+const _loaded   = {};
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmt(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('nl-NL', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+function fmtEur(n) { return '€' + Number(n||0).toLocaleString('nl-NL', {minimumFractionDigits:2}); }
+
+function uptime(sec) {
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60);
+  return `${h}u ${m}m`;
+}
+
+function saFetch(url, opts = {}) {
+  return fetch(url, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + _token, 'Content-Type': 'application/json', ...(opts.headers||{}) }
+  });
+}
+
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = (type === 'ok' ? '✓ ' : '✗ ') + msg;
+  el.style.borderColor = type === 'ok' ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)';
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+function statusBadge(s) {
+  const map = { active:'badge-active', pending:'badge-pending', pending_payment:'badge-pending', paused:'badge-paused', blocked:'badge-blocked', deleted:'badge-deleted', paid:'badge-paid', new:'badge-new' };
+  const label = { active:'Actief', pending:'Pending', pending_payment:'Wacht betaling', paused:'Gepauzeerd', blocked:'Geblokkeerd', deleted:'Verwijderd', paid:'Betaald', new:'Nieuw', contacted:'Contacted', rejected:'Afgewezen' };
+  return `<span class="badge ${map[s]||'badge-ghost'}">${esc(label[s]||s)}</span>`;
+}
+
+function planBadge(p) {
+  const col = { starter:'badge-info', pro:'badge-new', agency:'badge-active' };
+  return `<span class="badge ${col[p]||'badge-ghost'}">${esc(p||'?')}</span>`;
+}
+
+function saLogout() { localStorage.clear(); window.location.href = '/login'; }
+
+// ── View switching ────────────────────────────────────────────────────────────
+function setView(v) {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-' + v)?.classList.add('active');
+  document.getElementById('nav-' + v)?.classList.add('active');
+  _currentView = v;
+  document.getElementById('topbarView').textContent = { overzicht:'Overzicht', workspaces:'Workspaces', betalingen:'Betalingen', demos:'Demo aanvragen', activiteit:'Activiteit', berichten:'Berichten', systeem:'Systeem' }[v] || v;
+  if (!_loaded[v]) { _loaded[v] = true; loadView(v); }
+}
+
+async function loadView(v) {
+  if (v === 'overzicht')  { await loadStats(); await loadOverzicht(); }
+  if (v === 'workspaces') { await loadWorkspaces(); }
+  if (v === 'betalingen') { await loadBilling(); }
+  if (v === 'demos')      { await loadDemos(); }
+  if (v === 'activiteit') { await loadActivity(); }
+  if (v === 'berichten')  { await loadBerichtWsList(); }
+  if (v === 'systeem')    { await loadSysteem(); }
+}
+
+// ── Overzicht ─────────────────────────────────────────────────────────────────
+async function loadStats() {
+  const r = await saFetch('/api/superadmin/stats');
+  if (!r.ok) return;
+  const d = await r.json();
+  document.getElementById('stTotal').textContent  = d.total_workspaces;
+  document.getElementById('stActive').textContent  = d.active;
+  document.getElementById('stPending').textContent = d.pending;
+  document.getElementById('stPaused').textContent  = d.paused;
+  document.getElementById('stMrr').textContent     = fmtEur(d.mrr);
+  document.getElementById('stDemo').textContent    = d.demo_requests;
+
+  // Update billing summary
+  document.getElementById('sumMrr').textContent  = fmtEur(d.mrr);
+  document.getElementById('sumArr').textContent  = fmtEur(d.arr);
+}
+
+async function loadOverzicht() {
+  // Recent workspaces (reuse global data)
+  if (!_workspaces.length) {
+    const r = await saFetch('/api/superadmin/workspaces');
+    if (r.ok) _workspaces = await r.json();
+  }
+  const recent = [..._workspaces].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 8);
+  const tbody = document.getElementById('recentWsTable');
+  tbody.innerHTML = recent.length ? recent.map(ws => `
+    <tr>
+      <td><strong>${esc(ws.name)}</strong></td>
+      <td>${planBadge(ws.plan)}</td>
+      <td>${statusBadge(ws.status)}</td>
+      <td>${fmt(ws.created_at)}</td>
+      <td><div class="btn-group">
+        <button class="btn btn-ghost btn-sm" onclick="openWsModal('${esc(ws.id)}')">👁️</button>
+        ${ws.status !== 'active' ? `<button class="btn btn-success btn-sm" onclick="wsAction('${esc(ws.id)}','activate')">✅</button>` : ''}
+      </div></td>
+    </tr>`).join('') : '<tr><td colspan="5" class="empty">Geen workspaces</td></tr>';
+
+  // Pending billing
+  if (!_billing.length) {
+    const r2 = await saFetch('/api/superadmin/billing');
+    if (r2.ok) _billing = await r2.json();
+  }
+  const pending = _billing.filter(b => b.status === 'pending').slice(0,10);
+  const pbody = document.getElementById('pendingBillTable');
+  pbody.innerHTML = pending.length ? pending.map(b => `
+    <tr>
+      <td><strong>${esc(b.workspace_name||'—')}</strong></td>
+      <td>${fmtEur(b.amount)}</td>
+      <td><code style="font-size:11px;color:#93c5fd">${esc(b.reference||b.payment_reference||'—')}</code></td>
+      <td>${fmt(b.due_date)}</td>
+      <td><button class="btn btn-success btn-sm" onclick="confirmBilling('${esc(b.id)}')">✅ Bevestig</button></td>
+    </tr>`).join('') : '<tr><td colspan="5" class="empty">Geen openstaande betalingen</td></tr>';
+
+  // Billing summary open amount
+  const openAmt = _billing.filter(b => b.status === 'pending').reduce((s,b) => s + (b.amount||0), 0);
+  document.getElementById('sumOpen').textContent = fmtEur(openAmt);
+}
+
+// ── Workspaces ────────────────────────────────────────────────────────────────
+async function loadWorkspaces() {
+  if (!_workspaces.length) {
+    const r = await saFetch('/api/superadmin/workspaces');
+    if (r.ok) _workspaces = await r.json();
+  }
+  renderWsTable();
+}
+
+function filterWs(f, btn) {
+  _wsFilter = f;
+  document.querySelectorAll('#view-workspaces .filter-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderWsTable();
+}
+
+function renderWsTable() {
+  const search = (document.getElementById('wsSearch')?.value || '').toLowerCase();
+  let items = _workspaces;
+  if (_wsFilter !== 'all') items = items.filter(w => w.status === _wsFilter);
+  if (search) items = items.filter(w =>
+    (w.name||'').toLowerCase().includes(search) ||
+    (w.slug||'').toLowerCase().includes(search) ||
+    (w.owner_email||'').toLowerCase().includes(search)
+  );
+  const tbody = document.getElementById('wsTable');
+  if (!items.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">Geen resultaten</td></tr>'; return; }
+  tbody.innerHTML = items.map(ws => `
+    <tr>
+      <td><strong>${esc(ws.name)}</strong></td>
+      <td><code style="font-size:11px;color:#9ca3af">${esc(ws.slug)}</code></td>
+      <td>${planBadge(ws.plan)}</td>
+      <td>${statusBadge(ws.status)}</td>
+      <td style="font-size:12px;color:var(--text-2)">${esc(ws.owner_email)}</td>
+      <td>${fmtEur(ws.billing_amount)}</td>
+      <td style="font-size:12px;color:var(--text-3)">${fmt(ws.created_at)}</td>
+      <td><div class="btn-group">
+        <button class="btn btn-ghost btn-sm" onclick="openWsModal('${esc(ws.id)}')">👁️</button>
+        ${ws.status !== 'active' ? `<button class="btn btn-success btn-sm" onclick="wsAction('${esc(ws.id)}','activate')">✅</button>` : ''}
+        ${ws.status === 'active' ? `<button class="btn btn-warning btn-sm" onclick="wsAction('${esc(ws.id)}','pause')">⏸️</button>` : ''}
+        ${ws.status !== 'blocked' ? `<button class="btn btn-danger btn-sm" onclick="wsAction('${esc(ws.id)}','block')">🚫</button>` : `<button class="btn btn-ghost btn-sm" onclick="wsAction('${esc(ws.id)}','unblock')">🔓</button>`}
+        <button class="btn btn-ghost btn-sm" onclick="impersonate('${esc(ws.id)}')">🔑</button>
+      </div></td>
+    </tr>`).join('');
+}
+
+// ── Billing ───────────────────────────────────────────────────────────────────
+async function loadBilling() {
+  const r = await saFetch('/api/superadmin/billing');
+  if (r.ok) _billing = await r.json();
+  renderBillTable();
+  const openAmt = _billing.filter(b => b.status === 'pending').reduce((s,b) => s + (b.amount||0), 0);
+  document.getElementById('sumOpen').textContent = fmtEur(openAmt);
+}
+
+function filterBill(f, btn) {
+  _billFilter = f;
+  document.querySelectorAll('#view-betalingen .filter-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderBillTable();
+}
+
+function renderBillTable() {
+  let items = _billing;
+  if (_billFilter !== 'all') items = items.filter(b => b.status === _billFilter);
+  const tbody = document.getElementById('billTable');
+  if (!items.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Geen betalingen</td></tr>'; return; }
+  tbody.innerHTML = items.map(b => `
+    <tr>
+      <td><strong>${esc(b.workspace_name||'—')}</strong></td>
+      <td>${planBadge(b.plan)}</td>
+      <td>${fmtEur(b.amount)}</td>
+      <td><code style="font-size:11px;color:#93c5fd">${esc(b.reference||b.payment_reference||'—')}</code></td>
+      <td style="font-size:12px;color:var(--text-3)">${fmt(b.due_date)}</td>
+      <td>${statusBadge(b.status)}</td>
+      <td><div class="btn-group">
+        ${b.status === 'pending' ? `<button class="btn btn-success btn-sm" onclick="confirmBilling('${esc(b.id)}')">✅ Bevestig</button>` : ''}
+      </div></td>
+    </tr>`).join('');
+}
+
+// ── Demos ─────────────────────────────────────────────────────────────────────
+async function loadDemos() {
+  const r = await saFetch('/api/superadmin/demo-requests');
+  if (r.ok) _demos = await r.json();
+  const tbody = document.getElementById('demoTable');
+  if (!_demos.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">Geen demo aanvragen</td></tr>'; return; }
+  tbody.innerHTML = _demos.map(d => `
+    <tr>
+      <td>${esc(d.name)}</td>
+      <td>${esc(d.company)}</td>
+      <td style="font-size:12px">${esc(d.email)}</td>
+      <td>${esc(d.clients||'—')}</td>
+      <td>${planBadge(d.plan)}</td>
+      <td>${statusBadge(d.status)}</td>
+      <td style="font-size:11px;color:var(--text-3)">${fmt(d.created_at)}</td>
+      <td><div class="btn-group">
+        <button class="btn btn-success btn-sm" onclick="demoStatus(${d.id},'contacted')">Contacted</button>
+        <button class="btn btn-danger btn-sm" onclick="demoStatus(${d.id},'rejected')">Afwijzen</button>
+      </div></td>
+    </tr>`).join('');
+}
+
+// ── Activity ──────────────────────────────────────────────────────────────────
+async function loadActivity() {
+  const r = await saFetch('/api/superadmin/activity');
+  if (r.ok) _activity = await r.json();
+  // Populate workspace filter
+  const sel = document.getElementById('actWsFilter');
+  const wsNames = [...new Set(_activity.map(a => a.workspace_name).filter(Boolean))];
+  sel.innerHTML = '<option value="">Alle workspaces</option>' +
+    wsNames.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  renderActivityTable();
+}
+
+function renderActivityTable() {
+  const wsFilter = document.getElementById('actWsFilter')?.value || '';
+  let items = _activity;
+  if (wsFilter) items = items.filter(a => a.workspace_name === wsFilter);
+  const tbody = document.getElementById('actTable');
+  if (!items.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Geen activiteit</td></tr>'; return; }
+  tbody.innerHTML = items.slice(0,100).map(a => `
+    <tr class="activity-row">
+      <td>${fmt(a.created_at)}</td>
+      <td style="font-size:12px">${esc(a.workspace_name||'—')}</td>
+      <td><code style="font-size:11px;color:#93c5fd">${esc(a.action)}</code></td>
+      <td style="font-size:11px;color:var(--text-2)">${esc(a.details ? JSON.stringify(JSON.parse(a.details||'{}')) : '—')}</td>
+      <td style="font-size:11px;color:var(--text-3)">${esc(a.ip||'—')}</td>
+    </tr>`).join('');
+}
+
+// ── Berichten ─────────────────────────────────────────────────────────────────
+async function loadBerichtWsList() {
+  if (!_workspaces.length) {
+    const r = await saFetch('/api/superadmin/workspaces');
+    if (r.ok) _workspaces = await r.json();
+  }
+  const sel = document.getElementById('msgWs');
+  sel.innerHTML = '<option value="">Alle workspaces (global)</option>' +
+    _workspaces.map(ws => `<option value="${esc(ws.id)}">${esc(ws.name)}</option>`).join('');
+}
+
+function setMsgType(t, btn) {
+  _msgType = t;
+  document.getElementById('msgType').value = t;
+  document.querySelectorAll('.msg-type-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+async function sendMessage() {
+  const wsId   = document.getElementById('msgWs').value;
+  const title  = document.getElementById('msgTitle').value.trim();
+  const body   = document.getElementById('msgBody').value.trim();
+  const exp    = document.getElementById('msgExpires').value;
+  if (!title || !body) { toast('Titel en bericht zijn verplicht', 'err'); return; }
+  const r = await saFetch('/api/superadmin/messages', {
+    method: 'POST',
+    body: JSON.stringify({ workspace_id: wsId || null, title, message: body, type: _msgType, expires_at: exp || null })
+  });
+  if (r.ok) {
+    toast('Bericht verstuurd!');
+    document.getElementById('msgTitle').value = '';
+    document.getElementById('msgBody').value = '';
+  } else { toast('Fout bij versturen', 'err'); }
+}
+
+// ── Systeem ───────────────────────────────────────────────────────────────────
+async function loadSysteem() {
+  const r = await saFetch('/api/superadmin/system');
+  if (!r.ok) return;
+  const d = await r.json();
+  document.getElementById('sysNode').textContent    = d.node_version;
+  document.getElementById('sysUptime').textContent  = uptime(d.uptime_seconds);
+  document.getElementById('sysMem').textContent     = `${d.memory_mb} MB`;
+  document.getElementById('sysDb').textContent      = d.db_mode;
+  document.getElementById('sysRailway').textContent = d.railway_env;
+  document.getElementById('sysVersion').textContent = 'v' + d.version;
+  document.getElementById('sysLeads').textContent   = d.total_leads;
+  document.getElementById('sysEmails').textContent  = d.total_emails_sent;
+  document.getElementById('sysBuilds').textContent  = d.total_builds;
+}
+
+async function forceStatusCheck() {
+  if (!confirm('Forceer status check van alle workspaces?')) return;
+  const r = await saFetch('/api/superadmin/system/force-status-check', { method: 'POST' });
+  const d = await r.json();
+  toast(r.ok ? `Check klaar — ${d.results?.paused?.length||0} gepauzeerd, ${d.results?.blocked?.length||0} geblokkeerd` : 'Fout', r.ok ? 'ok' : 'err');
+}
+
+// ── Workspace actions ─────────────────────────────────────────────────────────
+async function wsAction(id, action) {
+  const labels = { activate:'Activeer', pause:'Pauzeer', block:'Blokkeer', unblock:'Deblokkeer' };
+  if (!confirm(`${labels[action]||action} deze workspace?`)) return;
+  const r = await saFetch(`/api/superadmin/workspaces/${id}/${action}`, { method: 'POST' });
+  if (r.ok) {
+    toast(`Actie "${action}" uitgevoerd`);
+    _workspaces = []; _loaded.workspaces = false; _loaded.overzicht = false;
+    if (_currentView === 'workspaces') { await loadWorkspaces(); }
+  } else {
+    const d = await r.json(); toast(d.error || 'Fout', 'err');
+  }
+}
+
+async function confirmBilling(id) {
+  if (!confirm('Betaling bevestigen?')) return;
+  const r = await saFetch(`/api/superadmin/billing/${id}/confirm`, { method: 'POST' });
+  if (r.ok) {
+    const d = await r.json();
+    toast(d.wasActivated ? 'Betaling bevestigd & account geactiveerd!' : 'Betaling bevestigd');
+    _billing = []; _loaded.betalingen = false; _loaded.overzicht = false;
+    if (_currentView === 'betalingen') await loadBilling();
+    if (_currentView === 'overzicht') { _loaded.overzicht = false; await loadOverzicht(); }
+  } else { const d = await r.json(); toast(d.error||'Fout','err'); }
+}
+
+async function demoStatus(id, status) {
+  const r = await saFetch(`/api/superadmin/demo-requests/${id}`, {
+    method: 'PATCH', body: JSON.stringify({ status })
+  });
+  if (r.ok) { toast('Status bijgewerkt'); _loaded.demos = false; await loadDemos(); }
+  else { toast('Fout','err'); }
+}
+
+async function impersonate(id) {
+  if (!confirm('Inloggen als deze workspace admin?')) return;
+  const r = await saFetch(`/api/superadmin/workspaces/${id}/impersonate`, { method: 'POST' });
+  if (!r.ok) { const d = await r.json(); toast(d.error||'Fout','err'); return; }
+  const d = await r.json();
+  // Open in new tab, auto-login
+  const w = window.open('about:blank', '_blank');
+  w.document.write(`<script>
+    localStorage.setItem('agencyToken','${d.token}');
+    localStorage.setItem('agencyRole','admin');
+    window.location.href='${d.redirectUrl}';
+  <\/script>`);
+}
+
+// ── Workspace Detail Modal ─────────────────────────────────────────────────────
+async function openWsModal(id) {
+  document.getElementById('wsModal').classList.add('open');
+  document.getElementById('wsModalBody').innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)">Laden…</div>';
+  document.getElementById('wsModalTitle').textContent = 'Workspace details';
+
+  const r = await saFetch(`/api/superadmin/workspaces/${id}`);
+  if (!r.ok) { document.getElementById('wsModalBody').innerHTML = '<div class="empty">Fout bij laden</div>'; return; }
+  const ws = await r.json();
+  document.getElementById('wsModalTitle').textContent = ws.name;
+
+  const billRows = (ws.billing||[]).slice(0,5).map(b =>
+    `<tr><td style="font-size:12px">${fmt(b.created_at)}</td><td>${fmtEur(b.amount)}</td><td>${statusBadge(b.status)}</td><td style="font-size:11px;color:var(--text-3)">${b.confirmed_by||'—'}</td></tr>`
+  ).join('') || '<tr><td colspan="4" class="empty">Geen betalingen</td></tr>';
+
+  const actRows = (ws.activity||[]).slice(0,8).map(a =>
+    `<tr><td style="font-size:11px;color:var(--text-3)">${fmt(a.created_at)}</td><td><code style="font-size:11px;color:#93c5fd">${esc(a.action)}</code></td><td style="font-size:11px;color:var(--text-2)">${esc(a.details?JSON.stringify(JSON.parse(a.details||'{}')):'')||'—'}</td></tr>`
+  ).join('') || '<tr><td colspan="3" class="empty">Geen activiteit</td></tr>';
+
+  const userRows = (ws.users||[]).map(u =>
+    `<tr><td>${esc(u.name||u.email)}</td><td style="font-size:12px;color:var(--text-2)">${esc(u.email)}</td><td>${esc(u.role)}</td><td style="font-size:11px;color:var(--text-3)">${fmt(u.last_login_at)}</td></tr>`
+  ).join('') || '<tr><td colspan="4" class="empty">Geen gebruikers</td></tr>';
+
+  document.getElementById('wsModalBody').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px">
+      ${[['ID',ws.id],['Slug',ws.slug],['Status',ws.status],['Plan',ws.plan],['Owner',ws.owner_email],['Aangemeld',fmt(ws.created_at)],['Geactiveerd',fmt(ws.activated_at)],['Volgende betaling',fmt(ws.next_billing_date)],['MRR',fmtEur(ws.billing_amount)],['Kleur',ws.branding_color||'—']].map(([k,v]) =>
+        `<div class="detail-row"><span class="detail-label">${esc(k)}</span><span class="detail-val">${esc(String(v||'—'))}</span></div>`
+      ).join('')}
+    </div>
+
+    <div style="font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Gebruikers</div>
+    <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+    <table style="margin:0"><thead><tr><th>Naam</th><th>Email</th><th>Rol</th><th>Laatste login</th></tr></thead><tbody>${userRows}</tbody></table></div>
+
+    <div style="font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Betalingen</div>
+    <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+    <table style="margin:0"><thead><tr><th>Datum</th><th>Bedrag</th><th>Status</th><th>Bevestigd door</th></tr></thead><tbody>${billRows}</tbody></table></div>
+
+    <div style="font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Activiteit</div>
+    <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+    <table style="margin:0"><thead><tr><th>Tijdstip</th><th>Actie</th><th>Details</th></tr></thead><tbody>${actRows}</tbody></table></div>
+
+    <div style="font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Notities</div>
+    <textarea id="wsNotes" style="width:100%;height:80px" placeholder="Interne notities…">${esc(ws.notes||'')}</textarea>`;
+
+  document.getElementById('wsModalFooter').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeWsModal()">Sluiten</button>
+    <button class="btn btn-primary" onclick="saveWsNotes('${esc(ws.id)}')">Notities opslaan</button>`;
+}
+
+async function saveWsNotes(id) {
+  const notes = document.getElementById('wsNotes')?.value || '';
+  const r = await saFetch(`/api/superadmin/workspaces/${id}`, {
+    method: 'PATCH', body: JSON.stringify({ notes })
+  });
+  toast(r.ok ? 'Notities opgeslagen' : 'Fout', r.ok ? 'ok' : 'err');
+}
+
+function closeWsModal(e) {
+  if (e && e.target !== document.getElementById('wsModal')) return;
+  document.getElementById('wsModal').classList.remove('open');
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+loadStats();
+loadOverzicht();
+</script>
+</body>
+</html>
