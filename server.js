@@ -2620,18 +2620,19 @@ app.post('/api/demo-request', async (req, res) => {
     null, 'settings'
   );
 
+  // Respond immediately — never block on email delivery
+  res.json({ ok: true });
+
+  // Fire notification email in the background (fire-and-forget)
   const settings = readJSON('settings.json') || {};
   if (isResendReady(settings)) {
-    try {
-      await sendEmail({
-        to: settings.gmailAddress,
-        subject: `Nieuwe demo aanvraag van ${name}${company ? ' - ' + company : ''}`,
-        body: `Nieuwe demo aanvraag:\n\nNaam: ${name}\nBedrijf: ${company || '—'}\nEmail: ${email}\nTelefoon: ${phone || '—'}\nHuidig aantal klanten: ${clients || '—'}\n\nBericht:\n${message || '—'}`,
-        settings
-      });
-    } catch (_) { /* email failure is non-fatal */ }
+    sendEmail({
+      to: settings.gmailAddress,
+      subject: `Nieuwe demo aanvraag van ${name}${company ? ' - ' + company : ''}`,
+      body: `Nieuwe demo aanvraag:\n\nNaam: ${name}\nBedrijf: ${company || '—'}\nEmail: ${email}\nTelefoon: ${phone || '—'}\nHuidig aantal klanten: ${clients || '—'}\n\nBericht:\n${message || '—'}`,
+      settings
+    }).catch(err => console.warn('[demo-request] Email failed:', err.message));
   }
-  res.json({ ok: true });
 });
 
 // ── /bestellen page (public) ──────────────────────────────────────────────────
