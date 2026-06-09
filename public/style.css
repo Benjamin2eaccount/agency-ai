@@ -4260,40 +4260,6 @@ button, .btn, a.btn, [class*="btn"] {
 .breadcrumb-current:hover { text-decoration: none; }
 
 /* Task 5 — Global search */
-.global-search-wrap {
-  position: relative; margin: 8px 12px 12px;
-}
-.global-search-input {
-  width: 100%; padding: 8px 12px 8px 34px;
-  border: 1px solid var(--border); border-radius: 8px;
-  background: var(--surface-2); color: var(--text-primary);
-  font-size: 13px; font-family: inherit;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.global-search-input:focus {
-  outline: none; border-color: var(--accent);
-}
-.global-search-icon {
-  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-  color: var(--text-secondary); font-size: 14px; pointer-events: none;
-}
-.search-results-dropdown {
-  position: absolute; top: calc(100% + 4px); left: 0; right: 0;
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-  z-index: 9999; max-height: 360px; overflow-y: auto;
-}
-.search-result-section { padding: 8px 12px 4px; font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .5px; }
-.search-result-item {
-  padding: 10px 14px; cursor: pointer; display: flex; align-items: center; gap: 10px;
-  border-bottom: 1px solid var(--border); font-size: 13px;
-  transition: background 0.1s;
-}
-.search-result-item:hover { background: var(--surface-2); }
-.search-result-item:last-child { border-bottom: none; }
-.search-result-icon { font-size: 16px; flex-shrink: 0; }
-.search-result-main { font-weight: 600; color: var(--text-primary); }
-.search-result-sub { font-size: 11px; color: var(--text-secondary); }
 
 /* Task 6 — Tablet responsive 768-1024px */
 @media (min-width: 769px) and (max-width: 1024px) {

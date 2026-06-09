@@ -1379,57 +1379,6 @@ function breadcrumb(items) {
   }).join('')}</div>`;
 }
 
-// Task 5 — Global search
-function globalSearchInput(val) {
-  const results = document.getElementById('searchResults');
-  if (!results) return;
-  if (!val || val.length < 2) { results.style.display = 'none'; return; }
-  const q = val.toLowerCase();
-  const leads = state.leads || [];
-  const hits = { leads: [], contacts: [], invoices: [] };
-
-  leads.slice(0, 200).forEach(l => {
-    const match = (l.companyName||'').toLowerCase().includes(q) ||
-                  (l.contactEmail||'').toLowerCase().includes(q) ||
-                  (l.location||'').toLowerCase().includes(q);
-    if (match) hits.leads.push(l);
-    (l.payments||[]).forEach(p => {
-      if ((p.description||'').toLowerCase().includes(q)) hits.invoices.push({ ...p, leadId: l.id, companyName: l.companyName });
-    });
-  });
-
-  let html = '';
-  if (hits.leads.length) {
-    html += `<div class="search-result-section">Leads</div>`;
-    hits.leads.slice(0,5).forEach(l => {
-      html += `<div class="search-result-item" onclick="closeSearchResults();openProjectPage&&openProjectPage('${l.id}')">
-        <div class="search-result-icon">${l.status === 'client' ? '👤' : '🏢'}</div>
-        <div><div class="search-result-main">${esc(l.companyName)}</div>
-        <div class="search-result-sub">${esc(l.location||'')} · ${esc(l.status||'')}</div></div>
-      </div>`;
-    });
-  }
-  if (hits.invoices.length) {
-    html += `<div class="search-result-section">Facturen</div>`;
-    hits.invoices.slice(0,3).forEach(p => {
-      html += `<div class="search-result-item" onclick="closeSearchResults();setView('betalingen')">
-        <div class="search-result-icon">💰</div>
-        <div><div class="search-result-main">${esc(p.description||'Factuur')}</div>
-        <div class="search-result-sub">${esc(p.companyName)} · €${p.amount||0}</div></div>
-      </div>`;
-    });
-  }
-  if (!html) html = `<div style="padding:16px;text-align:center;font-size:13px;color:var(--text-secondary);">Geen resultaten voor "${esc(val)}"</div>`;
-  results.innerHTML = html;
-  results.style.display = 'block';
-}
-
-function closeSearchResults() {
-  const r = document.getElementById('searchResults');
-  if (r) r.style.display = 'none';
-  const i = document.getElementById('globalSearch');
-  if (i) i.value = '';
-}
 
 // Task 8 — Confetti on first project start
 function fireConfetti() {
