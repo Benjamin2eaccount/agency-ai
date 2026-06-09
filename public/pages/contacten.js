@@ -42,11 +42,6 @@ async function renderContacts() {
     return `<button class="filter-chip${state._contactsTypeFilter === f.key ? ' active' : ''}" onclick="window._setContactsTypeFilter('${f.key}')">${f.label} <span class="filter-chip-count">${count}</span></button>`;
   }).join('');
 
-  const filterChips = FILTERS.map(f => {
-    const count = f.key === 'all' ? contacts.length : contacts.filter(c => c.status === f.key).length;
-    return `<button class="filter-chip${state._contactsFilter === f.key ? ' active' : ''}" onclick="window._setContactsFilter('${f.key}')">${f.label} <span class="filter-chip-count">${count}</span></button>`;
-  }).join('');
-
   const filterChips = STATUS_FILTERS.map(f => {
     const count = f.key === 'all' ? typeFiltered.length : typeFiltered.filter(c => c.status === f.key).length;
     return `<button class="filter-chip${state._contactsFilter === f.key ? ' active' : ''}" onclick="window._setContactsFilter('${f.key}')">${f.label} <span class="filter-chip-count">${count}</span></button>`;

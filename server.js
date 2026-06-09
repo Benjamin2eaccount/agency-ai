@@ -1818,6 +1818,14 @@ function wsRead(req, key, fallback = null) {
   return readJSON(`ws:${wId}:${key}`) ?? fallback; // isolated workspace data
 }
 
+function wsWrite(req, key, value) {
+  const wId = req.user?.workspaceId;
+  if (!wId || wId === 'ws_agencyai') {
+    return writeJSON(key, value); // legacy / agencyai: global data
+  }
+  return writeJSON(`ws:${wId}:${key}`, value); // isolated workspace data
+}
+
 // Returns true when the requesting user is a demo account.
 // Demo accounts use usernames containing 'demo' (e.g. admin@demo.agencyai.info).
 function isDemoUser(req) {
@@ -4044,7 +4052,7 @@ app.get('/api/stats', (req, res) => {
 // â"€â"€â"€ Leads â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 app.get('/api/stats/detailed', (req, res) => {
-  const leads = scopeToUser(readJSON('leads.json'), req);
+  const leads = scopeToUser(wsRead(req, 'leads.json', []), req);
   const days  = parseInt(req.query.days || '30', 10);
   const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
@@ -4112,7 +4120,7 @@ app.get('/api/leads', (req, res) => {
 });
 
 app.get('/api/leads/export.csv', (req, res) => {
-  const leads = scopeToUser(readJSON('leads.json'), req);
+  const leads = scopeToUser(wsRead(req, 'leads.json', []), req);
   const status = req.query.status; // optional filter
   const filtered = status ? leads.filter(l => l.status === status) : leads;
 
@@ -4148,20 +4156,20 @@ app.get('/api/leads/export.csv', (req, res) => {
 });
 
 app.post('/api/leads', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead = { id: Date.now().toString(), createdAt: new Date().toISOString(), ...req.body };
   leads.push(lead);
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json(lead);
 });
 
 app.post('/api/leads/bulk-delete', requireAdmin, (req, res) => {
   const { ids } = req.body || {};
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids verplicht' });
-  const leads = readJSON('leads.json') || [];
-  const inbox = readJSON('inbox.json') || [];
-  writeJSON('leads.json', leads.filter(l => !ids.includes(l.id)));
-  writeJSON('inbox.json', inbox.filter(i => !ids.includes(i.id)));
+  const leads = wsRead(req, 'leads.json', []);
+  const inbox = wsRead(req, 'inbox.json', []);
+  wsWrite(req, 'leads.json', leads.filter(l => !ids.includes(l.id)));
+  wsWrite(req, 'inbox.json', inbox.filter(i => !ids.includes(i.id)));
   res.json({ ok: true, deleted: ids.length });
 });
 
@@ -7927,15 +7935,15 @@ app.delete('/api/inbox/:id', (req, res) => {
 // â"€â"€â"€ Runs â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 app.get('/api/runs', (req, res) => {
-  res.json(readJSON('runs.json') || []);
+  res.json(wsRead(req, 'runs.json', []));
 });
 
 app.post('/api/runs', (req, res) => {
-  const runs = readJSON('runs.json') || [];
+  const runs = wsRead(req, 'runs.json', []);
   const run = { id: Date.now().toString(), createdAt: new Date().toISOString(), ...req.body };
   runs.unshift(run);
   if (runs.length > 100) runs.splice(100);
-  writeJSON('runs.json', runs);
+  wsWrite(req, 'runs.json', runs);
   res.json(run);
 });
 
@@ -7946,9 +7954,9 @@ app.get('/api/run/progress', (req, res) => {
 // â"€â"€â"€ Settings â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 app.get('/api/settings', (req, res) => {
-  // For non-agencyai workspaces: use workspace-specific settings if they exist,
-  // falling back to global settings only for non-sensitive config fields
-  const s = wsRead(req, 'settings.json') || readJSON('settings.json') || {};
+  // wsRead returns workspace-scoped data for non-agencyai workspaces (empty {} for new ones).
+  // Do NOT fall back to global settings.json — that would leak Agency AI credentials.
+  const s = wsRead(req, 'settings.json', {});
   const safe = { ...s };
 
   // Overlay workspace branding (name, color, logo) from workspaces table
@@ -13123,25 +13131,25 @@ app.delete('/api/push/unsubscribe', authMiddleware, (req, res) => {
 // ─── Contact form (public) ───────────────────────────────────────────────────
 // ─── Contacts management ──────────────────────────────────────────────────────
 app.get('/api/contacts', authMiddleware, (req, res) => {
-  res.json(readJSON('contacts.json') || []);
+  res.json(wsRead(req, 'contacts.json', []));
 });
 
 app.patch('/api/contacts/:id', authMiddleware, (req, res) => {
-  const contacts = readJSON('contacts.json') || [];
+  const contacts = wsRead(req, 'contacts.json', []);
   const idx = contacts.findIndex(c => c.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Niet gevonden' });
   const allowed = ['status', 'notes'];
   allowed.forEach(f => { if (req.body[f] !== undefined) contacts[idx][f] = req.body[f]; });
   contacts[idx].updatedAt = new Date().toISOString();
-  writeJSON('contacts.json', contacts);
+  wsWrite(req, 'contacts.json', contacts);
   res.json(contacts[idx]);
 });
 
 app.delete('/api/contacts/:id', requireAdmin, (req, res) => {
-  const contacts = readJSON('contacts.json') || [];
+  const contacts = wsRead(req, 'contacts.json', []);
   const next = contacts.filter(c => c.id !== req.params.id);
   if (next.length === contacts.length) return res.status(404).json({ error: 'Niet gevonden' });
-  writeJSON('contacts.json', next);
+  wsWrite(req, 'contacts.json', next);
   res.json({ ok: true });
 });
 
