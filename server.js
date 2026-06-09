@@ -2599,39 +2599,58 @@ app.post('/api/contact', async (req, res) => {
 
 // ── Demo requests (public) ───────────────────────────────────────────────────
 app.post('/api/demo-request', async (req, res) => {
-  const { name, company, email, phone, clients, message } = req.body || {};
-  if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
+  try {
+    const { name, company, email, phone, clients, message } = req.body || {};
+    console.log('[demo-request] body:', { name, company, email, clients });
 
-  const db = getDb();
-  db.exec(`CREATE TABLE IF NOT EXISTS demo_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT, company TEXT, email TEXT, phone TEXT,
-    clients TEXT, message TEXT,
-    status TEXT DEFAULT 'new',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-  db.prepare(`INSERT INTO demo_requests (name, company, email, phone, clients, message)
-    VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(name, company || '', email, phone || '', clients || '', message || '');
+    if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
 
-  addNotification('contact_form',
-    `Demo aanvraag: ${name}${company ? ' — ' + company : ''}`,
-    `${clients ? clients + ' klanten · ' : ''}${email}`,
-    null, 'settings'
-  );
+    // Ensure table exists and insert — wrapped so a DB error still sends a response
+    try {
+      const db = getDb();
+      db.exec(`CREATE TABLE IF NOT EXISTS demo_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT, company TEXT, email TEXT, phone TEXT,
+        clients TEXT, message TEXT,
+        status TEXT DEFAULT 'new',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+      db.prepare(`INSERT INTO demo_requests (name, company, email, phone, clients, message)
+        VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(name, company || '', email, phone || '', clients || '', message || '');
+      console.log('[demo-request] saved to DB');
+    } catch (dbErr) {
+      console.error('[demo-request] DB error:', dbErr.message);
+      // Non-fatal: still respond OK so the user doesn't see an error
+    }
 
-  // Respond immediately — never block on email delivery
-  res.json({ ok: true });
+    try {
+      addNotification('contact_form',
+        `Demo aanvraag: ${name}${company ? ' — ' + company : ''}`,
+        `${clients ? clients + ' klanten · ' : ''}${email}`,
+        null, 'settings'
+      );
+    } catch (notifErr) {
+      console.warn('[demo-request] Notification error:', notifErr.message);
+    }
 
-  // Fire notification email in the background (fire-and-forget)
-  const settings = readJSON('settings.json') || {};
-  if (isResendReady(settings)) {
-    sendEmail({
-      to: settings.gmailAddress,
-      subject: `Nieuwe demo aanvraag van ${name}${company ? ' - ' + company : ''}`,
-      body: `Nieuwe demo aanvraag:\n\nNaam: ${name}\nBedrijf: ${company || '—'}\nEmail: ${email}\nTelefoon: ${phone || '—'}\nHuidig aantal klanten: ${clients || '—'}\n\nBericht:\n${message || '—'}`,
-      settings
-    }).catch(err => console.warn('[demo-request] Email failed:', err.message));
+    // Respond immediately — never block on email delivery
+    res.json({ ok: true });
+    console.log('[demo-request] response sent');
+
+    // Fire notification email in the background (fire-and-forget)
+    const settings = readJSON('settings.json') || {};
+    if (isResendReady(settings)) {
+      sendEmail({
+        to: settings.gmailAddress,
+        subject: `Nieuwe demo aanvraag van ${name}${company ? ' - ' + company : ''}`,
+        body: `Nieuwe demo aanvraag:\n\nNaam: ${name}\nBedrijf: ${company || '—'}\nEmail: ${email}\nTelefoon: ${phone || '—'}\nHuidig aantal klanten: ${clients || '—'}\n\nBericht:\n${message || '—'}`,
+        settings
+      }).catch(err => console.warn('[demo-request] Email failed:', err.message));
+    }
+  } catch (err) {
+    console.error('[demo-request] Unhandled error:', err.message, err.stack);
+    if (!res.headersSent) res.status(500).json({ error: 'Server error' });
   }
 });
 
