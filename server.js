@@ -11982,6 +11982,21 @@ cron.schedule('0 8 * * 1', () => {
   runWeeklyAdminReport().catch(e => console.error('[Cron WeeklyReport]', e.message));
 });
 
+// ─── Workspace status auto-check ─────────────────────────────────────────────
+// Pauses workspaces 7+ days overdue; blocks those paused for 7+ more days.
+
+cron.schedule('0 9 * * *', async () => {
+  try {
+    const { autoStatusCheck } = require('./lib/workspace');
+    const results = await autoStatusCheck({ sendEmail: typeof sendEmail !== 'undefined' ? sendEmail : null });
+    if (results.paused.length || results.blocked.length) {
+      console.log('[Cron] Workspace status check:', results);
+    }
+  } catch (err) {
+    console.warn('[Cron] Workspace status check fout:', err.message);
+  }
+});
+
 // ─── Monthly auto-invoice + overdue reminder ──────────────────────────────────
 
 cron.schedule('0 9 * * *', async () => {
