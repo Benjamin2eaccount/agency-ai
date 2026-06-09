@@ -12,9 +12,11 @@ async function renderContacts() {
   state._contactsFilter    = state._contactsFilter    || 'all';
   state._contactsTypeFilter = state._contactsTypeFilter || 'all';
 
+  // Demo aanvragen tab only visible for Agency AI internal workspace
+  const _isAgencyAI = (() => { try { const pl = getTokenPayload(); return !pl?._workspaceSlug || pl?.workspaceSlug === 'agencyai'; } catch { return false; } })();
   const TYPE_FILTERS = [
     { key: 'all',   label: 'Alle' },
-    { key: 'demo',  label: 'Demo aanvragen' },
+    ...(_isAgencyAI ? [{ key: 'demo', label: 'Demo aanvragen' }] : []),
     { key: 'other', label: 'Overig' },
   ];
 

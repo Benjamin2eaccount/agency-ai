@@ -3758,6 +3758,61 @@ app.get('/api/workspace/info', (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// GET /api/workspace/usage — workspace plan limits + current usage for Usage tab
+app.get('/api/workspace/usage', (req, res) => {
+  try {
+    const wId  = req.user?.workspaceId;
+    const plan = (() => {
+      if (!wId || wId === 'ws_agencyai') return 'agency';
+      try { return getDb().prepare('SELECT plan FROM workspaces WHERE id = ?').get(wId)?.plan || 'starter'; } catch { return 'starter'; }
+    })();
+
+    const LIMITS = {
+      starter: { builds: 50,  emails: 500,  leads: 200,  team: 1,  projects: 10 },
+      pro:     { builds: 200, emails: 2000, leads: 1000, team: 3,  projects: Infinity },
+      agency:  { builds: Infinity, emails: Infinity, leads: Infinity, team: Infinity, projects: Infinity },
+    };
+    const limits = LIMITS[plan] || LIMITS.starter;
+
+    const now       = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const leads     = wsRead(req, 'leads.json', []);
+    const activity  = wsRead(req, 'activity.json', []);
+
+    // Builds = deliverables built this month
+    const buildsUsed = leads.reduce((n, l) =>
+      n + (l.agentDeliverables || []).filter(d => d.builtAt >= monthStart).length, 0);
+
+    // Emails = leads emailed this month
+    const emailsUsed = leads.filter(l =>
+      ['sent','replied','client'].includes(l.status) && (l.sentAt || '') >= monthStart).length;
+
+    // Leads found = leads created this month
+    const leadsUsed = leads.filter(l => (l.createdAt || '') >= monthStart).length;
+
+    // Team members
+    let teamUsed = 1;
+    if (wId && wId !== 'ws_agencyai') {
+      try { teamUsed = getDb().prepare('SELECT COUNT(*) as c FROM workspace_users WHERE workspace_id = ?').get(wId)?.c || 1; } catch {}
+    } else {
+      teamUsed = (readJSON('users.json') || []).length || 1;
+    }
+
+    // Active projects
+    const projectsUsed = leads.filter(l => l.status === 'client' || l.projectStartedAt).length;
+
+    // Next reset = first day of next month
+    const resets_at = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+
+    res.json({
+      plan,
+      limits: { ...limits, builds: limits.builds === Infinity ? null : limits.builds, emails: limits.emails === Infinity ? null : limits.emails, leads: limits.leads === Infinity ? null : limits.leads, team: limits.team === Infinity ? null : limits.team, projects: limits.projects === Infinity ? null : limits.projects },
+      used:   { builds: buildsUsed, emails: emailsUsed, leads: leadsUsed, team: teamUsed, projects: projectsUsed },
+      resets_at,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // PATCH /api/workspace/branding — updates workspace branding fields
 app.patch('/api/workspace/branding', requireAdmin, (req, res) => {
   try {
@@ -8153,7 +8208,7 @@ app.post('/api/agency-profiles/:id/activate', requireAdmin, (req, res) => {
 });
 
 app.patch('/api/settings/gmail', requireAdmin, (req, res) => {
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   const { gmailAddress, gmailPassword, replyDetection, webhookToken, webhookConfigured } = req.body;
   if (gmailAddress !== undefined) settings.gmailAddress = gmailAddress;
   if (gmailPassword !== undefined && gmailPassword !== '') {
@@ -8163,7 +8218,7 @@ app.patch('/api/settings/gmail', requireAdmin, (req, res) => {
   if (replyDetection !== undefined) settings.replyDetection = replyDetection;
   if (webhookToken !== undefined) settings.webhookToken = webhookToken;
   if (webhookConfigured !== undefined) settings.webhookConfigured = webhookConfigured;
-  writeJSON('settings.json', settings);
+  wsWrite(req, 'settings.json', settings);
   res.json({ ok: true });
 });
 
@@ -8188,11 +8243,11 @@ app.patch('/api/settings/claude-key', requireAdmin, (req, res) => {
 
 app.patch('/api/settings/resend', requireAdmin, (req, res) => {
   const { resendApiKey, resendFromAddress, agencyName } = req.body;
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   if (resendApiKey    !== undefined) settings.resendApiKey    = resendApiKey;
   if (resendFromAddress !== undefined) settings.resendFromAddress = resendFromAddress;
   if (agencyName      !== undefined) settings.agencyName      = agencyName;
-  writeJSON('settings.json', settings);
+  wsWrite(req, 'settings.json', settings);
   res.json({ ok: true });
 });
 
@@ -8201,7 +8256,7 @@ app.get('/api/settings/services/defaults', (req, res) => {
 });
 
 app.patch('/api/settings/automation', requireAdmin, (req, res) => {
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   const { dailyRunTime, leadsPerDay, autoApproveScore, automationPaused, linkedinUrl, dailyBriefingEnabled, dailyBriefingTime, smartAutoApprove, monthlyReports, backupEnabled, backupTime, backupEmail, targetCompanySizes } = req.body;
   if (dailyRunTime !== undefined) settings.dailyRunTime = dailyRunTime;
   if (leadsPerDay !== undefined) settings.leadsPerDay = leadsPerDay;
@@ -8235,7 +8290,7 @@ app.patch('/api/settings/automation', requireAdmin, (req, res) => {
   if (req.body.targetSubNiches !== undefined) settings.targetSubNiches = req.body.targetSubNiches;
   if (req.body.autoArchiveEnabled !== undefined) settings.autoArchiveEnabled = req.body.autoArchiveEnabled;
   if (req.body.autoArchiveDays    !== undefined) settings.autoArchiveDays    = parseInt(req.body.autoArchiveDays) || 30;
-  writeJSON('settings.json', settings);
+  wsWrite(req, 'settings.json', settings);
   scheduleCron(); // re-schedule if run time changed
   scheduleBriefingCron(); // re-schedule briefing if time changed
   scheduleBackupCron(); // re-schedule backup if time changed
@@ -11932,9 +11987,18 @@ app.delete('/api/chat/messages/:id', (req, res) => {
 if (!readJSON('dm-messages.json')) writeJSON('dm-messages.json', []);
 
 app.get('/api/chat/users', authMiddleware, (req, res) => {
-  const users = (readJSON('users.json') || [])
-    .filter(u => u.id !== req.user.id)
-    .map(u => ({ id: u.id, name: u.name, username: u.username, role: u.role }));
+  const wId = req.user?.workspaceId;
+  let users;
+  if (!wId || wId === 'ws_agencyai') {
+    users = (readJSON('users.json') || [])
+      .filter(u => u.id !== req.user.id)
+      .map(u => ({ id: u.id, name: u.name, username: u.username, role: u.role }));
+  } else {
+    users = getDb()
+      .prepare('SELECT id, name, email, role FROM workspace_users WHERE workspace_id = ? AND id != ?')
+      .all(wId, req.user.id)
+      .map(u => ({ id: u.id, name: u.name || u.email, username: u.email, role: u.role }));
+  }
   res.json(users);
 });
 
@@ -11985,10 +12049,23 @@ app.delete('/api/chat/dm/messages/:id', authMiddleware, (req, res) => {
 // ─── Users management ─────────────────────────────────────────────────────────
 
 app.get('/api/users', requireAdmin, (req, res) => {
-  const users = (readJSON('users.json') || []).map(u => ({
-    id: u.id, username: u.username, name: u.name, role: u.role,
-    permissions: u.permissions || null, createdAt: u.createdAt
-  }));
+  const wId = req.user?.workspaceId;
+  let users;
+  if (!wId || wId === 'ws_agencyai') {
+    users = (readJSON('users.json') || []).map(u => ({
+      id: u.id, username: u.username, name: u.name, role: u.role,
+      permissions: u.permissions || null, createdAt: u.createdAt
+    }));
+  } else {
+    users = getDb()
+      .prepare('SELECT id, email, name, role, permissions, created_at FROM workspace_users WHERE workspace_id = ?')
+      .all(wId)
+      .map(u => ({
+        id: u.id, username: u.email, name: u.name, role: u.role,
+        permissions: u.permissions ? JSON.parse(u.permissions) : null,
+        createdAt: u.created_at
+      }));
+  }
   res.json(users);
 });
 

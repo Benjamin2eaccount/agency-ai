@@ -846,6 +846,7 @@ function switchSettingsTab(id) {
   // Load AI rate status when automation or api tab opens
   if (id === 'automation' || id === 'api') loadAiRateStatus?.();
   // Load audit log when tab opens
+  if (id === 'usage')    loadUsageTab();
   if (id === 'auditlog') loadAuditLog();
   if (id === 'demorequests') loadDemoRequests();
   if (id === 'components') loadComponentsTab();
@@ -941,6 +942,8 @@ async function renderSettings() {
 
   const s = await apiJSON('/api/settings') || {};
   state.settings = s;
+  // true for the legacy Agency AI workspace; false for all tenant workspaces
+  const isAgencyAI = !s._workspaceSlug;
 
   document.getElementById('settingsContent').innerHTML = `
   <div class="settings-layout">
@@ -952,6 +955,7 @@ async function renderSettings() {
       <button class="settings-nav-item"         data-tab="payments"  onclick="switchSettingsTab('payments')">  <i class="ti ti-credit-card"></i>   Betalingen</button>
       <button class="settings-nav-item"         data-tab="blacklist" onclick="switchSettingsTab('blacklist')"> <i class="ti ti-ban"></i>           Blacklist</button>
       <button class="settings-nav-item"         data-tab="api"       onclick="switchSettingsTab('api')">       <i class="ti ti-api"></i>           API &amp; integraties</button>
+      <button class="settings-nav-item"         data-tab="usage"     onclick="switchSettingsTab('usage')">     <i class="ti ti-chart-bar"></i>     📊 Usage &amp; Limieten</button>
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="team" onclick="switchSettingsTab('team')"><i class="ti ti-users"></i> Team</button>` : ''}
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="auditlog" onclick="switchSettingsTab('auditlog')"><i class="ti ti-list-search"></i> Audit log</button>` : ''}
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="components" onclick="switchSettingsTab('components')"><i class="ti ti-puzzle"></i> 🧩 Components</button>` : ''}
@@ -1091,15 +1095,15 @@ async function renderSettings() {
             </label>
             <p class="toggle-hint">Controleert elke 2 uur uw inbox (imap.soverin.net) op antwoorden van prospects</p>
           </div>
-          <div class="stg-toggle-row">
+          ${isAgencyAI ? `<div class="stg-toggle-row">
             <label class="toggle-wrap">
               <input type="checkbox" id="webhookEnabled" ${s.webhookConfigured ? 'checked' : ''} onchange="document.getElementById('webhookPanel').style.display=this.checked?'block':'none'">
               <span class="toggle"></span>
               <span class="toggle-label">Real-time webhook (Google Pub/Sub)</span>
             </label>
             <p class="toggle-hint">Detecteert replies direct — sneller dan polling elke 2 uur</p>
-          </div>
-          <div id="webhookPanel" class="settings-panel" style="display:${s.webhookConfigured ? 'block' : 'none'};margin:12px 0">
+          </div>` : ''}
+          <div id="webhookPanel" class="settings-panel" style="display:${isAgencyAI && s.webhookConfigured ? 'block' : 'none'};margin:12px 0">
             <div class="stg-field" style="margin-bottom:10px">
               <label class="stg-label">WEBHOOK TOKEN</label>
               <div style="display:flex;gap:8px">
@@ -1463,7 +1467,7 @@ async function renderSettings() {
 
         <div class="stg-divider"></div>
 
-        <div class="stg-section">
+        ${isAgencyAI ? `<div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title">Vaste kosten (P&amp;L)</div>
             <div class="stg-sub">Maandelijkse kosten worden meegenomen in de Winst &amp; Verlies berekening</div>
@@ -1484,7 +1488,7 @@ async function renderSettings() {
           <button class="btn btn-ghost stg-save-btn" id="savePaymentsAutoBtn2" onclick="document.getElementById('savePaymentsAutoBtn')?.click()"><i class="ti ti-device-floppy"></i> Opslaan</button>
         </div>
 
-        <div class="stg-divider"></div>
+        <div class="stg-divider"></div>` : ''}
 
         <div class="stg-section">
           <div class="stg-section-header">
@@ -1542,7 +1546,7 @@ async function renderSettings() {
       <!-- ── API & integraties ── -->
       <div class="settings-tab-pane" id="stab-api">
 
-        <div class="stg-section">
+        ${isAgencyAI ? `<div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title">Claude API Sleutel
               ${s.claudeKeyConfigured ? s.claudeKeyFromEnv ? `<span class="stg-status-badge stg-badge-blue">Env var actief</span>` : `<span class="stg-status-badge stg-badge-green"><i class="ti ti-check"></i> Opgeslagen</span>` : `<span class="stg-status-badge stg-badge-amber"><i class="ti ti-alert-triangle"></i> Niet ingesteld</span>`}
@@ -1578,7 +1582,7 @@ async function renderSettings() {
           </div>
         </div>
 
-        <div class="stg-divider"></div>
+        <div class="stg-divider"></div>` : ''}
 
         <div class="stg-section">
           <div class="stg-section-header">
@@ -1632,7 +1636,7 @@ async function renderSettings() {
 
         <div class="stg-divider"></div>
 
-        <div class="stg-section">
+        ${isAgencyAI ? `<div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title"><i class="ti ti-puzzle" style="color:#4f46e5;margin-right:6px"></i>Chrome Extensie</div>
             <div class="stg-sub">Voeg bedrijven direct vanuit de browser toe aan je pipeline</div>
@@ -1660,6 +1664,17 @@ async function renderSettings() {
           </div>
           <div id="aiRateStatusBar" style="margin-top:10px"></div>
           <button class="btn btn-primary stg-save-btn" id="saveAiRateLimitsBtn" style="margin-top:12px"><i class="ti ti-device-floppy"></i> Opslaan</button>
+        </div>` : ''}
+      </div>
+
+      <!-- ── Usage & Limieten ── -->
+      <div class="settings-tab-pane" id="stab-usage">
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">📊 Usage &amp; Limieten</div>
+            <div class="stg-sub">Huidig gebruik en limieten van jouw plan</div>
+          </div>
+          <div id="usageContent"><div class="loading-state"><div class="spinner-sm"></div></div></div>
         </div>
       </div>
 
@@ -2619,3 +2634,50 @@ document.addEventListener('input', (e) => {
     updateBrandingPreview();
   }
 });
+
+// ─── Usage tab ────────────────────────────────────────────────────────────────
+async function loadUsageTab() {
+  const el = document.getElementById('usageContent');
+  if (!el) return;
+  el.innerHTML = '<div class="loading-state"><div class="spinner-sm"></div></div>';
+  const d = await apiJSON('/api/workspace/usage').catch(() => null);
+  if (!d) { el.innerHTML = '<div style="color:var(--text-muted);padding:16px 0">Kan gebruik niet laden.</div>'; return; }
+
+  const PLAN_LABELS = { starter: 'Starter (€197/m)', pro: 'Pro (€497/m)', agency: 'Agency (€997/m)' };
+  const fmt = n => n === null ? '∞' : n;
+  const pct = (used, lim) => lim === null ? 0 : Math.min(100, Math.round(used / lim * 100));
+  const barColor = (p) => p >= 90 ? '#ef4444' : p >= 70 ? '#f59e0b' : '#2563eb';
+
+  const card = (icon, label, used, lim) => {
+    const p = pct(used, lim);
+    return `<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-weight:600;font-size:14px">${icon} ${label}</span>
+        <span style="font-size:13px;color:var(--text-secondary)">${used} / ${fmt(lim)}</span>
+      </div>
+      ${lim !== null ? `<div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${p}%;background:${barColor(p)};border-radius:4px;transition:.3s"></div>
+      </div>` : '<div style="font-size:12px;color:#16a34a;font-weight:600">Onbeperkt ✓</div>'}
+    </div>`;
+  };
+
+  const resetDate = d.resets_at ? new Date(d.resets_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' }) : '—';
+  el.innerHTML = `
+    <div style="margin-bottom:16px">
+      <span style="font-size:13px;font-weight:600;background:var(--accent);color:#fff;border-radius:6px;padding:4px 12px">
+        ${PLAN_LABELS[d.plan] || d.plan}
+      </span>
+      <span style="font-size:12px;color:var(--text-muted);margin-left:12px">Resets op: ${resetDate}</span>
+    </div>
+    ${card('🤖', 'AI Builds', d.used.builds, d.limits.builds)}
+    ${card('📧', 'Emails verstuurd', d.used.emails, d.limits.emails)}
+    ${card('🔍', 'Leads gevonden', d.used.leads, d.limits.leads)}
+    ${card('👥', 'Team members', d.used.team, d.limits.team)}
+    ${card('📁', 'Actieve projecten', d.used.projects, d.limits.projects)}
+    ${d.plan !== 'agency' ? `<div style="margin-top:16px;padding:14px 18px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;text-align:center">
+      <div style="font-size:14px;font-weight:600;margin-bottom:6px">Wil je meer?</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Upgrade je plan voor hogere limieten en meer functies.</div>
+      <a href="mailto:info@agencyai.info?subject=Plan upgrade" class="btn btn-primary btn-sm">Upgrade je plan →</a>
+    </div>` : ''}
+  `;
+}
