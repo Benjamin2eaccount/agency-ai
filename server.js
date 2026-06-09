@@ -20,7 +20,7 @@ const Stripe = require('stripe');
 const webpush = require('web-push');
 const WebSocket   = require('ws');
 const rateLimit   = require('express-rate-limit');
-const { readJSON, writeJSON, pgInitPromise } = require('./database');
+const { readJSON, writeJSON, pgInitPromise, getDb } = require('./database');
 const dnsPromises = require('dns').promises;
 const PDFDocument = require('pdfkit');
 
