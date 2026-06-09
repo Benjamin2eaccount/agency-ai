@@ -1654,9 +1654,11 @@ async function sendEmail({ to, subject, body, html, settings: _settings = {}, tr
     throw new Error('Email niet ingesteld. Voeg RESEND_API_KEY toe als Railway environment variable of via Instellingen → Email.');
   }
 
+  // White-label: use workspace branding_email_sender or agencyName from settings
+  const platformName = _settings.brandingName || s.agencyName || 'Agency AI';
   const fromName = isColdOutreach
-    ? `${myName || 'Benjamin van Hemert'} via Agency AI`
-    : 'Agency AI';
+    ? `${myName || 'Agency AI'} via ${platformName}`
+    : platformName;
   const replyTo  = s.gmailAddress || process.env.GMAIL_USER || 'info@agencyai.info';
   const entityId = Math.random().toString(36).substring(2, 12);
   const plainText = (body || htmlBody.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()) || '';
@@ -2317,7 +2319,7 @@ ${caseCards ? `
 });
 
 // ── Portal API routes — migrated to routes/portal.js ────────────────────────
-app.use('/api/portal', require('./routes/portal')({ readJSON, writeJSON, addNotification, addLeadHistory, computeRealAnalytics }));
+app.use('/api/portal', require('./routes/portal')({ readJSON, writeJSON, addNotification, addLeadHistory, computeRealAnalytics, getDb: () => require('./database').getDb() }));
 
 // === LEGACY portal routes below — superseded by routes/portal.js above ===
 // Express matches the router first; these are unreachable but kept for reference
@@ -3617,6 +3619,56 @@ app.post('/api/system-messages/:id/dismiss', (req, res) => {
     if (!dismissed.includes(userId)) dismissed.push(userId);
     db.prepare('UPDATE system_messages SET dismissed_by = ? WHERE id = ?').run(JSON.stringify(dismissed), msg.id);
     res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Workspace self-service API (available to all authenticated users) ────────
+
+// GET /api/workspace/info — returns workspace status + billing for current user
+app.get('/api/workspace/info', (req, res) => {
+  try {
+    const workspaceId = req.user?.workspaceId;
+    if (!workspaceId) {
+      // Legacy single-tenant: return a synthetic active workspace
+      return res.json({ id: null, slug: 'agencyai', name: 'Agency AI', status: 'active', plan: 'agency', billing_amount: 0, payment_reference: null, next_billing_date: null });
+    }
+    const db = getDb();
+    const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(workspaceId);
+    if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
+    // Latest billing record
+    const latestBill = db.prepare("SELECT * FROM workspace_billing WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 1").get(workspaceId);
+    res.json({
+      id               : ws.id,
+      slug             : ws.slug,
+      name             : ws.name,
+      status           : ws.status,
+      plan             : ws.plan,
+      billing_amount   : ws.billing_amount,
+      payment_reference: ws.payment_reference,
+      next_billing_date: ws.next_billing_date,
+      activated_at     : ws.activated_at,
+      branding_name    : ws.branding_name,
+      branding_color   : ws.branding_color,
+      branding_logo    : ws.branding_logo,
+      branding_email_sender: ws.branding_email_sender,
+      latest_billing   : latestBill || null,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PATCH /api/workspace/branding — updates workspace branding fields
+app.patch('/api/workspace/branding', requireAdmin, (req, res) => {
+  try {
+    const workspaceId = req.user?.workspaceId;
+    if (!workspaceId) return res.status(400).json({ error: 'Geen workspace gekoppeld aan dit account' });
+    const db = getDb();
+    const allowed = ['branding_name','branding_logo','branding_color','branding_email_sender'];
+    const fields  = Object.keys(req.body).filter(k => allowed.includes(k));
+    if (!fields.length) return res.status(400).json({ error: 'Geen geldige branding velden' });
+    const setClauses = fields.map(f => `${f} = ?`).join(', ');
+    db.prepare(`UPDATE workspaces SET ${setClauses} WHERE id = ?`).run(...fields.map(f => req.body[f]), workspaceId);
+    const ws = db.prepare('SELECT branding_name, branding_logo, branding_color, branding_email_sender FROM workspaces WHERE id = ?').get(workspaceId);
+    res.json({ ok: true, branding: ws });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

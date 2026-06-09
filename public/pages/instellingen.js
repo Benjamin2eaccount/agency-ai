@@ -959,6 +959,7 @@ async function renderSettings() {
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="templates" onclick="switchSettingsTab('templates')"><i class="ti ti-palette"></i> 🎨 Templates</button>` : ''}
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="changelog" onclick="switchSettingsTab('changelog')"><i class="ti ti-history"></i> Changelog</button>` : ''}
       <div class="settings-nav-spacer"></div>
+      <button class="settings-nav-item" data-tab="bureau" onclick="switchSettingsTab('bureau')"><i class="ti ti-building"></i> Mijn Bureau</button>
       <button class="settings-nav-item nav-danger" data-tab="danger" onclick="switchSettingsTab('danger')"><i class="ti ti-alert-triangle"></i> Gevaarlijke zone</button>
     </nav>
     <div class="settings-content">
@@ -1729,6 +1730,56 @@ async function renderSettings() {
         </div>
       </div>
 
+      <!-- ── Mijn Bureau ── -->
+      <div class="settings-tab-pane" id="stab-bureau">
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title"><i class="ti ti-building" style="margin-right:6px"></i>Mijn Bureau — Abonnement</div>
+            <div class="stg-sub">Status van je Agency AI abonnement</div>
+          </div>
+          <div id="bureauSubscriptionInfo" style="padding:4px 0">Laden…</div>
+        </div>
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title">Klant-zijdige branding</div>
+            <div class="stg-sub">Wat jouw klanten zien in het klantportaal</div>
+          </div>
+          <div class="form-grid" style="gap:14px">
+            <div class="form-group">
+              <label>Bureau naam (zichtbaar voor klanten)</label>
+              <input type="text" id="brandingName" placeholder="bijv. Marketing Pro BV" class="stg-input">
+            </div>
+            <div class="form-group">
+              <label>Email afzendernaam</label>
+              <input type="text" id="brandingEmailSender" placeholder="bijv. Marketing Pro" class="stg-input">
+            </div>
+            <div class="form-group">
+              <label>Primaire kleur</label>
+              <div style="display:flex;gap:10px;align-items:center">
+                <input type="color" id="brandingColorPicker" style="width:44px;height:38px;padding:2px;border-radius:6px;border:1px solid var(--border);cursor:pointer">
+                <input type="text" id="brandingColor" placeholder="#2563EB" class="stg-input" style="width:120px" oninput="syncBrandingColor(this)">
+              </div>
+            </div>
+            <div class="form-group" style="grid-column:1/-1">
+              <label>Logo URL of base64</label>
+              <input type="text" id="brandingLogo" placeholder="https://... of data:image/..." class="stg-input">
+            </div>
+          </div>
+          <!-- Live preview -->
+          <div style="margin:16px 0 4px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Preview klantportaal header</div>
+          <div id="brandingPreview" style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2)">
+            <div id="prevIcon" style="width:36px;height:36px;border-radius:8px;background:#2563eb;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#fff;flex-shrink:0">A</div>
+            <div>
+              <div id="prevName" style="font-size:15px;font-weight:700;color:var(--text-primary)">Agency AI</div>
+              <div style="font-size:11px;color:var(--text-muted)">Klantportaal</div>
+            </div>
+          </div>
+          <div style="margin-top:16px">
+            <button class="btn btn-primary" onclick="saveBranding()"><i class="ti ti-device-floppy"></i> Branding opslaan</button>
+          </div>
+        </div>
+      </div>
+
       <div class="settings-tab-pane" id="stab-danger">
         <div class="stg-section">
           <div class="stg-section-header">
@@ -2437,3 +2488,146 @@ async function loadBackupList() {
     container.innerHTML = '<div style="margin-top:4px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Recente backups</div>' + rows + '</div>';
   } catch { /* ignore */ }
 }
+
+// ── Mijn Bureau tab functions ──────────────────────────────────────────────────
+
+async function loadBureauTab() {
+  await loadBureauSubscription();
+  await loadBureauBranding();
+}
+
+async function loadBureauSubscription() {
+  const el = document.getElementById('bureauSubscriptionInfo');
+  if (!el) return;
+  try {
+    const res = await api('/api/workspace/info');
+    if (!res.ok) { el.innerHTML = '<p style="color:var(--text-muted)">Geen abonnementsgegevens beschikbaar.</p>'; return; }
+    const ws = await res.json();
+
+    const statusColor = ws.status === 'active' ? '#10b981' : ws.status === 'paused' ? '#f59e0b' : '#ef4444';
+    const statusLabel = { active:'Actief', paused:'Gepauzeerd', blocked:'Geblokkeerd', pending_payment:'Wacht op betaling', pending:'In behandeling' }[ws.status] || ws.status;
+    const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('nl-NL', { day:'2-digit', month:'long', year:'numeric' }) : '—';
+    const fmtEur  = n   => '€' + Number(n||0).toLocaleString('nl-NL', { minimumFractionDigits: 2 });
+
+    let pauzedBanner = '';
+    if (ws.status === 'paused' || ws.status === 'pending_payment') {
+      pauzedBanner = `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+        <div style="font-weight:700;color:#92400e;margin-bottom:6px">⚠️ Account gepauzeerd — betaal om te heractiveren</div>
+        <div style="font-size:13px;color:#78350f;line-height:1.6">
+          Maak <strong>${fmtEur(ws.billing_amount)}</strong> over naar <strong>NL62RABO0301339430</strong> met referentie
+          <code style="background:#fef3c7;padding:2px 7px;border-radius:4px;font-size:12px">${ws.payment_reference || '—'}</code>
+        </div>
+      </div>`;
+    }
+
+    el.innerHTML = pauzedBanner + `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Status</div>
+          <div style="font-size:15px;font-weight:700;color:${statusColor}">${statusLabel}</div>
+        </div>
+        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Plan</div>
+          <div style="font-size:15px;font-weight:700;color:var(--text-primary)">${esc(ws.plan || '—')}</div>
+        </div>
+        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Factuurbedrag</div>
+          <div style="font-size:15px;font-weight:700;color:var(--text-primary)">${fmtEur(ws.billing_amount)}<span style="font-size:11px;font-weight:400;color:var(--text-muted)">/mnd</span></div>
+        </div>
+        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Volgende factuur</div>
+          <div style="font-size:14px;font-weight:600;color:var(--text-primary)">${fmtDate(ws.next_billing_date)}</div>
+        </div>
+      </div>
+      ${ws.payment_reference ? `
+      <div style="margin-top:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Betaalgegevens</div>
+        <div style="display:flex;flex-direction:column;gap:5px;font-size:13px">
+          <div><span style="color:var(--text-muted);width:140px;display:inline-block">IBAN</span><strong>NL62RABO0301339430</strong></div>
+          <div><span style="color:var(--text-muted);width:140px;display:inline-block">Referentie</span><code style="background:var(--surface-3);padding:2px 8px;border-radius:4px">${esc(ws.payment_reference)}</code></div>
+        </div>
+      </div>` : ''}`;
+  } catch { el.innerHTML = '<p style="color:var(--text-muted)">Kan abonnementsgegevens niet laden.</p>'; }
+}
+
+async function loadBureauBranding() {
+  try {
+    const res = await api('/api/workspace/info');
+    if (!res.ok) return;
+    const ws = await res.json();
+    if (ws.branding_name)         { const el = document.getElementById('brandingName'); if(el) el.value = ws.branding_name; }
+    if (ws.branding_color)        {
+      const elTxt = document.getElementById('brandingColor');     if(elTxt) elTxt.value = ws.branding_color;
+      const elPic = document.getElementById('brandingColorPicker');if(elPic) elPic.value = ws.branding_color;
+    }
+    if (ws.branding_email_sender) { const el = document.getElementById('brandingEmailSender'); if(el) el.value = ws.branding_email_sender; }
+    if (ws.branding_logo)         { const el = document.getElementById('brandingLogo'); if(el) el.value = ws.branding_logo; }
+    updateBrandingPreview();
+  } catch { /* ignore */ }
+}
+
+function syncBrandingColor(input) {
+  const picker = document.getElementById('brandingColorPicker');
+  if (picker && /^#[0-9a-fA-F]{6}$/.test(input.value)) picker.value = input.value;
+  updateBrandingPreview();
+}
+
+function updateBrandingPreview() {
+  const name  = document.getElementById('brandingName')?.value || 'Agency AI';
+  const color = document.getElementById('brandingColor')?.value || document.getElementById('brandingColorPicker')?.value || '#2563eb';
+  const logo  = document.getElementById('brandingLogo')?.value || '';
+  const icon  = document.getElementById('prevIcon');
+  const nameEl= document.getElementById('prevName');
+  if (!icon || !nameEl) return;
+  icon.style.background = color;
+  if (logo) {
+    icon.innerHTML = `<img src="${esc(logo)}" style="height:26px;max-width:30px;object-fit:contain">`;
+  } else {
+    icon.textContent = (name[0] || 'A').toUpperCase();
+  }
+  nameEl.textContent = name || 'Agency AI';
+}
+
+async function saveBranding() {
+  const name   = document.getElementById('brandingName')?.value.trim() || null;
+  const color  = document.getElementById('brandingColor')?.value.trim() || document.getElementById('brandingColorPicker')?.value || null;
+  const sender = document.getElementById('brandingEmailSender')?.value.trim() || null;
+  const logo   = document.getElementById('brandingLogo')?.value.trim() || null;
+  try {
+    const res = await api('/api/workspace/branding', {
+      method: 'PATCH',
+      body: JSON.stringify({ branding_name: name, branding_color: color, branding_email_sender: sender, branding_logo: logo })
+    });
+    if (res.ok) {
+      showToast('Branding opgeslagen! Klantportaal gebruikt direct de nieuwe instellingen.', 'success');
+    } else {
+      const d = await res.json();
+      showToast(d.error || 'Opslaan mislukt', 'error');
+    }
+  } catch { showToast('Verbindingsfout', 'error'); }
+}
+
+// Hook into switchSettingsTab to load bureau data on first open
+const _origSwitchSettingsTab = typeof switchSettingsTab === 'function' ? switchSettingsTab : null;
+if (_origSwitchSettingsTab) {
+  window._bureauLoaded = false;
+  const _bureauOrig = switchSettingsTab;
+  switchSettingsTab = function(id) {
+    _bureauOrig(id);
+    if (id === 'bureau' && !window._bureauLoaded) {
+      window._bureauLoaded = true;
+      loadBureauTab();
+    }
+  };
+}
+
+// Wire up live preview inputs
+document.addEventListener('input', (e) => {
+  if (['brandingName','brandingColor','brandingColorPicker','brandingLogo'].includes(e.target.id)) {
+    if (e.target.id === 'brandingColorPicker') {
+      const txt = document.getElementById('brandingColor');
+      if (txt) txt.value = e.target.value;
+    }
+    updateBrandingPreview();
+  }
+});

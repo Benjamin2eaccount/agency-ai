@@ -7,7 +7,7 @@
 const express = require('express');
 const path    = require('path');
 
-module.exports = function createPortalRouter({ readJSON, writeJSON, addNotification, addLeadHistory, computeRealAnalytics }) {
+module.exports = function createPortalRouter({ readJSON, writeJSON, addNotification, addLeadHistory, computeRealAnalytics, getDb }) {
   const router = express.Router();
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -52,11 +52,38 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
       return { name: sName, price, billing, description: match?.description || '' };
     }).filter(s => s.name);
 
+    // ── Workspace branding lookup ─────────────────────────────────────────────
+    let branding = {
+      name       : settings.agencyName || 'Agency AI',
+      logo       : settings.agencyLogo || null,
+      color      : '#2563eb',
+      emailSender: settings.agencyName || 'Agency AI',
+    };
+    try {
+      const db = typeof getDb === 'function' ? getDb() : null; // getDb passed as () => require('./database').getDb()
+      if (db) {
+        // Find workspace: prefer lead.workspaceId, else look up by slug 'agencyai'
+        const wsId = lead.workspaceId || null;
+        const ws = wsId
+          ? db.prepare('SELECT * FROM workspaces WHERE id = ?').get(wsId)
+          : db.prepare("SELECT * FROM workspaces WHERE slug = 'agencyai' LIMIT 1").get();
+        if (ws) {
+          branding = {
+            name       : ws.branding_name || ws.name || branding.name,
+            logo       : ws.branding_logo || branding.logo,
+            color      : ws.branding_color || branding.color,
+            emailSender: ws.branding_email_sender || ws.branding_name || ws.name || branding.name,
+          };
+        }
+      }
+    } catch { /* workspace lookup is non-fatal */ }
+
     res.json({
       companyName:          lead.companyName,
-      agencyName:           settings.agencyName || 'Agency AI',
-      agencyLogo:           settings.agencyLogo || null,
+      agencyName:           branding.name,
+      agencyLogo:           branding.logo,
       myName:               settings.myName || '',
+      branding,
       currentPhase:         lead.currentPhase || 1,
       estimatedCompletion:  lead.estimatedCompletion || null,
       services:             enrichedSvcs,

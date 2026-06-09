@@ -1298,10 +1298,16 @@
           .then(r => { if (!r.ok) throw new Error(); return r.json(); })
           .then(d => {
             setData(d);
-            // Task 21 — Apply custom portal theme color
-            if (d.portalThemeColor) {
-              document.documentElement.style.setProperty('--accent', d.portalThemeColor);
+            // Apply workspace branding
+            const brand = d.branding || {};
+            const accentColor = brand.color || d.portalThemeColor || null;
+            if (accentColor) {
+              document.documentElement.style.setProperty('--accent', accentColor);
+              document.querySelector('meta[name="theme-color"]')?.setAttribute('content', accentColor);
             }
+            // Page title uses branding name
+            const brandName = brand.name || d.agencyName || 'Agency AI';
+            document.title = `${d.companyName || 'Project'} — ${brandName}`;
           })
           .catch(() => setError('Portaal niet gevonden. Controleer de link.'));
       }, [token]);
@@ -1320,7 +1326,7 @@
         </div>
       );
 
-      document.title = `Projectstatus – ${data.companyName || ''}`;
+      // Title set dynamically after branding loads (see fetch handler above)
 
       const cur      = data.currentPhase || 1;
       const payments = data.payments  || [];
@@ -1353,11 +1359,11 @@
         <>
           <div className="agency-header">
             <div className="agency-logo">
-              {data.agencyLogo
-                ? <img src={data.agencyLogo} style={{height:32,maxWidth:120,objectFit:'contain',display:'block'}} alt={data.agencyName} />
+              {(data.branding?.logo || data.agencyLogo)
+                ? <img src={data.branding?.logo || data.agencyLogo} style={{height:32,maxWidth:120,objectFit:'contain',display:'block'}} alt={data.branding?.name || data.agencyName} />
                 : <img src="/images/agency_ai_logo_dark.png" style={{height:32,maxWidth:120,objectFit:'contain',display:'block'}} alt="Agency AI" />}
             </div>
-            <div className="agency-name">{data.agencyName}</div>
+            <div className="agency-name">{data.branding?.name || data.agencyName}</div>
           </div>
 
           <div className="project-banner">
