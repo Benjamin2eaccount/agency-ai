@@ -91,7 +91,13 @@ async function seed() {
   const total = db.prepare('SELECT COUNT(*) as c FROM workspaces').get().c;
   const users = db.prepare('SELECT COUNT(*) as c FROM workspace_users').get().c;
 
+  // Sync to PG-backed store so data survives Railway redeploys
+  const { writeJSON } = require('../database');
+  writeJSON('_workspaces.json',      db.prepare('SELECT * FROM workspaces').all());
+  writeJSON('_workspace_users.json', db.prepare('SELECT * FROM workspace_users').all());
+
   console.log(`\n✅ Seed voltooid — ${total} workspace(s), ${users} workspace_user(s)`);
+  console.log('(Data gesynchroniseerd naar PostgreSQL store ✓)');
   console.log('\nSuper admin inloggen via: agencyai.info/superadmin');
   console.log('Agency AI inloggen via  : agencyai.info/app/agencyai\n');
 }

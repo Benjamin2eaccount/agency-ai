@@ -3449,9 +3449,29 @@ app.post('/api/superadmin/workspaces/:id/impersonate', requireSuperAdmin, (req, 
     const db = getDb();
     const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(req.params.id);
     if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
-    // Find first admin user of this workspace
-    const wsUser = db.prepare("SELECT * FROM workspace_users WHERE workspace_id = ? AND role = 'admin' LIMIT 1").get(ws.id);
-    if (!wsUser) return res.status(404).json({ error: 'Geen admin gebruiker gevonden voor deze workspace' });
+
+    // Find admin user: first try workspace_users table, then fall back to users.json
+    // (ws_agencyai's admin lives in users.json, not workspace_users)
+    let wsUser = db.prepare("SELECT * FROM workspace_users WHERE workspace_id = ? AND role IN ('admin','superadmin') LIMIT 1").get(ws.id);
+
+    if (!wsUser) {
+      const legacyUsers = readJSON('users.json') || [];
+      const lu = legacyUsers.find(u =>
+        (u.workspaceId === ws.id || ws.slug === 'agencyai') && u.role === 'admin'
+      );
+      if (lu) {
+        wsUser = {
+          id         : lu.id,
+          email      : lu.email || lu.username,
+          name       : lu.name,
+          role       : 'admin',
+          workspace_id: ws.id,
+          permissions: lu.permissions || null,
+        };
+      }
+    }
+
+    if (!wsUser) return res.status(404).json({ error: 'Geen admin gebruiker gevonden voor deze workspace. Maak eerst een gebruiker aan.' });
     const settings = readJSON('settings.json') || {};
     const token = jwt.sign({
       id: wsUser.id, userId: wsUser.id, username: wsUser.email, name: wsUser.name,
@@ -14092,6 +14112,11 @@ function broadcastWS(event, data = {}) {
 function ensureWorkspaceSeed() {
   const db = getDb();
   try {
+    // Step 0: restore any previously-registered workspaces from the PG-synced store
+    // (workspace_* tables are SQLite-only; this brings them back after Railway redeploy)
+    const { restoreFromStore } = require('./lib/workspace');
+    restoreFromStore();
+
     // Workspace: superadmin
     const saWs = db.prepare("SELECT id FROM workspaces WHERE slug = 'superadmin'").get();
     if (!saWs) {
@@ -14123,6 +14148,10 @@ function ensureWorkspaceSeed() {
       console.log('[Seed] Super admin gebruiker aangemaakt (info@agencyai.info) ✓');
       console.log('[Seed] ⚠️  Wijzig het wachtwoord na eerste login!');
     }
+
+    // Sync all workspace data to the PG-backed store so they survive redeploys
+    writeJSON('_workspaces.json',      db.prepare('SELECT * FROM workspaces').all());
+    writeJSON('_workspace_users.json', db.prepare('SELECT * FROM workspace_users').all());
   } catch (err) {
     console.warn('[Seed] ensureWorkspaceSeed fout:', err.message);
   }
