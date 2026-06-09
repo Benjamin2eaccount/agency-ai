@@ -2628,6 +2628,31 @@ app.post('/api/gmail/webhook', async (req, res) => {
   }
 });
 
+// Public workspace contact form — submitted from client websites (no auth)
+app.post('/api/contact-form', async (req, res) => {
+  try {
+    const { workspace: slug, name, email, phone, message } = req.body || {};
+    if (!slug) return res.status(400).json({ error: 'workspace verplicht' });
+    if (!email) return res.status(400).json({ error: 'email verplicht' });
+    const db = getDb();
+    const ws = db.prepare("SELECT * FROM workspaces WHERE slug = ? AND status = 'active'").get(slug);
+    if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
+    const contact = {
+      id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+      name: name || '', email, phone: phone || '', message: message || '',
+      type: 'website_form', status: 'new',
+      createdAt: new Date().toISOString(),
+    };
+    const key = `ws:${ws.id}:contacts.json`;
+    const contacts = readJSON(key) || [];
+    contacts.unshift(contact);
+    writeJSON(key, contacts);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Public contact form — must be BEFORE app.use('/api', authMiddleware)
 app.post('/api/contact', async (req, res) => {
   const { name, company, email, phone, service, message } = req.body;
@@ -4174,7 +4199,7 @@ app.post('/api/leads/bulk-delete', requireAdmin, (req, res) => {
 });
 
 app.get('/api/leads/unread-portal-count', authMiddleware, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const count = leads.filter(l =>
     (l.portalChat || []).some(m => m.from === 'client' && !m.readAt)
   ).length;
@@ -7954,13 +7979,33 @@ app.get('/api/run/progress', (req, res) => {
 // â"€â"€â"€ Settings â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 app.get('/api/settings', (req, res) => {
-  // wsRead returns workspace-scoped data for non-agencyai workspaces (empty {} for new ones).
-  // Do NOT fall back to global settings.json — that would leak Agency AI credentials.
-  const s = wsRead(req, 'settings.json', {});
+  const wId = req.user?.workspaceId;
+
+  let s;
+  if (!wId || wId === 'ws_agencyai') {
+    // Legacy / agencyai: global settings
+    s = readJSON('settings.json') || {};
+  } else {
+    // Non-agencyai: scoped only — never fall back to global (would leak credentials)
+    s = readJSON(`ws:${wId}:settings.json`);
+    if (!s) {
+      // New workspace — build clean defaults from workspaces table
+      s = { iban: '', bic: '', tenaamstelling: '', emailSignature: '', webhookToken: '', smtp: {}, niches: [], onboardingCompleted: false };
+      try {
+        const db = getDb();
+        const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(wId);
+        if (ws) {
+          s.agencyName   = ws.branding_name  || ws.name        || '';
+          s.myName       = ws.owner_name     || '';
+          s.email        = ws.owner_email    || '';
+          s.primaryColor = ws.branding_color || '#2563EB';
+        }
+      } catch {}
+    }
+  }
   const safe = { ...s };
 
-  // Overlay workspace branding (name, color, logo) from workspaces table
-  const wId = req.user?.workspaceId;
+  // Always overlay live workspace branding from DB (keeps display fresh)
   if (wId && wId !== 'ws_agencyai') {
     try {
       const db = getDb();
@@ -8432,7 +8477,7 @@ async function createPaymentLink(method, { companyName, amount, description, bil
 }
 
 app.get('/api/payments', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const all = [];
   for (const lead of leads) {
     for (const p of (lead.payments || [])) {
@@ -8444,7 +8489,7 @@ app.get('/api/payments', (req, res) => {
 });
 
 app.get('/api/payments/overview', authMiddleware, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const rows = [];
   leads.forEach(lead => {
     (lead.payments || []).forEach(pay => {
@@ -11575,14 +11620,14 @@ app.get('/api/test-scrape', requireAdmin, async (req, res) => {
 });
 
 app.get('/api/activity', requireAdmin, (req, res) => {
-  const log = readJSON('activity.json') || [];
+  const log = wsRead(req, 'activity.json', []);
   const limit = parseInt(req.query.limit) || 100;
   res.json({ activity: log.slice(0, limit) });
 });
 
 app.get('/api/stats/costs', (req, res) => {
-  const stats = readJSON('stats.json') || {};
-  const log   = readJSON('activity.json') || [];
+  const stats = wsRead(req, 'stats.json', {});
+  const log   = wsRead(req, 'activity.json', []);
   const today = new Date().toISOString().slice(0, 10);
   const todayCostUsd = log
     .filter(e => e.timestamp && e.timestamp.startsWith(today))
@@ -11625,7 +11670,7 @@ app.get('/api/stats/extended', authMiddleware, (req, res) => {
 // ─── A/B email stats ──────────────────────────────────────────────────────────
 
 app.get('/api/stats/ab', authMiddleware, (req, res) => {
-  const leads = scopeToUser(readJSON('leads.json'), req).filter(l => l.sentVersion);
+  const leads = scopeToUser(wsRead(req, 'leads.json', []), req).filter(l => l.sentVersion);
   const sentStatuses = ['sent', 'replied', 'client', 'scheduled'];
 
   const empty = () => ({ sent: 0, replied: 0, opened: 0, bounced: 0 });
@@ -11680,9 +11725,9 @@ app.get('/api/stats/ab', authMiddleware, (req, res) => {
 });
 
 app.get('/api/stats/pnl', authMiddleware, (req, res) => {
-  const leads       = scopeToUser(readJSON('leads.json'), req);
-  const settings    = readJSON('settings.json') || {};
-  const activityLog = readJSON('activity.json') || [];
+  const leads       = scopeToUser(wsRead(req, 'leads.json', []), req);
+  const settings    = wsRead(req, 'settings.json', {});
+  const activityLog = wsRead(req, 'activity.json', []);
 
   const USD_TO_EUR     = 0.92;
   const fixedCostsList = settings.fixedCosts && settings.fixedCosts.length
@@ -11784,7 +11829,7 @@ app.get('/api/extension/data', authMiddleware, (req, res) => {
 });
 
 app.get('/api/memory', (req, res) => {
-  res.json(readJSON('memory.json') || {});
+  res.json(wsRead(req, 'memory.json', {}));
 });
 
 app.post('/api/memory/:key/reset-ab', requireAdmin, (req, res) => {
@@ -11800,22 +11845,21 @@ app.post('/api/memory/:key/reset-ab', requireAdmin, (req, res) => {
 
 // ─── Team chat ────────────────────────────────────────────────────────────────
 
+const _DEFAULT_CHANNELS = [
+  { id: 'general', name: 'algemeen', description: 'Algemeen teamkanaal', createdAt: new Date().toISOString() },
+  { id: 'leads',   name: 'leads',    description: 'Lead discussies',     createdAt: new Date().toISOString() },
+];
+
+// Seed global channels for ws_agencyai on startup
 function seedChatChannels() {
-  if (!readJSON('chat-channels.json')) {
-    writeJSON('chat-channels.json', [
-      { id: '1', name: 'algemeen',  description: 'Algemeen teamkanaal', createdAt: new Date().toISOString() },
-      { id: '2', name: 'leads',     description: 'Lead discussies',     createdAt: new Date().toISOString() },
-      { id: '3', name: 'intern',    description: 'Intern overleg',       createdAt: new Date().toISOString() }
-    ]);
-  }
+  if (!readJSON('chat-channels.json')) writeJSON('chat-channels.json', _DEFAULT_CHANNELS);
   if (!readJSON('chat-messages.json')) writeJSON('chat-messages.json', []);
 }
 seedChatChannels();
 
 app.get('/api/chat/channels', (req, res) => {
-  const channels = readJSON('chat-channels.json') || [];
-  const messages = readJSON('chat-messages.json') || [];
-  // attach last message + unread count per channel
+  const channels = wsRead(req, 'chat-channels.json') || _DEFAULT_CHANNELS;
+  const messages = wsRead(req, 'chat-messages.json', []);
   const result = channels.map(ch => {
     const msgs = messages.filter(m => m.channelId === ch.id);
     const last = msgs[msgs.length - 1] || null;
@@ -11827,26 +11871,26 @@ app.get('/api/chat/channels', (req, res) => {
 app.post('/api/chat/channels', requireAdmin, (req, res) => {
   const { name, description } = req.body;
   if (!name) return res.status(400).json({ error: 'name verplicht' });
-  const channels = readJSON('chat-channels.json') || [];
+  const channels = wsRead(req, 'chat-channels.json') || _DEFAULT_CHANNELS;
   const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
   if (channels.find(c => c.name === slug)) return res.status(409).json({ error: 'Kanaal bestaat al' });
   const ch = { id: Date.now().toString(), name: slug, description: description || '', createdAt: new Date().toISOString() };
   channels.push(ch);
-  writeJSON('chat-channels.json', channels);
+  wsWrite(req, 'chat-channels.json', channels);
   res.json(ch);
 });
 
 app.delete('/api/chat/channels/:id', requireAdmin, (req, res) => {
-  const channels = readJSON('chat-channels.json') || [];
+  const channels = wsRead(req, 'chat-channels.json') || _DEFAULT_CHANNELS;
   if (!channels.find(c => c.id === req.params.id)) return res.status(404).json({ error: 'Kanaal niet gevonden' });
-  writeJSON('chat-channels.json', channels.filter(c => c.id !== req.params.id));
-  const msgs = readJSON('chat-messages.json') || [];
-  writeJSON('chat-messages.json', msgs.filter(m => m.channelId !== req.params.id));
+  wsWrite(req, 'chat-channels.json', channels.filter(c => c.id !== req.params.id));
+  const msgs = wsRead(req, 'chat-messages.json', []);
+  wsWrite(req, 'chat-messages.json', msgs.filter(m => m.channelId !== req.params.id));
   res.json({ ok: true });
 });
 
 app.get('/api/chat/channels/:id/messages', (req, res) => {
-  const messages = readJSON('chat-messages.json') || [];
+  const messages = wsRead(req, 'chat-messages.json', []);
   const { since, limit = 100 } = req.query;
   let msgs = messages.filter(m => m.channelId === req.params.id);
   if (since) msgs = msgs.filter(m => m.createdAt > since);
@@ -11854,7 +11898,7 @@ app.get('/api/chat/channels/:id/messages', (req, res) => {
 });
 
 app.post('/api/chat/channels/:id/messages', (req, res) => {
-  const channels = readJSON('chat-channels.json') || [];
+  const channels = wsRead(req, 'chat-channels.json') || _DEFAULT_CHANNELS;
   if (!channels.find(c => c.id === req.params.id)) return res.status(404).json({ error: 'Kanaal niet gevonden' });
   const { text } = req.body;
   if (!text || !text.trim()) return res.status(400).json({ error: 'Bericht verplicht' });
@@ -11868,25 +11912,24 @@ app.post('/api/chat/channels/:id/messages', (req, res) => {
     text: text.trim(),
     createdAt: new Date().toISOString()
   };
-  const messages = readJSON('chat-messages.json') || [];
+  const messages = wsRead(req, 'chat-messages.json', []);
   messages.push(msg);
-  // Keep max 2000 messages per channel to prevent unbounded growth
   const channelMsgs = messages.filter(m => m.channelId === req.params.id);
   if (channelMsgs.length > 2000) {
     const oldestIds = new Set(channelMsgs.slice(0, channelMsgs.length - 2000).map(m => m.id));
-    writeJSON('chat-messages.json', messages.filter(m => !oldestIds.has(m.id)));
+    wsWrite(req, 'chat-messages.json', messages.filter(m => !oldestIds.has(m.id)));
   } else {
-    writeJSON('chat-messages.json', messages);
+    wsWrite(req, 'chat-messages.json', messages);
   }
   res.json(msg);
 });
 
 app.delete('/api/chat/messages/:id', (req, res) => {
-  const messages = readJSON('chat-messages.json') || [];
+  const messages = wsRead(req, 'chat-messages.json', []);
   const msg = messages.find(m => m.id === req.params.id);
   if (!msg) return res.status(404).json({ error: 'Bericht niet gevonden' });
   if (msg.userId !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Geen toegang' });
-  writeJSON('chat-messages.json', messages.filter(m => m.id !== req.params.id));
+  wsWrite(req, 'chat-messages.json', messages.filter(m => m.id !== req.params.id));
   res.json({ ok: true });
 });
 
@@ -12000,7 +12043,7 @@ app.delete('/api/users/:id', requireAdmin, (req, res) => {
 
 // ── Blacklist ──────────────────────────────────────────────────────────────────
 app.get('/api/blacklist', (req, res) => {
-  res.json(readJSON('blacklist.json') || []);
+  res.json(wsRead(req, 'blacklist.json', []));
 });
 
 app.post('/api/blacklist', requireAdmin, (req, res) => {
@@ -13517,10 +13560,10 @@ app.post('/api/leads/import', requireAdmin, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.get('/api/stats/forecast', requireAdmin, (req, res) => {
-  const leads    = readJSON('leads.json') || [];
+  const leads    = wsRead(req, 'leads.json', []);
   const clients  = leads.filter(l => l.status === 'client');
-  const settings = readJSON('settings.json') || {};
-  const activity = readJSON('activity.json') || [];
+  const settings = wsRead(req, 'settings.json', {});
+  const activity = wsRead(req, 'activity.json', []);
 
   // MRR: sum monthly payments from clients
   let current_mrr = 0;
@@ -13763,7 +13806,7 @@ app.get('/api/stats/export.csv', requireAdmin, (req, res) => {
 
 // Task 33 — Heatmap best send times
 app.get('/api/stats/heatmap', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const grid = {};
   const days = ['Zo','Ma','Di','Wo','Do','Vr','Za'];
   days.forEach(d => { grid[d] = {}; for (let h=0; h<24; h++) grid[d][h] = { sent:0, replied:0 }; });
@@ -13790,7 +13833,7 @@ app.get('/api/stats/heatmap', requireAdmin, (req, res) => {
 
 // Task 34 — Top 10 best performing email subjects
 app.get('/api/stats/top-subjects', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const subjects = {};
   leads.forEach(l => {
     const subj = l.emailA?.subject || l.subjectOptions?.[0] || l.emailSubject || '';
@@ -13810,7 +13853,7 @@ app.get('/api/stats/top-subjects', requireAdmin, (req, res) => {
 
 // Task 35 — Niche performance comparison
 app.get('/api/stats/niches', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const niches = {};
   leads.forEach(l => {
     const n = l.niche || 'overig';

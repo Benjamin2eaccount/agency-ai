@@ -850,7 +850,6 @@ function switchSettingsTab(id) {
   if (id === 'demorequests') loadDemoRequests();
   if (id === 'components') loadComponentsTab();
   if (id === 'templates') loadTemplatesTab();
-  if (id === 'changelog') loadChangelogTab();
   if (id === 'ip-whitelist') loadIpWhitelistSection();
 }
 
@@ -957,7 +956,6 @@ async function renderSettings() {
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="auditlog" onclick="switchSettingsTab('auditlog')"><i class="ti ti-list-search"></i> Audit log</button>` : ''}
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="components" onclick="switchSettingsTab('components')"><i class="ti ti-puzzle"></i> 🧩 Components</button>` : ''}
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="templates" onclick="switchSettingsTab('templates')"><i class="ti ti-palette"></i> 🎨 Templates</button>` : ''}
-      ${isAdmin() ? `<button class="settings-nav-item" data-tab="changelog" onclick="switchSettingsTab('changelog')"><i class="ti ti-history"></i> Changelog</button>` : ''}
       <div class="settings-nav-spacer"></div>
       <button class="settings-nav-item" data-tab="bureau" onclick="switchSettingsTab('bureau')"><i class="ti ti-building"></i> Mijn Bureau</button>
       <button class="settings-nav-item nav-danger" data-tab="danger" onclick="switchSettingsTab('danger')"><i class="ti ti-alert-triangle"></i> Gevaarlijke zone</button>
@@ -1802,16 +1800,6 @@ async function renderSettings() {
         </div>
       </div>
 
-      <!-- Changelog tab (Task 50) -->
-      <div class="settings-tab-pane" id="stab-changelog">
-        <div class="stg-section">
-          <div class="stg-section-header">
-            <div class="stg-title"><i class="ti ti-history" style="margin-right:6px"></i>Changelog</div>
-            <div class="stg-sub">Wat is er recent veranderd in het systeem</div>
-          </div>
-          <div id="changelogContent"><div style="color:var(--text-secondary);font-size:13px">Laden...</div></div>
-        </div>
-      </div>
 
     </div>
   </div>

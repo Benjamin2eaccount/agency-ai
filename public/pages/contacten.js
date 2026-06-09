@@ -1,8 +1,13 @@
 // ─── Contacts view ────────────────────────────────────────────────────────────
 async function renderContacts() {
-  document.getElementById('appView').innerHTML = `<div class="loading-spinner"></div>`;
-  const contacts = await apiJSON('/api/contacts');
-  if (!contacts) return;
+  const appView = document.getElementById('appView');
+  if (!appView) return;
+  appView.innerHTML = `<div class="loading-spinner"></div>`;
+  let contacts;
+  try {
+    contacts = await apiJSON('/api/contacts');
+  } catch(e) { contacts = null; }
+  if (!Array.isArray(contacts)) contacts = [];
 
   state._contactsFilter    = state._contactsFilter    || 'all';
   state._contactsTypeFilter = state._contactsTypeFilter || 'all';
@@ -85,6 +90,17 @@ async function renderContacts() {
           </div>`;
       }).join('');
 
+  // Build integration info section (workspace slug from settings or JWT)
+  const _wSlug = (() => {
+    try {
+      const tok = getToken();
+      if (!tok) return 'jouw-workspace';
+      const pl = JSON.parse(atob(tok.split('.')[1]));
+      return pl.workspaceSlug || 'jouw-workspace';
+    } catch { return 'jouw-workspace'; }
+  })();
+  const _formCode = `<form action="https://www.agencyai.info/api/contact-form" method="POST">\n  <input type="hidden" name="workspace" value="${_wSlug}">\n  <input type="text"  name="name"    placeholder="Naam"     required>\n  <input type="email" name="email"   placeholder="Email"    required>\n  <input type="tel"   name="phone"   placeholder="Telefoon">\n  <textarea           name="message" placeholder="Bericht"></textarea>\n  <button type="submit">Versturen</button>\n</form>`;
+
   document.getElementById('appView').innerHTML = `
     <div class="page-header">
       <div>
@@ -92,6 +108,21 @@ async function renderContacts() {
         <h1 class="page-title">Contacten</h1>
       </div>
     </div>
+
+    <details class="integration-info-box" style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:20px">
+      <summary style="cursor:pointer;font-weight:600;font-size:13px;list-style:none;display:flex;align-items:center;gap:8px">
+        <i class="ti ti-code" style="color:var(--accent)"></i>
+        📋 Contactformulier integreren op je website
+      </summary>
+      <div style="margin-top:12px;font-size:13px;color:var(--text-secondary)">
+        Voeg dit formulier toe aan je website om leads direct in je systeem te ontvangen:
+      </div>
+      <pre id="contactFormCode" style="background:var(--surface-3,#f3f4f6);border:1px solid var(--border);border-radius:6px;padding:12px;margin-top:8px;font-size:12px;overflow-x:auto;white-space:pre-wrap">${_esc(_formCode)}</pre>
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="
+        navigator.clipboard.writeText(document.getElementById('contactFormCode').textContent).then(()=>{this.textContent='✓ Gekopieerd!';setTimeout(()=>{this.textContent='Kopieer code'},1800)})
+      ">Kopieer code</button>
+    </details>
+
     <div class="filter-bar" style="margin-bottom:12px">${typeChips}</div>
     <div class="filter-bar" style="margin-bottom:20px">${filterChips}</div>
     <div id="contactsList">${cards}</div>`;
