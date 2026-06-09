@@ -542,6 +542,10 @@
         localStorage.setItem('agencyRole', data.role || 'admin');
         localStorage.setItem('agencyPermissions', JSON.stringify(data.permissions || []));
         if (data.workspaceSlug) localStorage.setItem('workspaceSlug', data.workspaceSlug);
+        // Super admin gets a dedicated key so impersonation can't overwrite their session
+        if (data.isSuperAdmin) {
+          localStorage.setItem('superAdminToken', data.token);
+        }
 
         _redirecting = true; // block any further submits
         staffBtn.style.background = '#10b981';

@@ -725,7 +725,10 @@
 'use strict';
 
 // ── Auth guard ───────────────────────────────────────────────────────────────
-const _token = localStorage.getItem('agencyToken');
+// Use superAdminToken (dedicated key) so impersonation replacing agencyToken
+// doesn't log the super admin out on refresh.
+const _token = localStorage.getItem('superAdminToken') || localStorage.getItem('agencyToken');
+
 if (!_token) {
   sessionStorage.setItem('_afterLogin', '/superadmin');
   window.location.href = '/login';
@@ -735,9 +738,14 @@ if (!_token) {
     if (!payload.isSuperAdmin) {
       sessionStorage.setItem('_afterLogin', '/superadmin');
       window.location.href = '/login';
+    } else {
+      // Ensure superAdminToken is always set (covers first login before fix was deployed)
+      if (!localStorage.getItem('superAdminToken')) {
+        localStorage.setItem('superAdminToken', _token);
+      }
+      document.getElementById('saEmail').textContent = payload.email || payload.username || '—';
+      document.getElementById('topEmail').textContent = payload.email || payload.username || '';
     }
-    document.getElementById('saEmail').textContent = payload.email || payload.username || '—';
-    document.getElementById('topEmail').textContent = payload.email || payload.username || '';
   } catch {
     sessionStorage.setItem('_afterLogin', '/superadmin');
     window.location.href = '/login';
@@ -798,7 +806,18 @@ function planBadge(p) {
   return `<span class="badge ${col[p]||'badge-ghost'}">${esc(p||'?')}</span>`;
 }
 
-function saLogout() { localStorage.clear(); window.location.href = '/login'; }
+function saLogout() {
+  localStorage.removeItem('superAdminToken');
+  // Also clear agencyToken if it still holds a SA token (normal logout)
+  const at = localStorage.getItem('agencyToken');
+  if (at) {
+    try {
+      const p = JSON.parse(atob(at.split('.')[1]));
+      if (p.isSuperAdmin) localStorage.removeItem('agencyToken');
+    } catch {}
+  }
+  window.location.href = '/login';
+}
 
 // ── View switching ────────────────────────────────────────────────────────────
 function setView(v) {
@@ -1108,9 +1127,6 @@ async function impersonate(id) {
   if (!r.ok) { const d = await r.json(); toast(d.error || 'Fout', 'err'); return; }
   const d = await r.json();
 
-  // Save super admin token so we can restore it after the new tab overwrites localStorage
-  const saToken = _token;
-
   // Build relay URL — the relay page sets localStorage and redirects (server-rendered, no CSP issues)
   const relayUrl = `/superadmin/impersonate-relay?token=${encodeURIComponent(d.token)}&slug=${encodeURIComponent(d.slug || '')}&name=${encodeURIComponent(d.name || 'Workspace')}`;
 
@@ -1120,7 +1136,10 @@ async function impersonate(id) {
     return;
   }
 
-  // Restore SA token in THIS tab after the new tab has had time to execute its relay script (~600ms)
+  // Note: superAdminToken is a dedicated key and is NOT overwritten by the relay page.
+  // The relay page only sets agencyToken/agencyRole/workspaceSlug/agencyName in the new tab.
+  // After 600ms we restore agencyToken in THIS tab so navigating to /app here still works as SA.
+  const saToken = _token;
   setTimeout(() => {
     localStorage.setItem('agencyToken', saToken);
     localStorage.setItem('agencyRole', 'superadmin');
