@@ -2624,11 +2624,28 @@ app.post('/api/demo-request', async (req, res) => {
       // Non-fatal: still respond OK so the user doesn't see an error
     }
 
+    // Save to contacts.json so it appears in the Contacten page
+    try {
+      const contacts = readJSON('contacts.json') || [];
+      contacts.unshift({
+        id: 'demo-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+        name, company: company || '', email, phone: phone || '',
+        service: 'Demo aanvraag', message: message || '',
+        clients: clients || '',
+        type: 'demo',
+        createdAt: new Date().toISOString(),
+        status: 'new'
+      });
+      writeJSON('contacts.json', contacts);
+    } catch (cErr) {
+      console.warn('[demo-request] Contacts save error:', cErr.message);
+    }
+
     try {
       addNotification('contact_form',
         `Demo aanvraag: ${name}${company ? ' — ' + company : ''}`,
         `${clients ? clients + ' klanten · ' : ''}${email}`,
-        null, 'settings'
+        null, 'contacts'
       );
     } catch (notifErr) {
       console.warn('[demo-request] Notification error:', notifErr.message);

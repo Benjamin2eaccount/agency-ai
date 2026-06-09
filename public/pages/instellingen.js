@@ -954,7 +954,6 @@ async function renderSettings() {
       <button class="settings-nav-item"         data-tab="blacklist" onclick="switchSettingsTab('blacklist')"> <i class="ti ti-ban"></i>           Blacklist</button>
       <button class="settings-nav-item"         data-tab="api"       onclick="switchSettingsTab('api')">       <i class="ti ti-api"></i>           API &amp; integraties</button>
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="team" onclick="switchSettingsTab('team')"><i class="ti ti-users"></i> Team</button>` : ''}
-      ${isAdmin() ? `<button class="settings-nav-item" data-tab="demorequests" onclick="switchSettingsTab('demorequests')"><i class="ti ti-calendar-event"></i> Demo aanvragen</button>` : ''}
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="auditlog" onclick="switchSettingsTab('auditlog')"><i class="ti ti-list-search"></i> Audit log</button>` : ''}
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="components" onclick="switchSettingsTab('components')"><i class="ti ti-puzzle"></i> 🧩 Components</button>` : ''}
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="templates" onclick="switchSettingsTab('templates')"><i class="ti ti-palette"></i> 🎨 Templates</button>` : ''}
@@ -1698,16 +1697,6 @@ async function renderSettings() {
       ` : ''}
 
       <!-- ── Gevaarlijke zone ── -->
-      <div class="settings-tab-pane" id="stab-demorequests">
-        <div class="stg-section">
-          <div class="stg-section-header">
-            <div class="stg-title"><i class="ti ti-calendar-event" style="margin-right:6px"></i>Demo aanvragen</div>
-            <div class="stg-sub">Inkomende demo aanvragen via de landingspagina</div>
-          </div>
-          <div id="demoRequestsContent"><div style="color:var(--text-muted);font-size:13px">Laden...</div></div>
-        </div>
-      </div>
-
       <div class="settings-tab-pane" id="stab-auditlog">
         <div class="stg-section">
           <div class="stg-section-header">
