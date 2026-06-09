@@ -619,6 +619,27 @@ app.get('/setup/demo-users', async (req, res) => {
   }
 });
 
+// ── /setup/reset-admin-password — one-time password reset ────────────────────
+// Finds the first non-demo admin and sets password to Admin2026!
+// Safe to call multiple times (idempotent). Public route — no auth needed.
+app.get('/setup/reset-admin-password', async (req, res) => {
+  try {
+    const users = readJSON('users.json') || [];
+    const idx   = users.findIndex(u => u.role === 'admin' && !u.username.includes('demo'));
+    if (idx === -1) return res.status(404).json({ ok: false, error: 'Geen hoofd-admin gevonden' });
+
+    const NEW_PASS = 'Admin2026!';
+    users[idx].password = await bcrypt.hash(NEW_PASS, 12);
+    writeJSON('users.json', users);
+
+    console.log(`[setup] Admin wachtwoord gereset voor gebruiker: ${users[idx].username}`);
+    res.json({ ok: true, username: users[idx].username, password: NEW_PASS });
+  } catch (err) {
+    console.error('[setup/reset-admin-password]', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // readJSON / writeJSON are provided by database.js (SQLite-backed)
 
 function addActivity(type, label, opts) {
