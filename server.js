@@ -2597,6 +2597,43 @@ app.post('/api/contact', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Demo requests (public) ───────────────────────────────────────────────────
+app.post('/api/demo-request', async (req, res) => {
+  const { name, company, email, phone, clients, message } = req.body || {};
+  if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
+
+  const db = getDb();
+  db.exec(`CREATE TABLE IF NOT EXISTS demo_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT, company TEXT, email TEXT, phone TEXT,
+    clients TEXT, message TEXT,
+    status TEXT DEFAULT 'new',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  db.prepare(`INSERT INTO demo_requests (name, company, email, phone, clients, message)
+    VALUES (?, ?, ?, ?, ?, ?)`)
+    .run(name, company || '', email, phone || '', clients || '', message || '');
+
+  addNotification('contact_form',
+    `Demo aanvraag: ${name}${company ? ' — ' + company : ''}`,
+    `${clients ? clients + ' klanten · ' : ''}${email}`,
+    null, 'settings'
+  );
+
+  const settings = readJSON('settings.json') || {};
+  if (isResendReady(settings)) {
+    try {
+      await sendEmail({
+        to: settings.gmailAddress,
+        subject: `Nieuwe demo aanvraag van ${name}${company ? ' - ' + company : ''}`,
+        body: `Nieuwe demo aanvraag:\n\nNaam: ${name}\nBedrijf: ${company || '—'}\nEmail: ${email}\nTelefoon: ${phone || '—'}\nHuidig aantal klanten: ${clients || '—'}\n\nBericht:\n${message || '—'}`,
+        settings
+      });
+    } catch (_) { /* email failure is non-fatal */ }
+  }
+  res.json({ ok: true });
+});
+
 // ── /bestellen page (public) ──────────────────────────────────────────────────
 app.get('/bestellen', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'bestellen.html'));
@@ -12285,6 +12322,29 @@ app.post('/api/contacts/:id/to-lead', requireAdmin, async (req, res) => {
   contacts[idx].updatedAt = new Date().toISOString();
   writeJSON('contacts.json', contacts);
   res.json({ ok: true, leadId: lead.id });
+});
+
+// ── Demo requests admin CRUD ──────────────────────────────────────────────────
+app.get('/api/demo-requests', requireAdmin, (req, res) => {
+  const db = getDb();
+  try {
+    const rows = db.prepare('SELECT * FROM demo_requests ORDER BY created_at DESC').all();
+    res.json(rows);
+  } catch {
+    res.json([]);
+  }
+});
+
+app.patch('/api/demo-requests/:id', requireAdmin, (req, res) => {
+  const { status } = req.body || {};
+  if (!['new', 'contacted', 'rejected'].includes(status)) return res.status(400).json({ error: 'Ongeldige status' });
+  const db = getDb();
+  try {
+    db.prepare('UPDATE demo_requests SET status = ? WHERE id = ?').run(status, req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ─── Chrome extension download (zip) ──────────────────────────────────────────

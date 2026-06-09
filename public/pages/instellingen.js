@@ -847,6 +847,7 @@ function switchSettingsTab(id) {
   if (id === 'automation' || id === 'api') loadAiRateStatus?.();
   // Load audit log when tab opens
   if (id === 'auditlog') loadAuditLog();
+  if (id === 'demorequests') loadDemoRequests();
   if (id === 'components') loadComponentsTab();
   if (id === 'templates') loadTemplatesTab();
   if (id === 'changelog') loadChangelogTab();
@@ -877,6 +878,57 @@ async function loadAuditLog() {
   </div>`;
 }
 
+async function loadDemoRequests() {
+  const el = document.getElementById('demoRequestsContent');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--text-muted);font-size:13px">Laden...</div>';
+  const rows = await apiJSON('/api/demo-requests').catch(() => []) || [];
+  if (!rows.length) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:16px 0">Nog geen demo aanvragen ontvangen.</div>';
+    return;
+  }
+  const statusBadge = s => {
+    if (s === 'contacted') return `<span class="badge badge-green">Gecontacteerd</span>`;
+    if (s === 'rejected')  return `<span class="badge badge-gray">Afgewezen</span>`;
+    return `<span class="badge badge-blue">Nieuw</span>`;
+  };
+  el.innerHTML = `<div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="padding:8px 12px;text-align:left;color:var(--text-muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Naam</th>
+        <th style="padding:8px 12px;text-align:left;color:var(--text-muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Bedrijf</th>
+        <th style="padding:8px 12px;text-align:left;color:var(--text-muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Email</th>
+        <th style="padding:8px 12px;text-align:left;color:var(--text-muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Klanten</th>
+        <th style="padding:8px 12px;text-align:left;color:var(--text-muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Datum</th>
+        <th style="padding:8px 12px;text-align:left;color:var(--text-muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Status</th>
+        <th style="padding:8px 12px;"></th>
+      </tr></thead>
+      <tbody>${rows.map(r => `
+        <tr style="border-bottom:1px solid var(--border)" id="demorow-${r.id}">
+          <td style="padding:10px 12px;font-weight:600">${esc(r.name)}</td>
+          <td style="padding:10px 12px;color:var(--text-secondary)">${esc(r.company||'—')}</td>
+          <td style="padding:10px 12px"><a href="mailto:${esc(r.email)}" style="color:var(--accent)">${esc(r.email)}</a></td>
+          <td style="padding:10px 12px;color:var(--text-secondary)">${esc(r.clients||'—')}</td>
+          <td style="padding:10px 12px;color:var(--text-muted);font-size:12px">${r.created_at ? new Date(r.created_at).toLocaleDateString('nl-NL') : '—'}</td>
+          <td style="padding:10px 12px">${statusBadge(r.status)}</td>
+          <td style="padding:10px 12px">
+            <div style="display:flex;gap:6px">
+              ${r.status !== 'contacted' ? `<button class="btn btn-success btn-sm" onclick="setDemoStatus(${r.id},'contacted')"><i class="ti ti-check"></i></button>` : ''}
+              ${r.status !== 'rejected'  ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="setDemoStatus(${r.id},'rejected')"><i class="ti ti-x"></i></button>` : ''}
+            </div>
+          </td>
+        </tr>
+        ${r.message ? `<tr style="border-bottom:1px solid var(--border)"><td colspan="7" style="padding:0 12px 10px;font-size:12px;color:var(--text-muted);font-style:italic">${esc(r.message)}</td></tr>` : ''}
+      `).join('')}</tbody>
+    </table>
+  </div>`;
+}
+
+async function setDemoStatus(id, status) {
+  await apiFetch(`/api/demo-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+  loadDemoRequests();
+}
+
 async function renderSettings() {
   document.getElementById('appView').innerHTML = `
     <div class="page-header">
@@ -902,6 +954,7 @@ async function renderSettings() {
       <button class="settings-nav-item"         data-tab="blacklist" onclick="switchSettingsTab('blacklist')"> <i class="ti ti-ban"></i>           Blacklist</button>
       <button class="settings-nav-item"         data-tab="api"       onclick="switchSettingsTab('api')">       <i class="ti ti-api"></i>           API &amp; integraties</button>
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="team" onclick="switchSettingsTab('team')"><i class="ti ti-users"></i> Team</button>` : ''}
+      ${isAdmin() ? `<button class="settings-nav-item" data-tab="demorequests" onclick="switchSettingsTab('demorequests')"><i class="ti ti-calendar-event"></i> Demo aanvragen</button>` : ''}
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="auditlog" onclick="switchSettingsTab('auditlog')"><i class="ti ti-list-search"></i> Audit log</button>` : ''}
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="components" onclick="switchSettingsTab('components')"><i class="ti ti-puzzle"></i> 🧩 Components</button>` : ''}
       ${isAdmin() ? `<button class="settings-nav-item" data-tab="templates" onclick="switchSettingsTab('templates')"><i class="ti ti-palette"></i> 🎨 Templates</button>` : ''}
@@ -1645,6 +1698,16 @@ async function renderSettings() {
       ` : ''}
 
       <!-- ── Gevaarlijke zone ── -->
+      <div class="settings-tab-pane" id="stab-demorequests">
+        <div class="stg-section">
+          <div class="stg-section-header">
+            <div class="stg-title"><i class="ti ti-calendar-event" style="margin-right:6px"></i>Demo aanvragen</div>
+            <div class="stg-sub">Inkomende demo aanvragen via de landingspagina</div>
+          </div>
+          <div id="demoRequestsContent"><div style="color:var(--text-muted);font-size:13px">Laden...</div></div>
+        </div>
+      </div>
+
       <div class="settings-tab-pane" id="stab-auditlog">
         <div class="stg-section">
           <div class="stg-section-header">
