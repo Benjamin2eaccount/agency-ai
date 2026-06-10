@@ -1,0 +1,20 @@
+# CODEOWNERS — Agency AI
+# Frontend branch — Jayden (visuals only)
+public/style.css @DEFmexy
+public/landing.html @DEFmexy
+public/portal.html @DEFmexy
+public/login.html @DEFmexy
+public/register.html @DEFmexy
+public/superadmin.html @DEFmexy
+public/demo.html @DEFmexy
+public/index.html @DEFmexy
+electron/launcher/index.html @DEFmexy
+
+# Backend branch — Benjamin (logic only)
+server.js @Benjamin2eaccount
+database.js @Benjamin2eaccount
+lib/ @Benjamin2eaccount
+routes/ @Benjamin2eaccount
+migrations/ @Benjamin2eaccount
+scripts/ @Benjamin2eaccount
+public/core.js @Benjamin2eaccount
