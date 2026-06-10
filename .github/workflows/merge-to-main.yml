@@ -1,0 +1,39 @@
+name: Merge branches to main
+
+on:
+  workflow_dispatch:
+    inputs:
+      merge_frontend:
+        description: 'Merge frontend branch (Jayden)'
+        type: boolean
+        default: true
+      merge_backend:
+        description: 'Merge backend branch (Benjamin)'
+        type: boolean
+        default: true
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge frontend
+        if: ${{ inputs.merge_frontend }}
+        run: |
+          git merge origin/frontend --no-ff \
+            -m "Merge frontend (Jayden) into main"
+
+      - name: Merge backend
+        if: ${{ inputs.merge_backend }}
+        run: |
+          git merge origin/backend --no-ff \
+            -m "Merge backend (Benjamin) into main"
+
+      - name: Push to main
+        run: git push origin main
