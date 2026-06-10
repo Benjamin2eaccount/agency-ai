@@ -177,7 +177,69 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
       clientUploads:        (lead.clientUploads || []).map(({ content: _c, ...f }) => f),
       customDomain:         lead.customDomain || null,
       customDomainStatus:   lead.customDomainStatus || (lead.customDomain ? 'pending' : null),
+      // MEGA TASK 2 — timeline, revisions, NPS
+      projectStartedAt:     lead.projectStartedAt || lead.projectStartDate || null,
+      projectEndDate:       lead.projectEndDate || null,
+      revisionRequests:     (lead.revisionRequests || []).map(r => ({ id: r.id, service: r.service, text: r.text, priority: r.priority, status: r.status, createdAt: r.createdAt, resolvedAt: r.resolvedAt || null })),
+      npsEligible:          _npsEligible(lead),
+      npsSubmitted:         !!lead.npsResponse,
     });
+  });
+
+  // NPS survey appears 3 days after the last deliverable was approved
+  function _npsEligible(lead) {
+    if (lead.npsResponse) return false;
+    const approved = (lead.agentDeliverables || []).filter(d => d.approvedAt || d.status === 'approved');
+    if (!approved.length) return false;
+    const last = approved
+      .map(d => new Date(d.approvedAt || d.builtAt || 0).getTime())
+      .sort((a, b) => b - a)[0];
+    return last && (Date.now() - last) >= 3 * 86400000;
+  }
+
+  // ── POST /api/portal/:token/revision ────────────────────────────────────────
+  // Client requests a revision on a deliverable: text + priority (+ optional file ref)
+  router.post('/:token/revision', requirePortalAuth, (req, res) => {
+    const { service, text, priority } = req.body || {};
+    if (!text || !text.trim()) return res.status(400).json({ error: 'Beschrijf wat er moet veranderen' });
+    const prio = ['Laag', 'Normaal', 'Hoog'].includes(priority) ? priority : 'Normaal';
+    const leads = readJSON('leads.json') || [];
+    const lead  = leads.find(l => l.portalToken === req.params.token);
+    if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd' });
+
+    lead.revisionRequests = lead.revisionRequests || [];
+    const rev = {
+      id: 'rev-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      service: (service || 'Algemeen').substring(0, 120),
+      text: text.trim().substring(0, 3000),
+      priority: prio,
+      status: 'Ingediend', // Ingediend → In behandeling → Opgelost
+      createdAt: new Date().toISOString(),
+    };
+    lead.revisionRequests.push(rev);
+    addLeadHistory(leads, lead.id, { event: 'revision', label: `Revisie aangevraagd (${prio}): ${rev.text.substring(0, 60)}${rev.text.length > 60 ? '...' : ''}` });
+    writeJSON('leads.json', leads);
+    addNotification('client_question', `🔁 Revisie aanvraag: ${lead.companyName}`, `${rev.service} — ${rev.text.substring(0, 80)}`, lead.id, `project:${lead.id}`);
+    res.json({ ok: true, revision: rev });
+  });
+
+  // ── POST /api/portal/:token/nps ─────────────────────────────────────────────
+  // NPS survey: score 1-10 + open feedback. Stored once per lead.
+  router.post('/:token/nps', requirePortalAuth, (req, res) => {
+    const { score, feedback } = req.body || {};
+    const n = parseInt(score, 10);
+    if (!n || n < 1 || n > 10) return res.status(400).json({ error: 'Score 1-10 verplicht' });
+    const leads = readJSON('leads.json') || [];
+    const lead  = leads.find(l => l.portalToken === req.params.token);
+    if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    if (lead.npsResponse) return res.status(400).json({ error: 'Al ingevuld — bedankt!' });
+
+    lead.npsResponse = { score: n, feedback: (feedback || '').substring(0, 2000), submittedAt: new Date().toISOString() };
+    addLeadHistory(leads, lead.id, { event: 'nps', label: `NPS score: ${n}/10` });
+    writeJSON('leads.json', leads);
+    addNotification('client_question', `⭐ NPS van ${lead.companyName}: ${n}/10`, (feedback || '').substring(0, 100) || 'Geen toelichting', lead.id, `project:${lead.id}`);
+    res.json({ ok: true });
   });
 
   // ── POST /api/portal/:token/set-password ────────────────────────────────────

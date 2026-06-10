@@ -973,6 +973,7 @@ async function renderProjectPage() {
           ${!running && lead.intakeSubmittedAt && isAdmin() && deliverables.length ? `<button class="btn btn-ghost btn-sm" onclick="buildAllServicesForLead('${esc(lead.id)}')"><i class="ti ti-refresh"></i> Opnieuw</button>` : ''}
         </div>
         ${overallProgressBar}
+        ${buildRevisionSection()}
         <div style="display:flex;gap:20px;align-items:flex-start">
           <div style="flex:1;min-width:0">
             ${liveCards}
@@ -980,6 +981,32 @@ async function renderProjectPage() {
           </div>
           ${rightPanel}
         </div>
+      </div>`;
+  }
+
+  // ── Revisie aanvragen van de klant (MEGA TASK 2) ──────────────────────────
+  function buildRevisionSection() {
+    const revs = lead.revisionRequests || [];
+    if (!revs.length) return '';
+    const open = revs.filter(r => r.status !== 'Opgelost');
+    const statusColor = { 'Ingediend': 'var(--warning)', 'In behandeling': 'var(--accent)', 'Opgelost': 'var(--success)' };
+    const prioBadge = p => p === 'Hoog' ? '🔴' : p === 'Laag' ? '🟢' : '🟡';
+    const rows = revs.map(r => `
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:9px;margin-bottom:7px;background:var(--surface)">
+        <span title="Prioriteit: ${esc(r.priority)}" style="flex-shrink:0;font-size:13px">${prioBadge(r.priority)}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:2px">${esc(r.service || 'Algemeen')} · <span style="font-weight:500;color:var(--text-muted)">${formatDateTime ? formatDateTime(r.createdAt) : r.createdAt}</span></div>
+          <div style="font-size:13px;color:var(--text-primary);line-height:1.5;white-space:pre-line">${esc(r.text)}</div>
+        </div>
+        ${isAdmin() ? `
+        <select onchange="updateRevisionStatus('${esc(lead.id)}','${esc(r.id)}',this.value)" style="flex-shrink:0;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;color:${statusColor[r.status] || 'var(--text-secondary)'};font-weight:600;background:var(--surface)">
+          ${['Ingediend','In behandeling','Opgelost'].map(s => `<option value="${s}"${r.status === s ? ' selected' : ''}>${s}</option>`).join('')}
+        </select>` : `<span style="flex-shrink:0;font-size:11px;font-weight:700;color:${statusColor[r.status] || 'var(--text-secondary)'}">${esc(r.status)}</span>`}
+      </div>`).join('');
+    return `
+      <div style="margin-bottom:18px;padding:14px 16px;border:1.5px solid ${open.length ? '#fcd34d' : 'var(--border)'};border-radius:12px;background:${open.length ? 'linear-gradient(135deg,#fffbeb,#fefce8)' : 'var(--surface)'}">
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text-primary)">🔁 Revisie aanvragen van klant ${open.length ? `<span style="background:var(--danger);color:#fff;border-radius:99px;font-size:11px;padding:1px 8px;margin-left:4px">${open.length} open</span>` : ''}</div>
+        ${rows}
       </div>`;
   }
 
@@ -2349,6 +2376,19 @@ window.approveAllDeliverables = async function(leadId) {
   const freshLeads = await apiJSON('/api/leads');
   if (freshLeads) state.leads = freshLeads;
   renderProjectPage().then(() => switchProjectTab('building'));
+};
+
+// MEGA TASK 2 — update revision request status (Ingediend → In behandeling → Opgelost)
+window.updateRevisionStatus = async function(leadId, revId, status) {
+  const res = await api(`/api/leads/${leadId}/revisions/${revId}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+  if (res?.ok) {
+    const lead = state.leads.find(l => l.id === leadId);
+    const rev = (lead?.revisionRequests || []).find(r => r.id === revId);
+    if (rev) { rev.status = status; if (status === 'Opgelost') rev.resolvedAt = new Date().toISOString(); }
+    toast(`Revisie status: ${status}`, 'success');
+  } else {
+    toast('Status wijzigen mislukt', 'error');
+  }
 };
 
 window.sendAllDeliverablesToClient = async function(leadId) {

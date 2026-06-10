@@ -34,6 +34,8 @@
     .phase-dot { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; border: 2px solid var(--border); background: #fff; color: var(--muted); position: relative; z-index: 1; }
     .phase-dot.done { background: var(--success); border-color: var(--success); color: #fff; }
     .phase-dot.current { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .phase-dot.pulse { animation: phasePulse 2s ease-in-out infinite; }
+    @keyframes phasePulse { 0%,100% { box-shadow: 0 0 0 0 rgba(37,99,235,0.45); } 50% { box-shadow: 0 0 0 7px rgba(37,99,235,0); } }
     .phase-label { font-size: 10px; font-weight: 500; color: var(--muted); margin-top: 7px; text-align: center; max-width: 56px; line-height: 1.3; }
     .phase-label.done { color: var(--success); }
     .phase-label.current { color: var(--accent); font-weight: 600; }
@@ -347,13 +349,31 @@
     }
 
     // ── Phase Tracker ────────────────────────────────────────────────────
-    function PhaseTracker({ current }) {
+    // Interactive project timeline — completed = green check, current = animated
+    // blue indicator, upcoming = grey. Click a phase for details + estimated date.
+    const PHASE_DETAILS = {
+      1: 'We verzamelen alle informatie via het intakeformulier en analyseren uw wensen.',
+      2: 'Onze specialisten werken aan uw leveringen: ontwerp, bouw en content.',
+      3: 'U beoordeelt de eerste versies en geeft feedback. Revisies worden verwerkt.',
+      4: 'De definitieve versies worden opgeleverd en geïnstalleerd.',
+      5: 'Het project is afgerond — we blijven beschikbaar voor support en vervolgwerk.',
+    };
+    function PhaseTracker({ current, data }) {
+      const [openPhase, setOpenPhase] = useState(null);
       const pct = Math.round(((current - 1) / (PHASES.length - 1)) * 100);
       const CheckIcon = () => (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" width="12" height="12">
           <polyline points="20 6 9 17 4 12"/>
         </svg>
       );
+      // Estimated completion per phase: spread project duration evenly over the 5 phases
+      function phaseEta(num) {
+        const start = data?.projectStartedAt ? new Date(data.projectStartedAt).getTime() : null;
+        const end   = data?.projectEndDate ? new Date(data.projectEndDate).getTime()
+                    : data?.estimatedCompletion ? new Date(data.estimatedCompletion).getTime() : null;
+        if (!start || !end || end <= start) return null;
+        return new Date(start + ((end - start) / PHASES.length) * num);
+      }
       return (
         <>
           <div className="phase-track">
@@ -361,8 +381,8 @@
               const done = p.num < current, cur = p.num === current;
               return (
                 <React.Fragment key={p.num}>
-                  <div className="phase-step">
-                    <div className={`phase-dot ${done ? 'done' : cur ? 'current' : ''}`}>
+                  <div className="phase-step" onClick={() => setOpenPhase(openPhase === p.num ? null : p.num)} style={{cursor:'pointer'}} title="Klik voor details">
+                    <div className={`phase-dot ${done ? 'done' : cur ? 'current pulse' : ''}`}>
                       {done ? <CheckIcon /> : p.num}
                     </div>
                     <div className={`phase-label ${done ? 'done' : cur ? 'current' : ''}`}>{p.label}</div>
@@ -378,6 +398,20 @@
           <div className="phase-caption">
             Fase: <strong>Fase {current} — {PHASES[current - 1]?.label}</strong>
           </div>
+          {openPhase && (
+            <div style={{marginTop:10,padding:'12px 14px',background:openPhase < current ? '#f0fdf4' : openPhase === current ? '#eff6ff' : '#f9fafb',border:`1px solid ${openPhase < current ? '#bbf7d0' : openPhase === current ? '#bfdbfe' : '#e5e7eb'}`,borderRadius:10,fontSize:13,lineHeight:1.6}}>
+              <div style={{fontWeight:700,marginBottom:3}}>
+                {openPhase < current ? '✅' : openPhase === current ? '🔵' : '⚪️'} Fase {openPhase} — {PHASES[openPhase - 1]?.label}
+                <span style={{fontWeight:500,color:'#6b7280',marginLeft:8,fontSize:12}}>
+                  {openPhase < current ? 'Afgerond' : openPhase === current ? 'Nu bezig' : 'Gepland'}
+                </span>
+              </div>
+              <div style={{color:'#374151'}}>{PHASE_DETAILS[openPhase]}</div>
+              {phaseEta(openPhase) && openPhase >= current && (
+                <div style={{marginTop:6,fontSize:12,color:'#6b7280'}}>Verwachte afronding: <strong>{fmt(phaseEta(openPhase).toISOString())}</strong></div>
+              )}
+            </div>
+          )}
         </>
       );
     }
@@ -408,6 +442,46 @@
             <ChevronSvg />
           </div>
           {open && <div className="faq-a">{answer}</div>}
+        </div>
+      );
+    }
+
+    // ── NPS Survey — appears 3 days after last deliverable approval ───────
+    const NPS_EMOJI = ['😡','😡','😞','😞','😐','😐','🙂','🙂','😃','🤩'];
+    function NpsSurvey({ token }) {
+      const [score, setScore]       = useState(null);
+      const [feedback, setFeedback] = useState('');
+      const [done, setDone]         = useState(false);
+      const [busy, setBusy]         = useState(false);
+      async function submit() {
+        if (!score) return;
+        setBusy(true);
+        const r = await portalFetch(`/api/portal/${token}/nps`, { method: 'POST', body: JSON.stringify({ score, feedback }) });
+        setBusy(false);
+        if (r.ok) setDone(true);
+      }
+      if (done) return (
+        <div style={{padding:'16px 18px',background:'#f0fdf4',border:'1.5px solid #bbf7d0',borderRadius:12,marginBottom:14,fontSize:14,fontWeight:600,color:'#15803d'}}>
+          🙏 Bedankt voor uw feedback!
+        </div>
+      );
+      return (
+        <div style={{padding:'18px 20px',background:'linear-gradient(135deg,#faf5ff,#f3e8ff)',border:'1.5px solid #d8b4fe',borderRadius:12,marginBottom:14}}>
+          <div style={{fontSize:15,fontWeight:800,marginBottom:4}}>Hoe tevreden ben je met de oplevering?</div>
+          <div style={{fontSize:12,color:'#6b7280',marginBottom:12}}>Uw mening helpt ons beter te worden.</div>
+          <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:12}}>
+            {[1,2,3,4,5,6,7,8,9,10].map(n => (
+              <button key={n} onClick={() => setScore(n)} title={`${n}/10`}
+                style={{width:38,height:42,borderRadius:8,cursor:'pointer',fontFamily:'inherit',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:1,
+                  border:`1.5px solid ${score===n?'#9333ea':'#e5e7eb'}`,background:score===n?'#9333ea':'#fff',color:score===n?'#fff':'#374151',fontWeight:700,fontSize:12}}>
+                <span style={{fontSize:13}}>{NPS_EMOJI[n-1]}</span>{n}
+              </button>
+            ))}
+          </div>
+          {score && <>
+            <textarea value={feedback} onChange={e => setFeedback(e.target.value)} placeholder="Wat kan beter? (optioneel)" style={{width:'100%',minHeight:60,padding:10,border:'1.5px solid #e5e7eb',borderRadius:8,fontFamily:'inherit',fontSize:13,resize:'vertical',marginBottom:10}} />
+            <button onClick={submit} disabled={busy} style={{padding:'10px 22px',background:'#9333ea',color:'#fff',border:'none',borderRadius:9,fontSize:14,fontWeight:700,cursor:'pointer',fontFamily:'inherit',opacity:busy?0.6:1}}>{busy ? 'Versturen...' : 'Verstuur'}</button>
+          </>}
         </div>
       );
     }
@@ -475,8 +549,28 @@
         </svg>
       );
 
+      // Project health indicator: phases on track + invoices paid + open revisions
+      const overdueInv = (data.payments || []).filter(p => p.status !== 'paid' && p.status !== 'cancelled' && p.dueDate && new Date(p.dueDate) < new Date()).length;
+      const openRevs   = (data.revisionRequests || []).filter(r => r.status !== 'Opgelost').length;
+      const health     = overdueInv > 0 ? 'attention' : openRevs > 1 ? 'busy' : 'good';
+      const healthCfg  = {
+        good:      { color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0', icon: '🟢', label: 'Project loopt op schema', sub: 'Alles verloopt volgens plan.' },
+        busy:      { color: '#b45309', bg: '#fffbeb', border: '#fde68a', icon: '🟡', label: 'Revisies in behandeling', sub: `${openRevs} revisie-aanvragen worden verwerkt.` },
+        attention: { color: '#b91c1c', bg: '#fef2f2', border: '#fecaca', icon: '🔴', label: 'Actie nodig', sub: `${overdueInv} factuur${overdueInv > 1 ? 'en' : ''} over de vervaldatum.` },
+      }[health];
+
       return (
         <div>
+          <div style={{display:'flex',alignItems:'center',gap:10,padding:'12px 16px',background:healthCfg.bg,border:`1.5px solid ${healthCfg.border}`,borderRadius:10,marginBottom:14}}>
+            <span style={{fontSize:18}}>{healthCfg.icon}</span>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:healthCfg.color}}>{healthCfg.label}</div>
+              <div style={{fontSize:12,color:'#6b7280'}}>{healthCfg.sub}</div>
+            </div>
+          </div>
+
+          {data.npsEligible && !data.npsSubmitted && <NpsSurvey token={token} />}
+
           {data.portalWelcomeMessage && (
             <div className="inner-section" style={{background:'linear-gradient(135deg,#eff6ff,#f8faff)',border:'1.5px solid #bfdbfe',borderRadius:10,padding:'14px 16px'}}>
               <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
@@ -738,12 +832,71 @@
     }
 
     // ── Deliverable Card ─────────────────────────────────────────────────
-    function DeliverableCard({ d, token }) {
+    // ── Revisie aanvragen modal ───────────────────────────────────────────
+    function RevisionModal({ token, service, onClose, onSubmitted }) {
+      const [text, setText]   = useState('');
+      const [prio, setPrio]   = useState('Normaal');
+      const [busy, setBusy]   = useState(false);
+      const [err, setErr]     = useState('');
+      async function submit() {
+        if (!text.trim()) { setErr('Beschrijf wat er moet veranderen.'); return; }
+        setBusy(true); setErr('');
+        const r = await portalFetch(`/api/portal/${token}/revision`, {
+          method: 'POST',
+          body: JSON.stringify({ service, text, priority: prio })
+        });
+        setBusy(false);
+        if (r.ok) { onSubmitted(); onClose(); }
+        else { const e2 = await r.json().catch(() => ({})); setErr(e2.error || 'Versturen mislukt.'); }
+      }
+      return (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={onClose}>
+          <div style={{background:'#fff',borderRadius:14,padding:24,width:'100%',maxWidth:440}} onClick={e => e.stopPropagation()}>
+            <div style={{fontSize:16,fontWeight:800,marginBottom:4}}>🔁 Revisie aanvragen</div>
+            <div style={{fontSize:12,color:'#6b7280',marginBottom:14}}>{service}</div>
+            {err && <div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'8px 12px',color:'#dc2626',fontSize:12,marginBottom:10}}>{err}</div>}
+            <label style={{display:'block',fontSize:12,fontWeight:700,marginBottom:5}}>Wat moet er veranderen?</label>
+            <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Beschrijf zo concreet mogelijk wat u anders wilt..." style={{width:'100%',minHeight:100,padding:10,border:'1.5px solid #e5e7eb',borderRadius:8,fontFamily:'inherit',fontSize:13,resize:'vertical',marginBottom:12}} />
+            <label style={{display:'block',fontSize:12,fontWeight:700,marginBottom:6}}>Prioriteit</label>
+            <div style={{display:'flex',gap:6,marginBottom:16}}>
+              {['Laag','Normaal','Hoog'].map(p => (
+                <button key={p} onClick={() => setPrio(p)} style={{flex:1,padding:'8px 0',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit',border:`1.5px solid ${prio===p ? 'var(--accent)' : '#e5e7eb'}`,background:prio===p?'var(--accent)':'#fff',color:prio===p?'#fff':'#374151'}}>
+                  {p === 'Laag' ? '🟢' : p === 'Normaal' ? '🟡' : '🔴'} {p}
+                </button>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={submit} disabled={busy} style={{flex:1,padding:'11px 0',background:'var(--accent)',color:'#fff',border:'none',borderRadius:9,fontSize:14,fontWeight:700,cursor:'pointer',fontFamily:'inherit',opacity:busy?0.6:1}}>{busy ? 'Versturen...' : 'Verstuur aanvraag'}</button>
+              <button onClick={onClose} style={{padding:'11px 16px',background:'#fff',border:'1.5px solid #e5e7eb',borderRadius:9,fontSize:14,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Annuleer</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function RevStatusBadge({ status }) {
+      const map = { 'Ingediend': ['#fef3c7','#b45309'], 'In behandeling': ['#dbeafe','#1d4ed8'], 'Opgelost': ['#dcfce7','#15803d'] };
+      const [bg, color] = map[status] || ['#f3f4f6','#374151'];
+      return <span style={{background:bg,color,borderRadius:99,fontSize:11,fontWeight:700,padding:'2px 9px'}}>{status}</span>;
+    }
+
+    function DeliverableCard({ d, token, revisions = [], onRevisionSubmitted }) {
       const [platform, setPlatform] = useState(0);
+      const [viewMode, setViewMode] = useState('desktop'); // desktop | mobile
+      const [showRevModal, setShowRevModal] = useState(false);
+      const [revSent, setRevSent] = useState(false);
       const absUrl = !d.url ? '' : (d.url.startsWith('http') ? d.url : window.location.origin + d.url);
       const embedCode = absUrl ? `<iframe src="${absUrl}" width="100%" height="700" frameborder="0" style="border:none;border-radius:8px"></iframe>` : '';
       const typeIcon = d.type === 'code' ? '💻' : d.deliverableType === 'strategy' ? '📊' : '📄';
       const typeLabel = d.type === 'code' ? 'Interactieve pagina' : d.deliverableType === 'strategy' ? 'Strategiedocument' : 'Document';
+      const myRevisions = revisions.filter(r => r.service === d.service);
+
+      function downloadDeliverable() {
+        if (!absUrl) return;
+        const a = document.createElement('a');
+        a.href = absUrl; a.download = (d.service || 'levering').replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '.html';
+        document.body.appendChild(a); a.click(); a.remove();
+      }
 
       const PLATFORMS = [
         { name: 'WordPress', steps: 'Ga naar uw WordPress dashboard → Bewerk de pagina → voeg blok "Aangepaste HTML" toe → Plak onderstaande code en publiceer:' },
@@ -764,10 +917,33 @@
           </div>
 
           {absUrl && d.type === 'code' && <>
-            <div style={{border:'1px solid #e5e7eb',borderRadius:6,overflow:'hidden',marginTop:10}}>
-              <iframe src={absUrl} style={{width:'100%',height:300,border:'none',display:'block'}} loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms" />
+            <div style={{display:'flex',gap:6,marginTop:10,marginBottom:8,alignItems:'center'}}>
+              <button onClick={() => setViewMode('desktop')} title="Desktop weergave" style={{fontSize:12,padding:'5px 12px',borderRadius:6,cursor:'pointer',fontFamily:'inherit',border:`1.5px solid ${viewMode==='desktop'?'var(--accent)':'#e5e7eb'}`,background:viewMode==='desktop'?'var(--accent)':'#fff',color:viewMode==='desktop'?'#fff':'#374151',fontWeight:600}}>🖥 Desktop</button>
+              <button onClick={() => setViewMode('mobile')} title="Mobiele weergave (375px)" style={{fontSize:12,padding:'5px 12px',borderRadius:6,cursor:'pointer',fontFamily:'inherit',border:`1.5px solid ${viewMode==='mobile'?'var(--accent)':'#e5e7eb'}`,background:viewMode==='mobile'?'var(--accent)':'#fff',color:viewMode==='mobile'?'#fff':'#374151',fontWeight:600}}>📱 Mobiel</button>
+              <span style={{flex:1}} />
+              <a href={absUrl} target="_blank" rel="noopener" style={{fontSize:12,padding:'5px 12px',borderRadius:6,border:'1.5px solid #e5e7eb',background:'#fff',color:'#374151',textDecoration:'none',fontWeight:600}}>⛶ Volledig scherm</a>
+              <button onClick={downloadDeliverable} style={{fontSize:12,padding:'5px 12px',borderRadius:6,border:'1.5px solid #e5e7eb',background:'#fff',color:'#374151',cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>⬇ Download</button>
             </div>
-            <a href={absUrl} target="_blank" rel="noopener" style={{display:'inline-flex',alignItems:'center',gap:6,background:'#16a34a',color:'#fff',padding:'10px 18px',borderRadius:8,textDecoration:'none',fontWeight:600,fontSize:14,marginBottom:14,marginTop:12}}>🔗 Open mijn website →</a>
+            <div style={{border:'1px solid #e5e7eb',borderRadius:6,overflow:'hidden',background:'#f3f4f6',display:'flex',justifyContent:'center'}}>
+              <iframe src={absUrl} style={{width:viewMode==='mobile'?375:'100%',maxWidth:'100%',height:viewMode==='mobile'?480:300,border:'none',display:'block',background:'#fff',transition:'width 0.25s'}} loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms" />
+            </div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginTop:12,marginBottom:14}}>
+              <a href={absUrl} target="_blank" rel="noopener" style={{display:'inline-flex',alignItems:'center',gap:6,background:'#16a34a',color:'#fff',padding:'10px 18px',borderRadius:8,textDecoration:'none',fontWeight:600,fontSize:14}}>🔗 Open mijn website →</a>
+              <button onClick={() => setShowRevModal(true)} style={{display:'inline-flex',alignItems:'center',gap:6,background:'#fff',border:'1.5px solid #f59e0b',color:'#b45309',padding:'10px 16px',borderRadius:8,fontWeight:600,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>🔁 Revisie aanvragen</button>
+              {revSent && <span style={{fontSize:12,color:'#16a34a',fontWeight:700}}>✓ Aanvraag verstuurd!</span>}
+            </div>
+            {myRevisions.length > 0 && (
+              <div style={{marginBottom:14}}>
+                {myRevisions.map(r => (
+                  <div key={r.id} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',background:'#fff',border:'1px solid #e5e7eb',borderRadius:8,marginBottom:5,fontSize:12}}>
+                    <RevStatusBadge status={r.status} />
+                    <span style={{flex:1,color:'#374151',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.text}</span>
+                    <span style={{color:'#9ca3af',fontSize:11,flexShrink:0}}>{fmtS(r.createdAt)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {showRevModal && <RevisionModal token={token} service={d.service} onClose={() => setShowRevModal(false)} onSubmitted={() => { setRevSent(true); onRevisionSubmitted && onRevisionSubmitted(); }} />}
             <details style={{border:'1px solid #e5e7eb',borderRadius:8,overflow:'hidden'}}>
               <summary style={{fontSize:13,fontWeight:600,color:'#374151',cursor:'pointer',padding:'12px 14px',background:'#f9fafb',listStyle:'none',display:'flex',alignItems:'center',gap:6}}>
                 🔧 Installatie instructies <span style={{fontSize:11,color:'#6b7280',fontWeight:400}}>(klik om uit te klappen)</span>
@@ -870,7 +1046,7 @@
           {approvedDelivs.length > 0 && (
             <div className="inner-section">
               <div className="inner-label">Gebouwde leveringen</div>
-              {approvedDelivs.map((d, i) => <DeliverableCard key={i} d={d} token={token} />)}
+              {approvedDelivs.map((d, i) => <DeliverableCard key={i} d={d} token={token} revisions={data.revisionRequests || []} />)}
             </div>
           )}
 
@@ -972,6 +1148,28 @@
                   <PayBadge payment={p} />
                   {p.dueDate && <span>Vervaldatum: {fmtS(p.dueDate)}</span>}
                   {p.paidAt  && <span style={{color:'#16a34a'}}>✓ Betaald op {fmtS(p.paidAt)}</span>}
+                </div>
+                {/* Payment status timeline: aangemaakt → verzonden → betaald/te laat */}
+                <div style={{display:'flex',alignItems:'center',gap:0,marginTop:10}}>
+                  {(() => {
+                    const steps = [
+                      { label: 'Aangemaakt', done: true },
+                      { label: 'Verzonden', done: ['sent','paid'].includes(p.status) || !!p.paidAt },
+                      ov ? { label: 'Te laat', done: true, danger: true } : { label: 'Betaald', done: p.status === 'paid' || !!p.paidAt },
+                    ];
+                    return steps.map((s, si) => (
+                      <React.Fragment key={si}>
+                        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3,minWidth:62}}>
+                          <div style={{width:14,height:14,borderRadius:'50%',border:`2px solid ${s.danger?'#ef4444':s.done?'#16a34a':'#d1d5db'}`,background:s.danger?'#ef4444':s.done?'#16a34a':'#fff',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                            {s.done && !s.danger && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>}
+                            {s.danger && <span style={{color:'#fff',fontSize:8,fontWeight:900,lineHeight:1}}>!</span>}
+                          </div>
+                          <span style={{fontSize:10,fontWeight:600,color:s.danger?'#dc2626':s.done?'#15803d':'#9ca3af'}}>{s.label}</span>
+                        </div>
+                        {si < steps.length - 1 && <div style={{flex:1,height:2,background:steps[si+1].done?'#16a34a':'#e5e7eb',marginBottom:14}} />}
+                      </React.Fragment>
+                    ));
+                  })()}
                 </div>
                 {p.paymentUrl && p.status !== 'paid' && p.status !== 'cancelled' && (
                   <a href={p.paymentUrl} target="_blank" rel="noopener" className="invoice-pay-btn">
@@ -1165,9 +1363,10 @@
       }, [token, open]);
 
       useEffect(() => {
-        pollRef.current = setInterval(pollChat, 30000);
+        // Near-real-time: poll every 8s while the panel is open, 25s when closed
+        pollRef.current = setInterval(pollChat, open ? 8000 : 25000);
         return () => clearInterval(pollRef.current);
-      }, [pollChat]);
+      }, [pollChat, open]);
 
       useEffect(() => {
         if (open && messagesRef.current) {
@@ -1187,6 +1386,34 @@
           });
           await pollChat();
         } catch { alert('Versturen mislukt.'); }
+      }
+
+      // File upload in chat (images + PDF) — uploads via the portal upload
+      // route, then posts a chat message referencing the file.
+      const chatFileRef = useRef(null);
+      async function sendFile(file) {
+        if (!file) return;
+        const allowed = ['image/jpeg','image/png','image/svg+xml','image/gif','image/webp','application/pdf'];
+        if (!allowed.includes(file.type)) { alert('Alleen afbeeldingen en PDF toegestaan.'); return; }
+        if (file.size > 10 * 1024 * 1024) { alert('Bestand te groot (max 10MB).'); return; }
+        const dataBase64 = await new Promise((resolve, reject) => {
+          const fr = new FileReader();
+          fr.onload = () => resolve(fr.result);
+          fr.onerror = reject;
+          fr.readAsDataURL(file);
+        });
+        try {
+          const up = await portalFetch(`/api/portal/${token}/upload`, {
+            method: 'POST',
+            body: JSON.stringify({ filename: file.name, mimeType: file.type, dataBase64, size: file.size })
+          });
+          if (!up.ok) { const e2 = await up.json().catch(() => ({})); alert(e2.error || 'Upload mislukt.'); return; }
+          await portalFetch(`/api/portal/${token}/message`, {
+            method: 'POST',
+            body: JSON.stringify({ name: chatName || 'Klant', message: `📎 Bestand gedeeld: ${file.name}` })
+          });
+          await pollChat();
+        } catch { alert('Upload mislukt.'); }
       }
 
       return (
@@ -1218,6 +1445,8 @@
                   onChange={e => { setChatName(e.target.value); localStorage.setItem('portalChatName', e.target.value); }} />
               </div>
               <div className="chat-input-area">
+                <input ref={chatFileRef} type="file" accept="image/*,application/pdf" style={{display:'none'}} onChange={e => { sendFile(e.target.files[0]); e.target.value = ''; }} />
+                <button onClick={() => chatFileRef.current?.click()} title="Bestand bijvoegen (afbeelding of PDF)" style={{background:'none',border:'none',cursor:'pointer',fontSize:17,padding:'0 4px',color:'#6b7280'}}>📎</button>
                 <textarea
                   value={input}
                   onChange={e => setInput(e.target.value)}
@@ -1440,6 +1669,56 @@
       );
     }
 
+    // ── Diensten Dashboard — overview of all active services ──────────────
+    function DienstenTab({ data, onUpgrade }) {
+      const svcs = (data.projectServices?.length ? data.projectServices : data.services) || [];
+      const delivs = data.approvedDeliverables || [];
+      const [info, setInfo] = useState(null);
+      if (!svcs.length) return (
+        <div className="empty-state">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+          <p>Nog geen actieve diensten</p>
+        </div>
+      );
+      function svcStatus(s) {
+        const match = delivs.find(d => (d.service || '').toLowerCase() === (s.name || '').toLowerCase());
+        if (match) return { label: 'Opgeleverd', color: '#15803d', bg: '#dcfce7', last: match.approvedAt || match.builtAt, next: s.billing !== 'eenmalig' ? 'Doorlopende updates' : null };
+        const phase = data.currentPhase || 1;
+        if (phase >= 2) return { label: 'In productie', color: '#1d4ed8', bg: '#dbeafe', last: data.projectStartedAt, next: 'Eerste oplevering volgt' };
+        return { label: 'Gepland', color: '#6b7280', bg: '#f3f4f6', last: null, next: 'Start na intake' };
+      }
+      return (
+        <div>
+          <div className="inner-label" style={{marginBottom:10}}>Actieve diensten ({svcs.length})</div>
+          {svcs.map((s, i) => {
+            const st = svcStatus(s);
+            return (
+              <div key={i} style={{border:'1px solid #e5e7eb',borderRadius:10,padding:'14px 16px',marginBottom:10,background:'#fff'}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
+                  <div style={{flex:1,minWidth:180}}>
+                    <div style={{fontSize:14,fontWeight:700}}>{s.name}</div>
+                    <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>
+                      €{(s.price||0).toLocaleString('nl-NL')}{s.billing==='eenmalig'?' eenmalig':'/mnd'}
+                      {st.last && <> · Laatste update: {fmtS(st.last)}</>}
+                      {st.next && <> · {st.next}</>}
+                    </div>
+                  </div>
+                  <span style={{background:st.bg,color:st.color,borderRadius:99,fontSize:11,fontWeight:700,padding:'3px 11px',whiteSpace:'nowrap'}}>{st.label}</span>
+                  <button onClick={() => setInfo(info === i ? null : i)} style={{fontSize:12,padding:'6px 13px',borderRadius:7,border:'1.5px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>Meer info</button>
+                </div>
+                {info === i && (
+                  <div style={{marginTop:10,padding:'10px 12px',background:'#f9fafb',borderRadius:8,fontSize:13,color:'#374151',lineHeight:1.6}}>
+                    {s.description || 'Deze dienst is onderdeel van uw pakket. Vragen? Stuur ons een bericht via de chat.'}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <button onClick={onUpgrade} style={{marginTop:8,width:'100%',padding:'13px 0',background:'var(--accent)',color:'#fff',border:'none',borderRadius:10,fontSize:14,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>+ Dienst toevoegen of upgraden</button>
+        </div>
+      );
+    }
+
     function App() {
       const [data,      setData]      = useState(null);
       const [authState, setAuthState] = useState(null); // null | { requiresSetup, requiresLogin, companyName, branding }
@@ -1529,6 +1808,7 @@
 
       const tabs = [
         { key: 'overview',   label: 'Overzicht' },
+        { key: 'diensten',   label: 'Diensten' },
         { key: 'leveringen', label: 'Leveringen' },
         { key: 'facturen',   label: <>Facturen{openCount > 0 && <span style={{background:'#ef4444',color:'#fff',borderRadius:99,fontSize:10,padding:'1px 5px',fontWeight:700,marginLeft:3}}>{openCount}</span>}</> },
         { key: 'documenten', label: <>Documenten{docs.length > 0 && <span style={{background:'var(--accent)',color:'#fff',borderRadius:99,fontSize:10,padding:'1px 5px',fontWeight:700,marginLeft:3}}>{docs.length}</span>}</> },
@@ -1555,7 +1835,7 @@
           <div className="project-banner">
             <div className="company-name">{data.companyName}</div>
             <div className="company-sub">Bijgewerkt door {data.myName || data.agencyName}</div>
-            <PhaseTracker current={cur} />
+            <PhaseTracker current={cur} data={data} />
             {data.estimatedCompletion && (
               <div className="date-row"><CalSvg /> Verwachte afronddatum: <strong>{fmt(data.estimatedCompletion)}</strong></div>
             )}
@@ -1581,6 +1861,7 @@
             </nav>
             <div className="tab-pane">
               {activeTab === 'overview'   && <OverzichtTab data={data} token={token} />}
+              {activeTab === 'diensten'   && <DienstenTab data={data} onUpgrade={() => setActiveTab('meer')} />}
               {activeTab === 'leveringen' && <LeveringenTab data={data} token={token} />}
               {activeTab === 'facturen'   && <FacturenTab payments={payments} />}
               {activeTab === 'documenten' && <DocumentenTab docs={docs} />}

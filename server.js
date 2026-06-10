@@ -4178,6 +4178,13 @@ app.get('/api/stats', (req, res) => {
       const today = new Date().toISOString().slice(0, 10);
       const entry = (stored.weeklyData || []).find(w => w.date === today);
       return entry ? entry.count : 0;
+    })(),
+    // MEGA TASK 2 — NPS results from portal surveys
+    nps: (() => {
+      const responses = leads.filter(l => l.npsResponse?.score).map(l => ({ score: l.npsResponse.score, feedback: l.npsResponse.feedback, companyName: l.companyName, submittedAt: l.npsResponse.submittedAt }));
+      if (!responses.length) return { count: 0, average: null, responses: [] };
+      const avg = Math.round((responses.reduce((s, r) => s + r.score, 0) / responses.length) * 10) / 10;
+      return { count: responses.length, average: avg, responses: responses.slice(0, 20) };
     })()
   };
 
@@ -7648,6 +7655,22 @@ app.post('/api/leads/:id/deliverables/:dIdx/unapprove', requireAdmin, (req, res)
 });
 
 // Toggle deliverable clientVisible
+// MEGA TASK 2 — Revision request status update (Ingediend → In behandeling → Opgelost)
+app.patch('/api/leads/:id/revisions/:revId', requireAdmin, (req, res) => {
+  const leads = readJSON('leads.json') || [];
+  const li = leads.findIndex(l => l.id === req.params.id);
+  if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const rev = (leads[li].revisionRequests || []).find(r => r.id === req.params.revId);
+  if (!rev) return res.status(404).json({ error: 'Revisie niet gevonden' });
+  const { status } = req.body || {};
+  if (!['Ingediend', 'In behandeling', 'Opgelost'].includes(status)) return res.status(400).json({ error: 'Ongeldige status' });
+  rev.status = status;
+  if (status === 'Opgelost') rev.resolvedAt = new Date().toISOString();
+  addLeadHistory(leads, req.params.id, { event: 'revision', label: `Revisie status → ${status}: ${rev.text.substring(0, 50)}` });
+  writeJSON('leads.json', leads);
+  res.json({ ok: true, revision: rev });
+});
+
 app.patch('/api/leads/:id/deliverables/:dIdx/visibility', requireAdmin, (req, res) => {
   const leads = readJSON('leads.json') || [];
   const li = leads.findIndex(l => l.id === req.params.id);
