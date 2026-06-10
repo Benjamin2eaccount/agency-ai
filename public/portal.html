@@ -157,6 +157,26 @@
     .calendly-btn:hover { opacity: .9; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .spinner { width: 26px; height: 26px; border: 2px solid #e5e7eb; border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 12px; }
+
+    /* ── Auth screens ─────────────────────────────────────────────────────── */
+    .auth-screen { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; background: #FAFAFA; }
+    .auth-card { width: 100%; max-width: 400px; background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 36px 32px; }
+    .auth-logo { text-align: center; margin-bottom: 24px; }
+    .auth-logo-wrap { width: 52px; height: 52px; background: var(--accent); border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px; }
+    .auth-logo-wrap svg { width: 26px; height: 26px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .auth-agency { font-size: 14px; font-weight: 700; color: var(--muted); }
+    .auth-title { font-size: 22px; font-weight: 800; color: #111; margin: 0 0 6px; text-align: center; }
+    .auth-sub { font-size: 14px; color: var(--muted); text-align: center; margin: 0 0 28px; line-height: 1.5; }
+    .auth-field { margin-bottom: 16px; }
+    .auth-field label { display: block; font-size: 12px; font-weight: 700; color: #374151; margin-bottom: 6px; }
+    .auth-field input { width: 100%; padding: 11px 14px; border: 1.5px solid var(--border); border-radius: 9px; font-size: 14px; font-family: inherit; outline: none; color: #111; transition: border-color 0.15s; }
+    .auth-field input:focus { border-color: var(--accent); }
+    .auth-btn { width: 100%; padding: 13px; background: var(--accent); color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer; transition: opacity 0.15s; margin-top: 4px; }
+    .auth-btn:hover { opacity: 0.9; }
+    .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .auth-error { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 14px; color: #dc2626; font-size: 13px; margin-bottom: 16px; }
+    .auth-hint { font-size: 12px; color: var(--muted); text-align: center; margin-top: 16px; line-height: 1.5; }
+    .pw-strength { height: 4px; border-radius: 99px; margin-top: 6px; transition: width 0.3s, background 0.3s; }
   </style>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -169,6 +189,141 @@
 
   <script type="text/babel">
     const { useState, useEffect, useCallback, useRef } = React;
+
+    // ── Portal auth helpers ──────────────────────────────────────────────
+    function getPortalJwt(token) {
+      try { return sessionStorage.getItem('portalToken_' + token) || ''; } catch { return ''; }
+    }
+    function setPortalJwt(token, jwtValue) {
+      try { sessionStorage.setItem('portalToken_' + token, jwtValue); } catch {}
+    }
+    // Drop-in replacement for fetch() that automatically includes the portal JWT
+    function portalFetch(url, opts = {}) {
+      const tok = getToken();
+      const jwtVal = tok ? getPortalJwt(tok) : '';
+      const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+      if (jwtVal) headers['Authorization'] = 'Bearer ' + jwtVal;
+      return fetch(url, { ...opts, headers });
+    }
+
+    // ── SetupScreen — first-time password creation ────────────────────────
+    function SetupScreen({ companyName, branding, token, onAuthSuccess }) {
+      const [pw,      setPw]      = useState('');
+      const [pw2,     setPw2]     = useState('');
+      const [error,   setError]   = useState('');
+      const [loading, setLoading] = useState(false);
+
+      const strength = pw.length === 0 ? 0 : pw.length < 8 ? 1 : pw.length < 12 ? 2 : 3;
+      const strengthColor = ['transparent','#ef4444','#f59e0b','#16a34a'][strength];
+      const strengthWidth = [0, 33, 66, 100][strength] + '%';
+
+      async function submit(e) {
+        e.preventDefault();
+        setError('');
+        if (pw.length < 8) { setError('Wachtwoord moet minimaal 8 tekens zijn.'); return; }
+        if (pw !== pw2)    { setError('Wachtwoorden komen niet overeen.'); return; }
+        setLoading(true);
+        try {
+          const r = await fetch(`/api/portal/${token}/set-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pw }),
+          });
+          const d = await r.json();
+          if (!r.ok) { setError(d.error || 'Er is een fout opgetreden.'); return; }
+          setPortalJwt(token, d.jwt);
+          onAuthSuccess();
+        } catch { setError('Verbindingsfout. Probeer opnieuw.'); }
+        finally { setLoading(false); }
+      }
+
+      const logoEl = (branding?.logo || null)
+        ? <img src={branding.logo} style={{height:36,maxWidth:140,objectFit:'contain',display:'block',margin:'0 auto 10px'}} alt={branding.name} />
+        : <div className="auth-logo-wrap"><svg viewBox="0 0 24 24"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>;
+
+      return (
+        <div className="auth-screen">
+          <div className="auth-card">
+            <div className="auth-logo">
+              {logoEl}
+              <div className="auth-agency">{branding?.name || 'Agency AI'}</div>
+            </div>
+            <h1 className="auth-title">Welkom, {companyName}!</h1>
+            <p className="auth-sub">Stel een wachtwoord in voor je portaal.<br/>Je gebruikt dit om voortaan in te loggen.</p>
+            {error && <div className="auth-error">{error}</div>}
+            <form onSubmit={submit}>
+              <div className="auth-field">
+                <label>Wachtwoord <span style={{color:'var(--muted)',fontWeight:400}}>(min. 8 tekens)</span></label>
+                <input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="Kies een sterk wachtwoord" autoFocus />
+                <div className="pw-strength" style={{width:strengthWidth, background:strengthColor}} />
+              </div>
+              <div className="auth-field">
+                <label>Wachtwoord herhalen</label>
+                <input type="password" value={pw2} onChange={e => setPw2(e.target.value)} placeholder="Herhaal je wachtwoord" />
+              </div>
+              <button type="submit" className="auth-btn" disabled={loading}>
+                {loading ? 'Even geduld...' : 'Toegang instellen →'}
+              </button>
+            </form>
+            <p className="auth-hint">Ontvangen via een email van jouw bureau? Sla deze link op — je hebt hem nodig om in te loggen.</p>
+          </div>
+        </div>
+      );
+    }
+
+    // ── LoginScreen — returning visitor ───────────────────────────────────
+    function LoginScreen({ companyName, branding, token, onAuthSuccess }) {
+      const [pw,      setPw]      = useState('');
+      const [error,   setError]   = useState('');
+      const [loading, setLoading] = useState(false);
+
+      async function submit(e) {
+        e.preventDefault();
+        setError('');
+        if (!pw) { setError('Voer je wachtwoord in.'); return; }
+        setLoading(true);
+        try {
+          const r = await fetch(`/api/portal/${token}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pw }),
+          });
+          const d = await r.json();
+          if (!r.ok) { setError(d.error || 'Inloggen mislukt.'); return; }
+          setPortalJwt(token, d.jwt);
+          onAuthSuccess();
+        } catch { setError('Verbindingsfout. Probeer opnieuw.'); }
+        finally { setLoading(false); }
+      }
+
+      const logoEl = (branding?.logo || null)
+        ? <img src={branding.logo} style={{height:36,maxWidth:140,objectFit:'contain',display:'block',margin:'0 auto 10px'}} alt={branding.name} />
+        : <div className="auth-logo-wrap"><svg viewBox="0 0 24 24"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>;
+
+      return (
+        <div className="auth-screen">
+          <div className="auth-card">
+            <div className="auth-logo">
+              {logoEl}
+              <div className="auth-agency">{branding?.name || 'Agency AI'}</div>
+            </div>
+            <h1 className="auth-title">Inloggen bij {companyName}</h1>
+            <p className="auth-sub">Welkom terug! Vul je wachtwoord in om verder te gaan.</p>
+            {error && <div className="auth-error">{error}</div>}
+            <form onSubmit={submit}>
+              <div className="auth-field">
+                <label>Wachtwoord</label>
+                <input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="Je portaalwachtwoord" autoFocus />
+              </div>
+              <button type="submit" className="auth-btn" disabled={loading}>
+                {loading ? 'Inloggen...' : 'Inloggen →'}
+              </button>
+            </form>
+            <p className="auth-hint">Wachtwoord vergeten? Neem contact op met je bureau voor een nieuwe portaallink.</p>
+          </div>
+        </div>
+      );
+    }
 
     // ── Helpers ──────────────────────────────────────────────────────────
     const PHASES = [
@@ -290,9 +445,8 @@
               reader.onerror = rej;
               reader.readAsDataURL(file);
             });
-            const resp = await fetch(`/api/portal/${token}/upload`, {
+            const resp = await portalFetch(`/api/portal/${token}/upload`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ filename: file.name, mimeType: file.type, dataBase64: dataUrl.split(',')[1], size: file.size })
             });
             const d = await resp.json();
@@ -302,14 +456,14 @@
         setStagedFiles([]);
         if (!anyError) {
           setUploadMsg('success');
-          const r = await fetch(`/api/portal/${token}`);
+          const r = await portalFetch(`/api/portal/${token}`);
           if (r.ok) { const d = await r.json(); setUploads(d.clientUploads || []); }
         } else { setUploadMsg(''); }
       }
 
       async function deleteFile(filename) {
         if (!confirm(`Bestand "${filename}" verwijderen?`)) return;
-        const r = await fetch(`/api/portal/${token}/upload/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+        const r = await portalFetch(`/api/portal/${token}/upload/${encodeURIComponent(filename)}`, { method: 'DELETE' });
         const d = await r.json();
         if (d.ok) setUploads(prev => prev.filter(f => f.filename !== filename));
         else alert('Verwijderen mislukt: ' + (d.error || 'onbekend'));
@@ -451,8 +605,8 @@
         if (!provider) { setError('Kies een hosting provider.'); return; }
         setLoading(true); setError('');
         try {
-          const r = await fetch(`/api/portal/${token}/hosting-request`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+          const r = await portalFetch(`/api/portal/${token}/hosting-request`, {
+            method: 'POST',
             body: JSON.stringify({ type: 'own', provider, panelUrl, username, password, ftpData, notes }),
           });
           if (!r.ok) throw new Error('Fout bij versturen');
@@ -464,8 +618,8 @@
       async function submitAgency() {
         setLoading(true); setError('');
         try {
-          const r = await fetch(`/api/portal/${token}/hosting-request`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+          const r = await portalFetch(`/api/portal/${token}/hosting-request`, {
+            method: 'POST',
             body: JSON.stringify({ type: 'agency', notes }),
           });
           if (!r.ok) throw new Error('Fout bij versturen');
@@ -666,8 +820,8 @@
 
       async function submitFeedback() {
         if (!fbText.trim()) return;
-        const r = await fetch(`/api/portal/${token}/site-feedback`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+        const r = await portalFetch(`/api/portal/${token}/site-feedback`, {
+          method: 'POST',
           body: JSON.stringify({ feedback: fbText })
         });
         if (r.ok) { setFbSent(true); setFbText(''); setShowFb(false); }
@@ -947,8 +1101,8 @@
         if (!name.trim() || !text.trim()) { alert('Vul je naam en een bericht in.'); return; }
         setSending(true);
         try {
-          const r = await fetch(`/api/portal/${token}/message`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+          const r = await portalFetch(`/api/portal/${token}/message`, {
+            method: 'POST',
             body: JSON.stringify({ name, message: text })
           });
           if (r.ok) { setText(''); setSent(true); setTimeout(() => setSent(false), 2500); }
@@ -1000,7 +1154,7 @@
 
       const pollChat = useCallback(async () => {
         try {
-          const r = await fetch(`/api/portal/${token}/chat`);
+          const r = await portalFetch(`/api/portal/${token}/chat`);
           if (!r.ok) return;
           const d = await r.json();
           const c = d.chat || [];
@@ -1027,8 +1181,8 @@
         const msg = input;
         setInput('');
         try {
-          await fetch(`/api/portal/${token}/message`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+          await portalFetch(`/api/portal/${token}/message`, {
+            method: 'POST',
             body: JSON.stringify({ name: chatName || 'Klant', message: msg })
           });
           await pollChat();
@@ -1095,7 +1249,7 @@
         if (ordered.has(svc.name)) return;
         const msg = `Wil je "${svc.name}" toevoegen voor €${svc.price || '?'} per maand?`;
         if (!confirm(msg)) return;
-        fetch('/api/portal/' + token + '/order-service', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ serviceName: svc.name, servicePrice: svc.price }) })
+        portalFetch('/api/portal/' + token + '/order-service', { method: 'POST', body: JSON.stringify({ serviceName: svc.name, servicePrice: svc.price }) })
           .then(r => r.json()).then(() => { setOrdered(prev => new Set([...prev, svc.name])); alert('✅ Aanvraag verstuurd! We nemen binnen 24 uur contact op.'); });
       }
       if (loading) return React.createElement('div', {style:{padding:'40px',textAlign:'center',color:'var(--muted)'}}, 'Laden...');
@@ -1128,7 +1282,7 @@
         setReqType(type);
         const msg = type === 'add_service' ? prompt('Welke dienst wil je toevoegen?') : '';
         if (type !== 'add_service' && !confirm(type === 'pause' ? 'Wil je je abonnement pauzeren?' : 'Wil je je abonnement opzeggen?')) return;
-        fetch('/api/portal/' + token + '/subscription-request', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type, serviceName: msg || '', message: reqMsg }) })
+        portalFetch('/api/portal/' + token + '/subscription-request', { method:'POST', body: JSON.stringify({ type, serviceName: msg || '', message: reqMsg }) })
           .then(r => r.json()).then(() => { setSent(true); setTimeout(() => setSent(false), 5000); });
       }
       const services = data?.services || [];
@@ -1226,13 +1380,13 @@
       const [pwForm, setPwForm] = React.useState({ newPw: '', confirmPw: '' });
       const [saved, setSaved] = React.useState(false);
       async function saveProfile() {
-        await fetch(`/api/portal/${token}/profile`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(form) });
+        await portalFetch(`/api/portal/${token}/profile`, { method:'PUT', body: JSON.stringify(form) });
         setSaved(true); setTimeout(() => setSaved(false), 3000);
       }
       async function changePassword() {
-        if (!pwForm.newPw || pwForm.newPw.length < 6) { alert('Wachtwoord minimaal 6 tekens'); return; }
+        if (!pwForm.newPw || pwForm.newPw.length < 8) { alert('Wachtwoord minimaal 8 tekens'); return; }
         if (pwForm.newPw !== pwForm.confirmPw) { alert('Wachtwoorden komen niet overeen'); return; }
-        const r = await fetch(`/api/portal/${token}/change-password`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ newPassword: pwForm.newPw }) });
+        const r = await portalFetch(`/api/portal/${token}/change-password`, { method:'POST', body: JSON.stringify({ newPassword: pwForm.newPw }) });
         if (r.ok) { alert('Wachtwoord gewijzigd'); setPwForm({ newPw:'', confirmPw:'' }); }
         else alert('Wijzigen mislukt');
       }
@@ -1287,30 +1441,62 @@
     }
 
     function App() {
-      const [data, setData]       = useState(null);
-      const [error, setError]     = useState('');
+      const [data,      setData]      = useState(null);
+      const [authState, setAuthState] = useState(null); // null | { requiresSetup, requiresLogin, companyName, branding }
+      const [error,     setError]     = useState('');
       const [activeTab, setActiveTab] = useState('overview');
       const token = getToken();
 
-      useEffect(() => {
+      function loadPortal() {
         if (!token || token === 'portal') { setError('Geen portaallink gevonden.'); return; }
-        fetch(`/api/portal/${token}`)
-          .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+        // Always send JWT if we have one (lets server skip login screen for returning visitors)
+        const jwtVal = getPortalJwt(token);
+        const headers = { 'Content-Type': 'application/json' };
+        if (jwtVal) headers['Authorization'] = 'Bearer ' + jwtVal;
+        fetch(`/api/portal/${token}`, { headers })
+          .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
           .then(d => {
+            if (d.requiresSetup || d.requiresLogin) {
+              setAuthState(d);
+              // Apply branding even on auth screen
+              const accentColor = d.branding?.color || null;
+              if (accentColor) document.documentElement.style.setProperty('--accent', accentColor);
+              return;
+            }
+            setAuthState(null);
             setData(d);
-            // Apply workspace branding
             const brand = d.branding || {};
             const accentColor = brand.color || d.portalThemeColor || null;
             if (accentColor) {
               document.documentElement.style.setProperty('--accent', accentColor);
               document.querySelector('meta[name="theme-color"]')?.setAttribute('content', accentColor);
             }
-            // Page title uses branding name
             const brandName = brand.name || d.agencyName || 'Agency AI';
             document.title = `${d.companyName || 'Project'} — ${brandName}`;
           })
           .catch(() => setError('Portaal niet gevonden. Controleer de link.'));
-      }, [token]);
+      }
+
+      useEffect(() => { loadPortal(); }, [token]);
+
+      // Auth screens — shown before portal loads
+      if (authState?.requiresSetup) return (
+        <SetupScreen
+          companyName={authState.companyName}
+          branding={authState.branding}
+          token={token}
+          onAuthSuccess={() => { setAuthState(null); loadPortal(); }}
+        />
+      );
+
+      if (authState?.requiresLogin) return (
+        <LoginScreen
+          companyName={authState.companyName}
+          branding={authState.branding}
+          token={token}
+          onAuthSuccess={() => { setAuthState(null); loadPortal(); }}
+        />
+      );
 
       if (error) return (
         <div className="center-page">

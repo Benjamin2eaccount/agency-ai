@@ -595,7 +595,7 @@ app.get('/setup/demo-users', async (req, res) => {
       id:'demo-klant-portal', company:'Demo Project — Website & Marketing', name:'Alex Janssen',
       email:'klant@demo.agencyai.info', city:'Amsterdam', niche:'retail', sub:'webshop',
       score:9.2, val:1500, days:30, sentAt:ago(30), repliedAt:ago(28), projectStartedAt:ago(25),
-      portalToken:PORTAL_TOK, currentPhase:3,
+      portalToken:PORTAL_TOK, currentPhase:3, portalPasswordSet:true,
       portalWelcomeMessage:'Welkom bij uw klantportaal! Fase 3 is gestart — uw website en SEO rapport zijn klaar voor review.',
       projectServices:[
         {name:'Website bouwen',price:895,billing:'eenmalig'},
@@ -2372,7 +2372,27 @@ ${caseCards ? `
 });
 
 // ── Portal API routes — migrated to routes/portal.js ────────────────────────
-app.use('/api/portal', require('./routes/portal')({ readJSON, writeJSON, addNotification, addLeadHistory, computeRealAnalytics, getDb: () => require('./database').getDb() }));
+app.use('/api/portal', require('./routes/portal')({ readJSON, writeJSON, addNotification, addLeadHistory, computeRealAnalytics, getDb: () => require('./database').getDb(), JWT_SECRET, bcrypt }));
+
+// ── Portal JWT middleware for legacy routes still in server.js ───────────────
+function requirePortalAuth(req, res, next) {
+  const DEMO_PORTAL_TOKEN = 'demo-klant-portal-2026';
+  if (req.params.token === DEMO_PORTAL_TOKEN) return next();
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Niet ingelogd', requiresLogin: true });
+  }
+  try {
+    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    if (payload.portalToken !== req.params.token) {
+      return res.status(401).json({ error: 'Token ongeldig', requiresLogin: true });
+    }
+    req.portalUser = payload;
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Sessie verlopen — log opnieuw in', requiresLogin: true });
+  }
+}
 
 // === LEGACY portal routes below — superseded by routes/portal.js above ===
 // Express matches the router first; these are unreachable but kept for reference
@@ -2994,7 +3014,7 @@ app.post('/api/sites/:siteSlug/contact', async (req, res) => {
 });
 
 // ── Public: client submits hosting request from portal ────────────────────────
-app.post('/api/portal/:token/hosting-request', express.json(), async (req, res) => {
+app.post('/api/portal/:token/hosting-request', requirePortalAuth, express.json(), async (req, res) => {
   const leads = readJSON('leads.json') || [];
   const lead  = leads.find(l => l.portalToken === req.params.token);
   if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
@@ -6239,7 +6259,7 @@ app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
         </table>
       </td></tr>` : ''}
 
-      <!-- Step 2: Portal -->
+      <!-- Step 2: Portal (password setup) -->
       <tr><td style="padding:24px 32px 0">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
@@ -6247,10 +6267,10 @@ app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
               <div style="width:32px;height:32px;background:#2563eb;border-radius:50%;text-align:center;line-height:32px;font-family:Arial,sans-serif;font-size:14px;font-weight:800;color:#fff">${intakeUrl ? '2' : '1'}</div>
             </td>
             <td valign="top" style="padding-left:14px">
-              <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:15px;font-weight:700;color:#111">Jouw persoonlijke klantportaal</p>
-              <p style="margin:0 0 14px;font-family:Arial,sans-serif;font-size:14px;color:#6b7280;line-height:1.6">Volg de voortgang van jouw project, bekijk leveringen en stel vragen — 24/7 beschikbaar.</p>
-              <a href="${e(portalUrl)}" style="display:inline-block;padding:12px 22px;background:#111;color:#fff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;text-decoration:none;border-radius:8px">Portaal openen →</a>
-              <p style="margin:8px 0 0;font-family:Arial,sans-serif;font-size:12px;color:#9ca3af">Bewaar deze link — je hebt hem altijd nodig.</p>
+              <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:15px;font-weight:700;color:#111">Uw portaal is klaar! Stel uw wachtwoord in</p>
+              <p style="margin:0 0 14px;font-family:Arial,sans-serif;font-size:14px;color:#6b7280;line-height:1.6">Klik op de link om een persoonlijk wachtwoord in te stellen en uw projectportaal te bekijken. Volg de voortgang, bekijk leveringen en stel vragen — 24/7 beschikbaar.</p>
+              <a href="${e(portalUrl)}" style="display:inline-block;padding:12px 22px;background:#111;color:#fff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;text-decoration:none;border-radius:8px">Wachtwoord instellen &amp; portaal openen →</a>
+              <p style="margin:8px 0 0;font-family:Arial,sans-serif;font-size:12px;color:#9ca3af">Bewaar deze link — je hebt hem altijd nodig om in te loggen.</p>
             </td>
           </tr>
         </table>
@@ -13510,7 +13530,7 @@ app.post('/api/subscriptions/:leadId', requireAdmin, (req, res) => {
 });
 
 // POST /api/portal/:token/subscription-request — client requests change (public)
-app.post('/api/portal/:token/subscription-request', async (req, res) => {
+app.post('/api/portal/:token/subscription-request', requirePortalAuth, async (req, res) => {
   const leads = readJSON('leads.json') || [];
   const lead = leads.find(l => l.portalToken === req.params.token);
   if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
@@ -13581,7 +13601,7 @@ app.get('/api/stats/funnel', requireAdmin, (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // POST /api/portal/:token/order-service — client orders a new service
-app.post('/api/portal/:token/order-service', async (req, res) => {
+app.post('/api/portal/:token/order-service', requirePortalAuth, async (req, res) => {
   const leads = readJSON('leads.json') || [];
   const lead = leads.find(l => l.portalToken === req.params.token);
   if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
@@ -13839,7 +13859,7 @@ app.delete('/api/templates/:id', requireAdmin, (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Task 22 — Portal profile update
-app.put('/api/portal/:token/profile', (req, res) => {
+app.put('/api/portal/:token/profile', requirePortalAuth, (req, res) => {
   const leads = readJSON('leads.json') || [];
   const lead = leads.find(l => l.portalToken === req.params.token);
   if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
@@ -13852,7 +13872,7 @@ app.put('/api/portal/:token/profile', (req, res) => {
 });
 
 // Task 23 — Portal password change
-app.post('/api/portal/:token/change-password', async (req, res) => {
+app.post('/api/portal/:token/change-password', requirePortalAuth, async (req, res) => {
   const leads = readJSON('leads.json') || [];
   const lead = leads.find(l => l.portalToken === req.params.token);
   if (!lead) return res.status(404).json({ error: 'Niet gevonden' });

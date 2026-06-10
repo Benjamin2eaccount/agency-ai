@@ -7,8 +7,31 @@
 const express = require('express');
 const path    = require('path');
 
-module.exports = function createPortalRouter({ readJSON, writeJSON, addNotification, addLeadHistory, computeRealAnalytics, getDb }) {
+const DEMO_TOKEN = 'demo-klant-portal-2026';
+
+module.exports = function createPortalRouter({ readJSON, writeJSON, addNotification, addLeadHistory, computeRealAnalytics, getDb, JWT_SECRET, bcrypt }) {
   const router = express.Router();
+  const jwt    = require('jsonwebtoken');
+
+  // ── requirePortalAuth middleware ──────────────────────────────────────────────
+  // Skipped for demo portal. All real portals must send a valid portal JWT.
+  function requirePortalAuth(req, res, next) {
+    if (req.params.token === DEMO_TOKEN) return next();
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Niet ingelogd', requiresLogin: true });
+    }
+    try {
+      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET);
+      if (payload.portalToken !== req.params.token) {
+        return res.status(401).json({ error: 'Token ongeldig', requiresLogin: true });
+      }
+      req.portalUser = payload;
+      next();
+    } catch {
+      return res.status(401).json({ error: 'Sessie verlopen — log opnieuw in', requiresLogin: true });
+    }
+  }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
   function _findUpload(uploads, rawFilename) {
@@ -33,26 +56,7 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
     res.send(buffer);
   }
 
-  // ── GET /api/portal/:token ──────────────────────────────────────────────────
-  router.get('/:token', (req, res) => {
-    const leads   = readJSON('leads.json') || [];
-    const lead    = leads.find(l => l.portalToken === req.params.token);
-    if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
-    if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd. Neem contact op met uw accountmanager.' });
-
-    const settings    = readJSON('settings.json') || {};
-    const settingsSvcs = settings.services || [];
-    const rawSvcs = (lead.projectServices && lead.projectServices.length)
-      ? lead.projectServices : (lead.services || []);
-    const enrichedSvcs = rawSvcs.map(s => {
-      const sName   = typeof s === 'string' ? s : (s.name || '');
-      const match   = settingsSvcs.find(ss => ss.name === sName);
-      const price   = typeof s === 'object' ? (parseFloat(s.price) || 0) : (parseFloat(match?.price) || 0);
-      const billing = typeof s === 'object' ? (s.billing || 'maandelijks') : (match?.billing || 'maandelijks');
-      return { name: sName, price, billing, description: match?.description || '' };
-    }).filter(s => s.name);
-
-    // ── Workspace branding lookup ─────────────────────────────────────────────
+  function _getBranding(lead, settings) {
     let branding = {
       name       : settings.agencyName || 'Agency AI',
       logo       : settings.agencyLogo || null,
@@ -60,9 +64,8 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
       emailSender: settings.agencyName || 'Agency AI',
     };
     try {
-      const db = typeof getDb === 'function' ? getDb() : null; // getDb passed as () => require('./database').getDb()
+      const db = typeof getDb === 'function' ? getDb() : null;
       if (db) {
-        // Find workspace: prefer lead.workspaceId, else look up by slug 'agencyai'
         const wsId = lead.workspaceId || null;
         const ws = wsId
           ? db.prepare('SELECT * FROM workspaces WHERE id = ?').get(wsId)
@@ -77,6 +80,67 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
         }
       }
     } catch { /* workspace lookup is non-fatal */ }
+    return branding;
+  }
+
+  // ── GET /api/portal/:token ──────────────────────────────────────────────────
+  // Returns requiresSetup/requiresLogin for unauthenticated requests on real portals.
+  router.get('/:token', (req, res) => {
+    const leads    = readJSON('leads.json') || [];
+    const lead     = leads.find(l => l.portalToken === req.params.token);
+    if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd. Neem contact op met uw accountmanager.' });
+
+    const settings = readJSON('settings.json') || {};
+    const branding = _getBranding(lead, settings);
+
+    // Demo portal — always open
+    const isDemo = req.params.token === DEMO_TOKEN;
+
+    if (!isDemo) {
+      // First visit: password not set yet
+      if (!lead.portalPasswordSet) {
+        return res.json({
+          requiresSetup: true,
+          companyName:   lead.companyName,
+          agencyName:    branding.name,
+          agencyLogo:    branding.logo,
+          branding,
+        });
+      }
+
+      // Returning visit: verify portal JWT
+      const authHeader = req.headers.authorization;
+      let jwtValid = false;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const payload = jwt.verify(authHeader.slice(7), JWT_SECRET);
+          jwtValid = payload.portalToken === req.params.token;
+        } catch { /* expired or invalid */ }
+      }
+
+      if (!jwtValid) {
+        return res.json({
+          requiresLogin: true,
+          companyName:   lead.companyName,
+          agencyName:    branding.name,
+          agencyLogo:    branding.logo,
+          branding,
+        });
+      }
+    }
+
+    // ── Full portal data ────────────────────────────────────────────────────
+    const settingsSvcs = settings.services || [];
+    const rawSvcs = (lead.projectServices && lead.projectServices.length)
+      ? lead.projectServices : (lead.services || []);
+    const enrichedSvcs = rawSvcs.map(s => {
+      const sName   = typeof s === 'string' ? s : (s.name || '');
+      const match   = settingsSvcs.find(ss => ss.name === sName);
+      const price   = typeof s === 'object' ? (parseFloat(s.price) || 0) : (parseFloat(match?.price) || 0);
+      const billing = typeof s === 'object' ? (s.billing || 'maandelijks') : (match?.billing || 'maandelijks');
+      return { name: sName, price, billing, description: match?.description || '' };
+    }).filter(s => s.name);
 
     res.json({
       companyName:          lead.companyName,
@@ -116,8 +180,60 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
     });
   });
 
+  // ── POST /api/portal/:token/set-password ────────────────────────────────────
+  // First-time password setup. Returns portal JWT on success.
+  router.post('/:token/set-password', express.json(), async (req, res) => {
+    const leads = readJSON('leads.json') || [];
+    const li    = leads.findIndex(l => l.portalToken === req.params.token);
+    if (li === -1) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    if (req.params.token === DEMO_TOKEN) return res.status(400).json({ error: 'Demo portaal heeft geen wachtwoord nodig' });
+
+    const { password } = req.body || {};
+    if (!password || password.length < 8) return res.status(400).json({ error: 'Wachtwoord minimaal 8 tekens' });
+
+    const hash = await bcrypt.hash(password, 12);
+    leads[li].portalPassword    = hash;
+    leads[li].portalPasswordSet = true;
+    leads[li].portalLastLogin   = new Date().toISOString();
+    writeJSON('leads.json', leads);
+
+    const token = jwt.sign(
+      { portalToken: req.params.token, leadId: leads[li].id, companyName: leads[li].companyName },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+    res.json({ ok: true, jwt: token });
+  });
+
+  // ── POST /api/portal/:token/login ───────────────────────────────────────────
+  // Returning visitor login. Returns portal JWT on success.
+  router.post('/:token/login', express.json(), async (req, res) => {
+    const leads = readJSON('leads.json') || [];
+    const li    = leads.findIndex(l => l.portalToken === req.params.token);
+    if (li === -1) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    if (req.params.token === DEMO_TOKEN) return res.status(400).json({ error: 'Demo portaal heeft geen login nodig' });
+
+    if (!leads[li].portalPasswordSet) return res.status(400).json({ error: 'Wachtwoord nog niet ingesteld' });
+
+    const { password } = req.body || {};
+    if (!password) return res.status(400).json({ error: 'Wachtwoord verplicht' });
+
+    const match = await bcrypt.compare(password, leads[li].portalPassword || '');
+    if (!match) return res.status(401).json({ error: 'Onjuist wachtwoord' });
+
+    leads[li].portalLastLogin = new Date().toISOString();
+    writeJSON('leads.json', leads);
+
+    const token = jwt.sign(
+      { portalToken: req.params.token, leadId: leads[li].id, companyName: leads[li].companyName },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+    res.json({ ok: true, jwt: token });
+  });
+
   // ── POST /api/portal/:token/site-feedback ───────────────────────────────────
-  router.post('/:token/site-feedback', (req, res) => {
+  router.post('/:token/site-feedback', requirePortalAuth, (req, res) => {
     const { feedback } = req.body;
     if (!feedback) return res.status(400).json({ error: 'Feedback verplicht' });
     const leads = readJSON('leads.json') || [];
@@ -133,7 +249,7 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
   });
 
   // ── POST /api/portal/:token/message ────────────────────────────────────────
-  router.post('/:token/message', (req, res) => {
+  router.post('/:token/message', requirePortalAuth, (req, res) => {
     const { name, message } = req.body;
     if (!name || !message) return res.status(400).json({ error: 'Naam en bericht verplicht' });
     const leads = readJSON('leads.json') || [];
@@ -151,7 +267,7 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
   });
 
   // ── GET /api/portal/:token/chat ─────────────────────────────────────────────
-  router.get('/:token/chat', (req, res) => {
+  router.get('/:token/chat', requirePortalAuth, (req, res) => {
     const leads = readJSON('leads.json') || [];
     const lead  = leads.find(l => l.portalToken === req.params.token);
     if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
@@ -159,7 +275,7 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
   });
 
   // ── POST /api/portal/:token/upload ─────────────────────────────────────────
-  router.post('/:token/upload', express.json({ limit: '15mb' }), async (req, res) => {
+  router.post('/:token/upload', requirePortalAuth, express.json({ limit: '15mb' }), async (req, res) => {
     const leads = readJSON('leads.json') || [];
     const li = leads.findIndex(l => l.portalToken === req.params.token);
     if (li === -1) return res.status(404).json({ error: 'Niet gevonden' });
@@ -188,7 +304,7 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
   });
 
   // ── DELETE /api/portal/:token/upload/:filename ──────────────────────────────
-  router.delete('/:token/upload/:filename', (req, res) => {
+  router.delete('/:token/upload/:filename', requirePortalAuth, (req, res) => {
     const leads = readJSON('leads.json') || [];
     const li = leads.findIndex(l => l.portalToken === req.params.token);
     if (li === -1) return res.status(404).json({ error: 'Niet gevonden' });
@@ -202,7 +318,7 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
   });
 
   // ── GET /api/portal/:token/download/:filename ───────────────────────────────
-  router.get('/:token/download/:filename', (req, res) => {
+  router.get('/:token/download/:filename', requirePortalAuth, (req, res) => {
     const leads = readJSON('leads.json') || [];
     const lead  = leads.find(l => l.portalToken === req.params.token);
     if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
