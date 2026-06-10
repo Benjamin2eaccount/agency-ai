@@ -21,6 +21,8 @@ const webpush = require('web-push');
 const WebSocket   = require('ws');
 const rateLimit   = require('express-rate-limit');
 const { readJSON, writeJSON, pgInitPromise, getDb } = require('./database');
+const agentCore = require('./lib/agentCore');
+const { analyzeWebsite } = require('./lib/websiteAnalyzer');
 const dnsPromises = require('dns').promises;
 const PDFDocument = require('pdfkit');
 
@@ -933,30 +935,53 @@ const SUB_NICHES = {
   automotive: ['garagebedrijf', 'autoverkoop', 'wasstraat', 'bandendienst', 'schadeherstelbedrijf'],
 };
 
-function getOptimalSendTime(niche) {
+// ── Agent 6 — Send Time Optimizer ────────────────────────────────────────────
+// Combines niche heuristics with historical reply data (memory.json).
+// Heuristics: restaurants avoid lunch/dinner prep hours; B2B avoids Monday
+// morning + Friday afternoon; retail does best weekday mornings.
+// Default: Tuesday/Thursday 10:00-11:00.
+function getOptimalSendTime(niche, country) {
   const n = (niche || '').toLowerCase();
-  let targetDay, targetHour;
+  let targetDay, targetHour, why;
   if (n.includes('restaurant') || n.includes('food') || n.includes('horeca') || n.includes('café') || n.includes('eetcafé') || n.includes('bakkerij') || n.includes('ijssalon') || n.includes('traiteur')) {
-    targetDay = 2; targetHour = 10;
+    // Restaurants: never during lunch (12-14) or dinner service (17-21) → mid-morning
+    targetDay = 2; targetHour = 10; why = 'restaurant — buiten lunch/dinner uren';
   } else if (n.includes('beauty') || n.includes('wellness') || n.includes('salon') || n.includes('spa') || n.includes('kapsalon') || n.includes('nagel') || n.includes('schoonheid') || n.includes('barbershop')) {
-    targetDay = 1; targetHour = 9;
+    targetDay = 1; targetHour = 9; why = 'beauty — rustige maandagochtend';
   } else if (n.includes('fitness') || n.includes('sport') || n.includes('gym') || n.includes('yoga') || n.includes('crossfit') || n.includes('martial') || n.includes('personal trainer')) {
-    targetDay = 2; targetHour = 8;
+    targetDay = 2; targetHour = 8; why = 'fitness — vroege ochtend na de spits';
   } else if (n.includes('retail') || n.includes('shop') || n.includes('webshop') || n.includes('winkel') || n.includes('juwelier') || n.includes('schoenen') || n.includes('kleding')) {
-    targetDay = 3; targetHour = 10;
+    // Retail: weekday mornings best (before the store gets busy)
+    targetDay = 3; targetHour = 10; why = 'retail — doordeweekse ochtend';
   } else if (n.includes('health') || n.includes('tandarts') || n.includes('fysiotherapeut') || n.includes('apotheek') || n.includes('opticien')) {
-    targetDay = 2; targetHour = 11;
+    targetDay = 2; targetHour = 11; why = 'health — eind van ochtendspreekuur';
   } else if (n.includes('automotive') || n.includes('garage') || n.includes('auto') || n.includes('banden')) {
-    targetDay = 3; targetHour = 9;
+    targetDay = 3; targetHour = 9; why = 'automotive — ochtend voor de werkplaats vol loopt';
+  } else if (n.includes('advocaat') || n.includes('accountant') || n.includes('makelaar') || n.includes('consultant') || n.includes('b2b') || n.includes('zakelijk')) {
+    // B2B: avoid Monday morning (inbox overload) and Friday afternoon (mentally gone)
+    targetDay = 2; targetHour = 10; why = 'B2B — geen maandagochtend of vrijdagmiddag';
   } else {
-    targetDay = 2; targetHour = 10;
+    // Default: Tuesday or Thursday 10:00-11:00 (best cold email windows)
+    targetDay = Math.random() < 0.5 ? 2 : 4; targetHour = 10; why = 'default — dinsdag/donderdag 10:00-11:00';
   }
+
+  // Historical reply data per niche: when this niche+country combo has a measured
+  // best send hour (rolling average of reply hours), prefer it over the heuristic.
+  try {
+    const mem = (readJSON('memory.json') || {})[getMemoryKey(niche, country)];
+    if (mem && mem.replies >= 3 && Number.isInteger(mem.bestReplyHour) && mem.bestReplyHour >= 7 && mem.bestReplyHour <= 17) {
+      targetHour = mem.bestReplyHour;
+      why = `historische reply data (${mem.replies} replies rond ${mem.bestReplyHour}:00)`;
+    }
+  } catch {}
+
   const now = new Date();
   const result = new Date(now);
   result.setHours(targetHour, 0, 0, 0);
   let daysUntil = (targetDay - result.getDay() + 7) % 7;
   if (daysUntil === 0 && result <= now) daysUntil = 7;
   result.setDate(result.getDate() + daysUntil);
+  console.log(`  [Agent 6] Scheduled for ${NL_DAYS[result.getDay()]} ${String(targetHour).padStart(2, '0')}:00 (${why})`);
   return result.toISOString();
 }
 
@@ -972,7 +997,17 @@ function updateMemory(niche, country, type) {
     memory[key] = { niche: niche||'unknown', country: (country||'unknown').toUpperCase(), sent: 0, replied: 0, replyRate: 0 };
   }
   if (type === 'sent')    memory[key].sent    = (memory[key].sent    || 0) + 1;
-  if (type === 'replied') memory[key].replied = (memory[key].replied || 0) + 1;
+  if (type === 'replied') {
+    memory[key].replied = (memory[key].replied || 0) + 1;
+    // Agent 6: track at which hour replies come in → best send hour per niche
+    const hour = new Date().getHours();
+    memory[key].replyHours = [...(memory[key].replyHours || []), hour].slice(-50);
+    memory[key].replies = memory[key].replied;
+    const counts = {};
+    for (const h of memory[key].replyHours) counts[h] = (counts[h] || 0) + 1;
+    const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+    if (best) memory[key].bestReplyHour = Math.max(7, Math.min(17, parseInt(best[0], 10) - 1)); // send ~1h before typical reply time, clamped to office hours
+  }
   const { sent, replied } = memory[key];
   memory[key].replyRate = sent > 0 ? Math.round((replied / sent) * 1000) / 10 : 0;
   writeJSON('memory.json', memory);
@@ -8051,6 +8086,11 @@ app.get('/api/run/progress', (req, res) => {
   res.json(_runState);
 });
 
+// Agent pipeline metrics: per-agent success/failure rate + average duration
+app.get('/api/agents/metrics', (req, res) => {
+  res.json(agentCore.getAgentMetrics());
+});
+
 // â"€â"€â"€ Settings â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 app.get('/api/settings', (req, res) => {
@@ -9513,10 +9553,26 @@ async function processOneLead(lead, settings, options = {}) {
   lead.language = language;
   const companySize = lead.companySize || 'small';
 
-  _runState.currentAgent = 'Agent 2 — Website checker';
+  // ── Agent 2: Lead Verification — website live check, 15-punts analyse,
+  //    chain/franchise check, MX verificatie, data-volledigheid ─────────────
+  _runState.currentAgent = 'Agent 2 — Lead verificatie';
   console.log(`  [Agent 2] Website checken: ${lead.websiteUrl}`);
-  const website = await checkWebsite(lead.websiteUrl);
-  console.log(`  [Agent 2] Bereikbaar: ${website.reachable}, laadtijd: ${website.loadTimeMs || '—'}ms`);
+  const _t2 = Date.now();
+
+  // Chain/franchise check — we only target independent local businesses
+  if (agentCore.isLikelyChain(lead.companyName)) {
+    console.log(`  ✗ [Agent 2] Keten/franchise gedetecteerd: ${lead.companyName} — overgeslagen`);
+    addActivity('skip', `${lead.companyName} overgeslagen — keten/franchise`, { meta: { companyName: lead.companyName } });
+    agentCore.recordAgentRun('Agent 2 — Lead verificatie', true, Date.now() - _t2);
+    return null;
+  }
+
+  broadcastWS('agent_progress', { agent: 'Agent 2 — Lead verificatie', status: 'start', companyName: lead.companyName });
+  const [website, websiteAnalysis] = await Promise.all([
+    checkWebsite(lead.websiteUrl),
+    analyzeWebsite(lead.websiteUrl).catch(() => null),
+  ]);
+  console.log(`  [Agent 2] Bereikbaar: ${website.reachable}, laadtijd: ${website.loadTimeMs || '—'}ms, analyse score: ${websiteAnalysis?.overallScore ?? '—'}/100`);
 
   // Skip immediately if website unreachable — don't waste agent credits on fake companies
   // Exception: manual runs (options.manualRun) — user knowingly entered the company
@@ -9544,10 +9600,17 @@ async function processOneLead(lead, settings, options = {}) {
 
   console.log(`  [Email debug] manualRun=${!!options.manualRun}, rawEmail="${rawEmail || 'leeg'}", validFormat=${isValidEmailFormat(rawEmail)}, noReply=${isNoReplyAddr(rawEmail)}`);
 
+  // Agent 1 fallback: when no valid email was found, fall back to the contact
+  // form URL detected during website analysis instead of dropping the lead.
+  const contactFormUrl = websiteAnalysis?.contactFormUrl || null;
+
   if (!rawEmail || !isValidEmailFormat(rawEmail) || isNoReplyAddr(rawEmail)) {
     if (options.manualRun) {
       console.log(`  ⚠ [Manual] Geen geldig email voor ${lead.companyName} — doorgaan zonder email`);
       // contactEmail stays null — inbox will show "Geen email" so user can add manually
+    } else if (contactFormUrl) {
+      console.log(`  ⚠ [Agent 1 fallback] Geen email, wel contactformulier gevonden: ${contactFormUrl} — ${lead.companyName} gaat door`);
+      lead.contactFormUrl = contactFormUrl;
     } else {
       console.log(`  ✗ Email ongeldig van Agent 1: "${rawEmail || 'leeg'}" — ${lead.companyName} overgeslagen`);
       addActivity('skip', `${lead.companyName} overgeslagen — geen geldig email van Agent 1`, { meta: { companyName: lead.companyName, niche: lead.niche } });
@@ -9583,13 +9646,19 @@ async function processOneLead(lead, settings, options = {}) {
     }
   }
 
-  const emailSource = contactEmail ? 'verified' : null;
+  const emailSource = contactEmail ? 'verified' : (lead.contactFormUrl ? 'contact_form' : null);
+
+  // Data completeness (0-100%) — Agent 2 verdict
+  const dataCompleteness = agentCore.dataCompletenessScore({ ...lead, contactEmail });
+  agentCore.recordAgentRun('Agent 2 — Lead verificatie', true, Date.now() - _t2);
+  broadcastWS('agent_progress', { agent: 'Agent 2 — Lead verificatie', status: 'done', companyName: lead.companyName, dataCompleteness });
+  console.log(`  [Agent 2] Geverifieerd — volledigheid: ${dataCompleteness}%, email: ${contactEmail ? 'geverifieerd' : lead.contactFormUrl ? 'contactformulier fallback' : 'ontbreekt'}`);
 
   _runState.currentAgent = 'Agent 3 — Social analyzer';
   console.log(`  [Agent 3] Social media analyseren...`);
-  let social;
-  try {
-    social = await aiJSON(`Analyseer dit bedrijf op social media potentieel. Geef JSON terug:
+  broadcastWS('agent_progress', { agent: 'Agent 3 — Social analyzer', status: 'start', companyName: lead.companyName });
+  const social = await agentCore.runAgent('Agent 3 — Social analyzer', () =>
+    aiJSON(`Analyseer dit bedrijf op social media potentieel. Geef JSON terug:
 
 Bedrijf: ${lead.companyName}
 Niche: ${lead.niche}
@@ -9609,13 +9678,14 @@ Website problemen: ${website.problems?.join(', ') || 'geen'}
   "emailOpenerEn": "Same but in English, 2nd person (you/your). Max 1 sentence. E.g: 'Noticed your last few posts got way less engagement than your follower count suggests — looks like reach has dropped.'",
   "linkedinCompanyFollowers": geschat getal LinkedIn bedrijfspagina volgers (op basis van bedrijfsgrootte en niche — realistisch schatten),
   "linkedinActive": true of false (heeft het bedrijf waarschijnlijk een actieve LinkedIn aanwezigheid?)
-}`);
-  } catch {
-    social = { engagementRate: 2.5, postFrequency: 'wekelijks', runningAds: false, growthPotential: 6, improvements: [], emailOpener: null, emailOpenerEn: null };
-  }
+}`), {
+    attempts: 3,
+    fallback: { engagementRate: 2.5, postFrequency: 'wekelijks', runningAds: false, growthPotential: 6, improvements: [], emailOpener: null, emailOpenerEn: null },
+  });
 
-  _runState.currentAgent = 'Agent 4 — Scorer';
-  console.log(`  [Agent 4] Kansen berekenen...`);
+  _runState.currentAgent = 'Agent 3 — Lead scoring';
+  console.log(`  [Agent 3] Score berekenen op 10 criteria...`);
+  broadcastWS('agent_progress', { agent: 'Agent 3 — Lead scoring', status: 'start', companyName: lead.companyName });
 
   // Only recommend services agents can build 100% automatically (HTML page or written document)
   const AUTO_BUILDABLE = new Set([
@@ -9658,41 +9728,83 @@ Website problemen: ${website.problems?.join(', ') || 'geen'}
   const servicesList = recommendableServices
     .map(s => `- ${s.name} (${s.billing}): €${s.price} — ${s.description}`).join('\n');
 
-  let opportunity;
-  try {
-    opportunity = await aiJSON(`Analyseer dit bedrijf en geef een opportunity score. Geef JSON terug:
+  // Agent 3 — complete rewrite: score op 10 criteria (0-10 elk), gemiddelde = totaal
+  const waProblems = (websiteAnalysis?.problems || []).slice(0, 6).join('; ') || 'geen';
+  const rawScoring = await agentCore.runAgent('Agent 3 — Lead scoring', () =>
+    aiJSON(`Beoordeel dit bedrijf als potentiële klant voor een digitaal marketingbureau. Score elk criterium 0-10. Geef JSON terug.
 
-Bedrijf: ${lead.companyName} (${lead.niche})
+Bedrijf: ${lead.companyName} (${lead.niche}${lead.subNiche ? ' / ' + lead.subNiche : ''})
 Locatie: ${lead.location}
-Instagram: ${lead.estimatedFollowers} volgers, engagement ${social.engagementRate}%
-Website: ${website.reachable ? `bereikbaar in ${website.loadTimeMs}ms` : 'niet bereikbaar'}
-Website problemen: ${[...(website.problems||[])].join(', ') || 'geen'}
+Bedrijfsgrootte: ${companySize}
+Instagram: ${lead.estimatedFollowers || 0} volgers, engagement ${social.engagementRate}%, postfrequentie ${social.postFrequency}
+Website: ${website.reachable ? `bereikbaar in ${website.loadTimeMs}ms (HTTPS: ${website.hasHttps ? 'ja' : 'nee'}, mobiel: ${website.hasMobileOptimization ? 'ja' : 'nee'}, CTA: ${website.hasCTA ? 'ja' : 'nee'})` : 'NIET bereikbaar'}
+Website-analyse score: ${websiteAnalysis?.overallScore ?? 'onbekend'}/100
+Website problemen: ${waProblems}
+Google Maps: ${lead.mapsRating ? `${lead.mapsRating}★ (${lead.reviewCount || 0} reviews)` : 'onbekend'}
+Contact: email ${contactEmail ? 'ja' : 'nee'}, telefoon ${lead.phone ? 'ja' : 'nee'}
 Betaalde ads: ${social.runningAds ? 'ja' : 'nee'}
+Datum: ${new Date().toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' })}
 
-Beschikbare diensten (kies de 2-3 meest relevante voor dit specifieke bedrijf):
+Score deze 10 criteria (0-10 elk):
+1. website — Website kwaliteit: heeft website? mobile-friendly? snel? CTAs? HTTPS?
+2. online — Online aanwezigheid: Google My Business? reviews? social media actief?
+3. concurrentie — Concurrentie in niche: weinig lokale concurrenten = hogere score
+4. grootte — Bedrijfsgrootte: klein onafhankelijk bedrijf = betere klant = hogere score
+5. urgentie — Urgentie signalen: verouderde website? geen social? recente negatieve reviews?
+6. budget — Budget vermogen: premium locatie? prijsniveau diensten? kan €300-1000/mnd betalen?
+7. bereikbaarheid — Bereikbaarheid: email + telefoon beschikbaar?
+8. nicheFit — Niche fit: past dit bedrijf bij website/chatbot/booking/content diensten?
+9. groei — Groei potentieel: groeisignalen? recent opgericht? actieve uitbreiding?
+10. timing — Timing: seizoen relevant voor deze niche? recent zichtbaar probleem?
+
+Beschikbare diensten (kies de 2-3 meest relevante):
 ${servicesList}
 
-PRIORITEIT: Focus primair op het aanbevelen van website builds, chatbots en geschreven content. Deze leveren direct tastbare waarde en kunnen volledig automatisch worden gebouwd.
-
 REGELS voor dienstaanbeveling:
-- Als het bedrijf geen website heeft of de website niet bereikbaar is: ALTIJD een website build als eerste dienst aanbevelen.
-- Als er geen online boekingssysteem is bij een servicebedrijf (kapper, fysiotherapeut, restaurant, etc.): boekingssysteem aanbevelen.
-- Als er geen chatbot op de website staat: AI chatbot voor website aanbevelen.
-- Kies 1-2 diensten die een CONCREET, ZICHTBAAR resultaat opleveren dat de klant morgen al kan gebruiken.
-- STRIKT VEREIST: Gebruik ALLEEN de exacte dienstnamen uit de bovenstaande lijst. Verzin geen andere diensten.
-- NOOIT aanbevelen: advertentiebeheer (Google/Meta Ads), webshops opzetten, reputatie management, WhatsApp automatisering, of diensten die externe platformtoegang of handmatige instellingen vereisen.
+- Geen (bereikbare) website → ALTIJD eerst een website build aanbevelen.
+- Servicebedrijf zonder online boekingssysteem → boekingssysteem aanbevelen.
+- Geen chatbot op de website → AI chatbot aanbevelen.
+- STRIKT: gebruik ALLEEN exacte dienstnamen uit de lijst hierboven.
+- NOOIT aanbevelen: advertentiebeheer, webshops, reputatie management, WhatsApp automatisering.
 
 Geef JSON:
 {
-  "score": getal 1-10,
-  "problems": ["top probleem 1 met specifieke data", "probleem 2", "probleem 3"],
-  "recommendedServices": [{"name": "exacte dienstnaam uit lijst", "price": getal, "billing": "maandelijks of eenmalig"}],
+  "scores": { "website": X, "online": X, "concurrentie": X, "grootte": X, "urgentie": X, "budget": X, "bereikbaarheid": X, "nicheFit": X, "groei": X, "timing": X },
+  "total": X.X (gemiddelde van alle 10, 1 decimaal),
+  "recommendation": "HOOG" of "GEMIDDELD" of "LAAG",
+  "reasoning": "kort en specifiek, 1 zin, noem concrete data",
+  "topProblemen": ["probleem 1 met specifieke data", "probleem 2", "probleem 3"],
+  "suggestedServices": [{"name": "exacte dienstnaam uit lijst", "price": getal, "billing": "maandelijks of eenmalig"}],
   "estimatedValue": totaal maandelijks equivalent in euros,
-  "urgency": "low" of "medium" of "high" of "critical",
-  "reason": "korte uitleg score in 1 zin"
-}`);
-  } catch {
-    opportunity = { score: 6.5, problems: ['Onvoldoende data'], recommendedServices: services.slice(0,2), estimatedValue: 800, urgency: 'medium', reason: 'Gemiddeld potentieel' };
+  "urgency": "low" of "medium" of "high" of "critical"
+}`), {
+    attempts: 3,
+    fallback: null,
+  });
+
+  let opportunity;
+  if (rawScoring && rawScoring.scores) {
+    const sc = rawScoring.scores;
+    const vals = Object.values(sc).map(Number).filter(n => !isNaN(n));
+    const computedTotal = vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : 6.5;
+    const total = Number(rawScoring.total) || computedTotal;
+    opportunity = {
+      score: Math.min(10, Math.max(1, total)),
+      scoreBreakdown: {
+        scores: sc,
+        total,
+        recommendation: rawScoring.recommendation || (total >= 7.5 ? 'HOOG' : total >= 5.5 ? 'GEMIDDELD' : 'LAAG'),
+        reasoning: rawScoring.reasoning || '',
+      },
+      problems: Array.isArray(rawScoring.topProblemen) && rawScoring.topProblemen.length ? rawScoring.topProblemen : (websiteAnalysis?.problems || []).slice(0, 3),
+      recommendedServices: Array.isArray(rawScoring.suggestedServices) && rawScoring.suggestedServices.length ? rawScoring.suggestedServices : recommendableServices.slice(0, 2),
+      estimatedValue: Number(rawScoring.estimatedValue) || 500,
+      urgency: rawScoring.urgency || 'medium',
+      reason: rawScoring.reasoning || '',
+    };
+    console.log(`  [Agent 3] Score: ${opportunity.score}/10 (${opportunity.scoreBreakdown.recommendation}) — ${opportunity.scoreBreakdown.reasoning}`);
+  } else {
+    opportunity = { score: 6.5, scoreBreakdown: null, problems: (websiteAnalysis?.problems || ['Onvoldoende data']).slice(0, 3), recommendedServices: recommendableServices.slice(0, 2), estimatedValue: 800, urgency: 'medium', reason: 'Gemiddeld potentieel (fallback)' };
   }
 
   // Apply memory-based score adjustment
@@ -9754,27 +9866,29 @@ Geef JSON:
   opportunity.score = Math.min(10, opportunity.score || 6.5);
   if (wsBonus.length > 0) console.log(`  [WebGap] ${wsBonus.join(', ')}`);
 
-  _runState.currentAgent = 'Agent 7 — Concurrent analyzer';
-  console.log(`  [Agent 7] Concurrentie analyseren...`);
-  let competitors;
-  try {
-    const lang7 = language === 'nl' ? 'Nederlands' : 'English';
-    competitors = await aiJSON(`Analyseer de concurrentie voor dit bedrijf. Antwoord in ${lang7}. Geef alleen JSON terug.
+  _runState.currentAgent = 'Agent 4 — Competitor analyzer';
+  console.log(`  [Agent 4] Concurrentie analyseren...`);
+  broadcastWS('agent_progress', { agent: 'Agent 4 — Competitor analyzer', status: 'start', companyName: lead.companyName });
+  const lang7 = language === 'nl' ? 'Nederlands' : 'English';
+  const competitors = await agentCore.runAgent('Agent 4 — Competitor analyzer', () =>
+    aiJSON(`Analyseer de concurrentie voor dit bedrijf. Antwoord in ${lang7}. Geef alleen JSON terug.
 
 Bedrijf: ${lead.companyName} (${lead.niche})
 Locatie: ${lead.location}
 
-Genereer 2-3 realistische lokale concurrenten in dezelfde stad of regio.
-Analyseer wat die concurrenten waarschijnlijk beter doen aan online marketing.
+Genereer 3 realistische directe lokale concurrenten in dezelfde stad of regio (zelfde niche).
+Vergelijk per concurrent: website kwaliteit, reviews, social media aanwezigheid.
+Identificeer de gaten: wat doet de concurrentie beter dan dit bedrijf?
 
 {
-  "competitorNames": ["naam 1", "naam 2"],
-  "competitorAdvantages": ["concreet voordeel 1", "concreet voordeel 2", "concreet voordeel 3"],
-  "competitorGap": "één concrete zin in ${lang7} die samenvat wat het grootste voordeel is dat hun concurrenten hebben ten opzichte van dit bedrijf"
-}`);
-  } catch {
-    competitors = { competitorNames: [], competitorAdvantages: [], competitorGap: null };
-  }
+  "competitorNames": ["naam 1", "naam 2", "naam 3"],
+  "competitorAdvantages": ["concreet voordeel 1 (bijv. online boeken)", "concreet voordeel 2", "concreet voordeel 3"],
+  "competitorGap": "één concrete zin in ${lang7} die samenvat wat het grootste voordeel is dat hun concurrenten hebben — bruikbaar in een email als 'Terwijl [concurrent] al X doet...'"
+}`), {
+    attempts: 3,
+    fallback: { competitorNames: [], competitorAdvantages: [], competitorGap: null },
+  });
+  console.log(`  [Agent 4] Analyzed ${competitors.competitorNames?.length || 0} competitors`);
 
   _runState.currentAgent = 'Agent 5 — Email schrijver';
   console.log(`  [Agent 5] Email schrijven A+B (${language})...`);
@@ -9826,7 +9940,7 @@ Analyseer wat die concurrenten waarschijnlijk beter doen aan online marketing.
   const nicheLabel   = lead.subNiche || lead.niche;
   const calendlyLink = settings.calendlyUrl || settings.calendlyLink || null;
 
-  const sharedContext = language === 'nl'
+  const sharedContextBase = language === 'nl'
     ? `Bedrijf: ${lead.companyName} (${nicheLabel}, ${lead.location})
 Bedrijfstype: ${lead.subNiche ? `${lead.subNiche} (categorie: ${lead.niche})` : lead.niche}
 Bedrijfsgrootte: ${companySize}
@@ -9894,8 +10008,34 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
       : `\nCalendly link: ${calendlyUrl} — end the CTA with this link as a direct booking invitation`)
     : '';
 
-  // Append Calendly CTA instruction to shared context
-  const sharedContextFinal = sharedContext + calendlyCta;
+  // Website-analyse data + concurrentie voor hyper-personalisatie (Agent 5 rewrite)
+  const waCtx = (websiteAnalysis && websiteAnalysis.problems?.length)
+    ? `\n${language === 'nl' ? 'Website-analyse bevindingen (gebruik max 1-2 concreet in de email)' : 'Website analysis findings (use max 1-2 concretely in the email)'}: ${websiteAnalysis.problems.slice(0, 4).join('; ')}`
+    : '';
+  const compCtx = (competitors?.competitorNames?.length && competitors?.competitorAdvantages?.length)
+    ? `\n${language === 'nl' ? `Concurrenten in ${lead.location}` : `Competitors in ${lead.location}`}: ${competitors.competitorNames.slice(0, 3).join(', ')} — ${competitors.competitorAdvantages.slice(0, 2).join('; ')}`
+    : '';
+  const structureRules = language === 'nl'
+    ? `\n\nSTRUCTUUR (verwerk in de 3 alinea's):
+- Zin 1: specifieke observatie over HUN bedrijf (gebruik echte data: laadtijd, volgers, ontbrekend boekingssysteem)
+- Daarna: wat concurrenten in ${lead.location} al doen (verweef organisch, bijv. "Terwijl andere ${nicheLabel}s in ${lead.location} al online boekingen aannemen...")
+- Daarna: wat wij specifiek voor HEN kunnen doen
+- Daarna: één concreet resultaat of realistische ROI-indicatie voor een ${nicheLabel} (bijv. "een ${nicheLabel} die online boekingen toevoegt ziet vaak 20-30% minder no-shows") — GEEN verzonnen harde garanties
+- Noem ALTIJD de stad ${lead.location} en ALTIJD precies ÉÉN specifiek probleem
+- CTA: één duidelijke actie, geen meerdere opties
+- Personalisatie-eis: minimaal 3 details die ALLEEN op dit bedrijf slaan (naam, stad, niche-specifiek probleem, data punt)`
+    : `\n\nSTRUCTURE (weave into the 3 paragraphs):
+- Sentence 1: specific observation about THEIR business (real data: load time, followers, missing booking system)
+- Then: what competitors in ${lead.location} are already doing (weave naturally, e.g. "While other ${nicheLabel}s in ${lead.location} already take online bookings...")
+- Then: what we can do specifically for THEM
+- Then: one concrete result or realistic ROI indication for a ${nicheLabel} — NO invented hard guarantees
+- ALWAYS mention the city ${lead.location} and ALWAYS exactly ONE specific problem
+- CTA: one clear action, no multiple options
+- Personalization requirement: at least 3 details that ONLY apply to this business (name, city, niche-specific problem, data point)`;
+
+  // Append website analysis, competitor data, Calendly CTA and structure rules
+  // to the shared context — used directly by promptA/promptB below.
+  const sharedContext = sharedContextBase + waCtx + compCtx + calendlyCta + structureRules;
 
   const isNlBe = ['nl','be','nederland','netherlands','belgie','belgium'].includes((lead.country||'').toLowerCase().replace(/[^a-z]/g,''));
   const greetingNL = (companySize === 'large' || !isNlBe)
@@ -10029,18 +10169,25 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
   // ITEM 18: use winning A/B version when auto-pick is set for this niche
   const autoVersion = getAutoPickVersion(lead.niche, lead.country);
 
+  broadcastWS('agent_progress', { agent: 'Agent 5 — Email schrijver', status: 'start', companyName: lead.companyName });
+  const _t5 = Date.now();
   let emailA, emailB;
   try {
     if (autoVersion === 'A') {
-      emailA = await aiJSON(promptA);
+      emailA = await agentCore.withRetry('Agent 5 — Email schrijver', () => aiJSON(promptA));
       emailB = emailA;
     } else if (autoVersion === 'B') {
-      emailB = await aiJSON(promptB);
+      emailB = await agentCore.withRetry('Agent 5 — Email schrijver', () => aiJSON(promptB));
       emailA = emailB;
     } else {
-      [emailA, emailB] = await Promise.all([aiJSON(promptA), aiJSON(promptB)]);
+      [emailA, emailB] = await Promise.all([
+        agentCore.withRetry('Agent 5 — Email A', () => aiJSON(promptA)),
+        agentCore.withRetry('Agent 5 — Email B', () => aiJSON(promptB)),
+      ]);
     }
-  } catch {
+    agentCore.recordAgentRun('Agent 5 — Email schrijver', true, Date.now() - _t5);
+  } catch (a5Err) {
+    agentCore.recordAgentRun('Agent 5 — Email schrijver', false, Date.now() - _t5, a5Err.message);
     const fbGreeting = language === 'nl' ? greetingNL : language === 'de' ? greetingDE : language === 'fr' ? greetingFR : language === 'it' ? greetingIT : greetingEN;
     const fbSignoff  = language === 'nl' ? `Met vriendelijke groet,\n${myName}` : language === 'de' ? `Mit freundlichen Grüßen,\n${myName}` : language === 'fr' ? `Cordialement,\n${myName}` : language === 'it' ? `Cordiali saluti,\n${myName}` : `Kind regards,\n${myName}`;
     emailA = language === 'nl'
@@ -10142,8 +10289,8 @@ Return ONLY JSON: { "subjectOptions": ["option1", "option2", "option3"] }`;
 
   const email = { ...emailA, subject: subjectOptions[0] };
 
-  _runState.currentAgent = 'Agent 6 — LinkedIn DM schrijver';
-  console.log(`  [Agent 6] LinkedIn DM + voicenote schrijven (${language})...`);
+  _runState.currentAgent = 'Agent 5b — LinkedIn DM schrijver';
+  console.log(`  [Agent 5b] LinkedIn DM + voicenote schrijven (${language})...`);
   const dmPrompt = language === 'nl'
     ? `Schrijf een LinkedIn DM als een direct, persoonlijk berichtje. Max 280 tekens. Geen hashtags.
 
@@ -10232,8 +10379,11 @@ Rules:
     estimatedValue: opportunity.estimatedValue, urgency: opportunity.urgency,
     problems: opportunity.problems || [], services: opportunity.recommendedServices || [],
     contactEmail, emailSource, emailVerified,
+    contactFormUrl: lead.contactFormUrl || null,
+    dataCompleteness, scoreBreakdown: opportunity.scoreBreakdown || null,
+    websiteAnalysis: websiteAnalysis || null,
     website, social, email, emailA, emailB, subjectOptions, linkedinDm, voicenoteScript, competitors,
-    sendOptimalTime: getOptimalSendTime(lead.niche), createdAt: now
+    sendOptimalTime: getOptimalSendTime(lead.niche, lead.country), createdAt: now
   };
   // Every lead goes to inbox for manual approval — no auto-approve
 
@@ -10251,6 +10401,9 @@ Rules:
     status: item.status, estimatedValue: item.estimatedValue,
     problems: item.problems, services: item.services, emailOpener: opener,
     contactEmail, emailSource, emailVerified,
+    contactFormUrl: lead.contactFormUrl || null,
+    dataCompleteness, scoreBreakdown: opportunity.scoreBreakdown || null,
+    websiteAnalysis: websiteAnalysis || null,
     email: item.email, emailA: item.emailA, emailB: item.emailB, subjectOptions: item.subjectOptions, linkedinDm: item.linkedinDm,
     voicenoteScript: item.voicenoteScript,
     website: item.website, competitors, sendOptimalTime: item.sendOptimalTime,
@@ -10528,6 +10681,9 @@ CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
     }
 
     const allBatch = [...freshBatch, ...instaBatch, ...mapsBatch];
+    const _srcCount = [freshBatch.length && 'web', instaBatch.length && 'instagram', mapsBatch.length && 'maps'].filter(Boolean);
+    console.log(`[Agent 1] Found ${allBatch.length} leads from ${_srcCount.length} sources (${_srcCount.join(', ') || 'geen'})`);
+    broadcastWS('agent_progress', { agent: 'Agent 1 — Lead discovery', status: 'batch_done', found: allBatch.length, sources: _srcCount });
 
     for (const lead of allBatch) {
       if (found >= target) break;
@@ -10576,6 +10732,8 @@ CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
   _runState.currentLead = null;
   _runState.finishedAt = new Date().toISOString();
   runLog(`Klaar: ${found} leads gevonden`);
+  const _checked = found + skipped;
+  console.log(`[Agent 2] Verified ${found}/${_checked || 1} leads (${_checked ? Math.round((found / _checked) * 100) : 0}%)`);
   console.log(`\n[Agency AI] Lus klaar: ${found} leads gevonden, ${skipped} overgeslagen zonder email, ${attempts} bedrijven gecontroleerd`);
   // â"€â"€ Save results â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const inbox = readJSON('inbox.json') || [];
@@ -12325,6 +12483,80 @@ async function sendDailyBriefing() {
 }
 
 
+// ── Agent 7 — Post-Delivery Follow-up ───────────────────────────────────────
+// After a deliverable is approved + sent: day 3 check-in, day 7 results,
+// day 14 service-based upsell, day 30 monthly review. Runs daily via cron.
+const FU_UPSELL_MAP = [
+  { match: /website|landingspagina|webshop/i, suggest: 'SEO teksten optimaliseren', why: 'uw nieuwe website verdient bezoekers via Google' },
+  { match: /chatbot|faq|kennisbank/i, suggest: 'Email marketing automatisering', why: 'de leads die uw chatbot opvangt automatisch opvolgen' },
+  { match: /boeking|booking|afspraak/i, suggest: 'Google bedrijfsprofiel content', why: 'meer mensen naar uw boekingspagina leiden' },
+  { match: /content|social|instagram|tiktok/i, suggest: 'Maandelijkse content kalender', why: 'consistent blijven posten zonder er omkijken naar te hebben' },
+  { match: /seo|teksten/i, suggest: 'Blog artikelen schrijven', why: 'uw vindbaarheid verder uitbouwen met verse content' },
+];
+
+async function runPostDeliveryFollowups() {
+  const settings = readJSON('settings.json') || {};
+  if (!isResendReady(settings)) return;
+  const leads = readJSON('leads.json') || [];
+  const now = Date.now();
+  let sent = 0;
+  let changed = false;
+
+  for (const lead of leads) {
+    if (!lead.contactEmail) continue;
+    // Find the most recent approved deliverable (auto-built or manual)
+    const delivs = [...(lead.agentDeliverables || []), ...(lead.deliverables || [])]
+      .filter(d => d && (d.status === 'approved' || d.approvedAt));
+    if (!delivs.length) continue;
+    const lastApprovedAt = delivs
+      .map(d => new Date(d.approvedAt || d.builtAt || 0).getTime())
+      .sort((a, b) => b - a)[0];
+    if (!lastApprovedAt) continue;
+    const days = Math.floor((now - lastApprovedAt) / 86400000);
+    if (days < 3) continue;
+
+    lead.postDeliveryFU = lead.postDeliveryFU || {};
+    const fu = lead.postDeliveryFU;
+    const firstName = lead.contactName || lead.companyName;
+    const deliveredNames = delivs.map(d => d.service || d.name || d.type).filter(Boolean).join(', ');
+
+    // Pick which step is due (one step per lead per run, in order)
+    let step = null;
+    if (days >= 3 && !fu.d3At) step = 'd3';
+    else if (days >= 7 && !fu.d7At) step = 'd7';
+    else if (days >= 14 && !fu.d14At) step = 'd14';
+    else if (days >= 30 && !fu.d30At) step = 'd30';
+    if (!step) continue;
+
+    const upsell = FU_UPSELL_MAP.find(u => u.match.test(deliveredNames)) || { suggest: 'Maandelijkse content kalender', why: 'het momentum van uw nieuwe oplevering vasthouden' };
+
+    const prompts = {
+      d3: `Schrijf een korte vriendelijke check-in email (3 dagen na oplevering). Klant: ${firstName} (${lead.companyName}). Opgeleverd: ${deliveredNames}. Vraag of alles goed ontvangen is en of er vragen zijn. Max 90 woorden. Onderwerp begint met "Alles goed ontvangen". Afzender: ${settings.myName || ''} van ${settings.agencyName || 'Agency AI'}. Antwoord ALLEEN als JSON: {"subject":"...","body":"..."}`,
+      d7: `Schrijf een korte email (7 dagen na oplevering) die vraagt of de eerste resultaten al zichtbaar zijn. Klant: ${firstName} (${lead.companyName}). Opgeleverd: ${deliveredNames}. Bied aan om mee te kijken. Max 100 woorden. Afzender: ${settings.myName || ''} van ${settings.agencyName || 'Agency AI'}. Antwoord ALLEEN als JSON: {"subject":"...","body":"..."}`,
+      d14: `Schrijf een subtiele upsell email (14 dagen na oplevering). Klant: ${firstName} (${lead.companyName}). Opgeleverd: ${deliveredNames}. Stel als logische volgende stap voor: "${upsell.suggest}" — omdat ${upsell.why}. Niet pusherig, max 110 woorden. Afzender: ${settings.myName || ''} van ${settings.agencyName || 'Agency AI'}. Antwoord ALLEEN als JSON: {"subject":"...","body":"..."}`,
+      d30: `Schrijf een maandreview email (30 dagen na oplevering). Klant: ${firstName} (${lead.companyName}). Opgeleverd: ${deliveredNames}. Blik terug op de eerste maand, vraag naar ervaringen, bied een kort evaluatiegesprek aan. Max 130 woorden. Afzender: ${settings.myName || ''} van ${settings.agencyName || 'Agency AI'}. Antwoord ALLEEN als JSON: {"subject":"...","body":"..."}`,
+    };
+
+    try {
+      const email = await agentCore.runAgent('Agent 7 — Post-delivery follow-up', () => aiJSON(prompts[step]), { attempts: 3 });
+      if (!email?.subject || !email?.body) continue;
+      await sendEmail({ to: lead.contactEmail, subject: email.subject, body: email.body, settings, noCalendly: step === 'd3' });
+      fu[step + 'At'] = new Date().toISOString();
+      lead.clientEmailLog = [...(lead.clientEmailLog || []), { trigger: 'postDelivery_' + step, subject: email.subject, sentAt: fu[step + 'At'] }];
+      addLeadHistory(leads, lead.id, { event: 'email', label: `Agent 7 follow-up (${step}) verstuurd` });
+      changed = true;
+      sent++;
+      console.log(`  [Agent 7] ${step} follow-up → ${lead.companyName}`);
+    } catch (err) {
+      console.error(`  [Agent 7] Follow-up mislukt voor ${lead.companyName}: ${err.message}`);
+    }
+  }
+
+  if (changed) writeJSON('leads.json', leads);
+  console.log(`[Agent 7] Sent follow-up to ${sent} clients`);
+  return sent;
+}
+
 // ── Upsell detector ─────────────────────────────────────────────────────────
 
 async function runUpsellCheck() {
@@ -12896,6 +13128,12 @@ function scheduleBriefingCron() {
 cron.schedule('0 11 * * *', () => {
   console.log('[Cron] Upsell check gestart');
   runUpsellCheck().catch(err => console.error('[Cron Upsell] Fout:', err.message));
+});
+
+// Agent 7 — post-delivery follow-ups (day 3/7/14/30 after approved deliverable): daily 09:45
+cron.schedule('45 9 * * *', () => {
+  console.log('[Cron] Agent 7 post-delivery follow-ups gestart');
+  runPostDeliveryFollowups().catch(err => console.error('[Cron Agent7] Fout:', err.message));
 });
 
 // Monthly report cron: 1st of every month at 09:00
