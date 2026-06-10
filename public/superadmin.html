@@ -8,23 +8,27 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #0a0f1e;
-      --surface: #111827;
-      --surface-2: #1f2937;
-      --surface-3: #374151;
-      --border: rgba(255,255,255,0.07);
-      --text: #f9fafb;
-      --text-2: #9ca3af;
-      --text-3: #6b7280;
-      --accent: #2563eb;
-      --accent-h: #1d4ed8;
-      --success: #10b981;
-      --warning: #f59e0b;
-      --danger: #ef4444;
+      --bg: #0F0F0F;
+      --surface: #1A1A1A;
+      --surface-2: #222222;
+      --border: #2A2A2A;
+      --border-strong: #333333;
+      --text: #F5F5F5;
+      --text-2: #999999;
+      --text-3: #666666;
+      --accent: #2563EB;
+      --accent-hover: #1D4ED8;
+      --success: #16A34A;
+      --warning: #D97706;
+      --danger: #DC2626;
+      --radius: 6px;
+      --radius-lg: 8px;
+      --radius-xl: 12px;
       --sidebar-w: 220px;
     }
 
@@ -35,7 +39,15 @@
       min-height: 100vh;
       display: flex;
       overflow: hidden;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
     }
+
+    /* ── Scrollbars ── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #444; }
 
     /* ── Sidebar ── */
     .sidebar {
@@ -46,25 +58,29 @@
       display: flex;
       flex-direction: column;
       height: 100vh;
-      position: sticky;
+      position: fixed;
       top: 0;
+      left: 0;
+      z-index: 100;
+      transition: transform 0.2s ease;
     }
 
     .sidebar-logo {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 20px 18px 16px;
+      padding: 18px 16px 14px;
       border-bottom: 1px solid var(--border);
     }
 
     .logo-mark {
-      width: 32px; height: 32px;
+      width: 30px; height: 30px;
       background: var(--accent);
-      border-radius: 7px;
+      border-radius: var(--radius);
       display: flex; align-items: center; justify-content: center;
-      font-size: 15px; font-weight: 800; color: #fff;
+      font-size: 14px; font-weight: 800; color: #fff;
       flex-shrink: 0;
+      letter-spacing: -0.5px;
     }
 
     .logo-text {
@@ -72,22 +88,49 @@
       line-height: 1.2;
     }
 
-    .logo-sub { font-size: 10px; color: var(--text-3); font-weight: 400; }
+    .logo-super-badge {
+      display: inline-block;
+      margin-top: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #fca5a5;
+      background: rgba(220,38,38,0.15);
+      border: 1px solid rgba(220,38,38,0.25);
+      border-radius: 4px;
+      padding: 1px 6px;
+      letter-spacing: 0.02em;
+    }
 
-    .sidebar-nav { flex: 1; padding: 10px 8px; overflow-y: auto; }
+    .sidebar-nav {
+      flex: 1;
+      padding: 10px 8px;
+      overflow-y: auto;
+    }
+
+    .nav-section-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 16px 10px 6px;
+      margin-top: 4px;
+    }
+
+    .nav-section-label:first-child { padding-top: 6px; }
 
     .nav-item {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 9px 12px;
-      border-radius: 8px;
+      gap: 9px;
+      padding: 8px 12px;
+      border-radius: var(--radius);
       cursor: pointer;
       font-size: 13px;
       font-weight: 500;
       color: var(--text-2);
-      transition: all 0.15s;
-      margin-bottom: 2px;
+      transition: background 0.1s, color 0.1s;
+      margin-bottom: 1px;
       border: none;
       background: none;
       width: 100%;
@@ -95,21 +138,93 @@
     }
 
     .nav-item:hover { background: var(--surface-2); color: var(--text); }
-    .nav-item.active { background: rgba(37,99,235,0.15); color: #93c5fd; }
-    .nav-icon { font-size: 15px; width: 20px; text-align: center; }
+    .nav-item.active { background: var(--accent); color: #fff; }
+    .nav-item.active .nav-icon { color: #fff; }
 
-    .sidebar-footer {
-      padding: 12px 16px;
-      border-top: 1px solid var(--border);
-      font-size: 11px;
+    .nav-icon {
+      font-size: 15px;
+      width: 18px;
+      text-align: center;
+      flex-shrink: 0;
       color: var(--text-3);
+      transition: color 0.1s;
     }
 
-    .sidebar-footer strong { color: var(--text-2); font-size: 12px; }
+    .nav-item:hover .nav-icon { color: var(--text-2); }
+
+    .sidebar-footer {
+      padding: 12px 12px 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .sidebar-user {
+      margin-bottom: 10px;
+    }
+
+    .sidebar-user-label {
+      font-size: 10px;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 2px;
+    }
+
+    .sidebar-user-email {
+      font-size: 11px;
+      color: var(--text-2);
+      word-break: break-all;
+    }
+
+    .btn-sidebar-logout {
+      width: 100%;
+      padding: 7px 12px;
+      background: rgba(220,38,38,0.1);
+      border: 1px solid rgba(220,38,38,0.2);
+      border-radius: var(--radius);
+      color: #f87171;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      text-align: center;
+    }
+
+    .btn-sidebar-logout:hover {
+      background: rgba(220,38,38,0.2);
+      border-color: rgba(220,38,38,0.4);
+    }
+
+    /* ── Hamburger ── */
+    .hamburger {
+      display: none;
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      z-index: 200;
+      width: 36px; height: 36px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-2);
+      font-size: 18px;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 99;
+    }
 
     /* ── Main area ── */
     .main {
       flex: 1;
+      margin-left: var(--sidebar-w);
       display: flex;
       flex-direction: column;
       min-width: 0;
@@ -119,7 +234,7 @@
 
     /* ── Topbar ── */
     .topbar {
-      height: 56px;
+      height: 52px;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
       display: flex;
@@ -129,74 +244,132 @@
       flex-shrink: 0;
     }
 
-    .topbar-left { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: -0.2px; }
-    .topbar-left span { color: var(--text-3); font-weight: 400; font-size: 13px; margin-left: 8px; }
-
-    .topbar-right { display: flex; align-items: center; gap: 12px; }
-    .topbar-email { font-size: 12px; color: var(--text-2); }
-
-    .btn-logout {
-      padding: 6px 14px;
-      background: transparent;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text-2);
-      font-family: inherit;
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s;
+    .topbar-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.2px;
     }
 
-    .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .topbar-super-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #fca5a5;
+      background: rgba(220,38,38,0.15);
+      border: 1px solid rgba(220,38,38,0.25);
+      border-radius: 4px;
+      padding: 2px 8px;
+    }
+
+    .topbar-email {
+      font-size: 12px;
+      color: var(--text-3);
+    }
 
     /* ── Content ── */
     .content {
       flex: 1;
       overflow-y: auto;
-      padding: 28px;
+      padding: 24px;
     }
 
     .view { display: none; }
     .view.active { display: block; }
 
-    .page-title {
-      font-size: 20px;
-      font-weight: 800;
-      letter-spacing: -0.4px;
-      margin-bottom: 6px;
+    .page-header {
+      margin-bottom: 22px;
     }
 
-    .page-sub { font-size: 13px; color: var(--text-2); margin-bottom: 24px; }
+    .page-title {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.4px;
+      color: var(--text);
+    }
+
+    .page-sub {
+      font-size: 12px;
+      color: var(--text-3);
+      margin-top: 3px;
+    }
 
     /* ── Stat cards ── */
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(6, 1fr);
-      gap: 14px;
-      margin-bottom: 28px;
+      gap: 12px;
+      margin-bottom: 24px;
     }
 
     .stat-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 18px 20px;
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+      position: relative;
     }
 
-    .stat-label { font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
-    .stat-val { font-size: 26px; font-weight: 800; color: var(--text); letter-spacing: -0.5px; }
-    .stat-val.accent { color: #60a5fa; }
-    .stat-val.success { color: var(--success); }
-    .stat-val.warning { color: var(--warning); }
-    .stat-val.danger { color: var(--danger); }
+    .stat-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
 
-    /* ── Section cards ── */
+    .stat-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .stat-icon {
+      width: 28px; height: 28px;
+      border-radius: var(--radius);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .stat-icon.blue    { background: rgba(37,99,235,0.15); color: #60a5fa; }
+    .stat-icon.green   { background: rgba(22,163,74,0.15);  color: #4ade80; }
+    .stat-icon.orange  { background: rgba(217,119,6,0.15);  color: #fbbf24; }
+    .stat-icon.yellow  { background: rgba(234,179,8,0.15);  color: #facc15; }
+    .stat-icon.white   { background: rgba(255,255,255,0.08); color: #e5e7eb; }
+    .stat-icon.purple  { background: rgba(124,58,237,0.15); color: #a78bfa; }
+
+    .stat-val {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -1px;
+      line-height: 1;
+    }
+
+    .stat-trend {
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+
+    .stat-trend.up   { color: #4ade80; }
+    .stat-trend.down { color: #f87171; }
+    .stat-trend.neutral { color: var(--text-3); }
+
+    /* ── Section ── */
     .section {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      margin-bottom: 20px;
+      border-radius: var(--radius-lg);
+      margin-bottom: 16px;
       overflow: hidden;
     }
 
@@ -204,12 +377,30 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 16px 20px;
+      padding: 14px 18px;
       border-bottom: 1px solid var(--border);
     }
 
-    .section-title { font-size: 14px; font-weight: 700; color: var(--text); }
-    .section-sub { font-size: 12px; color: var(--text-3); margin-top: 1px; }
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .section-sub {
+      font-size: 11px;
+      color: var(--text-3);
+      margin-top: 1px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 16px 0 8px;
+    }
 
     /* ── Table ── */
     .table-wrap { overflow-x: auto; }
@@ -217,129 +408,286 @@
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
 
     th {
-      padding: 10px 16px;
+      padding: 8px 16px;
       text-align: left;
       font-size: 11px;
       font-weight: 600;
       color: var(--text-3);
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.07em;
       border-bottom: 1px solid var(--border);
-      background: var(--surface-2);
       white-space: nowrap;
     }
 
     td {
-      padding: 12px 16px;
+      padding: 11px 16px;
       border-bottom: 1px solid var(--border);
       color: var(--text);
       vertical-align: middle;
     }
 
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: rgba(255,255,255,0.02); }
+    tr:hover td { background: rgba(255,255,255,0.015); }
+
+    /* ── Workspace avatar ── */
+    .ws-cell { display: flex; align-items: center; gap: 10px; }
+
+    .ws-avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      border: 1px solid var(--border-strong);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-2);
+      flex-shrink: 0;
+      text-transform: uppercase;
+    }
+
+    .ws-name { font-weight: 600; font-size: 13px; }
+    .ws-slug { font-size: 11px; color: var(--text-3); margin-top: 1px; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
 
     /* ── Status badges ── */
     .badge {
       display: inline-flex;
       align-items: center;
-      padding: 3px 9px;
+      padding: 2px 8px;
       border-radius: 20px;
       font-size: 11px;
       font-weight: 600;
       white-space: nowrap;
     }
 
-    .badge-active  { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.25); }
-    .badge-pending { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.25); }
-    .badge-paused  { background: rgba(249,115,22,0.15); color: #fb923c; border: 1px solid rgba(249,115,22,0.25); }
-    .badge-blocked { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
-    .badge-deleted { background: rgba(107,114,128,0.15); color: #9ca3af; border: 1px solid rgba(107,114,128,0.25); }
-    .badge-paid    { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.2); }
-    .badge-new     { background: rgba(37,99,235,0.15);  color: #93c5fd; border: 1px solid rgba(37,99,235,0.25); }
-    .badge-info    { background: rgba(37,99,235,0.1);   color: #93c5fd; border: 1px solid rgba(37,99,235,0.2); }
-    .badge-warning { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
-    .badge-danger  { background: rgba(239,68,68,0.12);  color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+    .badge-active  { background: rgba(22,163,74,0.12);   color: #4ade80;  border: 1px solid rgba(22,163,74,0.25); }
+    .badge-pending { background: rgba(217,119,6,0.12);   color: #fbbf24;  border: 1px solid rgba(217,119,6,0.25); }
+    .badge-paused  { background: rgba(234,179,8,0.12);   color: #facc15;  border: 1px solid rgba(234,179,8,0.25); }
+    .badge-blocked { background: rgba(220,38,38,0.12);   color: #f87171;  border: 1px solid rgba(220,38,38,0.25); }
+    .badge-deleted { background: rgba(107,114,128,0.12); color: #9ca3af;  border: 1px solid rgba(107,114,128,0.25); }
+    .badge-paid    { background: rgba(22,163,74,0.1);    color: #4ade80;  border: 1px solid rgba(22,163,74,0.2); }
+    .badge-new     { background: rgba(37,99,235,0.12);   color: #93c5fd;  border: 1px solid rgba(37,99,235,0.25); }
+    .badge-info    { background: rgba(37,99,235,0.1);    color: #93c5fd;  border: 1px solid rgba(37,99,235,0.2); }
+    .badge-warning { background: rgba(217,119,6,0.1);    color: #fbbf24;  border: 1px solid rgba(217,119,6,0.2); }
+    .badge-danger  { background: rgba(220,38,38,0.1);    color: #f87171;  border: 1px solid rgba(220,38,38,0.2); }
 
-    /* ── Action buttons ── */
+    /* Plan badges */
+    .plan-starter { background: rgba(107,114,128,0.12); color: #9ca3af; border: 1px solid rgba(107,114,128,0.2); }
+    .plan-pro     { background: rgba(37,99,235,0.12);   color: #93c5fd; border: 1px solid rgba(37,99,235,0.2); }
+    .plan-agency  { background: rgba(124,58,237,0.12);  color: #a78bfa; border: 1px solid rgba(124,58,237,0.2); }
+
+    /* ── Action icon buttons ── */
     .btn {
       display: inline-flex; align-items: center; gap: 5px;
-      padding: 5px 12px;
-      border-radius: 6px;
+      padding: 5px 11px;
+      border-radius: var(--radius);
       font-family: inherit;
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
       border: 1px solid transparent;
-      transition: all 0.15s;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
       white-space: nowrap;
     }
 
-    .btn-primary  { background: var(--accent);  color: #fff; border-color: var(--accent); }
-    .btn-primary:hover  { background: var(--accent-h); }
-    .btn-success  { background: rgba(16,185,129,0.15); color: #34d399; border-color: rgba(16,185,129,0.3); }
-    .btn-success:hover  { background: rgba(16,185,129,0.25); }
-    .btn-warning  { background: rgba(245,158,11,0.15); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
-    .btn-warning:hover  { background: rgba(245,158,11,0.25); }
-    .btn-danger   { background: rgba(239,68,68,0.15);  color: #f87171; border-color: rgba(239,68,68,0.3); }
-    .btn-danger:hover   { background: rgba(239,68,68,0.25); }
-    .btn-ghost    { background: transparent; color: var(--text-2); border-color: var(--border); }
-    .btn-ghost:hover    { border-color: var(--text-3); color: var(--text); }
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+    .btn-success { background: rgba(22,163,74,0.12); color: #4ade80; border-color: rgba(22,163,74,0.25); }
+    .btn-success:hover { background: rgba(22,163,74,0.2); }
+
+    .btn-warning { background: rgba(217,119,6,0.12); color: #fbbf24; border-color: rgba(217,119,6,0.25); }
+    .btn-warning:hover { background: rgba(217,119,6,0.2); }
+
+    .btn-danger { background: rgba(220,38,38,0.1); color: #f87171; border-color: rgba(220,38,38,0.2); }
+    .btn-danger:hover { background: rgba(220,38,38,0.2); border-color: rgba(220,38,38,0.4); }
+
+    .btn-ghost { background: transparent; color: var(--text-2); border-color: var(--border); }
+    .btn-ghost:hover { border-color: var(--border-strong); color: var(--text); }
+
+    .btn-danger-outline {
+      background: transparent;
+      color: #f87171;
+      border: 1px solid rgba(220,38,38,0.35);
+    }
+    .btn-danger-outline:hover { background: rgba(220,38,38,0.1); }
+
     .btn-sm { padding: 4px 9px; font-size: 11px; }
+    .btn-xs { padding: 3px 7px; font-size: 11px; }
 
-    .btn-group { display: flex; gap: 5px; }
+    .btn-group { display: flex; gap: 4px; align-items: center; }
 
-    /* ── Filters ── */
+    /* Icon action buttons */
+    .btn-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-3);
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.15s;
+      position: relative;
+    }
+
+    .btn-icon:hover { background: var(--surface-2); color: var(--text-2); border-color: var(--border-strong); }
+    .btn-icon.view-btn:hover { color: #60a5fa; border-color: rgba(37,99,235,0.3); }
+    .btn-icon.activate-btn:hover { color: #4ade80; border-color: rgba(22,163,74,0.3); }
+    .btn-icon.pause-btn:hover { color: #facc15; border-color: rgba(234,179,8,0.3); }
+    .btn-icon.block-btn:hover { color: #f87171; border-color: rgba(220,38,38,0.3); }
+    .btn-icon.impersonate-btn:hover { color: #93c5fd; border-color: rgba(37,99,235,0.3); }
+    .btn-icon.edit-btn:hover { color: var(--text-2); }
+
+    /* Tooltip */
+    .btn-icon::after {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--border-strong);
+      color: var(--text);
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 7px;
+      border-radius: 4px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s;
+      z-index: 50;
+    }
+
+    .btn-icon:hover::after { opacity: 1; }
+
+    /* ── Filter bar (chips) ── */
     .filter-bar {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 14px 20px;
+      gap: 6px;
+      padding: 12px 16px;
       border-bottom: 1px solid var(--border);
       flex-wrap: wrap;
     }
 
     .filter-chip {
-      padding: 5px 13px;
+      padding: 4px 12px;
       border-radius: 20px;
       font-size: 12px;
       font-weight: 600;
       border: 1px solid var(--border);
       background: transparent;
-      color: var(--text-2);
+      color: var(--text-3);
       cursor: pointer;
       font-family: inherit;
       transition: all 0.15s;
     }
 
-    .filter-chip:hover { border-color: var(--text-3); color: var(--text); }
-    .filter-chip.active { background: rgba(37,99,235,0.15); border-color: rgba(37,99,235,0.4); color: #93c5fd; }
+    .filter-chip:hover { border-color: var(--border-strong); color: var(--text-2); }
+    .filter-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* Search input */
+    .search-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      position: relative;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 10px;
+      color: var(--text-3);
+      font-size: 14px;
+      pointer-events: none;
+    }
 
     .search-input {
-      flex: 1;
-      min-width: 180px;
-      max-width: 280px;
-      height: 34px;
-      padding: 0 12px;
+      height: 32px;
+      padding: 0 10px 0 32px;
       background: var(--surface-2);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: var(--radius);
       font-family: inherit;
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text);
       outline: none;
-      margin-left: auto;
+      width: 220px;
+      transition: border-color 0.15s;
     }
 
     .search-input:focus { border-color: var(--accent); }
     .search-input::placeholder { color: var(--text-3); }
+
+    /* ── Underline filter tabs (betalingen) ── */
+    .tab-bar {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      padding: 0 18px;
+    }
+
+    .tab-btn {
+      padding: 12px 14px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-3);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover { color: var(--text-2); }
+    .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+
+    /* ── Summary cards (betalingen) ── */
+    .summary-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .summary-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px 20px;
+    }
+
+    .summary-label {
+      font-size: 11px;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .summary-val {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.5px;
+    }
+
+    .summary-val.green { color: #4ade80; }
+    .summary-val.warning { color: #fbbf24; }
 
     /* ── Modal ── */
     .modal-backdrop {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.7);
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
       z-index: 1000;
       align-items: center;
       justify-content: center;
@@ -350,20 +698,20 @@
 
     .modal {
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-xl);
       width: 100%;
-      max-width: 680px;
+      max-width: 640px;
       max-height: 90vh;
       overflow-y: auto;
-      box-shadow: 0 32px 64px rgba(0,0,0,0.5);
+      box-shadow: 0 24px 48px rgba(0,0,0,0.6);
     }
 
     .modal-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 20px 24px;
+      padding: 18px 22px;
       border-bottom: 1px solid var(--border);
       position: sticky;
       top: 0;
@@ -371,140 +719,405 @@
       z-index: 1;
     }
 
-    .modal-title { font-size: 16px; font-weight: 700; }
+    .modal-title-wrap { display: flex; align-items: center; gap: 10px; }
+    .modal-title { font-size: 15px; font-weight: 700; }
+
     .modal-close {
-      width: 30px; height: 30px;
+      width: 28px; height: 28px;
       background: var(--surface-2);
-      border: none; border-radius: 6px;
-      color: var(--text-2);
-      font-size: 18px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-3);
+      font-size: 16px;
       cursor: pointer;
       display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
     }
 
-    .modal-body { padding: 20px 24px; }
-    .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+    .modal-close:hover { color: var(--text); border-color: var(--border-strong); }
+
+    .modal-body { padding: 18px 22px; }
+    .modal-footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
+    /* Modal tabs */
+    .modal-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      padding: 0 22px;
+      margin-bottom: 0;
+    }
+
+    .modal-tab {
+      padding: 10px 12px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-3);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .modal-tab:hover { color: var(--text-2); }
+    .modal-tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+
+    .modal-tab-content { display: none; padding: 18px 22px; }
+    .modal-tab-content.active { display: block; }
 
     /* ── Detail rows ── */
-    .detail-row { display: flex; gap: 8px; margin-bottom: 10px; font-size: 13px; }
-    .detail-label { color: var(--text-3); width: 140px; flex-shrink: 0; }
-    .detail-val { color: var(--text); font-weight: 500; word-break: break-all; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+
+    .detail-row {
+      display: flex;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+
+    .detail-row:last-child { border-bottom: none; }
+    .detail-label { color: var(--text-3); min-width: 130px; flex-shrink: 0; font-size: 12px; }
+    .detail-val { color: var(--text); font-weight: 500; word-break: break-all; font-size: 12px; }
 
     /* ── Form elements ── */
     .form-group { margin-bottom: 14px; }
-    label { display: block; font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
-    input, select, textarea {
+
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 5px;
+    }
+
+    input[type="text"],
+    input[type="datetime-local"],
+    select,
+    textarea {
       width: 100%;
-      padding: 9px 12px;
+      padding: 8px 12px;
       background: var(--surface-2);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: var(--radius);
       font-family: inherit;
       font-size: 13px;
       color: var(--text);
       outline: none;
+      transition: border-color 0.15s;
     }
-    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
-    select { appearance: none; cursor: pointer; }
-    textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
+
+    input[type="text"]:focus,
+    input[type="datetime-local"]:focus,
+    select:focus,
+    textarea:focus { border-color: var(--accent); }
+
+    input[type="text"]::placeholder,
+    textarea::placeholder { color: var(--text-3); }
+
+    select {
+      appearance: none;
+      cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 30px;
+    }
+
+    textarea { resize: vertical; min-height: 80px; line-height: 1.55; }
+
+    /* Radio groups */
+    .radio-group { display: flex; gap: 6px; }
+
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-2);
+      transition: all 0.15s;
+    }
+
+    .radio-option:hover { border-color: var(--border-strong); color: var(--text); }
+    .radio-option.active { border-color: var(--accent); color: var(--accent); background: rgba(37,99,235,0.08); }
+
+    .radio-option input[type="radio"] { display: none; }
+
+    /* ── Message type cards ── */
+    .msg-type-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+
+    .msg-type-btn {
+      padding: 10px 8px;
+      border-radius: var(--radius);
+      border: 1.5px solid var(--border);
+      background: transparent;
+      color: var(--text-3);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+    }
+
+    .msg-type-btn:hover { border-color: var(--border-strong); color: var(--text-2); }
+    .msg-type-btn.active.info    { border-color: #93c5fd; background: rgba(37,99,235,0.1);  color: #93c5fd; }
+    .msg-type-btn.active.warning { border-color: #fbbf24; background: rgba(217,119,6,0.1);  color: #fbbf24; }
+    .msg-type-btn.active.danger  { border-color: #f87171; background: rgba(220,38,38,0.1);  color: #f87171; }
 
     /* ── System cards ── */
-    .sys-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 20px; }
-    .sys-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
-    .sys-key { font-size: 11px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
-    .sys-val { font-size: 16px; font-weight: 700; color: var(--text); }
-
-    /* ── Danger zone ── */
-    .danger-zone { background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.2); border-radius: 12px; padding: 20px; }
-    .danger-title { font-size: 13px; font-weight: 700; color: var(--danger); margin-bottom: 12px; }
-
-    /* ── Message form ── */
-    .msg-type-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-bottom: 14px; }
-    .msg-type-btn { padding: 10px; border-radius: 8px; border: 1.5px solid var(--border); background: transparent; color: var(--text-2); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; transition: all 0.15s; }
-    .msg-type-btn.active.info { border-color: #93c5fd; background: rgba(37,99,235,0.12); color: #93c5fd; }
-    .msg-type-btn.active.warning { border-color: #fbbf24; background: rgba(245,158,11,0.12); color: #fbbf24; }
-    .msg-type-btn.active.danger  { border-color: #f87171; background: rgba(239,68,68,0.12); color: #f87171; }
-
-    /* ── Activity feed ── */
-    .activity-row td:first-child { font-size: 11px; color: var(--text-3); white-space: nowrap; }
-
-    /* ── Billing summary ── */
-    .billing-summary {
+    .sys-grid {
       display: grid;
-      grid-template-columns: repeat(3,1fr);
-      gap: 14px;
-      padding: 16px 20px;
-      border-top: 1px solid var(--border);
-      background: var(--surface-2);
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
     }
 
-    .bsummary-item { text-align: center; }
-    .bsummary-label { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
-    .bsummary-val { font-size: 18px; font-weight: 800; color: var(--text); }
-    .bsummary-val.green { color: var(--success); }
+    .sys-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px 18px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    .sys-card-left { flex: 1; }
+    .sys-key { font-size: 11px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 5px; }
+    .sys-val { font-size: 16px; font-weight: 700; color: var(--text); }
+
+    .sys-card-icon {
+      font-size: 18px;
+      color: var(--text-3);
+      margin-top: 2px;
+    }
+
+    /* ── Danger zone ── */
+    .danger-zone {
+      border: 1.5px dashed rgba(220,38,38,0.4);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      margin-top: 4px;
+    }
+
+    .danger-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #f87171;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ── Activity feed ── */
+    .activity-filters {
+      display: flex;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .activity-filters select { max-width: 190px; height: 32px; padding: 0 30px 0 10px; font-size: 12px; }
+
+    .act-time { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+    .act-workspace { font-size: 12px; color: #93c5fd; }
+    .act-action { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 11px; color: #93c5fd; }
+    .act-detail { font-size: 11px; color: var(--text-3); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Date separator */
+    .date-sep td {
+      padding: 10px 16px 4px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      border-bottom: none;
+      background: none;
+    }
+
+    /* ── Reference code ── */
+    .ref-code {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      color: #93c5fd;
+      background: rgba(37,99,235,0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* ── Berichten form card ── */
+    .msg-form-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .msg-form-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      width: 100%;
+      max-width: 560px;
+    }
+
+    .msg-form-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 18px;
+      color: var(--text);
+    }
+
+    .msg-target-hidden { display: none; }
+    .msg-target-hidden.visible { display: block; }
 
     /* ── Empty state ── */
-    .empty { padding: 40px; text-align: center; color: var(--text-3); font-size: 14px; }
+    .empty { padding: 36px; text-align: center; color: var(--text-3); font-size: 13px; }
+
+    /* ── Amount ── */
+    .amount-cell { font-weight: 700; color: var(--text); }
+    .overdue-date { color: #f87171; font-weight: 600; }
 
     /* ── Toast ── */
     #toast {
-      position: fixed; bottom: 24px; right: 24px;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 10px; padding: 12px 20px;
-      font-size: 13px; color: var(--text);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-      transform: translateY(80px); opacity: 0;
-      transition: all 0.3s; z-index: 9999;
-      max-width: 320px;
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      padding: 11px 18px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      transform: translateY(80px);
+      opacity: 0;
+      transition: all 0.25s cubic-bezier(.16,1,.3,1);
+      z-index: 9999;
+      max-width: 300px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     #toast.show { transform: translateY(0); opacity: 1; }
+    #toast.toast-ok { border-color: rgba(22,163,74,0.35); }
+    #toast.toast-err { border-color: rgba(220,38,38,0.35); }
 
-    @media (max-width: 1100px) {
-      .stats-grid { grid-template-columns: repeat(3,1fr); }
-      .sys-grid { grid-template-columns: repeat(2,1fr); }
+    /* ── Responsive ── */
+    @media (max-width: 1200px) {
+      .stats-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    @media (max-width: 900px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .summary-row { grid-template-columns: 1fr; }
+      .sys-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        transform: translateX(-100%);
+      }
+
+      .sidebar.open {
+        transform: translateX(0);
+      }
+
+      .sidebar-overlay.open {
+        display: block;
+      }
+
+      .hamburger {
+        display: flex;
+      }
+
+      .main {
+        margin-left: 0;
+      }
+
+      .topbar {
+        padding-left: 60px;
+      }
+
+      .content { padding: 16px; }
+      .stats-grid { grid-template-columns: 1fr 1fr; }
+      .detail-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 480px) {
+      .stats-grid { grid-template-columns: 1fr; }
+      .topbar-email { display: none; }
     }
   </style>
 </head>
 <body>
 
+<!-- ══ Hamburger ══════════════════════════════════════════════════════════════ -->
+<button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">
+  <i class="ti ti-menu-2"></i>
+</button>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
 <!-- ══ Sidebar ══════════════════════════════════════════════════════════════ -->
-<aside class="sidebar">
+<aside class="sidebar" id="sidebar">
   <div class="sidebar-logo">
-    <div class="logo-mark">SA</div>
+    <div class="logo-mark">A</div>
     <div>
-      <div class="logo-text">Super Admin</div>
-      <div class="logo-sub">Agency AI Platform</div>
+      <div class="logo-text">Agency AI</div>
+      <span class="logo-super-badge">Super Admin</span>
     </div>
   </div>
 
   <nav class="sidebar-nav">
+    <div class="nav-section-label">Beheer</div>
     <button class="nav-item active" onclick="setView('overzicht')" id="nav-overzicht">
-      <span class="nav-icon">📊</span> Overzicht
+      <i class="ti ti-layout-dashboard nav-icon"></i> Overzicht
     </button>
     <button class="nav-item" onclick="setView('workspaces')" id="nav-workspaces">
-      <span class="nav-icon">🏢</span> Workspaces
+      <i class="ti ti-building nav-icon"></i> Workspaces
     </button>
     <button class="nav-item" onclick="setView('betalingen')" id="nav-betalingen">
-      <span class="nav-icon">💰</span> Betalingen
+      <i class="ti ti-credit-card nav-icon"></i> Betalingen
     </button>
     <button class="nav-item" onclick="setView('demos')" id="nav-demos">
-      <span class="nav-icon">📋</span> Demo aanvragen
+      <i class="ti ti-clipboard-list nav-icon"></i> Demo aanvragen
     </button>
+
+    <div class="nav-section-label" style="margin-top:8px">Platform</div>
     <button class="nav-item" onclick="setView('activiteit')" id="nav-activiteit">
-      <span class="nav-icon">📡</span> Activiteit
+      <i class="ti ti-activity nav-icon"></i> Activiteit
     </button>
     <button class="nav-item" onclick="setView('berichten')" id="nav-berichten">
-      <span class="nav-icon">📢</span> Berichten
+      <i class="ti ti-speakerphone nav-icon"></i> Berichten
     </button>
     <button class="nav-item" onclick="setView('systeem')" id="nav-systeem">
-      <span class="nav-icon">⚙️</span> Systeem
+      <i class="ti ti-settings nav-icon"></i> Systeem
     </button>
   </nav>
 
-  <div class="sidebar-footer" id="sidebarFooter">
-    <strong>Ingelogd als</strong><br>
-    <span id="saEmail">—</span>
+  <div class="sidebar-footer">
+    <div class="sidebar-user">
+      <div class="sidebar-user-label">Ingelogd als</div>
+      <div class="sidebar-user-email" id="saEmail">—</div>
+    </div>
+    <button class="btn-sidebar-logout" onclick="saLogout()">
+      <i class="ti ti-logout" style="font-size:13px;margin-right:4px"></i>Uitloggen
+    </button>
   </div>
 </aside>
 
@@ -513,13 +1126,10 @@
 
   <!-- Topbar -->
   <div class="topbar">
-    <div class="topbar-left">
-      Super Admin — Agency AI
-      <span id="topbarView">Overzicht</span>
-    </div>
+    <div class="topbar-title" id="topbarView">Overzicht</div>
     <div class="topbar-right">
+      <span class="topbar-super-badge">Super Admin</span>
       <span class="topbar-email" id="topEmail"></span>
-      <button class="btn-logout" onclick="saLogout()">Uitloggen</button>
     </div>
   </div>
 
@@ -528,22 +1138,71 @@
 
     <!-- ══ OVERZICHT ══════════════════════════════════════════════════════ -->
     <div class="view active" id="view-overzicht">
-      <div class="page-title">Overzicht</div>
-      <div class="page-sub">Platform statistieken en openstaande acties</div>
+      <div class="page-header">
+        <div class="page-title">Overzicht</div>
+        <div class="page-sub">Platform statistieken en openstaande acties</div>
+      </div>
 
       <div class="stats-grid" id="statsGrid">
-        <div class="stat-card"><div class="stat-label">Workspaces</div><div class="stat-val" id="stTotal">—</div></div>
-        <div class="stat-card"><div class="stat-label">Actief</div><div class="stat-val success" id="stActive">—</div></div>
-        <div class="stat-card"><div class="stat-label">Wacht op betaling</div><div class="stat-val warning" id="stPending">—</div></div>
-        <div class="stat-card"><div class="stat-label">Gepauzeerd</div><div class="stat-val" id="stPaused">—</div></div>
-        <div class="stat-card"><div class="stat-label">MRR</div><div class="stat-val accent" id="stMrr">—</div></div>
-        <div class="stat-card"><div class="stat-label">Demo aanvragen</div><div class="stat-val" id="stDemo">—</div></div>
+        <div class="stat-card">
+          <div class="stat-card-top">
+            <div class="stat-label">Totaal workspaces</div>
+            <div class="stat-icon blue"><i class="ti ti-building"></i></div>
+          </div>
+          <div class="stat-val" id="stTotal">—</div>
+          <div class="stat-trend neutral">Alle tenants</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-top">
+            <div class="stat-label">Actief</div>
+            <div class="stat-icon green"><i class="ti ti-check"></i></div>
+          </div>
+          <div class="stat-val" id="stActive">—</div>
+          <div class="stat-trend up" id="trendActive"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-top">
+            <div class="stat-label">Pending betaling</div>
+            <div class="stat-icon orange"><i class="ti ti-clock"></i></div>
+          </div>
+          <div class="stat-val" id="stPending">—</div>
+          <div class="stat-trend neutral">Wacht op bevestiging</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-top">
+            <div class="stat-label">Gepauzeerd</div>
+            <div class="stat-icon yellow"><i class="ti ti-player-pause"></i></div>
+          </div>
+          <div class="stat-val" id="stPaused">—</div>
+          <div class="stat-trend neutral">Tijdelijk inactief</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-top">
+            <div class="stat-label">MRR</div>
+            <div class="stat-icon white"><i class="ti ti-currency-euro"></i></div>
+          </div>
+          <div class="stat-val" id="stMrr">—</div>
+          <div class="stat-trend up" id="trendMrr"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-top">
+            <div class="stat-label">Demo aanvragen</div>
+            <div class="stat-icon purple"><i class="ti ti-users"></i></div>
+          </div>
+          <div class="stat-val" id="stDemo">—</div>
+          <div class="stat-trend neutral">Inkomende interesse</div>
+        </div>
       </div>
 
       <div class="section">
         <div class="section-header">
-          <div><div class="section-title">Recent aangemeld</div><div class="section-sub">Nieuwste workspaces</div></div>
-          <button class="btn btn-ghost btn-sm" onclick="setView('workspaces')">Alle workspaces →</button>
+          <div>
+            <div class="section-title">Recent aangemeld</div>
+            <div class="section-sub">Nieuwste workspaces</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="setView('workspaces')">
+            Alle workspaces <i class="ti ti-arrow-right" style="font-size:12px"></i>
+          </button>
         </div>
         <div class="table-wrap"><table>
           <thead><tr><th>Naam</th><th>Plan</th><th>Status</th><th>Aangemeld</th><th>Actie</th></tr></thead>
@@ -553,7 +1212,10 @@
 
       <div class="section">
         <div class="section-header">
-          <div><div class="section-title">Openstaande betalingen</div><div class="section-sub">Te bevestigen</div></div>
+          <div>
+            <div class="section-title">Openstaande betalingen</div>
+            <div class="section-sub">Te bevestigen</div>
+          </div>
         </div>
         <div class="table-wrap"><table>
           <thead><tr><th>Workspace</th><th>Bedrag</th><th>Referentie</th><th>Vervaldatum</th><th>Actie</th></tr></thead>
@@ -564,8 +1226,10 @@
 
     <!-- ══ WORKSPACES ══════════════════════════════════════════════════════ -->
     <div class="view" id="view-workspaces">
-      <div class="page-title">Workspaces</div>
-      <div class="page-sub">Beheer alle tenants</div>
+      <div class="page-header">
+        <div class="page-title">Workspaces</div>
+        <div class="page-sub">Beheer alle tenants</div>
+      </div>
 
       <div class="section">
         <div class="filter-bar">
@@ -574,59 +1238,121 @@
           <button class="filter-chip" onclick="filterWs('pending_payment',this)">Pending</button>
           <button class="filter-chip" onclick="filterWs('paused',this)">Gepauzeerd</button>
           <button class="filter-chip" onclick="filterWs('blocked',this)">Geblokkeerd</button>
-          <input class="search-input" id="wsSearch" placeholder="Zoek op naam, email, slug…" oninput="renderWsTable()">
+          <div class="search-wrap">
+            <i class="ti ti-search search-icon"></i>
+            <input class="search-input" id="wsSearch" placeholder="Zoek naam, email, slug…" oninput="renderWsTable()">
+          </div>
         </div>
         <div class="table-wrap"><table>
-          <thead><tr><th>Naam</th><th>Slug</th><th>Plan</th><th>Status</th><th>Owner</th><th>MRR</th><th>Aangemeld</th><th>Acties</th></tr></thead>
-          <tbody id="wsTable"><tr><td colspan="8" class="empty">Laden…</td></tr></tbody>
+          <thead>
+            <tr>
+              <th>Naam</th>
+              <th>Plan</th>
+              <th>Status</th>
+              <th>Owner</th>
+              <th>MRR</th>
+              <th>Aangemeld</th>
+              <th>Acties</th>
+            </tr>
+          </thead>
+          <tbody id="wsTable"><tr><td colspan="7" class="empty">Laden…</td></tr></tbody>
         </table></div>
       </div>
     </div>
 
     <!-- ══ BETALINGEN ══════════════════════════════════════════════════════ -->
     <div class="view" id="view-betalingen">
-      <div class="page-title">Betalingen</div>
-      <div class="page-sub">Facturatie overzicht</div>
+      <div class="page-header">
+        <div class="page-title">Betalingen</div>
+        <div class="page-sub">Facturatie overzicht</div>
+      </div>
+
+      <div class="summary-row">
+        <div class="summary-card">
+          <div class="summary-label">Totaal MRR</div>
+          <div class="summary-val green" id="sumMrr">—</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Totaal ARR</div>
+          <div class="summary-val" id="sumArr">—</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Openstaand</div>
+          <div class="summary-val warning" id="sumOpen">—</div>
+        </div>
+      </div>
 
       <div class="section">
-        <div class="filter-bar">
-          <button class="filter-chip active" onclick="filterBill('all',this)">Alle</button>
-          <button class="filter-chip" onclick="filterBill('pending',this)">Openstaand</button>
-          <button class="filter-chip" onclick="filterBill('paid',this)">Betaald</button>
+        <div class="tab-bar">
+          <button class="tab-btn active" onclick="filterBill('all',this)">Alle</button>
+          <button class="tab-btn" onclick="filterBill('pending',this)">Openstaand</button>
+          <button class="tab-btn" onclick="filterBill('paid',this)">Betaald</button>
+          <button class="tab-btn" onclick="filterBill('overdue',this)">Verlopen</button>
         </div>
         <div class="table-wrap"><table>
-          <thead><tr><th>Workspace</th><th>Plan</th><th>Bedrag</th><th>Referentie</th><th>Vervaldatum</th><th>Status</th><th>Acties</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Workspace</th>
+              <th>Plan</th>
+              <th>Bedrag</th>
+              <th>Referentie</th>
+              <th>Vervaldatum</th>
+              <th>Status</th>
+              <th>Acties</th>
+            </tr>
+          </thead>
           <tbody id="billTable"><tr><td colspan="7" class="empty">Laden…</td></tr></tbody>
         </table></div>
-        <div class="billing-summary">
-          <div class="bsummary-item"><div class="bsummary-label">Totaal MRR</div><div class="bsummary-val green" id="sumMrr">—</div></div>
-          <div class="bsummary-item"><div class="bsummary-label">Totaal ARR</div><div class="bsummary-val" id="sumArr">—</div></div>
-          <div class="bsummary-item"><div class="bsummary-label">Openstaand</div><div class="bsummary-val warning" id="sumOpen">—</div></div>
-        </div>
       </div>
     </div>
 
     <!-- ══ DEMO AANVRAGEN ══════════════════════════════════════════════════ -->
     <div class="view" id="view-demos">
-      <div class="page-title">Demo aanvragen</div>
-      <div class="page-sub">Inkomende interesse</div>
+      <div class="page-header">
+        <div class="page-title">Demo aanvragen</div>
+        <div class="page-sub">Inkomende interesse van potentiële klanten</div>
+      </div>
       <div class="section">
         <div class="table-wrap"><table>
-          <thead><tr><th>Naam</th><th>Bedrijf</th><th>Email</th><th>Klanten</th><th>Plan</th><th>Status</th><th>Datum</th><th>Actie</th></tr></thead>
-          <tbody id="demoTable"><tr><td colspan="8" class="empty">Laden…</td></tr></tbody>
+          <thead>
+            <tr>
+              <th>Naam & Bedrijf</th>
+              <th>Email</th>
+              <th>Klanten</th>
+              <th>Plan</th>
+              <th>Status</th>
+              <th>Datum</th>
+              <th>Actie</th>
+            </tr>
+          </thead>
+          <tbody id="demoTable"><tr><td colspan="7" class="empty">Laden…</td></tr></tbody>
         </table></div>
       </div>
     </div>
 
     <!-- ══ ACTIVITEIT ══════════════════════════════════════════════════════ -->
     <div class="view" id="view-activiteit">
-      <div class="page-title">Activiteit</div>
-      <div class="page-sub">Real-time log van alle workspaces</div>
+      <div class="page-header">
+        <div class="page-title">Activiteit</div>
+        <div class="page-sub">Real-time log van alle workspaces</div>
+      </div>
       <div class="section">
-        <div class="filter-bar">
-          <select id="actWsFilter" onchange="renderActivityTable()" style="max-width:200px;height:34px">
-            <option value="">Alle workspaces</option>
-          </select>
+        <div class="activity-filters">
+          <div style="position:relative;flex:1;max-width:200px">
+            <select id="actWsFilter" onchange="renderActivityTable()">
+              <option value="">Alle workspaces</option>
+            </select>
+          </div>
+          <div style="position:relative;max-width:160px">
+            <select id="actTypeFilter" onchange="renderActivityTable()">
+              <option value="">Alle acties</option>
+              <option value="login">Login</option>
+              <option value="lead">Lead</option>
+              <option value="email">Email</option>
+              <option value="build">Build</option>
+              <option value="payment">Betaling</option>
+            </select>
+          </div>
         </div>
         <div class="table-wrap"><table>
           <thead><tr><th>Tijdstip</th><th>Workspace</th><th>Actie</th><th>Details</th><th>IP</th></tr></thead>
@@ -637,68 +1363,157 @@
 
     <!-- ══ BERICHTEN ══════════════════════════════════════════════════════ -->
     <div class="view" id="view-berichten">
-      <div class="page-title">Systeem berichten</div>
-      <div class="page-sub">Stuur een bericht naar één of alle workspaces</div>
-      <div class="section">
-        <div class="modal-body">
+      <div class="page-header">
+        <div class="page-title">Systeem berichten</div>
+        <div class="page-sub">Stuur een bericht naar één of alle workspaces</div>
+      </div>
+      <div class="msg-form-wrap">
+        <div class="msg-form-card">
+          <div class="msg-form-title">Nieuw bericht</div>
+
           <div class="form-group">
             <label>Aan</label>
+            <div class="radio-group">
+              <label class="radio-option active" id="radioAll" onclick="setMsgTarget('all')">
+                <input type="radio" name="msgTarget" value="all" checked>
+                <i class="ti ti-users" style="font-size:13px"></i> Alle workspaces
+              </label>
+              <label class="radio-option" id="radioSpecific" onclick="setMsgTarget('specific')">
+                <input type="radio" name="msgTarget" value="specific">
+                <i class="ti ti-building" style="font-size:13px"></i> Specifieke workspace
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group msg-target-hidden" id="msgWsGroup">
+            <label>Workspace</label>
             <select id="msgWs">
-              <option value="">Alle workspaces (global)</option>
+              <option value="">Kies workspace…</option>
             </select>
           </div>
+
           <div class="form-group">
             <label>Type</label>
             <div class="msg-type-grid">
-              <button class="msg-type-btn active info" onclick="setMsgType('info',this)">ℹ️ Info</button>
-              <button class="msg-type-btn warning" onclick="setMsgType('warning',this)">⚠️ Waarschuwing</button>
-              <button class="msg-type-btn danger" onclick="setMsgType('danger',this)">🚨 Storing</button>
+              <button class="msg-type-btn active info" onclick="setMsgType('info',this)">
+                <div style="font-size:16px;margin-bottom:3px">ℹ️</div>Info
+              </button>
+              <button class="msg-type-btn warning" onclick="setMsgType('warning',this)">
+                <div style="font-size:16px;margin-bottom:3px">⚠️</div>Waarschuwing
+              </button>
+              <button class="msg-type-btn danger" onclick="setMsgType('danger',this)">
+                <div style="font-size:16px;margin-bottom:3px">🚨</div>Storing
+              </button>
             </div>
             <input type="hidden" id="msgType" value="info">
           </div>
+
           <div class="form-group">
             <label>Titel</label>
-            <input type="text" id="msgTitle" placeholder="Onderhoud gepland op 15 juni">
+            <input type="text" id="msgTitle" placeholder="Bijv. Onderhoud gepland op 15 juni">
           </div>
+
           <div class="form-group">
             <label>Bericht</label>
-            <textarea id="msgBody" placeholder="Beschrijf het bericht…" rows="4"></textarea>
+            <textarea id="msgBody" placeholder="Beschrijf het bericht voor de workspace eigenaren…" rows="4"></textarea>
           </div>
+
           <div class="form-group">
-            <label>Verloopt op (optioneel)</label>
+            <label>Verloopt op <span style="text-transform:none;font-weight:400;color:var(--text-3)">(optioneel)</span></label>
             <input type="datetime-local" id="msgExpires">
           </div>
-          <button class="btn btn-primary" onclick="sendMessage()" style="width:100%;height:44px;font-size:14px;justify-content:center">Verstuur bericht</button>
+
+          <button class="btn btn-primary" onclick="sendMessage()" style="width:100%;height:42px;font-size:13px;justify-content:center">
+            <i class="ti ti-send" style="font-size:14px"></i> Verstuur bericht
+          </button>
         </div>
       </div>
     </div>
 
     <!-- ══ SYSTEEM ══════════════════════════════════════════════════════ -->
     <div class="view" id="view-systeem">
-      <div class="page-title">Systeem info</div>
-      <div class="page-sub">Server status en beheeracties</div>
-
-      <div class="sys-grid" id="sysGrid">
-        <div class="sys-card"><div class="sys-key">Node versie</div><div class="sys-val" id="sysNode">—</div></div>
-        <div class="sys-card"><div class="sys-key">Uptime</div><div class="sys-val" id="sysUptime">—</div></div>
-        <div class="sys-card"><div class="sys-key">Memory</div><div class="sys-val" id="sysMem">—</div></div>
-        <div class="sys-card"><div class="sys-key">Database</div><div class="sys-val" id="sysDb">—</div></div>
-        <div class="sys-card"><div class="sys-key">Railway env</div><div class="sys-val" id="sysRailway">—</div></div>
-        <div class="sys-card"><div class="sys-key">App versie</div><div class="sys-val" id="sysVersion">—</div></div>
-        <div class="sys-card"><div class="sys-key">Totaal leads</div><div class="sys-val" id="sysLeads">—</div></div>
-        <div class="sys-card"><div class="sys-key">Emails verstuurd</div><div class="sys-val" id="sysEmails">—</div></div>
-        <div class="sys-card"><div class="sys-key">Builds gedaan</div><div class="sys-val" id="sysBuilds">—</div></div>
+      <div class="page-header">
+        <div class="page-title">Systeem</div>
+        <div class="page-sub">Server status en beheeracties</div>
       </div>
 
-      <div class="section" style="margin-bottom:20px">
-        <div class="section-header"><div class="section-title">🔴 Gevaarlijke acties</div></div>
-        <div class="modal-body">
-          <div class="danger-zone">
-            <div class="danger-title">Let op — onomkeerbaar</div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap">
-              <button class="btn btn-danger" onclick="forceStatusCheck()">⚡ Forceer status check</button>
-            </div>
+      <div class="sys-grid" id="sysGrid">
+        <div class="sys-card">
+          <div class="sys-card-left">
+            <div class="sys-key">Node versie</div>
+            <div class="sys-val" id="sysNode">—</div>
           </div>
+          <i class="ti ti-brand-nodejs sys-card-icon"></i>
+        </div>
+        <div class="sys-card">
+          <div class="sys-card-left">
+            <div class="sys-key">Uptime</div>
+            <div class="sys-val" id="sysUptime">—</div>
+          </div>
+          <i class="ti ti-clock sys-card-icon"></i>
+        </div>
+        <div class="sys-card">
+          <div class="sys-card-left">
+            <div class="sys-key">Memory gebruik</div>
+            <div class="sys-val" id="sysMem">—</div>
+          </div>
+          <i class="ti ti-cpu sys-card-icon"></i>
+        </div>
+        <div class="sys-card">
+          <div class="sys-card-left">
+            <div class="sys-key">Database</div>
+            <div class="sys-val" id="sysDb">—</div>
+          </div>
+          <i class="ti ti-database sys-card-icon"></i>
+        </div>
+        <div class="sys-card">
+          <div class="sys-card-left">
+            <div class="sys-key">Railway environment</div>
+            <div class="sys-val" id="sysRailway">—</div>
+          </div>
+          <i class="ti ti-server sys-card-icon"></i>
+        </div>
+        <div class="sys-card">
+          <div class="sys-card-left">
+            <div class="sys-key">App versie</div>
+            <div class="sys-val" id="sysVersion">—</div>
+          </div>
+          <i class="ti ti-tag sys-card-icon"></i>
+        </div>
+        <div class="sys-card">
+          <div class="sys-card-left">
+            <div class="sys-key">Totaal leads</div>
+            <div class="sys-val" id="sysLeads">—</div>
+          </div>
+          <i class="ti ti-users sys-card-icon"></i>
+        </div>
+        <div class="sys-card">
+          <div class="sys-card-left">
+            <div class="sys-key">Emails verstuurd</div>
+            <div class="sys-val" id="sysEmails">—</div>
+          </div>
+          <i class="ti ti-mail sys-card-icon"></i>
+        </div>
+        <div class="sys-card">
+          <div class="sys-card-left">
+            <div class="sys-key">Builds gedaan</div>
+            <div class="sys-val" id="sysBuilds">—</div>
+          </div>
+          <i class="ti ti-hammer sys-card-icon"></i>
+        </div>
+      </div>
+
+      <div class="section-label" style="padding-left:2px;color:#f87171;font-size:11px">
+        <i class="ti ti-alert-triangle" style="font-size:13px;margin-right:4px"></i>GEVAARLIJKE ACTIES
+      </div>
+      <div class="danger-zone">
+        <div class="danger-title">
+          <i class="ti ti-alert-triangle"></i> Let op — onomkeerbaar
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-danger-outline" onclick="forceStatusCheck()">
+            <i class="ti ti-refresh" style="font-size:13px"></i> Forceer status check
+          </button>
         </div>
       </div>
     </div>
@@ -710,10 +1525,28 @@
 <div class="modal-backdrop" id="wsModal" onclick="closeWsModal(event)">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-header">
-      <span class="modal-title" id="wsModalTitle">Workspace details</span>
-      <button class="modal-close" onclick="closeWsModal()">×</button>
+      <div class="modal-title-wrap">
+        <span class="modal-title" id="wsModalTitle">Workspace details</span>
+        <span id="wsModalBadge"></span>
+      </div>
+      <button class="modal-close" onclick="closeWsModal()">
+        <i class="ti ti-x"></i>
+      </button>
     </div>
-    <div class="modal-body" id="wsModalBody">Laden…</div>
+    <div class="modal-tabs" id="wsModalTabs">
+      <button class="modal-tab active" onclick="switchModalTab('info')">Info</button>
+      <button class="modal-tab" onclick="switchModalTab('users')">Gebruikers</button>
+      <button class="modal-tab" onclick="switchModalTab('billing')">Betalingen</button>
+      <button class="modal-tab" onclick="switchModalTab('activity')">Activiteit</button>
+      <button class="modal-tab" onclick="switchModalTab('notes')">Notities</button>
+    </div>
+    <div id="wsModalBody">
+      <div class="modal-tab-content active" id="modal-tab-info">Laden…</div>
+      <div class="modal-tab-content" id="modal-tab-users"></div>
+      <div class="modal-tab-content" id="modal-tab-billing"></div>
+      <div class="modal-tab-content" id="modal-tab-activity"></div>
+      <div class="modal-tab-content" id="modal-tab-notes"></div>
+    </div>
     <div class="modal-footer" id="wsModalFooter"></div>
   </div>
 </div>
@@ -725,8 +1558,6 @@
 'use strict';
 
 // ── Auth guard ───────────────────────────────────────────────────────────────
-// Use superAdminToken (dedicated key) so impersonation replacing agencyToken
-// doesn't log the super admin out on refresh.
 const _token = localStorage.getItem('superAdminToken') || localStorage.getItem('agencyToken');
 
 if (!_token) {
@@ -739,7 +1570,6 @@ if (!_token) {
       sessionStorage.setItem('_afterLogin', '/superadmin');
       window.location.href = '/login';
     } else {
-      // Ensure superAdminToken is always set (covers first login before fix was deployed)
       if (!localStorage.getItem('superAdminToken')) {
         localStorage.setItem('superAdminToken', _token);
       }
@@ -760,7 +1590,9 @@ let _activity   = [];
 let _wsFilter   = 'all';
 let _billFilter = 'all';
 let _msgType    = 'info';
+let _msgTarget  = 'all';
 let _currentView = 'overzicht';
+let _activeModalTab = 'info';
 const _loaded   = {};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -776,8 +1608,18 @@ function fmt(iso) {
 function fmtEur(n) { return '€' + Number(n||0).toLocaleString('nl-NL', {minimumFractionDigits:2}); }
 
 function uptime(sec) {
-  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60);
+  const d = Math.floor(sec/86400);
+  const h = Math.floor((sec%86400)/3600);
+  const m = Math.floor((sec%3600)/60);
+  if (d > 0) return `${d}d ${h}u ${m}m`;
   return `${h}u ${m}m`;
+}
+
+function initials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.substring(0, 2).toUpperCase();
 }
 
 function saFetch(url, opts = {}) {
@@ -789,26 +1631,37 @@ function saFetch(url, opts = {}) {
 
 function toast(msg, type = 'ok') {
   const el = document.getElementById('toast');
-  el.textContent = (type === 'ok' ? '✓ ' : '✗ ') + msg;
-  el.style.borderColor = type === 'ok' ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)';
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 3000);
+  el.className = '';
+  el.innerHTML = (type === 'ok'
+    ? '<i class="ti ti-check" style="color:#4ade80;font-size:15px"></i> '
+    : '<i class="ti ti-x" style="color:#f87171;font-size:15px"></i> ') + esc(msg);
+  el.classList.add('show', type === 'ok' ? 'toast-ok' : 'toast-err');
+  setTimeout(() => el.classList.remove('show'), 3200);
 }
 
 function statusBadge(s) {
-  const map = { active:'badge-active', pending:'badge-pending', pending_payment:'badge-pending', paused:'badge-paused', blocked:'badge-blocked', deleted:'badge-deleted', paid:'badge-paid', new:'badge-new' };
-  const label = { active:'Actief', pending:'Pending', pending_payment:'Wacht betaling', paused:'Gepauzeerd', blocked:'Geblokkeerd', deleted:'Verwijderd', paid:'Betaald', new:'Nieuw', contacted:'Contacted', rejected:'Afgewezen' };
+  const map = {
+    active: 'badge-active', pending: 'badge-pending',
+    pending_payment: 'badge-pending', paused: 'badge-paused',
+    blocked: 'badge-blocked', deleted: 'badge-deleted',
+    paid: 'badge-paid', new: 'badge-new',
+    contacted: 'badge-info', rejected: 'badge-danger'
+  };
+  const label = {
+    active: 'Actief', pending: 'Pending', pending_payment: 'Wacht betaling',
+    paused: 'Gepauzeerd', blocked: 'Geblokkeerd', deleted: 'Verwijderd',
+    paid: 'Betaald', new: 'Nieuw', contacted: 'Contacted', rejected: 'Afgewezen'
+  };
   return `<span class="badge ${map[s]||'badge-ghost'}">${esc(label[s]||s)}</span>`;
 }
 
 function planBadge(p) {
-  const col = { starter:'badge-info', pro:'badge-new', agency:'badge-active' };
-  return `<span class="badge ${col[p]||'badge-ghost'}">${esc(p||'?')}</span>`;
+  const col = { starter: 'plan-starter', pro: 'plan-pro', agency: 'plan-agency' };
+  return `<span class="badge ${col[(p||'').toLowerCase()]||'plan-starter'}">${esc(p||'—')}</span>`;
 }
 
 function saLogout() {
   localStorage.removeItem('superAdminToken');
-  // Also clear agencyToken if it still holds a SA token (normal logout)
   const at = localStorage.getItem('agencyToken');
   if (at) {
     try {
@@ -819,6 +1672,11 @@ function saLogout() {
   window.location.href = '/login';
 }
 
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('open');
+}
+
 // ── View switching ────────────────────────────────────────────────────────────
 function setView(v) {
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
@@ -826,8 +1684,16 @@ function setView(v) {
   document.getElementById('view-' + v)?.classList.add('active');
   document.getElementById('nav-' + v)?.classList.add('active');
   _currentView = v;
-  document.getElementById('topbarView').textContent = { overzicht:'Overzicht', workspaces:'Workspaces', betalingen:'Betalingen', demos:'Demo aanvragen', activiteit:'Activiteit', berichten:'Berichten', systeem:'Systeem' }[v] || v;
+  const titles = {
+    overzicht: 'Overzicht', workspaces: 'Workspaces',
+    betalingen: 'Betalingen', demos: 'Demo aanvragen',
+    activiteit: 'Activiteit', berichten: 'Berichten', systeem: 'Systeem'
+  };
+  document.getElementById('topbarView').textContent = titles[v] || v;
   if (!_loaded[v]) { _loaded[v] = true; loadView(v); }
+  // Close mobile sidebar on nav
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
 }
 
 async function loadView(v) {
@@ -852,13 +1718,11 @@ async function loadStats() {
   document.getElementById('stMrr').textContent     = fmtEur(d.mrr);
   document.getElementById('stDemo').textContent    = d.demo_requests;
 
-  // Update billing summary
   document.getElementById('sumMrr').textContent  = fmtEur(d.mrr);
   document.getElementById('sumArr').textContent  = fmtEur(d.arr);
 }
 
 async function loadOverzicht() {
-  // Recent workspaces (reuse global data)
   if (!_workspaces.length) {
     const r = await saFetch('/api/superadmin/workspaces');
     if (r.ok) _workspaces = await r.json();
@@ -867,33 +1731,47 @@ async function loadOverzicht() {
   const tbody = document.getElementById('recentWsTable');
   tbody.innerHTML = recent.length ? recent.map(ws => `
     <tr>
-      <td><strong>${esc(ws.name)}</strong></td>
+      <td>
+        <div class="ws-cell">
+          <div class="ws-avatar">${initials(ws.name)}</div>
+          <strong>${esc(ws.name)}</strong>
+        </div>
+      </td>
       <td>${planBadge(ws.plan)}</td>
       <td>${statusBadge(ws.status)}</td>
-      <td>${fmt(ws.created_at)}</td>
-      <td><div class="btn-group">
-        <button class="btn btn-ghost btn-sm" onclick="openWsModal('${esc(ws.id)}')">👁️</button>
-        ${ws.status !== 'active' ? `<button class="btn btn-success btn-sm" onclick="wsAction('${esc(ws.id)}','activate')">✅</button>` : ''}
-      </div></td>
+      <td style="color:var(--text-3);font-size:12px">${fmt(ws.created_at)}</td>
+      <td>
+        <div class="btn-group">
+          <button class="btn-icon view-btn" onclick="openWsModal('${esc(ws.id)}')" data-tip="Bekijk"><i class="ti ti-eye"></i></button>
+          ${ws.status !== 'active' ? `<button class="btn-icon activate-btn" onclick="wsAction('${esc(ws.id)}','activate')" data-tip="Activeer"><i class="ti ti-check"></i></button>` : ''}
+        </div>
+      </td>
     </tr>`).join('') : '<tr><td colspan="5" class="empty">Geen workspaces</td></tr>';
 
-  // Pending billing
   if (!_billing.length) {
     const r2 = await saFetch('/api/superadmin/billing');
     if (r2.ok) _billing = await r2.json();
   }
   const pending = _billing.filter(b => b.status === 'pending').slice(0,10);
   const pbody = document.getElementById('pendingBillTable');
-  pbody.innerHTML = pending.length ? pending.map(b => `
-    <tr>
-      <td><strong>${esc(b.workspace_name||'—')}</strong></td>
-      <td>${fmtEur(b.amount)}</td>
-      <td><code style="font-size:11px;color:#93c5fd">${esc(b.reference||b.payment_reference||'—')}</code></td>
-      <td>${fmt(b.due_date)}</td>
-      <td><button class="btn btn-success btn-sm" onclick="confirmBilling('${esc(b.id)}')">✅ Bevestig</button></td>
-    </tr>`).join('') : '<tr><td colspan="5" class="empty">Geen openstaande betalingen</td></tr>';
+  pbody.innerHTML = pending.length ? pending.map(b => {
+    const isOverdue = b.due_date && new Date(b.due_date) < new Date();
+    return `<tr>
+      <td>
+        <div class="ws-cell">
+          <div class="ws-avatar">${initials(b.workspace_name||'?')}</div>
+          <strong>${esc(b.workspace_name||'—')}</strong>
+        </div>
+      </td>
+      <td class="amount-cell">${fmtEur(b.amount)}</td>
+      <td><span class="ref-code">${esc(b.reference||b.payment_reference||'—')}</span></td>
+      <td class="${isOverdue ? 'overdue-date' : ''}" style="font-size:12px">${fmt(b.due_date)}</td>
+      <td><button class="btn btn-success btn-sm" onclick="confirmBilling('${esc(b.id)}')">
+        <i class="ti ti-check" style="font-size:12px"></i> Bevestig
+      </button></td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="5" class="empty">Geen openstaande betalingen</td></tr>';
 
-  // Billing summary open amount
   const openAmt = _billing.filter(b => b.status === 'pending').reduce((s,b) => s + (b.amount||0), 0);
   document.getElementById('sumOpen').textContent = fmtEur(openAmt);
 }
@@ -924,23 +1802,32 @@ function renderWsTable() {
     (w.owner_email||'').toLowerCase().includes(search)
   );
   const tbody = document.getElementById('wsTable');
-  if (!items.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">Geen resultaten</td></tr>'; return; }
+  if (!items.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Geen resultaten</td></tr>'; return; }
   tbody.innerHTML = items.map(ws => `
     <tr>
-      <td><strong>${esc(ws.name)}</strong></td>
-      <td><code style="font-size:11px;color:#9ca3af">${esc(ws.slug)}</code></td>
+      <td>
+        <div class="ws-cell">
+          <div class="ws-avatar">${initials(ws.name)}</div>
+          <div>
+            <div class="ws-name">${esc(ws.name)}</div>
+            <div class="ws-slug">${esc(ws.slug)}</div>
+          </div>
+        </div>
+      </td>
       <td>${planBadge(ws.plan)}</td>
       <td>${statusBadge(ws.status)}</td>
       <td style="font-size:12px;color:var(--text-2)">${esc(ws.owner_email)}</td>
-      <td>${fmtEur(ws.billing_amount)}</td>
-      <td style="font-size:12px;color:var(--text-3)">${fmt(ws.created_at)}</td>
-      <td><div class="btn-group">
-        <button class="btn btn-ghost btn-sm" onclick="openWsModal('${esc(ws.id)}')">👁️</button>
-        ${ws.status !== 'active' ? `<button class="btn btn-success btn-sm" onclick="wsAction('${esc(ws.id)}','activate')">✅</button>` : ''}
-        ${ws.status === 'active' ? `<button class="btn btn-warning btn-sm" onclick="wsAction('${esc(ws.id)}','pause')">⏸️</button>` : ''}
-        ${ws.status !== 'blocked' ? `<button class="btn btn-danger btn-sm" onclick="wsAction('${esc(ws.id)}','block')">🚫</button>` : `<button class="btn btn-ghost btn-sm" onclick="wsAction('${esc(ws.id)}','unblock')">🔓</button>`}
-        <button class="btn btn-ghost btn-sm" onclick="impersonate('${esc(ws.id)}')">🔑</button>
-      </div></td>
+      <td class="amount-cell">${fmtEur(ws.billing_amount)}</td>
+      <td style="font-size:11px;color:var(--text-3)">${fmt(ws.created_at)}</td>
+      <td>
+        <div class="btn-group">
+          <button class="btn-icon view-btn" onclick="openWsModal('${esc(ws.id)}')" data-tip="Bekijk"><i class="ti ti-eye"></i></button>
+          ${ws.status !== 'active' ? `<button class="btn-icon activate-btn" onclick="wsAction('${esc(ws.id)}','activate')" data-tip="Activeer"><i class="ti ti-check"></i></button>` : ''}
+          ${ws.status === 'active' ? `<button class="btn-icon pause-btn" onclick="wsAction('${esc(ws.id)}','pause')" data-tip="Pauzeer"><i class="ti ti-player-pause"></i></button>` : ''}
+          ${ws.status !== 'blocked' ? `<button class="btn-icon block-btn" onclick="wsAction('${esc(ws.id)}','block')" data-tip="Blokkeer"><i class="ti ti-ban"></i></button>` : `<button class="btn-icon" onclick="wsAction('${esc(ws.id)}','unblock')" data-tip="Deblokkeer"><i class="ti ti-lock-open"></i></button>`}
+          <button class="btn-icon impersonate-btn" onclick="impersonate('${esc(ws.id)}')" data-tip="Inloggen als"><i class="ti ti-key"></i></button>
+        </div>
+      </td>
     </tr>`).join('');
 }
 
@@ -955,7 +1842,7 @@ async function loadBilling() {
 
 function filterBill(f, btn) {
   _billFilter = f;
-  document.querySelectorAll('#view-betalingen .filter-chip').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#view-betalingen .tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderBillTable();
 }
@@ -965,18 +1852,32 @@ function renderBillTable() {
   if (_billFilter !== 'all') items = items.filter(b => b.status === _billFilter);
   const tbody = document.getElementById('billTable');
   if (!items.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Geen betalingen</td></tr>'; return; }
-  tbody.innerHTML = items.map(b => `
-    <tr>
-      <td><strong>${esc(b.workspace_name||'—')}</strong></td>
+  tbody.innerHTML = items.map(b => {
+    const isOverdue = b.due_date && new Date(b.due_date) < new Date() && b.status !== 'paid';
+    return `<tr>
+      <td>
+        <div class="ws-cell">
+          <div class="ws-avatar">${initials(b.workspace_name||'?')}</div>
+          <strong>${esc(b.workspace_name||'—')}</strong>
+        </div>
+      </td>
       <td>${planBadge(b.plan)}</td>
-      <td>${fmtEur(b.amount)}</td>
-      <td><code style="font-size:11px;color:#93c5fd">${esc(b.reference||b.payment_reference||'—')}</code></td>
-      <td style="font-size:12px;color:var(--text-3)">${fmt(b.due_date)}</td>
+      <td class="amount-cell">${fmtEur(b.amount)}</td>
+      <td><span class="ref-code">${esc(b.reference||b.payment_reference||'—')}</span></td>
+      <td style="font-size:12px" class="${isOverdue ? 'overdue-date' : 'color:var(--text-3)'}">${fmt(b.due_date)}</td>
       <td>${statusBadge(b.status)}</td>
-      <td><div class="btn-group">
-        ${b.status === 'pending' ? `<button class="btn btn-success btn-sm" onclick="confirmBilling('${esc(b.id)}')">✅ Bevestig</button>` : ''}
-      </div></td>
-    </tr>`).join('');
+      <td>
+        <div class="btn-group">
+          ${b.status === 'pending' ? `<button class="btn btn-success btn-xs" onclick="confirmBilling('${esc(b.id)}')">
+            <i class="ti ti-check" style="font-size:11px"></i> Bevestig
+          </button>` : ''}
+          ${b.status === 'pending' ? `<button class="btn btn-warning btn-xs" onclick="">
+            <i class="ti ti-bell" style="font-size:11px"></i> Herinnering
+          </button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 // ── Demos ─────────────────────────────────────────────────────────────────────
@@ -984,20 +1885,30 @@ async function loadDemos() {
   const r = await saFetch('/api/superadmin/demo-requests');
   if (r.ok) _demos = await r.json();
   const tbody = document.getElementById('demoTable');
-  if (!_demos.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">Geen demo aanvragen</td></tr>'; return; }
+  if (!_demos.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Geen demo aanvragen</td></tr>'; return; }
   tbody.innerHTML = _demos.map(d => `
     <tr>
-      <td>${esc(d.name)}</td>
-      <td>${esc(d.company)}</td>
-      <td style="font-size:12px">${esc(d.email)}</td>
-      <td>${esc(d.clients||'—')}</td>
+      <td>
+        <div class="ws-name">${esc(d.name)}</div>
+        <div style="font-size:11px;color:var(--text-3)">${esc(d.company)}</div>
+      </td>
+      <td><a href="mailto:${esc(d.email)}" style="color:#93c5fd;font-size:12px;text-decoration:none">${esc(d.email)}</a></td>
+      <td>
+        <span class="badge badge-info" style="font-size:10px">${esc(d.clients||'—')} klanten</span>
+      </td>
       <td>${planBadge(d.plan)}</td>
       <td>${statusBadge(d.status)}</td>
       <td style="font-size:11px;color:var(--text-3)">${fmt(d.created_at)}</td>
-      <td><div class="btn-group">
-        <button class="btn btn-success btn-sm" onclick="demoStatus(${d.id},'contacted')">Contacted</button>
-        <button class="btn btn-danger btn-sm" onclick="demoStatus(${d.id},'rejected')">Afwijzen</button>
-      </div></td>
+      <td>
+        <div class="btn-group">
+          <button class="btn btn-success btn-xs" onclick="demoStatus(${d.id},'contacted')">
+            <i class="ti ti-check" style="font-size:11px"></i> Contacted
+          </button>
+          <button class="btn btn-danger btn-xs" onclick="demoStatus(${d.id},'rejected')">
+            <i class="ti ti-x" style="font-size:11px"></i> Afwijzen
+          </button>
+        </div>
+      </td>
     </tr>`).join('');
 }
 
@@ -1005,7 +1916,6 @@ async function loadDemos() {
 async function loadActivity() {
   const r = await saFetch('/api/superadmin/activity');
   if (r.ok) _activity = await r.json();
-  // Populate workspace filter
   const sel = document.getElementById('actWsFilter');
   const wsNames = [...new Set(_activity.map(a => a.workspace_name).filter(Boolean))];
   sel.innerHTML = '<option value="">Alle workspaces</option>' +
@@ -1014,17 +1924,19 @@ async function loadActivity() {
 }
 
 function renderActivityTable() {
-  const wsFilter = document.getElementById('actWsFilter')?.value || '';
+  const wsFilter   = document.getElementById('actWsFilter')?.value || '';
+  const typeFilter = document.getElementById('actTypeFilter')?.value || '';
   let items = _activity;
-  if (wsFilter) items = items.filter(a => a.workspace_name === wsFilter);
+  if (wsFilter)   items = items.filter(a => a.workspace_name === wsFilter);
+  if (typeFilter) items = items.filter(a => (a.action||'').toLowerCase().includes(typeFilter));
   const tbody = document.getElementById('actTable');
   if (!items.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Geen activiteit</td></tr>'; return; }
   tbody.innerHTML = items.slice(0,100).map(a => `
-    <tr class="activity-row">
-      <td>${fmt(a.created_at)}</td>
-      <td style="font-size:12px">${esc(a.workspace_name||'—')}</td>
-      <td><code style="font-size:11px;color:#93c5fd">${esc(a.action)}</code></td>
-      <td style="font-size:11px;color:var(--text-2)">${esc(a.details ? JSON.stringify(JSON.parse(a.details||'{}')) : '—')}</td>
+    <tr>
+      <td class="act-time">${fmt(a.created_at)}</td>
+      <td class="act-workspace">${esc(a.workspace_name||'—')}</td>
+      <td><span class="act-action">${esc(a.action)}</span></td>
+      <td class="act-detail" title="${esc(a.details||'')}">${esc(a.details ? JSON.stringify(JSON.parse(a.details||'{}')) : '—')}</td>
       <td style="font-size:11px;color:var(--text-3)">${esc(a.ip||'—')}</td>
     </tr>`).join('');
 }
@@ -1036,8 +1948,16 @@ async function loadBerichtWsList() {
     if (r.ok) _workspaces = await r.json();
   }
   const sel = document.getElementById('msgWs');
-  sel.innerHTML = '<option value="">Alle workspaces (global)</option>' +
+  sel.innerHTML = '<option value="">Kies workspace…</option>' +
     _workspaces.map(ws => `<option value="${esc(ws.id)}">${esc(ws.name)}</option>`).join('');
+}
+
+function setMsgTarget(t) {
+  _msgTarget = t;
+  document.getElementById('radioAll').classList.toggle('active', t === 'all');
+  document.getElementById('radioSpecific').classList.toggle('active', t === 'specific');
+  const grp = document.getElementById('msgWsGroup');
+  grp.classList.toggle('visible', t === 'specific');
 }
 
 function setMsgType(t, btn) {
@@ -1048,7 +1968,7 @@ function setMsgType(t, btn) {
 }
 
 async function sendMessage() {
-  const wsId   = document.getElementById('msgWs').value;
+  const wsId   = _msgTarget === 'specific' ? document.getElementById('msgWs').value : null;
   const title  = document.getElementById('msgTitle').value.trim();
   const body   = document.getElementById('msgBody').value.trim();
   const exp    = document.getElementById('msgExpires').value;
@@ -1126,69 +2046,121 @@ async function impersonate(id) {
   const r = await saFetch(`/api/superadmin/workspaces/${id}/impersonate`, { method: 'POST' });
   if (!r.ok) { const d = await r.json(); toast(d.error || 'Fout', 'err'); return; }
   const d = await r.json();
-
-  // Build relay URL — the relay page sets localStorage and redirects (server-rendered, no CSP issues)
   const relayUrl = `/superadmin/impersonate-relay?token=${encodeURIComponent(d.token)}&slug=${encodeURIComponent(d.slug || '')}&name=${encodeURIComponent(d.name || 'Workspace')}`;
-
   const newTab = window.open(relayUrl, '_blank');
   if (!newTab) {
-    toast('Popups zijn geblokkeerd. Sta popups toe voor deze site en probeer opnieuw.', 'err');
+    toast('Popups zijn geblokkeerd. Sta popups toe en probeer opnieuw.', 'err');
     return;
   }
-
-  // Relay page uses sessionStorage (per-tab) so no localStorage restore is needed here.
-  // The SA token in superAdminToken remains untouched for this tab.
   toast(`Workspace "${esc(d.name || d.slug)}" geopend in nieuw tabblad`);
+}
+
+// ── Modal tabs ─────────────────────────────────────────────────────────────────
+function switchModalTab(tab) {
+  _activeModalTab = tab;
+  document.querySelectorAll('.modal-tab').forEach(b => {
+    b.classList.toggle('active', b.textContent.toLowerCase().includes(
+      { info:'info', users:'gebruikers', billing:'betalingen', activity:'activiteit', notes:'notities' }[tab] || tab
+    ));
+  });
+  document.querySelectorAll('.modal-tab-content').forEach(c => c.classList.remove('active'));
+  const panel = document.getElementById('modal-tab-' + tab);
+  if (panel) panel.classList.add('active');
 }
 
 // ── Workspace Detail Modal ─────────────────────────────────────────────────────
 async function openWsModal(id) {
   document.getElementById('wsModal').classList.add('open');
-  document.getElementById('wsModalBody').innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3)">Laden…</div>';
   document.getElementById('wsModalTitle').textContent = 'Workspace details';
+  document.getElementById('wsModalBadge').innerHTML = '';
+  document.getElementById('modal-tab-info').innerHTML = '<div style="padding:36px;text-align:center;color:var(--text-3)"><i class="ti ti-loader" style="font-size:20px"></i></div>';
+  // Reset tabs
+  document.querySelectorAll('.modal-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.modal-tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector('.modal-tab').classList.add('active');
+  document.getElementById('modal-tab-info').classList.add('active');
+  _activeModalTab = 'info';
 
   const r = await saFetch(`/api/superadmin/workspaces/${id}`);
-  if (!r.ok) { document.getElementById('wsModalBody').innerHTML = '<div class="empty">Fout bij laden</div>'; return; }
+  if (!r.ok) { document.getElementById('modal-tab-info').innerHTML = '<div class="empty">Fout bij laden</div>'; return; }
   const ws = await r.json();
   document.getElementById('wsModalTitle').textContent = ws.name;
+  document.getElementById('wsModalBadge').innerHTML = statusBadge(ws.status);
 
-  const billRows = (ws.billing||[]).slice(0,5).map(b =>
-    `<tr><td style="font-size:12px">${fmt(b.created_at)}</td><td>${fmtEur(b.amount)}</td><td>${statusBadge(b.status)}</td><td style="font-size:11px;color:var(--text-3)">${b.confirmed_by||'—'}</td></tr>`
-  ).join('') || '<tr><td colspan="4" class="empty">Geen betalingen</td></tr>';
+  // Info tab
+  const fields = [
+    ['ID', ws.id], ['Slug', ws.slug], ['Plan', ws.plan],
+    ['Owner', ws.owner_email], ['Aangemeld', fmt(ws.created_at)],
+    ['Geactiveerd', fmt(ws.activated_at)], ['Volgende betaling', fmt(ws.next_billing_date)],
+    ['MRR', fmtEur(ws.billing_amount)], ['Kleur', ws.branding_color||'—']
+  ];
 
-  const actRows = (ws.activity||[]).slice(0,8).map(a =>
-    `<tr><td style="font-size:11px;color:var(--text-3)">${fmt(a.created_at)}</td><td><code style="font-size:11px;color:#93c5fd">${esc(a.action)}</code></td><td style="font-size:11px;color:var(--text-2)">${esc(a.details?JSON.stringify(JSON.parse(a.details||'{}')):'')||'—'}</td></tr>`
-  ).join('') || '<tr><td colspan="3" class="empty">Geen activiteit</td></tr>';
+  document.getElementById('modal-tab-info').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:0">
+      ${fields.map(([k,v]) => `
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:2px">
+          <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em">${esc(k)}</div>
+          <div style="font-size:13px;font-weight:500;color:var(--text);word-break:break-all">${esc(String(v||'—'))}</div>
+        </div>`).join('')}
+    </div>`;
 
-  const userRows = (ws.users||[]).map(u =>
-    `<tr><td>${esc(u.name||u.email)}</td><td style="font-size:12px;color:var(--text-2)">${esc(u.email)}</td><td>${esc(u.role)}</td><td style="font-size:11px;color:var(--text-3)">${fmt(u.last_login_at)}</td></tr>`
-  ).join('') || '<tr><td colspan="4" class="empty">Geen gebruikers</td></tr>';
+  // Users tab
+  const userRows = (ws.users||[]).map(u => `
+    <tr>
+      <td>
+        <div class="ws-cell">
+          <div class="ws-avatar" style="width:26px;height:26px;font-size:10px">${initials(u.name||u.email)}</div>
+          <span>${esc(u.name||u.email)}</span>
+        </div>
+      </td>
+      <td style="font-size:12px;color:var(--text-2)">${esc(u.email)}</td>
+      <td><span class="badge badge-info" style="font-size:10px">${esc(u.role)}</span></td>
+      <td style="font-size:11px;color:var(--text-3)">${fmt(u.last_login_at)}</td>
+    </tr>`).join('') || '<tr><td colspan="4" class="empty">Geen gebruikers</td></tr>';
 
-  document.getElementById('wsModalBody').innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px">
-      ${[['ID',ws.id],['Slug',ws.slug],['Status',ws.status],['Plan',ws.plan],['Owner',ws.owner_email],['Aangemeld',fmt(ws.created_at)],['Geactiveerd',fmt(ws.activated_at)],['Volgende betaling',fmt(ws.next_billing_date)],['MRR',fmtEur(ws.billing_amount)],['Kleur',ws.branding_color||'—']].map(([k,v]) =>
-        `<div class="detail-row"><span class="detail-label">${esc(k)}</span><span class="detail-val">${esc(String(v||'—'))}</span></div>`
-      ).join('')}
-    </div>
+  document.getElementById('modal-tab-users').innerHTML = `
+    <table><thead><tr><th>Naam</th><th>Email</th><th>Rol</th><th>Laatste login</th></tr></thead>
+    <tbody>${userRows}</tbody></table>`;
 
-    <div style="font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Gebruikers</div>
-    <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
-    <table style="margin:0"><thead><tr><th>Naam</th><th>Email</th><th>Rol</th><th>Laatste login</th></tr></thead><tbody>${userRows}</tbody></table></div>
+  // Billing tab
+  const billRows = (ws.billing||[]).slice(0,10).map(b => `
+    <tr>
+      <td style="font-size:12px;color:var(--text-3)">${fmt(b.created_at)}</td>
+      <td class="amount-cell">${fmtEur(b.amount)}</td>
+      <td>${statusBadge(b.status)}</td>
+      <td style="font-size:11px;color:var(--text-3)">${b.confirmed_by||'—'}</td>
+    </tr>`).join('') || '<tr><td colspan="4" class="empty">Geen betalingen</td></tr>';
 
-    <div style="font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Betalingen</div>
-    <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
-    <table style="margin:0"><thead><tr><th>Datum</th><th>Bedrag</th><th>Status</th><th>Bevestigd door</th></tr></thead><tbody>${billRows}</tbody></table></div>
+  document.getElementById('modal-tab-billing').innerHTML = `
+    <table><thead><tr><th>Datum</th><th>Bedrag</th><th>Status</th><th>Bevestigd door</th></tr></thead>
+    <tbody>${billRows}</tbody></table>`;
 
-    <div style="font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Activiteit</div>
-    <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
-    <table style="margin:0"><thead><tr><th>Tijdstip</th><th>Actie</th><th>Details</th></tr></thead><tbody>${actRows}</tbody></table></div>
+  // Activity tab
+  const actRows = (ws.activity||[]).slice(0,12).map(a => `
+    <tr>
+      <td class="act-time">${fmt(a.created_at)}</td>
+      <td><span class="act-action">${esc(a.action)}</span></td>
+      <td class="act-detail">${esc(a.details ? JSON.stringify(JSON.parse(a.details||'{}')) : '—')}</td>
+    </tr>`).join('') || '<tr><td colspan="3" class="empty">Geen activiteit</td></tr>';
 
-    <div style="font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Notities</div>
-    <textarea id="wsNotes" style="width:100%;height:80px" placeholder="Interne notities…">${esc(ws.notes||'')}</textarea>`;
+  document.getElementById('modal-tab-activity').innerHTML = `
+    <table><thead><tr><th>Tijdstip</th><th>Actie</th><th>Details</th></tr></thead>
+    <tbody>${actRows}</tbody></table>`;
+
+  // Notes tab
+  document.getElementById('modal-tab-notes').innerHTML = `
+    <div style="padding-bottom:4px">
+      <textarea id="wsNotes" style="width:100%;height:120px;font-size:13px" placeholder="Interne notities…">${esc(ws.notes||'')}</textarea>
+      <button class="btn btn-primary" onclick="saveWsNotes('${esc(ws.id)}')" style="margin-top:10px">
+        <i class="ti ti-device-floppy" style="font-size:13px"></i> Opslaan
+      </button>
+    </div>`;
 
   document.getElementById('wsModalFooter').innerHTML = `
-    <button class="btn btn-ghost" onclick="closeWsModal()">Sluiten</button>
-    <button class="btn btn-primary" onclick="saveWsNotes('${esc(ws.id)}')">Notities opslaan</button>`;
+    <button class="btn btn-ghost btn-sm" onclick="closeWsModal()">Sluiten</button>
+    <button class="btn btn-ghost btn-sm" onclick="impersonate('${esc(ws.id)}')">
+      <i class="ti ti-key" style="font-size:12px"></i> Inloggen als
+    </button>`;
 }
 
 async function saveWsNotes(id) {
