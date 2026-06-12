@@ -12,14 +12,33 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --bg: #0F0F0F;
+      --surface: #1A1A1A;
+      --surface-2: #222222;
+      --border: #2A2A2A;
+      --border-strong: #333333;
+      --text: #F5F5F5;
+      --text-2: #999999;
+      --text-3: #666666;
+      --accent: #2563EB;
+      --accent-hover: #1D4ED8;
+      --success: #16A34A;
+      --warning: #D97706;
+      --danger: #DC2626;
+      --radius: 6px;
+      --radius-lg: 8px;
+      --radius-xl: 12px;
+    }
+
     body {
       font-family: 'Inter', sans-serif;
-      background: #0a0f1e;
+      background: var(--bg);
       min-height: 100vh;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
-      padding: 24px;
+      padding: 40px 24px 60px;
       position: relative;
     }
 
@@ -31,13 +50,14 @@
       transform: translateX(-50%);
       width: 700px;
       height: 500px;
-      background: radial-gradient(ellipse, rgba(16,185,129,0.12) 0%, transparent 70%);
+      background: radial-gradient(ellipse, rgba(22,163,74,0.1) 0%, transparent 70%);
       pointer-events: none;
     }
 
     .wrap {
       width: 100%;
-      max-width: 500px;
+      max-width: 480px;
+      position: relative;
     }
 
     /* ── Nav ── */
@@ -55,14 +75,14 @@
     }
 
     .logo-icon {
-      width: 36px; height: 36px;
-      background: #2563eb;
-      border-radius: 8px;
+      width: 34px; height: 34px;
+      background: var(--accent);
+      border-radius: var(--radius-lg);
       display: flex; align-items: center; justify-content: center;
     }
 
     .logo-icon svg {
-      width: 18px; height: 18px;
+      width: 16px; height: 16px;
       fill: none; stroke: #fff; stroke-width: 2;
       stroke-linecap: round; stroke-linejoin: round;
     }
@@ -70,7 +90,7 @@
     .logo-name {
       font-size: 16px;
       font-weight: 700;
-      color: #f9fafb;
+      color: var(--text);
       letter-spacing: -0.3px;
     }
 
@@ -81,114 +101,218 @@
     }
 
     .hero-icon {
-      width: 64px; height: 64px;
-      background: rgba(16,185,129,0.15);
-      border: 1.5px solid rgba(16,185,129,0.3);
+      width: 60px; height: 60px;
+      background: rgba(22,163,74,0.12);
+      border: 1.5px solid rgba(22,163,74,0.25);
       border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      margin: 0 auto 16px;
-      font-size: 28px;
+      margin: 0 auto 14px;
+      font-size: 26px;
     }
 
     .hero-title {
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 800;
-      color: #f9fafb;
+      color: var(--text);
       letter-spacing: -0.5px;
       margin-bottom: 6px;
     }
 
     .hero-sub {
       font-size: 14px;
-      color: #9ca3af;
-      line-height: 1.5;
+      color: var(--text-2);
+      line-height: 1.55;
     }
+
+    /* ── Horizontal progress ── */
+    .progress-wrap {
+      margin-bottom: 28px;
+      padding: 0 4px;
+    }
+
+    .progress-steps {
+      display: flex;
+      align-items: center;
+    }
+
+    .prog-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    .prog-dot {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .prog-dot.done {
+      background: rgba(22,163,74,0.2);
+      border: 1.5px solid var(--success);
+      color: var(--success);
+    }
+
+    .prog-dot.active {
+      background: rgba(37,99,235,0.15);
+      border: 1.5px solid rgba(37,99,235,0.5);
+      color: #60A5FA;
+    }
+
+    .prog-dot.future {
+      background: var(--surface-2);
+      border: 1.5px solid var(--border-strong);
+      color: var(--text-3);
+    }
+
+    .prog-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-3);
+      white-space: nowrap;
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+
+    .prog-label.done  { color: var(--success); }
+    .prog-label.active { color: #60A5FA; }
+
+    .prog-line {
+      flex: 1;
+      height: 2px;
+      background: var(--border-strong);
+      margin: 0 4px;
+      margin-bottom: 22px;
+      position: relative;
+    }
+
+    .prog-line.done { background: var(--success); opacity: 0.4; }
 
     /* ── Payment card ── */
     .pay-card {
-      background: #111827;
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 16px;
-      padding: 28px;
-      margin-bottom: 20px;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 16px;
     }
 
     .pay-card-title {
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 600;
-      color: #6b7280;
+      color: var(--text-3);
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
     }
 
     .pay-row {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       justify-content: space-between;
-      padding: 14px 0;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
       gap: 12px;
     }
 
-    .pay-row:last-of-type { border-bottom: none; }
+    .pay-row:last-child { border-bottom: none; }
+
+    .pay-row-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1;
+      min-width: 0;
+    }
 
     .pay-label {
-      font-size: 13px;
-      color: #6b7280;
+      font-size: 11px;
+      color: var(--text-3);
       font-weight: 500;
-      white-space: nowrap;
-      flex-shrink: 0;
     }
 
     .pay-value {
       font-size: 14px;
-      color: #f9fafb;
+      color: var(--text);
       font-weight: 600;
-      text-align: right;
-      word-break: break-all;
       font-family: 'Courier New', monospace;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
-    .pay-value.accent { color: #60a5fa; }
+    .pay-value.accent { color: #60A5FA; }
+
     .pay-value.big {
-      font-size: 22px;
+      font-size: 20px;
       font-weight: 800;
       font-family: 'Inter', sans-serif;
-      color: #10b981;
+      color: #34D399;
     }
 
-    /* ── Reference row with copy ── */
+    .copy-btn-sm {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-3);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .copy-btn-sm:hover { background: var(--border-strong); color: var(--text-2); }
+    .copy-btn-sm.copied { background: rgba(22,163,74,0.15); border-color: rgba(22,163,74,0.3); color: #34D399; }
+
+    .copy-btn-sm svg {
+      width: 11px; height: 11px;
+      stroke: currentColor; fill: none;
+      stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    /* ── Reference highlight row ── */
     .ref-row {
+      background: rgba(37,99,235,0.08);
+      border: 1px solid rgba(37,99,235,0.2);
+      border-radius: 10px;
+      padding: 14px 16px;
       display: flex;
       align-items: center;
       gap: 10px;
-      background: rgba(37,99,235,0.1);
-      border: 1px solid rgba(37,99,235,0.25);
-      border-radius: 10px;
-      padding: 14px 16px;
-      margin-top: 20px;
+      margin-top: 16px;
     }
 
     .ref-code {
       flex: 1;
-      font-size: 18px;
+      font-size: 17px;
       font-weight: 800;
-      color: #93c5fd;
+      color: #93C5FD;
       font-family: 'Courier New', monospace;
       letter-spacing: 1px;
     }
 
-    .copy-btn {
+    .copy-btn-ref {
       display: flex;
       align-items: center;
       gap: 6px;
       padding: 7px 13px;
-      background: #2563eb;
+      background: var(--accent);
       color: #fff;
       border: none;
-      border-radius: 7px;
+      border-radius: var(--radius-lg);
       font-family: 'Inter', sans-serif;
       font-size: 12px;
       font-weight: 600;
@@ -198,131 +322,51 @@
       flex-shrink: 0;
     }
 
-    .copy-btn:hover { background: #1d4ed8; }
-    .copy-btn.copied { background: #10b981; }
+    .copy-btn-ref:hover { background: var(--accent-hover); }
+    .copy-btn-ref.copied { background: var(--success); }
 
-    .copy-btn svg {
-      width: 13px; height: 13px;
-      fill: none; stroke: #fff; stroke-width: 2;
-      stroke-linecap: round; stroke-linejoin: round;
+    .copy-btn-ref svg {
+      width: 12px; height: 12px;
+      stroke: #fff; fill: none;
+      stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
     }
 
-    /* ── Warning note ── */
-    .ref-note {
-      background: rgba(245,158,11,0.08);
-      border: 1px solid rgba(245,158,11,0.2);
-      border-radius: 10px;
+    /* ── Warning notice (left border style) ── */
+    .notice {
+      border-left: 3px solid var(--warning);
+      background: rgba(217,119,6,0.06);
+      border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
       padding: 12px 16px;
       font-size: 13px;
-      color: #fcd34d;
-      line-height: 1.5;
-      margin-bottom: 20px;
+      color: #FCD34D;
+      line-height: 1.55;
+      margin-bottom: 24px;
     }
 
-    .ref-note strong { font-weight: 700; }
-
-    /* ── Steps ── */
-    .steps-title {
-      font-size: 12px;
-      font-weight: 600;
-      color: #6b7280;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      margin-bottom: 16px;
-    }
-
-    .steps {
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-      margin-bottom: 28px;
-    }
-
-    .step {
-      display: flex;
-      align-items: flex-start;
-      gap: 14px;
-      position: relative;
-    }
-
-    .step:not(:last-child)::after {
-      content: '';
-      position: absolute;
-      left: 15px;
-      top: 36px;
-      bottom: -4px;
-      width: 2px;
-      background: rgba(255,255,255,0.06);
-    }
-
-    .step-dot {
-      width: 32px; height: 32px;
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-      font-size: 13px;
-      font-weight: 700;
-      margin-top: 2px;
-    }
-
-    .step-dot.done {
-      background: rgba(16,185,129,0.2);
-      border: 1.5px solid #10b981;
-      color: #10b981;
-    }
-
-    .step-dot.pending {
-      background: rgba(37,99,235,0.15);
-      border: 1.5px solid rgba(37,99,235,0.4);
-      color: #60a5fa;
-    }
-
-    .step-dot.future {
-      background: rgba(255,255,255,0.04);
-      border: 1.5px solid rgba(255,255,255,0.1);
-      color: #4b5563;
-    }
-
-    .step-body {
-      padding-bottom: 24px;
-    }
-
-    .step-label {
-      font-size: 14px;
-      font-weight: 600;
-      color: #f9fafb;
-      margin-bottom: 2px;
-    }
-
-    .step-label.muted { color: #4b5563; }
-
-    .step-sub {
-      font-size: 12px;
-      color: #6b7280;
-    }
+    .notice strong { font-weight: 700; }
 
     /* ── Bottom info ── */
     .bottom-info {
-      background: #111827;
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 14px;
-      padding: 22px 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 22px;
       text-align: center;
     }
 
     .bottom-info p {
       font-size: 14px;
-      color: #9ca3af;
+      color: var(--text-2);
       line-height: 1.6;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
 
     .bottom-info p:last-child { margin-bottom: 0; }
-
-    .bottom-info strong { color: #f9fafb; }
+    .bottom-info strong { color: var(--text); }
 
     @media (max-width: 520px) {
-      .pay-card { padding: 20px; }
+      .pay-card { padding: 18px; }
+      .prog-label { font-size: 9px; }
     }
   </style>
 </head>
@@ -344,65 +388,81 @@
       <div class="hero-sub">Maak de betaling over om je account te activeren.<br>We activeren binnen 2 uur na ontvangst.</div>
     </div>
 
+    <!-- ── Horizontal progress ── -->
+    <div class="progress-wrap">
+      <div class="progress-steps">
+        <div class="prog-step">
+          <div class="prog-dot done">✓</div>
+          <div class="prog-label done">Account aangemaakt</div>
+        </div>
+        <div class="prog-line done"></div>
+        <div class="prog-step">
+          <div class="prog-dot active">⏳</div>
+          <div class="prog-label active">Betaling</div>
+        </div>
+        <div class="prog-line"></div>
+        <div class="prog-step">
+          <div class="prog-dot future">3</div>
+          <div class="prog-label">Activeren</div>
+        </div>
+        <div class="prog-line"></div>
+        <div class="prog-step">
+          <div class="prog-dot future">4</div>
+          <div class="prog-label">Aan de slag!</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Payment details card ── -->
     <div class="pay-card">
       <div class="pay-card-title">Betaalgegevens</div>
 
       <div class="pay-row">
-        <span class="pay-label">IBAN</span>
-        <span class="pay-value accent" id="ibanVal">NL62RABO0301339430</span>
-      </div>
-      <div class="pay-row">
-        <span class="pay-label">Tenaamstelling</span>
-        <span class="pay-value">B. van Hemert</span>
-      </div>
-      <div class="pay-row">
-        <span class="pay-label">Bedrag</span>
-        <span class="pay-value big" id="amountVal">€197,00</span>
-      </div>
-
-      <div class="ref-row">
-        <span class="ref-code" id="refVal">AAI-2026-XXXX</span>
-        <button class="copy-btn" id="copyBtn" onclick="copyRef()">
+        <div class="pay-row-left">
+          <div class="pay-label">IBAN</div>
+          <div class="pay-value accent" id="ibanVal">NL62RABO0301339430</div>
+        </div>
+        <button class="copy-btn-sm" id="ibanCopyBtn" onclick="copyField('ibanVal', 'ibanCopyBtn')">
           <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          <span id="copyTxt">Kopieer referentie</span>
+          <span>Kopieer</span>
         </button>
       </div>
+
+      <div class="pay-row">
+        <div class="pay-row-left">
+          <div class="pay-label">Tenaamstelling</div>
+          <div class="pay-value" id="nameVal">B. van Hemert</div>
+        </div>
+        <button class="copy-btn-sm" id="nameCopyBtn" onclick="copyField('nameVal', 'nameCopyBtn')">
+          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span>Kopieer</span>
+        </button>
+      </div>
+
+      <div class="pay-row">
+        <div class="pay-row-left">
+          <div class="pay-label">Bedrag</div>
+          <div class="pay-value big" id="amountVal">€197,00</div>
+        </div>
+        <button class="copy-btn-sm" id="amountCopyBtn" onclick="copyField('amountVal', 'amountCopyBtn')">
+          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span>Kopieer</span>
+        </button>
+      </div>
+
     </div>
 
-    <div class="ref-note">
+    <!-- ── Reference highlight ── -->
+    <div class="ref-row">
+      <span class="ref-code" id="refVal">AAI-2026-XXXX</span>
+      <button class="copy-btn-ref" id="copyBtn" onclick="copyRef()">
+        <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span id="copyTxt">Kopieer referentie</span>
+      </button>
+    </div>
+
+    <div class="notice" style="margin-top:16px">
       <strong>Belangrijk:</strong> Vermeld altijd de referentiecode bij je betaling zodat we je account automatisch kunnen activeren.
-    </div>
-
-    <div class="steps-title">Voortgang</div>
-    <div class="steps">
-      <div class="step">
-        <div class="step-dot done">✓</div>
-        <div class="step-body">
-          <div class="step-label">Account aangemaakt</div>
-          <div class="step-sub">Je gegevens zijn opgeslagen</div>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-dot pending">⏳</div>
-        <div class="step-body">
-          <div class="step-label">Betaling in afwachting</div>
-          <div class="step-sub">Maak het bedrag over met de referentie</div>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-dot future">3</div>
-        <div class="step-body">
-          <div class="step-label muted">Account activeren</div>
-          <div class="step-sub">Na ontvangst betaling — binnen 2 uur</div>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-dot future">4</div>
-        <div class="step-body">
-          <div class="step-label muted">Aan de slag!</div>
-          <div class="step-sub">Volledig toegang tot Agency AI</div>
-        </div>
-      </div>
     </div>
 
     <div class="bottom-info">
@@ -421,6 +481,25 @@
 
     document.getElementById('refVal').textContent    = ref;
     document.getElementById('amountVal').textContent = '€' + Number(amt).toLocaleString('nl-NL', { minimumFractionDigits: 2 });
+
+    // Copy any field value by element ID
+    function copyField(valId, btnId) {
+      const text = document.getElementById(valId).textContent.trim();
+      const btn  = document.getElementById(btnId);
+      const span = btn.querySelector('span');
+      navigator.clipboard.writeText(text).then(() => {
+        btn.classList.add('copied');
+        span.textContent = '✓ Gekopieerd';
+        setTimeout(() => { btn.classList.remove('copied'); span.textContent = 'Kopieer'; }, 2200);
+      }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+        document.body.removeChild(ta);
+        span.textContent = '✓ Gekopieerd';
+        setTimeout(() => { span.textContent = 'Kopieer'; }, 2200);
+      });
+    }
 
     function copyRef() {
       navigator.clipboard.writeText(ref).then(() => {
