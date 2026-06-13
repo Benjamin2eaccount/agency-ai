@@ -6,10 +6,16 @@ async function renderRuns() {
       <div>
         <div class="page-label">Automatisering</div>
         <h1 class="page-title">Runs</h1>
+        <p style="margin-top:4px;font-size:14px;color:var(--text-2,#999);margin-bottom:0">Agent pipeline activiteit</p>
       </div>
-      <button class="btn btn-primary" id="runNowBtn2">
-        <i class="ti ti-player-play"></i> Run nu
-      </button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="setView('settings')">
+          <i class="ti ti-settings"></i> Instellingen
+        </button>
+        <button class="btn btn-primary" id="runNowBtn2">
+          <i class="ti ti-player-play"></i> Start run
+        </button>
+      </div>
     </div>
     <div id="runsContent"><div class="loading-state"><div class="spinner-lg"></div></div></div>
   `;
@@ -39,54 +45,88 @@ async function renderRuns() {
   const nextLabel  = next.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' }) + ' om ' + runTime;
 
   document.getElementById('runsContent').innerHTML = `
-    <div class="stats-grid" style="margin-bottom:20px">
-      <div class="stat-card">
-        <div class="stat-icon"><i class="ti ti-rotate-clockwise"></i></div>
-        <div class="stat-value">${totalRuns}</div>
-        <div class="stat-label">Runs totaal</div>
+    <style>
+      .rn-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+      .rn-kpi{background:var(--surface,#1A1A1A);border:1px solid var(--border,#2A2A2A);border-radius:8px;padding:16px 18px}
+      .rn-kpi-val{font-size:24px;font-weight:700;color:var(--text,#F5F5F5);line-height:1;margin-bottom:4px}
+      .rn-kpi-lbl{font-size:10px;color:var(--text-3,#666);text-transform:uppercase;letter-spacing:.07em}
+      .rn-section{margin-bottom:14px}
+      .rn-card{background:var(--surface,#1A1A1A);border:1px solid var(--border,#2A2A2A);border-radius:8px;padding:18px 20px}
+      .rn-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+      .rn-card-title{font-size:15px;font-weight:600;color:var(--text,#F5F5F5);display:flex;align-items:center;gap:6px}
+      .rn-live-card{background:var(--surface,#1A1A1A);border:1px solid var(--accent,#2563EB);border-left:3px solid var(--accent,#2563EB);border-radius:8px;padding:18px 20px;margin-bottom:14px}
+      .rn-live-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+      .rn-live-title{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:var(--text,#F5F5F5)}
+      .rn-live-dot{width:8px;height:8px;border-radius:50%;background:var(--accent,#2563EB);animation:rn-pulse 1.2s ease-in-out infinite;flex-shrink:0}
+      @keyframes rn-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}
+      .rn-progress-bar{width:100%;height:6px;background:var(--border,#2A2A2A);border-radius:3px;overflow:hidden;margin:8px 0}
+      .rn-progress-fill{height:100%;background:var(--accent,#2563EB);border-radius:3px;transition:width .4s}
+      .rn-log-box{background:var(--bg,#0F0F0F);border:1px solid var(--border,#2A2A2A);border-radius:6px;padding:10px 14px;max-height:180px;overflow-y:auto;margin-top:10px;font-family:'JetBrains Mono','Fira Code',monospace}
+      .rn-log-line{font-size:12px;color:var(--text-2,#999);line-height:1.7}
+      .rn-run-list{display:flex;flex-direction:column;gap:8px}
+      .rn-run-card{background:var(--surface,#1A1A1A);border:1px solid var(--border,#2A2A2A);border-radius:8px;overflow:hidden;transition:border-color .15s;display:flex}
+      .rn-run-card:hover{border-color:var(--border-strong,#333)}
+      .rn-run-stripe{width:3px;flex-shrink:0}
+      .rn-run-body{flex:1;padding:14px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+      .rn-run-info{flex:1;min-width:0}
+      .rn-run-date{font-size:14px;font-weight:600;color:var(--text,#F5F5F5)}
+      .rn-run-sub{font-size:12px;color:var(--text-3,#666);margin-top:2px}
+      .rn-run-stats{display:flex;align-items:center;gap:20px}
+      .rn-run-stat{display:flex;flex-direction:column;align-items:center;gap:2px}
+      .rn-run-stat-val{font-size:16px;font-weight:700;color:var(--text,#F5F5F5)}
+      .rn-run-stat-lbl{font-size:10px;color:var(--text-3,#666);text-transform:uppercase;letter-spacing:.05em}
+      .rn-input{background:var(--surface,#1A1A1A);border:1px solid var(--border,#2A2A2A);border-radius:6px;padding:8px 12px;color:var(--text,#F5F5F5);font-size:13px;outline:none;transition:border-color .15s;font-family:inherit;box-sizing:border-box}
+      .rn-input:focus{border-color:var(--accent,#2563EB)}
+      .rn-cost-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+      .rn-cost-card{background:var(--surface-2,#222);border:1px solid var(--border,#2A2A2A);border-radius:8px;padding:14px 16px}
+      .rn-cost-val{font-size:20px;font-weight:700;color:var(--success,#16A34A)}
+      .rn-cost-lbl{font-size:11px;color:var(--text-3,#666);margin-top:3px}
+      .rn-divider{height:1px;background:var(--border,#2A2A2A);margin:14px 0}
+      @media(max-width:768px){.rn-kpi-grid{grid-template-columns:repeat(2,1fr)}.rn-run-stats{gap:12px}.rn-cost-grid{grid-template-columns:repeat(2,1fr)}.rn-run-body{gap:10px}}
+    </style>
+
+    <div class="rn-kpi-grid">
+      <div class="rn-kpi">
+        <div class="rn-kpi-val">${totalRuns}</div>
+        <div class="rn-kpi-lbl">Runs totaal</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-icon"><i class="ti ti-users"></i></div>
-        <div class="stat-value">${totalLeads}</div>
-        <div class="stat-label">Leads gevonden</div>
+      <div class="rn-kpi">
+        <div class="rn-kpi-val">${totalLeads}</div>
+        <div class="rn-kpi-lbl">Leads gevonden</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-icon"><i class="ti ti-check"></i></div>
-        <div class="stat-value">${totalAuto}</div>
-        <div class="stat-label">Auto-goedgekeurd</div>
+      <div class="rn-kpi">
+        <div class="rn-kpi-val">${totalAuto}</div>
+        <div class="rn-kpi-lbl">Auto-goedgekeurd</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-icon"><i class="ti ti-currency-euro"></i></div>
-        <div class="stat-value">€${totalValue.toLocaleString('nl-NL')}</div>
-        <div class="stat-label">Totale waarde</div>
+      <div class="rn-kpi">
+        <div class="rn-kpi-val">€${totalValue.toLocaleString('nl-NL')}</div>
+        <div class="rn-kpi-lbl">Totale waarde</div>
       </div>
     </div>
 
-    <!-- Persoonlijke run-sjablonen -->
-    <div class="card" style="margin-bottom:16px">
-      <div class="card-header">
-        <h3 class="card-title"><i class="ti ti-bookmark"></i> Run-sjablonen</h3>
-        <button class="btn btn-ghost btn-sm" onclick="showNewTemplateForm()">
-          <i class="ti ti-plus"></i> Nieuw
-        </button>
+    <!-- Run sjablonen -->
+    <div class="rn-card rn-section">
+      <div class="rn-card-head">
+        <span class="rn-card-title"><i class="ti ti-bookmark"></i> Run-sjablonen</span>
+        <button class="btn btn-ghost btn-sm" onclick="showNewTemplateForm()"><i class="ti ti-plus"></i> Nieuw</button>
       </div>
       <div id="templateFormWrap" class="template-form-wrap" style="display:none">
         <div class="form-grid" style="margin-bottom:10px">
           <div class="form-group" style="margin:0">
-            <label>Naam</label>
-            <input type="text" id="tmplName" placeholder="Bijv. Restaurants NL">
+            <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Naam</label>
+            <input type="text" id="tmplName" placeholder="Bijv. Restaurants NL" class="rn-input" style="width:100%">
           </div>
           <div class="form-group" style="margin:0">
-            <label>Niches <span class="text-muted" style="font-size:11px">(komma-gescheiden)</span></label>
-            <input type="text" id="tmplNiches" placeholder="restaurant, fitness, beauty">
+            <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Niches <span style="font-size:11px;opacity:.7">(komma-gescheiden)</span></label>
+            <input type="text" id="tmplNiches" placeholder="restaurant, fitness, beauty" class="rn-input" style="width:100%">
           </div>
           <div class="form-group" style="margin:0">
-            <label>Aantal leads</label>
-            <input type="number" id="tmplCount" value="10" min="1" max="30">
+            <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Aantal leads</label>
+            <input type="number" id="tmplCount" value="10" min="1" max="30" class="rn-input" style="width:80px">
           </div>
           <div class="form-group" style="margin:0">
-            <label>Locatie <span class="text-muted" style="font-size:11px">(optioneel)</span></label>
-            <input type="text" id="tmplLocation" placeholder="Amsterdam, Rotterdam...">
+            <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Locatie <span style="font-size:11px;opacity:.7">(optioneel)</span></label>
+            <input type="text" id="tmplLocation" placeholder="Amsterdam, Rotterdam..." class="rn-input" style="width:100%">
           </div>
         </div>
         <div class="btn-row">
@@ -97,83 +137,81 @@ async function renderRuns() {
       <div id="templateList"><div class="loading-state"><div class="spinner"></div></div></div>
     </div>
 
-    <!-- Live run progress (hidden when idle) -->
-    <div id="liveRunCard" style="display:none;margin-bottom:16px"></div>
+    <!-- Live run (hidden when idle) -->
+    <div id="liveRunCard" style="display:none;margin-bottom:14px"></div>
 
-    <!-- Section 1: Run Configuratie -->
-    <div class="card" style="margin-bottom:14px">
-      <div class="card-header">
-        <h3 class="card-title">Run configuratie</h3>
+    <!-- Run configuratie -->
+    <div class="rn-card rn-section">
+      <div class="rn-card-head">
+        <span class="rn-card-title"><i class="ti ti-settings-2"></i> Run configuratie</span>
       </div>
       ${!isAdmin() ? `<div class="employee-notice"><i class="ti ti-lock"></i> Alleen admins kunnen runs starten</div>` : `
-      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
         <div>
-          <label class="settings-label">Aantal leads</label>
-          <input type="number" id="runCount" value="${(settings || {}).leadsPerDay || 15}" min="1" max="50"
-            style="width:80px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit">
+          <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Aantal leads</label>
+          <input type="number" id="runCount" value="${(settings || {}).leadsPerDay || 15}" min="1" max="50" class="rn-input" style="width:80px">
         </div>
-        <div>
-          <label class="settings-label">Niches (komma-gescheiden, leeg = alles)</label>
-          <input type="text" id="runNiches" placeholder="beauty, food, fitness"
-            style="width:260px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit">
+        <div style="flex:1;min-width:200px">
+          <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Niches <span style="opacity:.7">(komma-gescheiden, leeg = alles)</span></label>
+          <input type="text" id="runNiches" placeholder="beauty, food, fitness" class="rn-input" style="width:100%">
         </div>
         <button class="btn btn-primary" id="startRunBtn" onclick="startCustomRun()">
           <i class="ti ti-player-play"></i> Start run
         </button>
       </div>`}
       ${isAdmin() ? `
-      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;gap:20px;flex-wrap:wrap">
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border,#2A2A2A);display:flex;gap:20px;flex-wrap:wrap">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500">
           <input type="checkbox" id="igTargetingToggle" ${(settings || {}).instagramTargeting ? 'checked' : ''}
             onchange="toggleLeadSource('instagramTargeting', this.checked)"
-            style="width:16px;height:16px;accent-color:var(--accent)">
+            style="width:16px;height:16px;accent-color:var(--accent,#2563EB)">
           <i class="ti ti-brand-instagram" style="color:#e1306c;font-size:15px"></i>
           Instagram targeting
-          <span style="font-size:11px;color:var(--text-muted);font-weight:400">— accounts 2K-200K volgers, laag engagement</span>
+          <span style="font-size:11px;color:var(--text-3,#666);font-weight:400">— accounts 2K-200K volgers, laag engagement</span>
         </label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500">
           <input type="checkbox" id="mapsTargetingToggle" ${(settings || {}).googleMapsTargeting ? 'checked' : ''}
             onchange="toggleLeadSource('googleMapsTargeting', this.checked)"
-            style="width:16px;height:16px;accent-color:var(--accent)">
+            style="width:16px;height:16px;accent-color:var(--accent,#2563EB)">
           <i class="ti ti-map-pin" style="color:#4285f4;font-size:15px"></i>
           Google Maps targeting
-          <span style="font-size:11px;color:var(--text-muted);font-weight:400">— 3-4 ster reviews, minder dan 50 reviews</span>
+          <span style="font-size:11px;color:var(--text-3,#666);font-weight:400">— 3-4 ster reviews, minder dan 50 reviews</span>
         </label>
       </div>` : ''}
       <div style="margin-top:14px">
-        <p id="run-status" style="display:none;font-size:13px;color:var(--text-muted);margin:0 0 6px"></p>
+        <p id="run-status" style="display:none;font-size:13px;color:var(--text-2,#999);margin:0 0 6px"></p>
         <div id="run-progress-bar" style="display:none"></div>
-        <p id="run-timer" style="display:none;font-size:12px;color:var(--text-muted);margin:6px 0 0"></p>
+        <p id="run-timer" style="display:none;font-size:12px;color:var(--text-3,#666);margin:6px 0 0"></p>
       </div>
     </div>
 
-    <!-- Section 2: Eigen bedrijf toevoegen -->
-    <div class="card" style="margin-bottom:14px">
-      <div class="card-header">
-        <h3 class="card-title">Eigen bedrijf toevoegen</h3>
+    <!-- Eigen bedrijf toevoegen -->
+    <div class="rn-card rn-section">
+      <div class="rn-card-head">
+        <span class="rn-card-title"><i class="ti ti-building"></i> Eigen bedrijf toevoegen</span>
       </div>
-      <p class="text-secondary" style="font-size:13px;margin-bottom:14px">Voeg een specifiek bedrijf toe om direct te analyseren en aan je inbox toe te voegen.</p>
+      <p style="font-size:13px;color:var(--text-2,#999);margin-bottom:14px">Voeg een specifiek bedrijf toe om direct te analyseren en aan je inbox toe te voegen.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div>
-          <label class="settings-label">Bedrijfsnaam *</label>
-          <input type="text" id="custCompany" placeholder="Bijv. Salon Rosa" oninput="checkDuplicateLive()" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit">
+          <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Bedrijfsnaam *</label>
+          <input type="text" id="custCompany" placeholder="Bijv. Salon Rosa" oninput="checkDuplicateLive()" class="rn-input" style="width:100%">
         </div>
-        <div id="dupWarning" style="display:none;align-items:center;gap:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px"></div>
+        <div id="dupWarning" style="display:none;align-items:center;gap:8px;background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.3);border-radius:8px;padding:10px 12px"></div>
         <div>
-          <label class="settings-label">Website URL</label>
-          <input type="text" id="custWebsite" placeholder="https://..." oninput="checkDuplicateLive()" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit">
-        </div>
-        <div>
-          <label class="settings-label">Email <span style="font-weight:400;color:var(--text-muted)">(optioneel — anders zoekt Agent 1)</span></label>
-          <input type="email" id="custEmail" placeholder="info@bedrijf.nl" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit">
+          <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Website URL</label>
+          <input type="text" id="custWebsite" placeholder="https://..." oninput="checkDuplicateLive()" class="rn-input" style="width:100%">
         </div>
         <div>
-          <label class="settings-label">Instagram handle</label>
-          <input type="text" id="custInstagram" placeholder="@handle" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit">
+          <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Email <span style="opacity:.7">(optioneel — anders zoekt Agent 1)</span></label>
+          <input type="email" id="custEmail" placeholder="info@bedrijf.nl" class="rn-input" style="width:100%">
         </div>
         <div>
-          <label class="settings-label">Niche</label>
-          <select id="custNiche" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit">
+          <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Instagram handle</label>
+          <input type="text" id="custInstagram" placeholder="@handle" class="rn-input" style="width:100%">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Niche</label>
+          <select id="custNiche" class="rn-input" style="width:100%;cursor:pointer">
             <option value="beauty">Beauty</option>
             <option value="food">Food</option>
             <option value="fitness">Fitness</option>
@@ -182,12 +220,12 @@ async function renderRuns() {
           </select>
         </div>
         <div>
-          <label class="settings-label">Locatie</label>
-          <input type="text" id="custLocation" placeholder="Amsterdam, NL" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit">
+          <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Locatie</label>
+          <input type="text" id="custLocation" placeholder="Amsterdam, NL" class="rn-input" style="width:100%">
         </div>
         <div>
-          <label class="settings-label">Land</label>
-          <input type="text" id="custCountry" placeholder="NL" value="NL" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit">
+          <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Land</label>
+          <input type="text" id="custCountry" placeholder="NL" value="NL" class="rn-input" style="width:100%">
         </div>
       </div>
       <button class="btn btn-secondary" id="analyzeBtn" style="margin-top:14px" onclick="analyzeCustomCompany()">
@@ -196,67 +234,74 @@ async function renderRuns() {
       <div id="analyzeProgress" style="display:none;margin-top:14px"></div>
     </div>
 
-    <!-- Section 3: Geplande runs -->
-    <div class="card" style="margin-bottom:14px">
-      <div class="card-header">
-        <h3 class="card-title">Geplande runs</h3>
+    <!-- Geplande runs -->
+    <div class="rn-card rn-section">
+      <div class="rn-card-head">
+        <span class="rn-card-title"><i class="ti ti-calendar-event"></i> Geplande runs</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;font-size:14px">
-        <i class="ti ti-calendar-event" style="color:var(--text-muted)"></i>
-        <span>Volgende automatische run: <strong>${nextLabel}</strong></span>
+        <span style="color:var(--text-2,#999)">Volgende automatische run: <strong style="color:var(--text,#F5F5F5)">${nextLabel}</strong></span>
       </div>
-      <p class="text-secondary" style="font-size:12px;margin-top:8px">Aanpassen via Instellingen → Automatisering.</p>
+      <p style="font-size:12px;color:var(--text-3,#666);margin-top:8px;margin-bottom:0">Aanpassen via Instellingen → Automatisering.</p>
     </div>
 
-    <!-- Section 4: Run geschiedenis -->
-    ${safeRuns.length === 0 ? `
-      <div class="empty-card">
-        <i class="ti ti-history-off"></i>
-        <h3>Nog geen runs</h3>
-        <p>Start een run om leads te vinden</p>
+    <!-- Run historiek -->
+    <div class="rn-card rn-section">
+      <div class="rn-card-head">
+        <span class="rn-card-title"><i class="ti ti-history"></i> Run historiek</span>
+        <span style="font-size:12px;color:var(--text-3,#666)">${safeRuns.length} runs</span>
       </div>
-    ` : `
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">Run geschiedenis</h3>
+      ${safeRuns.length === 0 ? `
+        <div style="padding:32px;text-align:center">
+          <i class="ti ti-history-off" style="font-size:36px;color:var(--border,#2A2A2A);display:block;margin-bottom:10px"></i>
+          <p style="color:var(--text-3,#666);margin:0">Nog geen runs — start een run om leads te vinden</p>
         </div>
-        <div class="table-wrap">
-          <table class="leads-table">
-            <thead>
-              <tr>
-                <th>Datum</th>
-                <th>Tijd</th>
-                <th>Leads</th>
-                <th>Auto-goedgekeurd</th>
-                <th>Pipeline waarde</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${safeRuns.map(r => `
-                <tr>
-                  <td>${formatDate(r.createdAt)}</td>
-                  <td class="text-secondary mono">${new Date(r.createdAt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}</td>
-                  <td><strong>${r.leadsFound || 0}</strong></td>
-                  <td>${r.autoApproved || 0}</td>
-                  <td class="text-secondary">€${(r.totalValue || 0).toLocaleString('nl-NL')}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
+      ` : `
+        <div class="rn-run-list">
+          ${safeRuns.map(r => {
+            const dt = new Date(r.createdAt);
+            const dateStr = dt.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
+            const timeStr = dt.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+            return `
+              <div class="rn-run-card">
+                <div class="rn-run-stripe" style="background:var(--success,#16A34A)"></div>
+                <div class="rn-run-body">
+                  <div class="rn-run-info">
+                    <div class="rn-run-date">${dateStr} om ${timeStr}</div>
+                    <div class="rn-run-sub">${r.leadsFound || 0} leads gevonden</div>
+                  </div>
+                  <div class="rn-run-stats">
+                    <div class="rn-run-stat">
+                      <div class="rn-run-stat-val">${r.leadsFound || 0}</div>
+                      <div class="rn-run-stat-lbl">Gevonden</div>
+                    </div>
+                    <div class="rn-run-stat">
+                      <div class="rn-run-stat-val">${r.autoApproved || 0}</div>
+                      <div class="rn-run-stat-lbl">Goedgekeurd</div>
+                    </div>
+                    <div class="rn-run-stat">
+                      <div class="rn-run-stat-val" style="color:var(--text-2,#999)">€${(r.totalValue || 0).toLocaleString('nl-NL')}</div>
+                      <div class="rn-run-stat-lbl">Waarde</div>
+                    </div>
+                  </div>
+                </div>
+              </div>`;
+          }).join('')}
         </div>
-      </div>
-    `}
+      `}
+    </div>
 
-    <!-- Kosten & activiteiten -->
-    <div class="card" style="margin-top:16px">
-      <div class="card-header">
-        <h3 class="card-title">Activiteiten &amp; API kosten</h3>
-        <span id="costsHeader" class="text-muted" style="font-size:12px">Laden...</span>
+    <!-- API gebruik & kosten -->
+    <div class="rn-card rn-section">
+      <div class="rn-card-head">
+        <span class="rn-card-title"><i class="ti ti-chart-line"></i> API gebruik &amp; kosten</span>
+        <span id="costsHeader" style="font-size:12px;color:var(--text-3,#666)">Laden...</span>
       </div>
-      <div id="costsCards" class="stats-grid" style="margin-bottom:20px"></div>
+      <div id="costsCards" class="rn-cost-grid"></div>
+      <div class="rn-divider"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Log</span>
-        <select id="activityFilter" class="form-select" style="width:160px;font-size:12px" onchange="loadActivityLog()">
+        <span style="font-size:13px;font-weight:600;color:var(--text,#F5F5F5)">Activiteit log</span>
+        <select id="activityFilter" class="rn-input" style="width:160px;font-size:12px;cursor:pointer" onchange="loadActivityLog()">
           <option value="">Alle activiteiten</option>
           <option value="run">Runs</option>
           <option value="email">Emails verstuurd</option>
@@ -267,13 +312,13 @@ async function renderRuns() {
       <div id="activityLog"><div class="loading-state"><div class="spinner"></div></div></div>
     </div>
 
-    <!-- Systeemstatus & foutmeldingen -->
-    <div class="card" style="margin-top:16px">
-      <div class="card-header">
-        <h3 class="card-title"><i class="ti ti-heartbeat" style="color:var(--danger)"></i> Systeemstatus</h3>
+    <!-- Systeemstatus -->
+    <div class="rn-card rn-section">
+      <div class="rn-card-head">
+        <span class="rn-card-title"><i class="ti ti-heartbeat" style="color:var(--danger,#DC2626)"></i> Systeemstatus</span>
         <div style="display:flex;gap:8px">
           <a class="btn btn-ghost btn-sm" href="/status" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> Statuspagina</a>
-          <button class="btn btn-ghost btn-sm" id="dashCheckRepliesBtn" onclick="triggerReplyCheck()" title="Controleer Gmail inbox nu op nieuwe replies"><i class="ti ti-mail-forward"></i> Controleer replies nu</button>
+          <button class="btn btn-ghost btn-sm" id="dashCheckRepliesBtn" onclick="triggerReplyCheck()"><i class="ti ti-mail-forward"></i> Controleer replies</button>
           <button class="btn btn-ghost btn-sm" onclick="loadSystemHealth()"><i class="ti ti-refresh"></i> Vernieuwen</button>
         </div>
       </div>
@@ -324,35 +369,26 @@ async function pollRunProgress() {
       const elapsedLabel = elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed/60)}m ${elapsed%60}s`;
       card.style.display = 'block';
       card.innerHTML = `
-        <div class="card" style="border:2px solid var(--accent);background:var(--accent-light)">
-          <div class="card-header" style="border-bottom:1px solid var(--accent);padding-bottom:12px">
-            <div style="display:flex;align-items:center;gap:10px">
-              <span class="running-dot"></span>
-              <h3 class="card-title" style="color:var(--accent)">Run actief</h3>
-              <span style="font-size:12px;color:var(--text-muted)">${elapsedLabel} bezig</span>
+        <div class="rn-live-card">
+          <div class="rn-live-head">
+            <div class="rn-live-title">
+              <span class="rn-live-dot"></span>
+              Run actief
+              <span style="font-size:12px;font-weight:400;color:var(--text-2,#999);margin-left:4px">${elapsedLabel} bezig</span>
             </div>
-            <span style="font-size:13px;font-weight:600;color:var(--text-primary)">${p.found}/${p.target} leads</span>
+            <span style="font-size:13px;font-weight:600;color:var(--text,#F5F5F5)">${p.found}/${p.target} leads</span>
           </div>
-          <div style="padding:14px 20px">
-            <div style="margin-bottom:10px">
-              <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:4px">
-                <span>${p.currentAgent || 'Bezig...'}</span>
-                <span>${pct}%</span>
-              </div>
-              <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
-                <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:3px;transition:width .4s"></div>
-              </div>
-            </div>
-            ${p.currentLead ? `<div style="font-size:12px;color:var(--text-muted)">Huidig bedrijf: <strong style="color:var(--text-primary)">${p.currentLead}</strong></div>` : ''}
-            ${p.skipped > 0 ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px">${p.skipped} overgeslagen (geen email / blacklist)</div>` : ''}
-            ${p.log && p.log.length ? `
-              <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
-                <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Log</div>
-                ${p.log.slice(0,5).map(l => `
-                  <div style="font-size:12px;color:var(--text-secondary);line-height:1.6">${l.msg}</div>
-                `).join('')}
-              </div>` : ''}
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-2,#999);margin-bottom:4px">
+            <span>${p.currentAgent || 'Bezig...'}</span>
+            <span>${pct}%</span>
           </div>
+          <div class="rn-progress-bar"><div class="rn-progress-fill" style="width:${pct}%"></div></div>
+          ${p.currentLead ? `<div style="font-size:12px;color:var(--text-2,#999);margin-top:6px">Huidig bedrijf: <strong style="color:var(--text,#F5F5F5)">${p.currentLead}</strong></div>` : ''}
+          ${p.skipped > 0 ? `<div style="font-size:12px;color:var(--text-3,#666);margin-top:4px">${p.skipped} overgeslagen (geen email / blacklist)</div>` : ''}
+          ${p.log && p.log.length ? `
+            <div class="rn-log-box">
+              ${p.log.slice(0,5).map(l => `<div class="rn-log-line">${l.msg}</div>`).join('')}
+            </div>` : ''}
         </div>`;
       _runProgressPollTimer = setTimeout(pollRunProgress, 3000);
     } else {
