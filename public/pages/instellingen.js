@@ -838,10 +838,10 @@ async function deleteUser(id, name) {
 function switchSettingsTab(id) {
   // Redirect legacy tab names
   if (id === 'niches') id = 'automation';
-  document.querySelectorAll('.settings-tab-pane').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.settings-nav-item[data-tab]').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.st-tab-pane').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.st-nav-item[data-tab]').forEach(el => el.classList.remove('active'));
   document.getElementById('stab-' + id)?.classList.add('active');
-  document.querySelector(`.settings-nav-item[data-tab="${id}"]`)?.classList.add('active');
+  document.querySelector(`.st-nav-item[data-tab="${id}"]`)?.classList.add('active');
   localStorage.setItem('settingsTab', id);
   // Load AI rate status when automation or api tab opens
   if (id === 'automation' || id === 'api') loadAiRateStatus?.();
@@ -946,28 +946,47 @@ async function renderSettings() {
   const isAgencyAI = !s._workspaceSlug;
 
   document.getElementById('settingsContent').innerHTML = `
-  <div class="settings-layout">
-    <nav class="settings-nav">
-      <button class="settings-nav-item active" data-tab="account"    onclick="switchSettingsTab('account')">   <i class="ti ti-user"></i>         Account</button>
-      <button class="settings-nav-item"         data-tab="email"     onclick="switchSettingsTab('email')">     <i class="ti ti-mail"></i>          Email &amp; versturen</button>
-      <button class="settings-nav-item"         data-tab="services"  onclick="switchSettingsTab('services')">  <i class="ti ti-briefcase"></i>     Diensten</button>
-      <button class="settings-nav-item"         data-tab="automation" onclick="switchSettingsTab('automation')"><i class="ti ti-settings-automation"></i> Automatisering</button>
-      <button class="settings-nav-item"         data-tab="payments"  onclick="switchSettingsTab('payments')">  <i class="ti ti-credit-card"></i>   Betalingen</button>
-      <button class="settings-nav-item"         data-tab="blacklist" onclick="switchSettingsTab('blacklist')"> <i class="ti ti-ban"></i>           Blacklist</button>
-      <button class="settings-nav-item"         data-tab="api"       onclick="switchSettingsTab('api')">       <i class="ti ti-api"></i>           API &amp; integraties</button>
-      <button class="settings-nav-item"         data-tab="usage"     onclick="switchSettingsTab('usage')">     <i class="ti ti-chart-bar"></i>     📊 Usage &amp; Limieten</button>
-      ${isAdmin() ? `<button class="settings-nav-item" data-tab="team" onclick="switchSettingsTab('team')"><i class="ti ti-users"></i> Team</button>` : ''}
-      ${isAdmin() ? `<button class="settings-nav-item" data-tab="auditlog" onclick="switchSettingsTab('auditlog')"><i class="ti ti-list-search"></i> Audit log</button>` : ''}
-      ${isAdmin() ? `<button class="settings-nav-item" data-tab="components" onclick="switchSettingsTab('components')"><i class="ti ti-puzzle"></i> 🧩 Components</button>` : ''}
-      ${isAdmin() ? `<button class="settings-nav-item" data-tab="templates" onclick="switchSettingsTab('templates')"><i class="ti ti-palette"></i> 🎨 Templates</button>` : ''}
-      <div class="settings-nav-spacer"></div>
-      <button class="settings-nav-item" data-tab="bureau" onclick="switchSettingsTab('bureau')"><i class="ti ti-building"></i> Mijn Bureau</button>
-      <button class="settings-nav-item nav-danger" data-tab="danger" onclick="switchSettingsTab('danger')"><i class="ti ti-alert-triangle"></i> Gevaarlijke zone</button>
+  <style>
+    .st-layout{display:flex;min-height:calc(100vh - 120px);gap:0}
+    .st-sidebar{width:220px;flex-shrink:0;border-right:1px solid var(--border);padding:24px 0;display:flex;flex-direction:column;position:sticky;top:0;height:calc(100vh - 120px);overflow-y:auto}
+    .st-sidebar-label{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--text-3,#666);text-transform:uppercase;padding:0 18px 10px}
+    .st-nav-item{display:flex;align-items:center;gap:9px;width:100%;padding:8px 18px;font-size:13px;font-weight:500;color:var(--text-2,#999);background:none;border:none;cursor:pointer;text-align:left;transition:color .15s,background .15s;border-radius:0;white-space:nowrap}
+    .st-nav-item:hover{color:var(--text,#f5f5f5);background:var(--surface-2,#222)}
+    .st-nav-item.active{color:var(--text,#f5f5f5);background:var(--surface-2,#222);font-weight:600}
+    .st-nav-item .ti{font-size:15px;opacity:.7;flex-shrink:0}
+    .st-nav-item.active .ti{opacity:1;color:var(--accent,#2563eb)}
+    .st-nav-spacer{flex:1}
+    .st-nav-divider{height:1px;background:var(--border,#2a2a2a);margin:8px 18px}
+    .st-nav-danger{color:var(--danger,#dc2626)!important}
+    .st-nav-danger:hover{background:rgba(220,38,38,.08)!important}
+    .st-content{flex:1;min-width:0;padding:32px 36px;max-width:760px}
+    .st-tab-pane{display:none}
+    .st-tab-pane.active{display:block}
+    @media(max-width:768px){.st-layout{flex-direction:column}.st-sidebar{width:100%;height:auto;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:8px 0;border-right:none;border-bottom:1px solid var(--border);position:static}.st-sidebar-label{display:none}.st-nav-item{padding:8px 12px;font-size:12px;white-space:nowrap}.st-content{padding:20px 16px}}
+  </style>
+  <div class="st-layout">
+    <nav class="st-sidebar">
+      <div class="st-sidebar-label">Instellingen</div>
+      <button class="st-nav-item active" data-tab="account"    onclick="switchSettingsTab('account')">    <i class="ti ti-user"></i> Account</button>
+      <button class="st-nav-item"        data-tab="email"      onclick="switchSettingsTab('email')">      <i class="ti ti-mail"></i> Email &amp; versturen</button>
+      <button class="st-nav-item"        data-tab="automation" onclick="switchSettingsTab('automation')"> <i class="ti ti-settings-automation"></i> Runs &amp; Automatisering</button>
+      <button class="st-nav-item"        data-tab="payments"   onclick="switchSettingsTab('payments')">   <i class="ti ti-credit-card"></i> Financieel</button>
+      <button class="st-nav-item"        data-tab="api"        onclick="switchSettingsTab('api')">        <i class="ti ti-plug-connected"></i> Integraties</button>
+      ${isAdmin() ? `<button class="st-nav-item" data-tab="team" onclick="switchSettingsTab('team')"><i class="ti ti-users"></i> Team</button>` : ''}
+      <button class="st-nav-item"        data-tab="services"   onclick="switchSettingsTab('services')">   <i class="ti ti-briefcase"></i> Diensten</button>
+      <button class="st-nav-item"        data-tab="usage"      onclick="switchSettingsTab('usage')">      <i class="ti ti-chart-bar"></i> Usage</button>
+      ${isAdmin() ? `<button class="st-nav-item" data-tab="auditlog" onclick="switchSettingsTab('auditlog')"><i class="ti ti-list-search"></i> Audit log</button>` : ''}
+      ${isAdmin() ? `<button class="st-nav-item" data-tab="components" onclick="switchSettingsTab('components')"><i class="ti ti-puzzle"></i> Components</button>` : ''}
+      ${isAdmin() ? `<button class="st-nav-item" data-tab="templates" onclick="switchSettingsTab('templates')"><i class="ti ti-palette"></i> Templates</button>` : ''}
+      <div class="st-nav-spacer"></div>
+      <div class="st-nav-divider"></div>
+      <button class="st-nav-item"        data-tab="bureau"     onclick="switchSettingsTab('bureau')">     <i class="ti ti-building"></i> Mijn Bureau</button>
+      <button class="st-nav-item st-nav-danger" data-tab="danger" onclick="switchSettingsTab('danger')"><i class="ti ti-alert-triangle"></i> Gevaarlijke zone</button>
     </nav>
-    <div class="settings-content">
+    <div class="st-content">
 
       <!-- ── Account ── -->
-      <div class="settings-tab-pane active" id="stab-account">
+      <div class="st-tab-pane active" id="stab-account">
         <div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title">Profiel</div>
@@ -1041,7 +1060,7 @@ async function renderSettings() {
       </div>
 
 <!-- ── Email & versturen ── -->
-      <div class="settings-tab-pane" id="stab-email">
+      <div class="st-tab-pane" id="stab-email">
 
         <div class="stg-section">
           <div class="stg-section-header">
@@ -1201,7 +1220,7 @@ async function renderSettings() {
       </div>
 
       <!-- ── Diensten ── -->
-      <div class="settings-tab-pane" id="stab-services">
+      <div class="st-tab-pane" id="stab-services">
         <div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title">Diensten die ik verkoop</div>
@@ -1230,7 +1249,7 @@ async function renderSettings() {
       </div>
 
       <!-- ── Automatisering ── -->
-      <div class="settings-tab-pane" id="stab-automation">
+      <div class="st-tab-pane" id="stab-automation">
 
         <div class="stg-section">
           <div class="stg-section-header">
@@ -1394,7 +1413,7 @@ async function renderSettings() {
       </div>
 
       <!-- ── Betalingen ── -->
-      <div class="settings-tab-pane" id="stab-payments">
+      <div class="st-tab-pane" id="stab-payments">
         <div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title">Betaalmethoden</div>
@@ -1518,7 +1537,7 @@ async function renderSettings() {
       </div>
 
       <!-- ── Blacklist ── -->
-      <div class="settings-tab-pane" id="stab-blacklist">
+      <div class="st-tab-pane" id="stab-blacklist">
         <div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title">Blacklist</div>
@@ -1544,7 +1563,7 @@ async function renderSettings() {
       </div>
 
       <!-- ── API & integraties ── -->
-      <div class="settings-tab-pane" id="stab-api">
+      <div class="st-tab-pane" id="stab-api">
 
         ${isAgencyAI ? `<div class="stg-section">
           <div class="stg-section-header">
@@ -1668,7 +1687,7 @@ async function renderSettings() {
       </div>
 
       <!-- ── Usage & Limieten ── -->
-      <div class="settings-tab-pane" id="stab-usage">
+      <div class="st-tab-pane" id="stab-usage">
         <div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title">📊 Usage &amp; Limieten</div>
@@ -1680,7 +1699,7 @@ async function renderSettings() {
 
       <!-- ── Team ── -->
       ${isAdmin() ? `
-      <div class="settings-tab-pane" id="stab-team">
+      <div class="st-tab-pane" id="stab-team">
         <div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title">Team &amp; gebruikers</div>
@@ -1711,7 +1730,7 @@ async function renderSettings() {
       ` : ''}
 
       <!-- ── Gevaarlijke zone ── -->
-      <div class="settings-tab-pane" id="stab-auditlog">
+      <div class="st-tab-pane" id="stab-auditlog">
         <div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title"><i class="ti ti-list-search" style="margin-right:6px"></i>Audit log</div>
@@ -1722,7 +1741,7 @@ async function renderSettings() {
       </div>
 
       <!-- Components tab (Task 19) -->
-      <div class="settings-tab-pane" id="stab-components">
+      <div class="st-tab-pane" id="stab-components">
         <div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title"><i class="ti ti-puzzle" style="margin-right:6px"></i>🧩 Component bibliotheek</div>
@@ -1733,7 +1752,7 @@ async function renderSettings() {
       </div>
 
       <!-- Templates tab (Task 20) -->
-      <div class="settings-tab-pane" id="stab-templates">
+      <div class="st-tab-pane" id="stab-templates">
         <div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title"><i class="ti ti-palette" style="margin-right:6px"></i>🎨 Template bibliotheek</div>
@@ -1744,7 +1763,7 @@ async function renderSettings() {
       </div>
 
       <!-- ── Mijn Bureau ── -->
-      <div class="settings-tab-pane" id="stab-bureau">
+      <div class="st-tab-pane" id="stab-bureau">
         <div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title"><i class="ti ti-building" style="margin-right:6px"></i>Mijn Bureau — Abonnement</div>
@@ -1793,7 +1812,7 @@ async function renderSettings() {
         </div>
       </div>
 
-      <div class="settings-tab-pane" id="stab-danger">
+      <div class="st-tab-pane" id="stab-danger">
         <div class="stg-section">
           <div class="stg-section-header">
             <div class="stg-title" style="color:#dc2626"><i class="ti ti-alert-triangle" style="margin-right:6px"></i>Gevaarlijke zone</div>
