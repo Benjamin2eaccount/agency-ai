@@ -1,6 +1,49 @@
 // ─── Inbox ────────────────────────────────────────────────────────────────────
 async function renderInbox() {
   document.getElementById('appView').innerHTML = `
+    <style>
+      .ib-card{border:1px solid var(--border,#2A2A2A);background:var(--surface,#1A1A1A);border-radius:10px;margin-bottom:12px;overflow:hidden;transition:border-color .15s}
+      .ib-card:hover{border-color:var(--border-strong,#333)}
+      .ib-card-head{display:flex;align-items:flex-start;gap:12px;padding:14px 16px 10px}
+      .ib-avatar{width:36px;height:36px;border-radius:8px;font-size:13px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
+      .ib-head-info{flex:1;min-width:0}
+      .ib-company{font-size:15px;font-weight:700;color:var(--text,#F5F5F5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .ib-meta{display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap}
+      .ib-meta-tag{font-size:11px;color:var(--text-2,#999)}
+      .ib-score-wrap{flex-shrink:0;text-align:right}
+      .ib-score{font-size:22px;font-weight:800;line-height:1}
+      .ib-score-sub{font-size:10px;color:var(--text-3,#666);margin-top:2px}
+      .ib-type-badges{display:flex;gap:5px;padding:0 16px 10px;flex-wrap:wrap}
+      .ib-type-badge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid}
+      .ib-section{padding:0 16px 12px}
+      .ib-section-title{font-size:10px;font-weight:600;color:var(--text-3,#666);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;display:flex;align-items:center;gap:4px}
+      .ib-problems-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:3px}
+      .ib-problems-list li{font-size:12px;color:var(--text-2,#999);display:flex;align-items:flex-start;gap:5px}
+      .ib-services-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:4px}
+      .ib-services-list li{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--text-2,#999)}
+      .ib-service-price{color:var(--success,#16A34A);font-weight:600;font-size:12px}
+      .ib-email-row{padding:0 16px 10px;display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap}
+      .ib-email-verified{color:#16A34A;font-size:11px;font-weight:600}
+      .ib-email-unverified{color:#D97706;font-size:11px;font-weight:600}
+      .ib-ab-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+      .ib-ab-ver{border:1px solid var(--border,#2A2A2A);border-radius:8px;padding:10px;cursor:pointer;transition:all .15s}
+      .ib-ab-ver.selected{border-color:var(--accent,#2563EB);background:rgba(37,99,235,.07)}
+      .ib-ab-label{font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;display:inline-block;margin-bottom:4px}
+      .ib-ab-subject{font-size:12px;font-weight:600;color:var(--text,#F5F5F5);margin-bottom:4px}
+      .ib-ab-preview{font-size:11px;color:var(--text-3,#666);line-height:1.4}
+      .ib-footer{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--border,#2A2A2A);gap:8px;flex-wrap:wrap}
+      .ib-footer-left{display:flex;align-items:center;gap:6px}
+      .ib-footer-right{display:flex;align-items:center;gap:6px}
+      .ib-approve-btn{background:var(--accent,#2563EB);color:#fff;border:none;border-radius:6px;padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s}
+      .ib-approve-btn:hover{background:#1d4ed8}
+      .ib-reject-btn{background:transparent;border:1px solid var(--border,#2A2A2A);color:var(--text-2,#999);border-radius:6px;padding:7px 12px;font-size:13px;cursor:pointer;transition:all .15s}
+      .ib-reject-btn:hover{border-color:var(--danger,#DC2626);color:var(--danger,#DC2626)}
+      .ib-ghost-btn{background:transparent;border:1px solid var(--border,#2A2A2A);color:var(--text-2,#999);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;transition:all .15s;text-decoration:none;display:inline-flex;align-items:center;gap:4px}
+      .ib-ghost-btn:hover{border-color:var(--border-strong,#333);color:var(--text,#F5F5F5)}
+      .manual-email-input{background:var(--surface-2,#222);border:1px solid var(--border,#2A2A2A);border-radius:6px;padding:6px 10px;color:var(--text,#F5F5F5);font-size:12px;width:100%;margin-top:4px;outline:none;box-sizing:border-box}
+      .manual-email-input:focus{border-color:var(--accent,#2563EB)}
+      @media(max-width:600px){.ib-ab-grid{grid-template-columns:1fr}.ib-footer{flex-direction:column;align-items:stretch}.ib-footer-left,.ib-footer-right{justify-content:flex-end}}
+    </style>
     <div class="page-header">
       <div>
         <div class="page-label">Beoordelen</div>
@@ -14,7 +57,7 @@ async function renderInbox() {
           <span class="kb-key">S</span><span class="kb-hint">Volgende</span>
           <span class="kb-key">↑↓</span><span class="kb-hint">Navigeren</span>
         </div>
-        <button class="btn btn-secondary btn-sm" id="checkRepliesBtn" onclick="triggerReplyCheck()" title="Controleer Gmail inbox nu op nieuwe replies">
+        <button class="btn btn-secondary btn-sm" id="checkRepliesBtn" onclick="triggerReplyCheck()" title="Controleer inbox nu op nieuwe replies">
           <i class="ti ti-mail-forward"></i> Controleer replies
         </button>
       </div>
@@ -260,181 +303,153 @@ async function sendAiReply(id) {
 }
 
 function buildInboxCard(item) {
-  // LinkedIn DM cards get a dedicated compact layout
   if (item.type === 'linkedinDm') return buildLinkedinDmCard(item);
   if (item.type === 'ai_reply')   return buildAiReplyCard(item);
 
   const score = item.score || 0;
-  const colorClass = scoreColor(score);
+  const initials = (item.companyName || '?').slice(0, 2).toUpperCase();
+  function _ibAvBg(n) {
+    const c = (n || 'A').toUpperCase().charCodeAt(0);
+    return c <= 69 ? '#2563EB' : c <= 74 ? '#7C3AED' : c <= 79 ? '#16A34A' : c <= 84 ? '#D97706' : '#DC2626';
+  }
+  const avatarBg   = _ibAvBg(item.companyName || '');
+  const scoreColor2 = score >= 8 ? '#16A34A' : score >= 6 ? '#60A5FA' : score >= 4 ? '#D97706' : '#EF4444';
+
   const typeLabel = item.type === 'followup1' ? 'Follow-up #1' :
                     item.type === 'followup2' ? 'Follow-up #2' :
                     item.type === 'referral'  ? 'Referral' : 'Nieuw';
-  const typeBadge = item.type?.startsWith('followup')
-    ? `<span class="badge badge-amber">${typeLabel}</span>`
+  const typeBadgeStyle = item.type?.startsWith('followup')
+    ? 'background:rgba(217,119,6,.15);color:#D97706;border-color:rgba(217,119,6,.3)'
     : item.type === 'referral'
-    ? `<span class="badge badge-purple">${typeLabel}</span>`
-    : `<span class="badge badge-blue">${typeLabel}</span>`;
+    ? 'background:rgba(139,92,246,.15);color:#A78BFA;border-color:rgba(139,92,246,.3)'
+    : 'background:rgba(37,99,235,.15);color:#60A5FA;border-color:rgba(37,99,235,.3)';
   const langFlag = item.language === 'nl' ? '🇳🇱' : item.language === 'en' ? '🇬🇧' : item.language === 'de' ? '🇩🇪' : item.language === 'fr' ? '🇫🇷' : item.language === 'it' ? '🇮🇹' : '';
 
-  // Email duplicate check: flag if this email already received outreach on another lead
   const emailAlreadySent = item.contactEmail && (state.leads || []).some(l =>
     l.id !== item.leadId &&
     (l.contactEmail || '').toLowerCase() === item.contactEmail.toLowerCase() &&
     ['sent', 'replied', 'client', 'scheduled'].includes(l.status)
   );
 
-  return `
-    <div class="inbox-card" data-id="${item.id}" id="card-${item.id}" data-selected-version="A">
-      <label class="inbox-checkbox-wrap" onclick="event.stopPropagation()">
-        <input type="checkbox" class="bulk-checkbox" data-id="${item.id}" onchange="updateBulkSelCount()">
-      </label>
+  const emailSection = item.emailVerified
+    ? `<div class="ib-email-row"><i class="ti ti-mail" style="color:var(--text-3,#666)"></i><span style="color:var(--text-2,#999)">${esc(item.contactEmail)}</span><span class="ib-email-verified"><i class="ti ti-check"></i> Geverifieerd</span></div>`
+    : item.contactEmail
+    ? `<div class="ib-email-row"><i class="ti ti-mail" style="color:var(--text-3,#666)"></i><span style="color:var(--text-2,#999)">${esc(item.contactEmail)}</span><span class="ib-email-unverified"><i class="ti ti-alert-triangle"></i> Niet geverifieerd</span></div>`
+    : `<div class="ib-section"><span style="font-size:12px;color:var(--text-3,#666)"><i class="ti ti-mail-off"></i> Geen email gevonden</span><br><input type="email" class="manual-email-input" id="manualEmail-${item.id}" placeholder="Voer email handmatig in…" onclick="event.stopPropagation()" oninput="event.stopPropagation()"></div>`;
 
-      <div class="inbox-card-header">
-        <div class="inbox-card-title-row">
-          <h3 class="inbox-company">${esc(item.companyName)}${langFlag ? ` <span class="lang-flag">${langFlag}</span>` : ''}</h3>
-          ${typeBadge}
-          ${item.emailBounced ? `<span class="badge badge-red" style="font-size:10px"><i class="ti ti-mail-off"></i> Gebounced</span>` : ''}
-          ${emailAlreadySent ? `<span class="badge badge-amber" style="font-size:10px" title="Dit e-mailadres werd al gebruikt voor een andere lead"><i class="ti ti-alert-triangle"></i> Al gecontacteerd</span>` : ''}
-          ${item.status === 'auto-approved' ? `<span class="badge badge-green" style="font-size:10px"><i class="ti ti-bolt"></i> Auto-goedgekeurd</span>` : ''}
-          ${item.leadSource === 'instagram' ? `<span class="badge" style="font-size:10px;background:#fce7f3;color:#be185d;border:1px solid #fbcfe8"><i class="ti ti-brand-instagram"></i> Instagram</span>` : ''}
-          ${item.leadSource === 'maps' ? `<span class="badge" style="font-size:10px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe"><i class="ti ti-map-pin"></i> Google Maps</span>` : ''}
+  const openerSection = item.emailOpener
+    ? `<div class="ib-section" style="border-top:1px solid var(--border,#2A2A2A);padding-top:10px"><div style="font-size:12px;color:var(--text-2,#999);font-style:italic"><i class="ti ti-quote" style="color:var(--text-3,#666);margin-right:4px"></i>${esc(item.emailOpener)}</div></div>`
+    : '';
+
+  const problemsSection = item.problems?.length ? `
+    <div class="ib-section">
+      <div class="ib-section-title"><i class="ti ti-alert-triangle" style="color:var(--danger,#DC2626)"></i> Problemen</div>
+      <ul class="ib-problems-list">${item.problems.map(p => `<li><i class="ti ti-point-filled" style="color:var(--danger,#DC2626);flex-shrink:0"></i>${esc(p)}</li>`).join('')}</ul>
+    </div>` : '';
+
+  const servicesSection = item.services?.length ? `
+    <div class="ib-section">
+      <div class="ib-section-title"><i class="ti ti-currency-euro" style="color:var(--success,#16A34A)"></i> Kansen</div>
+      <ul class="ib-services-list">${item.services.map(s => `<li><span>${esc(s.name)}</span><span class="ib-service-price">€${s.price}${s.billing === 'eenmalig' ? ' eenmalig' : '/mnd'}</span></li>`).join('')}</ul>
+      ${item.estimatedValue ? `<div style="font-size:12px;color:var(--text-2,#999);margin-top:6px">Maandwaarde: <strong style="color:var(--success,#16A34A)">€${item.estimatedValue.toLocaleString('nl-NL')}</strong></div>` : ''}
+    </div>` : '';
+
+  const subjectsSection = item.subjectOptions?.length >= 3 ? `
+    <div class="ib-section">
+      <div class="ib-section-title"><i class="ti ti-tag" style="color:var(--accent,#2563EB)"></i> Onderwerpopties</div>
+      <div id="subjectChips-${item.id}" style="display:flex;flex-direction:column;gap:4px">
+        ${item.subjectOptions.map((s, i) => `
+          <button class="subject-chip${i === 0 ? ' subject-chip-active' : ''}" onclick="selectSubject('${item.id}',${i})" title="${esc(s)}">
+            <span class="subject-chip-num">${i + 1}</span>
+            <span class="subject-chip-text">${esc(s)}</span>
+          </button>`).join('')}
+      </div>
+    </div>` : '';
+
+  const abSection = item.emailA && item.emailB ? `
+    <div class="ib-section">
+      <div class="ib-section-title"><i class="ti ti-test-pipe" style="color:var(--accent,#2563EB)"></i> A/B versies — klik om te kiezen</div>
+      <div class="ib-ab-grid">
+        <div class="inbox-ab-ver ib-ab-ver selected" id="abVerA-${item.id}" onclick="selectVersion('${item.id}','A')">
+          <div><span class="ib-ab-label" style="background:rgba(37,99,235,.2);color:#60A5FA">A</span><span style="font-size:10px;color:var(--text-3,#666);margin-left:6px">Probleem-gericht</span></div>
+          <div class="ib-ab-subject">${esc(item.emailA.subject)}</div>
+          <div class="ib-ab-preview">${esc((item.emailA.body || '').replace(/<[^>]+>/g,'').slice(0,120))}…</div>
         </div>
-        <div class="inbox-card-meta">
-          ${nicheBadge(item.niche)}
-          ${item.subNiche ? `<span class="sub-niche-pill">${esc(item.subNiche)}</span>` : ''}
-          <span class="text-secondary" style="font-size:12px"><i class="ti ti-map-pin"></i> ${esc(item.location || '—')}</span>
-          ${item.websiteUrl ? `<a href="${item.websiteUrl}" target="_blank" class="link" style="font-size:12px"><i class="ti ti-world"></i> Website</a>` : ''}
+        <div class="inbox-ab-ver ib-ab-ver" id="abVerB-${item.id}" onclick="selectVersion('${item.id}','B')">
+          <div><span class="ib-ab-label" style="background:rgba(139,92,246,.2);color:#A78BFA">B</span><span style="font-size:10px;color:var(--text-3,#666);margin-left:6px">Groei-gericht</span></div>
+          <div class="ib-ab-subject">${esc(item.emailB.subject)}</div>
+          <div class="ib-ab-preview">${esc((item.emailB.body || '').replace(/<[^>]+>/g,'').slice(0,120))}…</div>
         </div>
-        <div class="inbox-email-row">
-          ${item.emailVerified
-            ? `<span class="inbox-email-addr"><i class="ti ti-mail"></i> ${esc(item.contactEmail)}</span>
-               <span class="email-src-badge email-src-found"><i class="ti ti-check"></i> Geverifieerd</span>`
-            : item.contactEmail
-            ? `<span class="inbox-email-addr"><i class="ti ti-mail"></i> ${esc(item.contactEmail)}</span>
-               <span class="email-src-badge email-src-guess"><i class="ti ti-alert-triangle"></i> Niet geverifieerd</span>`
-            : `<div class="inbox-email-missing">
-                 <span class="inbox-email-none"><i class="ti ti-mail-off"></i> Geen email gevonden op website</span>
-                 <input type="email" class="manual-email-input" id="manualEmail-${item.id}"
-                   placeholder="Voer email handmatig in..."
-                   onclick="event.stopPropagation()"
-                   oninput="event.stopPropagation()">
-               </div>`}
+      </div>
+    </div>` : '';
+
+  const voicenoteSection = item.voicenoteScript ? `
+    <div style="padding:0 16px 10px">
+      <button class="ib-ghost-btn" onclick="toggleVoicenote('${item.id}')">
+        <i class="ti ti-microphone"></i> Voicenote script
+        <i class="ti ti-chevron-down" id="voiceChevron-${item.id}" style="font-size:11px"></i>
+      </button>
+      <div id="voicenote-${item.id}" class="voicenote-body" style="display:none;margin-top:8px;background:var(--surface-2,#222);border-radius:6px;padding:10px;font-size:12px;color:var(--text-2,#999)">
+        <p style="margin:0 0 8px">${esc(item.voicenoteScript)}</p>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <span style="font-size:11px;color:var(--text-3,#666)"><i class="ti ti-info-circle"></i> Spreek in als WhatsApp of Instagram voicenote</span>
+          <button class="ib-ghost-btn" onclick="copyText('${(item.voicenoteScript||'').replace(/'/g, "\\'")}','Voicenote gekopieerd!')"><i class="ti ti-copy"></i> Kopiëren</button>
         </div>
-        <div class="score-display score-${colorClass}">
-          <span class="score-number">${score.toFixed(1)}</span>
-          <span class="score-label">/ 10</span>
+      </div>
+    </div>` : '';
+
+  return `
+    <div class="inbox-card ib-card" data-id="${item.id}" id="card-${item.id}" data-selected-version="A">
+      <div class="ib-card-head">
+        <label onclick="event.stopPropagation()" style="flex-shrink:0;margin-top:4px">
+          <input type="checkbox" class="bulk-checkbox" data-id="${item.id}" onchange="updateBulkSelCount()" style="width:15px;height:15px;accent-color:var(--accent,#2563EB);cursor:pointer">
+        </label>
+        <span class="ib-avatar" style="background:${avatarBg}">${initials}</span>
+        <div class="ib-head-info">
+          <div class="ib-company">${esc(item.companyName)}${langFlag ? ` <span>${langFlag}</span>` : ''}</div>
+          <div class="ib-meta">
+            ${item.niche ? `<span class="ib-meta-tag">${esc(item.niche)}</span>` : ''}
+            ${item.subNiche ? `<span class="ib-meta-tag" style="color:var(--accent,#2563EB)">· ${esc(item.subNiche)}</span>` : ''}
+            <span class="ib-meta-tag"><i class="ti ti-map-pin"></i> ${esc(item.location || '—')}</span>
+            ${item.websiteUrl ? `<a href="${item.websiteUrl}" target="_blank" style="font-size:11px;color:var(--accent,#2563EB);text-decoration:none" onclick="event.stopPropagation()"><i class="ti ti-world"></i> Website</a>` : ''}
+          </div>
+        </div>
+        <div class="ib-score-wrap">
+          <div class="ib-score" style="color:${scoreColor2}">${score.toFixed(1)}</div>
+          <div class="ib-score-sub">/ 10</div>
         </div>
       </div>
 
-      ${item.emailOpener ? `
-        <div class="opener-preview">
-          <i class="ti ti-quote"></i>
-          <span>${esc(item.emailOpener)}</span>
-        </div>
-      ` : ''}
+      <div class="ib-type-badges">
+        <span class="ib-type-badge" style="${typeBadgeStyle}">${typeLabel}</span>
+        ${item.emailBounced ? `<span class="ib-type-badge" style="background:rgba(220,38,38,.15);color:#EF4444;border-color:rgba(220,38,38,.3)"><i class="ti ti-mail-off"></i> Gebounced</span>` : ''}
+        ${emailAlreadySent ? `<span class="ib-type-badge" style="background:rgba(217,119,6,.15);color:#D97706;border-color:rgba(217,119,6,.3)"><i class="ti ti-alert-triangle"></i> Al gecontacteerd</span>` : ''}
+        ${item.status === 'auto-approved' ? `<span class="ib-type-badge" style="background:rgba(22,163,74,.15);color:#16A34A;border-color:rgba(22,163,74,.3)"><i class="ti ti-bolt"></i> Auto-goedgekeurd</span>` : ''}
+        ${item.leadSource === 'instagram' ? `<span class="ib-type-badge" style="background:rgba(190,24,93,.15);color:#be185d;border-color:rgba(190,24,93,.3)"><i class="ti ti-brand-instagram"></i> Instagram</span>` : ''}
+        ${item.leadSource === 'maps' ? `<span class="ib-type-badge" style="background:rgba(29,78,216,.15);color:#1d4ed8;border-color:rgba(29,78,216,.3)"><i class="ti ti-map-pin"></i> Google Maps</span>` : ''}
+      </div>
 
-      ${item.problems?.length ? `
-        <div class="inbox-section">
-          <div class="inbox-section-title"><i class="ti ti-alert-triangle" style="color:var(--danger)"></i> Problemen gevonden</div>
-          <ul class="problem-list">
-            ${item.problems.map(p => `<li><i class="ti ti-point-filled" style="color:var(--danger)"></i> ${p}</li>`).join('')}
-          </ul>
-        </div>
-      ` : ''}
+      ${emailSection}
+      ${openerSection}
+      ${problemsSection}
+      ${servicesSection}
+      ${subjectsSection}
+      ${abSection}
+      ${voicenoteSection}
 
-      ${item.services?.length ? `
-        <div class="inbox-section">
-          <div class="inbox-section-title"><i class="ti ti-currency-euro" style="color:var(--success)"></i> Kansen</div>
-          <ul class="opportunity-list">
-            ${item.services.map(s => `
-              <li>
-                <span>${s.name}</span>
-                <span class="service-price">€${s.price}${s.billing === 'eenmalig' ? ' eenmalig' : '/mnd'}</span>
-              </li>
-            `).join('')}
-          </ul>
-          ${item.estimatedValue ? `<div class="estimated-value">Geschatte maandwaarde: <strong>€${item.estimatedValue.toLocaleString('nl-NL')}</strong></div>` : ''}
+      <div class="ib-footer">
+        <div class="ib-footer-left">
+          <button class="ib-ghost-btn" onclick="viewEmail('${item.id}')"><i class="ti ti-mail"></i> Email</button>
+          <button class="ib-ghost-btn" onclick="viewLinkedin('${item.id}')"><i class="ti ti-brand-linkedin"></i> LinkedIn</button>
+          ${state.settings?.calendlyUrl ? `<a class="ib-ghost-btn" href="${esc(state.settings.calendlyUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"><i class="ti ti-calendar-event"></i> Gesprek</a>` : ''}
         </div>
-      ` : ''}
-
-      ${item.subjectOptions?.length >= 3 ? `
-        <div class="inbox-section inbox-subjects-section">
-          <div class="inbox-section-title"><i class="ti ti-tag" style="color:var(--accent)"></i> Onderwerpopties</div>
-          <div class="subject-chips" id="subjectChips-${item.id}">
-            ${item.subjectOptions.map((s, i) => `
-              <button class="subject-chip${i === 0 ? ' subject-chip-active' : ''}"
-                      onclick="selectSubject('${item.id}',${i})"
-                      title="${esc(s)}">
-                <span class="subject-chip-num">${i + 1}</span>
-                <span class="subject-chip-text">${esc(s)}</span>
-              </button>`).join('')}
-          </div>
-        </div>
-      ` : ''}
-
-      ${item.emailA && item.emailB ? `
-        <div class="inbox-section inbox-ab-section">
-          <div class="inbox-ab-header">
-            <div class="inbox-section-title" style="margin-bottom:0"><i class="ti ti-test-pipe" style="color:var(--accent)"></i> A/B email versies — klik om te kiezen</div>
-          </div>
-          <div class="inbox-ab-compare">
-            <div class="inbox-ab-ver selected" id="abVerA-${item.id}" onclick="selectVersion('${item.id}','A')">
-              <div class="inbox-ab-ver-top"><span class="inbox-ab-ver-label">A</span><span class="inbox-ab-ver-desc">Probleem-gericht</span></div>
-              <div class="inbox-ab-ver-subject">${esc(item.emailA.subject)}</div>
-              <div class="inbox-ab-ver-preview">${esc((item.emailA.body || '').replace(/<[^>]+>/g,'').slice(0,130))}…</div>
-            </div>
-            <div class="inbox-ab-ver" id="abVerB-${item.id}" onclick="selectVersion('${item.id}','B')">
-              <div class="inbox-ab-ver-top"><span class="inbox-ab-ver-label">B</span><span class="inbox-ab-ver-desc">Groeikansen-gericht</span></div>
-              <div class="inbox-ab-ver-subject">${esc(item.emailB.subject)}</div>
-              <div class="inbox-ab-ver-preview">${esc((item.emailB.body || '').replace(/<[^>]+>/g,'').slice(0,130))}…</div>
-            </div>
-          </div>
-        </div>
-      ` : ''}
-
-      ${item.voicenoteScript ? `
-        <div class="voicenote-wrap">
-          <button class="btn btn-ghost btn-sm voicenote-toggle" onclick="toggleVoicenote('${item.id}')">
-            <i class="ti ti-microphone"></i> Voicenote script
-            <i class="ti ti-chevron-down" id="voiceChevron-${item.id}" style="font-size:11px;margin-left:2px"></i>
-          </button>
-          <div id="voicenote-${item.id}" class="voicenote-body" style="display:none">
-            <p>${esc(item.voicenoteScript)}</p>
-            <div class="voicenote-footer">
-              <span><i class="ti ti-info-circle"></i> Spreek in als WhatsApp of Instagram voicenote</span>
-              <button class="btn btn-ghost btn-sm" onclick="copyText('${(item.voicenoteScript||'').replace(/'/g, "\\'")}','Voicenote gekopieerd!')">
-                <i class="ti ti-copy"></i> Kopiëren
-              </button>
-            </div>
-          </div>
-        </div>
-      ` : ''}
-
-      <div class="inbox-actions">
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-ghost btn-sm" onclick="viewEmail('${item.id}')">
-            <i class="ti ti-mail"></i> Email
-          </button>
-          <button class="btn btn-ghost btn-sm" onclick="viewLinkedin('${item.id}')">
-            <i class="ti ti-brand-linkedin"></i> LinkedIn
-          </button>
-          ${state.settings?.calendlyUrl ? `<a class="btn btn-ghost btn-sm calendly-btn" href="${esc(state.settings.calendlyUrl)}" target="_blank" rel="noopener"><i class="ti ti-calendar-event"></i> Plan gesprek</a>` : ''}
-        </div>
-        <div class="inbox-primary-actions">
-          <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="disapprove('${item.id}')">
-            <i class="ti ti-x"></i> Afwijzen
-          </button>
+        <div class="ib-footer-right">
+          <button class="ib-reject-btn" onclick="disapprove('${item.id}')"><i class="ti ti-x"></i> Afwijzen</button>
           ${item.sendOptimalTime ? `
-            <button class="btn btn-ghost btn-sm" style="color:var(--success)" onclick="approve('${item.id}')">
-              <i class="ti ti-send"></i> Nu
-            </button>
-            <button class="btn btn-primary btn-sm" onclick="scheduleApprove('${item.id}')">
-              <i class="ti ti-clock"></i> ${formatOptimalTime(item.sendOptimalTime)}
-            </button>
+            <button class="ib-ghost-btn" style="color:var(--success,#16A34A)" onclick="approve('${item.id}')"><i class="ti ti-send"></i> Nu</button>
+            <button class="ib-approve-btn" onclick="scheduleApprove('${item.id}')"><i class="ti ti-clock"></i> ${formatOptimalTime(item.sendOptimalTime)}</button>
           ` : `
-            <button class="btn btn-primary btn-sm" onclick="approve('${item.id}')">
-              <i class="ti ti-check"></i> Goedkeuren & Versturen
-            </button>
+            <button class="ib-approve-btn" onclick="approve('${item.id}')"><i class="ti ti-check"></i> Goedkeuren</button>
           `}
         </div>
       </div>

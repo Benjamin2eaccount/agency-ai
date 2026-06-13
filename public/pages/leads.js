@@ -693,69 +693,72 @@ async function renderLeads() {
     const grid = document.getElementById('leadsGrid');
     if (!grid) return;
     if (filtered.length === 0) {
-      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><i class="ti ti-search-off"></i><p>Geen leads gevonden voor deze filters</p></div>`;
+      grid.innerHTML = `<tr><td colspan="8" style="padding:48px;text-align:center;color:var(--text-3,#666)"><i class="ti ti-search-off" style="font-size:28px;display:block;margin-bottom:8px"></i>Geen leads gevonden voor deze filters</td></tr>`;
       return;
     }
-    const COUNTRY_COLORS = { NL:'#FF6B35', BE:'#FFD700', DE:'#333333', GB:'#003087', US:'#002868' };
-    const COUNTRY_TEXT   = { BE:'#333333' };
+    function _ldAvatarBg(n) {
+      const c = (n || 'A').toUpperCase().charCodeAt(0);
+      return c <= 69 ? '#2563EB' : c <= 74 ? '#7C3AED' : c <= 79 ? '#16A34A' : c <= 84 ? '#D97706' : '#DC2626';
+    }
+    function _ldScoreStyle(s) {
+      if (s >= 8) return 'background:rgba(22,163,74,.15);color:#16A34A;border:1px solid rgba(22,163,74,.3)';
+      if (s >= 6) return 'background:rgba(37,99,235,.15);color:#60A5FA;border:1px solid rgba(37,99,235,.3)';
+      if (s >= 4) return 'background:rgba(217,119,6,.15);color:#D97706;border:1px solid rgba(217,119,6,.3)';
+      return 'background:rgba(220,38,38,.15);color:#EF4444;border:1px solid rgba(220,38,38,.3)';
+    }
+    function _ldStatusBadge(status) {
+      const m = {
+        inbox:       ['rgba(255,255,255,.08)','#888','Nieuw'],
+        pending:     ['rgba(255,255,255,.08)','#888','Nieuw'],
+        new:         ['rgba(255,255,255,.08)','#888','Nieuw'],
+        approved:    ['rgba(22,163,74,.15)','#16A34A','Goedgekeurd'],
+        sent:        ['rgba(37,99,235,.15)','#60A5FA','Verstuurd'],
+        replied:     ['rgba(139,92,246,.15)','#A78BFA','Gereageerd'],
+        client:      ['rgba(37,99,235,.2)','#93C5FD','Klant'],
+        dead:        ['rgba(220,38,38,.1)','#EF4444','Dead'],
+        archived:    ['rgba(255,255,255,.05)','#555','Archief'],
+        disapproved: ['rgba(220,38,38,.1)','#EF4444','Afgewezen'],
+      };
+      const [bg, clr, lbl] = m[status] || ['rgba(255,255,255,.06)','#777', status || '—'];
+      return `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:${bg};color:${clr}">${lbl}</span>`;
+    }
     grid.innerHTML = filtered.map(l => {
-      const checked    = selectedLeads.has(l.id);
-      const country    = l.country || (l.language === 'nl' ? 'NL' : l.language === 'en' ? 'GB' : null);
-      const flagBg     = country ? (COUNTRY_COLORS[country] || '#9b9b98') : '#9b9b98';
-      const flagTxt    = COUNTRY_TEXT[country] || '#fff';
-      const countryCode = country || '??';
-      const score      = l.score || 0;
-      const scoreStr   = score.toFixed(1);
-      const scoreCls   = score >= 8 ? 'score-num-green' : score >= 6 ? 'score-num-amber' : 'score-num-red';
-      const volgers    = l.estimatedFollowers || l.linkedinCompanyFollowers || 0;
-      const volgersStr = volgers >= 1000 ? (volgers/1000).toFixed(0)+'K' : (volgers || '—');
-      const visits     = l.website?.monthlyVisits || l.monthlyVisits;
-      const visitsStr  = visits ? (visits >= 1000 ? (visits/1000).toFixed(0)+'K' : visits) : '—';
-      const websiteOk  = l.website?.reachable;
-      const websiteHtml = l.websiteUrl
-        ? (websiteOk ? '<span class="lc2-stat-online">● Online</span>' : '<span class="lc2-stat-offline">● Offline</span>')
-        : '<span class="lc2-stat-val">—</span>';
-      const dealWaarde = l.estimatedValue ? `€${(l.estimatedValue/1000).toFixed(0)}K` : '—';
-      const nichePill  = l.niche ? `<span class="pill pill-gray">${esc(l.niche)}</span>${l.subNiche ? `<span class="sub-niche-pill">${esc(l.subNiche)}</span>` : ''}` : '';
-      const sizePill   = l.companySize ? `<span class="pill pill-gray">${l.companySize === 'small' ? 'Klein' : l.companySize === 'medium' ? 'Middel' : 'Groot'}</span>` : '';
-      const urgPill    = l.urgency === 'critical' ? `<span class="pill pill-red">kritiek</span>` : (l.urgency === 'high' || l.urgency === 'hoog') ? `<span class="pill pill-amber">hoog</span>` : '';
+      const checked  = selectedLeads.has(l.id);
+      const score    = l.score || 0;
+      const initials = (l.companyName || '?').slice(0, 2).toUpperCase();
+      const avatarBg = _ldAvatarBg(l.companyName || '');
       return `
-        <div class="lead-card-v2${checked ? ' lead-card-v2-selected' : ''}" onclick="openLeadDetail('${l.id}')">
-          ${isAdmin() ? `<input type="checkbox" class="lc2-checkbox" ${checked ? 'checked' : ''}
-            onclick="event.stopPropagation();toggleLeadSelect('${l.id}')" title="Selecteer">` : ''}
-          <div class="lc2-header">
-            <div class="lead-flag-sq" style="background:${flagBg};color:${flagTxt}">${countryCode}</div>
-            <div class="lc2-name">${esc(l.companyName)}</div>
-            <div class="lc2-score-wrap">
-              <div class="lc2-score-num ${scoreCls}">${scoreStr}</div>
-              <div class="lc2-score-label">SEVERITY</div>
+        <tr class="ld-row${checked ? ' ld-row-selected' : ''}" onclick="openLeadDetail('${l.id}')">
+          ${isAdmin() ? `<td class="ld-td ld-td-check" onclick="event.stopPropagation()">
+            <input type="checkbox" class="ld-check" ${checked ? 'checked' : ''} onchange="event.stopPropagation();toggleLeadSelect('${l.id}')" style="width:14px;height:14px;accent-color:var(--accent,#2563EB);cursor:pointer">
+          </td>` : ''}
+          <td class="ld-td ld-td-company">
+            <div class="ld-company-cell">
+              <span class="ld-avatar" style="background:${avatarBg}">${initials}</span>
+              <div class="ld-company-info">
+                <span class="ld-company-name">${esc(l.companyName)}</span>
+                <span class="ld-company-sub">${esc(l.location || '—')}</span>
+              </div>
             </div>
-          </div>
-          <div class="lc2-tags">${nichePill}${sizePill}${urgPill}</div>
-          <div class="lc2-divider"></div>
-          <div class="lc2-stats">
-            <div>
-              <div class="lc2-stat-lbl">VOLGERS</div>
-              <div class="lc2-stat-val">${volgersStr}</div>
-            </div>
-            <div>
-              <div class="lc2-stat-lbl">VISITS/MND</div>
-              <div class="lc2-stat-val">${visitsStr}</div>
-            </div>
-            <div>
-              <div class="lc2-stat-lbl">WEBSITE</div>
-              ${websiteHtml}
-            </div>
-            <div>
-              <div class="lc2-stat-lbl">DEAL-WAARDE</div>
-              <div class="lc2-stat-val">${dealWaarde}</div>
-            </div>
-          </div>
-          <div class="lc2-footer">
-            <span class="text-muted" style="font-size:11px">${l.status === 'archived' ? `<span style="color:var(--text-secondary);font-weight:600">Gearchiveerd</span>` : relativeTime(l.createdAt)}</span>
-            ${l.status === 'archived' && isAdmin() ? `<button class="btn btn-ghost btn-sm" style="font-size:11px;height:26px;padding:0 8px" onclick="event.stopPropagation();restoreArchivedLead('${l.id}','${esc(l.companyName)}')">Herstel</button>` : `<button class="lc2-open-btn" onclick="event.stopPropagation();openLeadDetail('${l.id}')">Open ›</button>`}
-          </div>
-        </div>
+          </td>
+          <td class="ld-td ld-td-niche">
+            ${l.niche ? `<span class="ld-niche-badge">${esc(l.niche)}</span>` : '<span style="color:var(--text-3,#666)">—</span>'}
+            ${l.subNiche ? `<span class="ld-subniche-badge">${esc(l.subNiche)}</span>` : ''}
+          </td>
+          <td class="ld-td ld-td-score">
+            <span class="ld-score-badge" style="${_ldScoreStyle(score)}">${score.toFixed(1)}</span>
+          </td>
+          <td class="ld-td ld-td-status">${_ldStatusBadge(l.status)}</td>
+          <td class="ld-td ld-td-email">${esc(l.contactEmail || '—')}</td>
+          <td class="ld-td ld-td-time">
+            ${l.status === 'archived' ? '<span style="color:#555;font-weight:600;font-size:11px">Gearchiveerd</span>' : relativeTime(l.createdAt)}
+          </td>
+          <td class="ld-td ld-td-actions" onclick="event.stopPropagation()">
+            ${l.status === 'archived' && isAdmin()
+              ? `<button class="ld-action-btn" onclick="restoreArchivedLead('${l.id}','${esc(l.companyName)}')">Herstel</button>`
+              : `<button class="ld-action-btn" onclick="openLeadDetail('${l.id}')"><i class="ti ti-chevron-right"></i></button>`}
+          </td>
+        </tr>
       `;
     }).join('');
   }
@@ -823,60 +826,98 @@ async function renderLeads() {
   };
 
   container.innerHTML = `
-    ${isAdmin() ? `<div id="bulkActionBar" class="bulk-action-bar" style="display:none">
-      <span class="bulk-count"></span>
-      <button class="btn btn-danger btn-sm" onclick="bulkDeleteLeads()">
-        <i class="ti ti-trash"></i> Verwijder selectie
-      </button>
-      <button class="btn btn-ghost btn-sm" onclick="selectAllLeads()" id="selectAllBtn">
-        <i class="ti ti-square"></i> Selecteer alles
-      </button>
+    <style>
+      .ld-bulk-bar{display:flex;align-items:center;gap:8px;background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.25);border-radius:8px;padding:9px 14px;margin-bottom:12px;flex-wrap:wrap}
+      .ld-toolbar{display:flex;align-items:center;gap:8px;padding:0 0 10px;flex-wrap:wrap}
+      .ld-search{background:var(--surface,#1A1A1A);border:1px solid var(--border,#2A2A2A);border-radius:6px;padding:6px 12px;color:var(--text,#F5F5F5);font-size:13px;width:220px;outline:none;transition:border-color .15s}
+      .ld-search:focus{border-color:var(--accent,#2563EB)}
+      .ld-sort-select{background:var(--surface,#1A1A1A);border:1px solid var(--border,#2A2A2A);border-radius:6px;padding:6px 10px;color:var(--text,#F5F5F5);font-size:13px;outline:none;cursor:pointer}
+      .ld-count{font-size:12px;color:var(--text-3,#666);margin-left:auto;white-space:nowrap}
+      .ld-filter-row{display:flex;align-items:center;gap:6px;padding:0 0 10px;flex-wrap:wrap}
+      .ld-filter-label{font-size:10px;font-weight:600;color:var(--text-3,#666);text-transform:uppercase;letter-spacing:.07em;margin-right:2px;white-space:nowrap}
+      .ld-chip{padding:3px 10px;border-radius:20px;border:1px solid var(--border,#2A2A2A);background:transparent;color:var(--text-2,#999);font-size:12px;cursor:pointer;white-space:nowrap;transition:all .15s}
+      .ld-chip:hover{border-color:var(--border-strong,#333);color:var(--text,#F5F5F5)}
+      .ld-chip.active{background:var(--accent,#2563EB);color:#fff;border-color:var(--accent,#2563EB)}
+      .ld-niche-chip{padding:3px 10px;border-radius:20px;border:1px solid var(--border,#2A2A2A);background:transparent;color:var(--text-2,#999);font-size:12px;cursor:pointer;white-space:nowrap;transition:all .15s}
+      .ld-niche-chip:hover{border-color:var(--border-strong,#333);color:var(--text,#F5F5F5)}
+      .ld-niche-chip.active{border-color:var(--accent,#2563EB);color:var(--accent,#2563EB);background:rgba(37,99,235,.1)}
+      .ld-table{width:100%;border-collapse:collapse;font-size:13px}
+      .ld-th{padding:7px 12px;text-align:left;font-size:10px;font-weight:600;color:var(--text-3,#666);text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid var(--border,#2A2A2A);white-space:nowrap;background:var(--surface,#1A1A1A);position:sticky;top:0;z-index:1}
+      .ld-td{padding:10px 12px;border-bottom:1px solid var(--border,#2A2A2A);vertical-align:middle}
+      .ld-row{cursor:pointer;transition:background .1s}
+      .ld-row:hover{background:var(--surface,#1A1A1A)}
+      .ld-row:hover .ld-action-btn{opacity:1}
+      .ld-row-selected{background:rgba(37,99,235,.07)!important}
+      .ld-company-cell{display:flex;align-items:center;gap:10px}
+      .ld-avatar{width:28px;height:28px;border-radius:6px;font-size:11px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+      .ld-company-info{display:flex;flex-direction:column;gap:1px;min-width:0}
+      .ld-company-name{font-weight:600;color:var(--text,#F5F5F5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;display:block}
+      .ld-company-sub{font-size:11px;color:var(--text-3,#666)}
+      .ld-niche-badge{padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.06);color:var(--text-2,#999);font-size:11px;white-space:nowrap}
+      .ld-subniche-badge{padding:2px 6px;border-radius:4px;background:rgba(37,99,235,.1);color:#60A5FA;font-size:10px;margin-left:4px}
+      .ld-score-badge{padding:3px 8px;border-radius:5px;font-size:12px;font-weight:700;white-space:nowrap}
+      .ld-td-email{font-size:12px;color:var(--text-2,#999);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .ld-td-time{font-size:12px;color:var(--text-3,#666);white-space:nowrap}
+      .ld-action-btn{background:transparent;border:1px solid var(--border,#2A2A2A);border-radius:5px;color:var(--text-2,#999);padding:4px 8px;font-size:12px;cursor:pointer;opacity:0;transition:opacity .15s}
+      .ld-action-btn:hover{background:var(--surface-2,#222);color:var(--text,#F5F5F5)}
+      @media(max-width:768px){.ld-td-email,.ld-td-time,.ld-th:nth-child(6),.ld-th:nth-child(7){display:none}.ld-search{width:140px}}
+    </style>
+    ${isAdmin() ? `<div id="bulkActionBar" class="ld-bulk-bar" style="display:none">
+      <span class="bulk-count" style="font-size:13px;font-weight:600;color:var(--text,#F5F5F5)"></span>
+      <button class="btn btn-danger btn-sm" onclick="bulkDeleteLeads()"><i class="ti ti-trash"></i> Verwijder</button>
+      <button class="btn btn-ghost btn-sm" onclick="selectAllLeads()" id="selectAllBtn"><i class="ti ti-square"></i> Selecteer alles</button>
     </div>` : ''}
-    <div class="leads-bar">
-      <div class="leads-bar-search">
-        <input type="search" class="search-input" id="leadsSearch" placeholder="Zoek bedrijf of stad...">
-      </div>
-      <div class="leads-bar-chips">
-        <button class="niche-chip active" data-niche="all">Alles <span class="niche-chip-count">${leads.length}</span></button>
+    <div class="ld-toolbar">
+      <input type="search" class="ld-search" id="leadsSearch" placeholder="Zoek bedrijf, stad of niche…">
+      <select class="ld-sort-select" id="leadsSortSelect">
+        <option value="newest">Nieuwste eerst</option>
+        <option value="score">Hoogste score</option>
+        <option value="value">Hoogste waarde</option>
+        <option value="name">Naam A–Z</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" id="clearFiltersBtn" style="display:none" onclick="clearLeadFilters()"><i class="ti ti-x"></i> Wis filters</button>
+      <span class="ld-count" id="filterCount">${leads.length} leads</span>
+    </div>
+    <div class="ld-filter-row">
+      <span class="ld-filter-label">Status</span>
+      <button class="ld-chip active" data-status="all">Alles</button>
+      <button class="ld-chip" data-status="inbox">Inbox</button>
+      <button class="ld-chip" data-status="approved">Goedgekeurd</button>
+      <button class="ld-chip" data-status="sent">Verstuurd</button>
+      <button class="ld-chip" data-status="replied">Gereageerd</button>
+      <button class="ld-chip" data-status="client">Klant</button>
+      <button class="ld-chip" data-status="dead">Dead</button>
+      <button class="ld-chip" data-status="archived">Archief</button>
+    </div>
+    <div class="ld-filter-row">
+      <span class="ld-filter-label">Score</span>
+      <button class="ld-chip active" data-score="all">Alles</button>
+      <button class="ld-chip" data-score="8+">8+</button>
+      <button class="ld-chip" data-score="6+">6+</button>
+      <span style="margin-left:auto;display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+        <span class="ld-filter-label">Niche</span>
+        <button class="ld-niche-chip active" data-niche="all">Alles <span style="opacity:.5">${leads.length}</span></button>
         ${niches.map(n => {
           const cnt = leads.filter(l => l.niche === n).length;
-          return `<button class="niche-chip" data-niche="${n}">${esc(n)} <span class="niche-chip-count">${cnt}</span></button>`;
+          return `<button class="ld-niche-chip" data-niche="${n}">${esc(n)} <span style="opacity:.5">${cnt}</span></button>`;
         }).join('')}
-      </div>
+      </span>
     </div>
-    <div id="leadsFilterPanel" class="leads-filter-panel" style="display:none">
-      <div class="leads-filter-group">
-        <span class="leads-filter-group-label">Status</span>
-        <div class="filter-chips">
-          <button class="filter-chip active" data-status="all">Alles</button>
-          <button class="filter-chip" data-status="inbox">Inbox</button>
-          <button class="filter-chip" data-status="approved">Goedgekeurd</button>
-          <button class="filter-chip" data-status="sent">Verstuurd</button>
-          <button class="filter-chip" data-status="replied">Gereageerd</button>
-          <button class="filter-chip" data-status="client">Klant</button>
-          <button class="filter-chip" data-status="dead">Dead</button>
-          <button class="filter-chip" data-status="archived" style="color:var(--text-secondary)">Archief</button>
-        </div>
-      </div>
-      <div class="leads-filter-group">
-        <span class="leads-filter-group-label">Score</span>
-        <div class="filter-chips">
-          <button class="filter-chip active" data-score="all">Alles</button>
-          <button class="filter-chip" data-score="8+">8+</button>
-          <button class="filter-chip" data-score="6+">6+</button>
-        </div>
-      </div>
-      <div class="leads-filter-group" style="margin-left:auto;flex-direction:row;align-items:center;gap:10px">
-        <button class="btn btn-ghost btn-sm" id="clearFiltersBtn" style="display:none" onclick="clearLeadFilters()">
-          <i class="ti ti-x"></i> Wissen
-        </button>
-        <span id="filterCount" class="text-muted" style="font-size:13px;white-space:nowrap">${leads.length} leads</span>
-        <button class="btn btn-ghost btn-sm" onclick="selectAllLeads()" id="selectAllBtnMain">
-          <i class="ti ti-square"></i> Alles
-        </button>
-      </div>
-    </div>
-    <div class="lead-cards-v2" id="leadsGrid"></div>
+    <table class="ld-table">
+      <thead>
+        <tr>
+          ${isAdmin() ? '<th class="ld-th" style="width:32px"></th>' : ''}
+          <th class="ld-th">Bedrijf</th>
+          <th class="ld-th">Niche</th>
+          <th class="ld-th" style="width:68px">Score</th>
+          <th class="ld-th">Status</th>
+          <th class="ld-th">Email</th>
+          <th class="ld-th">Toegevoegd</th>
+          <th class="ld-th" style="width:36px"></th>
+        </tr>
+      </thead>
+      <tbody id="leadsGrid"></tbody>
+    </table>
   `;
 
   renderGrid();
@@ -885,6 +926,11 @@ async function renderLeads() {
     searchQ = e.target.value.toLowerCase();
     renderGrid();
     updateBulkBar();
+  });
+
+  document.getElementById('leadsSortSelect')?.addEventListener('change', e => {
+    sortBy = e.target.value;
+    renderGrid();
   });
 
   document.getElementById('toggleFiltersBtn')?.addEventListener('click', () => {
@@ -905,18 +951,18 @@ async function renderLeads() {
     });
   });
 
-  document.querySelectorAll('.filter-chip[data-status]').forEach(btn => {
+  document.querySelectorAll('.ld-chip[data-status]').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-chip[data-status]').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.ld-chip[data-status]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       activeStatus = btn.dataset.status;
       renderGrid();
     });
   });
 
-  document.querySelectorAll('.filter-chip[data-score]').forEach(btn => {
+  document.querySelectorAll('.ld-chip[data-score]').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-chip[data-score]').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.ld-chip[data-score]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       activeScore = btn.dataset.score;
       renderGrid();
@@ -926,9 +972,11 @@ async function renderLeads() {
   window.clearLeadFilters = function() {
     activeNiche = 'all'; activeStatus = 'all'; activeScore = 'all'; sortBy = 'newest'; searchQ = '';
     document.getElementById('leadsSearch').value = '';
+    const sortSel = document.getElementById('leadsSortSelect');
+    if (sortSel) sortSel.value = 'newest';
     document.querySelectorAll('[data-niche]').forEach(b => b.classList.toggle('active', b.dataset.niche === 'all'));
-    document.querySelectorAll('.filter-chip[data-status]').forEach(b => b.classList.toggle('active', b.dataset.status === 'all'));
-    document.querySelectorAll('.filter-chip[data-score]').forEach(b => b.classList.toggle('active', b.dataset.score === 'all'));
+    document.querySelectorAll('.ld-chip[data-status]').forEach(b => b.classList.toggle('active', b.dataset.status === 'all'));
+    document.querySelectorAll('.ld-chip[data-score]').forEach(b => b.classList.toggle('active', b.dataset.score === 'all'));
     renderGrid();
   };
 }
