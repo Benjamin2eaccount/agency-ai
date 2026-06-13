@@ -1421,53 +1421,111 @@ async function renderProjectPage() {
     </div>`;
 
   document.getElementById('appView').innerHTML = `
-    <div class="project-page">
-      <div class="project-header">
-        <button class="project-back-btn" onclick="setView('pipeline')">
-          <i class="ti ti-arrow-left"></i> Pipeline
-        </button>
-        <div class="project-title-row">
-          <div>
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <span class="project-company-name">${esc(lead.companyName || '—')}</span>
+    <style>
+    .pj-wrap{display:flex;flex-direction:column;padding:0 0 32px}
+    .pj-back{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text-2,#999);border:none;background:none;cursor:pointer;padding:0;transition:color .15s;margin-bottom:12px;font-family:inherit}
+    .pj-back:hover{color:var(--text,#F5F5F5)}
+    .pj-header-card{background:var(--surface,#1A1A1A);border:1px solid var(--border,#2A2A2A);border-radius:14px 14px 0 0;padding:20px 24px}
+    .pj-name{font-size:24px;font-weight:700;color:var(--text,#F5F5F5);line-height:1.2;margin-bottom:6px}
+    .pj-row-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .pj-title-left{flex:1;min-width:0}
+    .pj-badges{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .pj-health-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;display:inline-block}
+    .pj-health-label{font-size:12px;color:var(--text-2,#999)}
+    .pj-phase-badge{font-size:11px;font-weight:600;background:rgba(37,99,235,.12);color:var(--accent,#2563EB);border:1px solid rgba(37,99,235,.25);border-radius:6px;padding:2px 10px}
+    .pj-actions{display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;margin-top:2px}
+    .pj-phase-track{display:flex;align-items:center;margin:18px 0 0}
+    .pj-ph-step{display:flex;flex-direction:column;align-items:center;gap:4px}
+    .pj-ph-circle{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+    .pj-ph-circle.done{background:#16A34A;color:#fff}
+    .pj-ph-circle.current{background:transparent;border:2px solid var(--accent,#2563EB);color:var(--accent,#2563EB)}
+    .pj-ph-circle.upcoming{background:var(--surface-2,#222);border:2px solid var(--border,#2A2A2A);color:var(--text-3,#666)}
+    .pj-ph-label{font-size:10px;color:var(--text-2,#999);text-align:center;max-width:70px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .pj-ph-line{flex:1;height:2px;background:var(--border,#2A2A2A);margin:0 4px 18px;min-width:14px}
+    .pj-ph-line.done{background:#16A34A}
+    .pj-stats-row{display:flex;align-items:center;gap:14px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border,#2A2A2A);flex-wrap:wrap}
+    .pj-stat{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-2,#999)}
+    .pj-stat-val{font-weight:600;color:var(--text,#F5F5F5)}
+    .pj-stat-sep{color:var(--border-strong,#333);font-size:14px;line-height:1}
+    .pj-intake-banner{margin-top:12px;border:1px solid rgba(37,99,235,.3);border-radius:10px;background:rgba(37,99,235,.07);padding:12px 16px;display:flex;align-items:center;gap:10px}
+    .pj-intake-banner-text{font-size:13px;color:var(--accent,#2563EB);flex:1}
+    .pj-tab-bar{display:flex;align-items:flex-end;border-bottom:1px solid var(--border,#2A2A2A);overflow-x:auto;scrollbar-width:none;background:var(--surface,#1A1A1A);border-radius:0 0 14px 14px;padding:0 8px;margin-bottom:16px}
+    .pj-tab-bar::-webkit-scrollbar{display:none}
+    .pj-tab-bar .project-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--text-2,#999);cursor:pointer;font-size:13px;font-weight:500;padding:11px 14px;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;margin-bottom:-1px;line-height:1;font-family:inherit}
+    .pj-tab-bar .project-tab:hover{color:var(--text,#F5F5F5)}
+    .pj-tab-bar .project-tab.active{color:var(--accent,#2563EB);border-bottom-color:var(--accent,#2563EB);font-weight:600}
+    </style>
+    <div class="pj-wrap">
+      <button class="pj-back" onclick="setView('pipeline')">
+        <i class="ti ti-arrow-left"></i> Terug naar pipeline
+      </button>
+      <div class="pj-header-card">
+        <div class="pj-row-top">
+          <div class="pj-title-left">
+            <div class="pj-name">${esc(lead.companyName || '—')}</div>
+            <div class="pj-badges">
               ${nicheBadge(lead.niche)}
+              <span class="pj-health-dot" style="background:${(lead.score||0)>=8?'#16A34A':(lead.score||0)>=5?'#D97706':'#DC2626'}"></span>
+              <span class="pj-health-label">${(lead.score||0)>=8?'Hoge score':(lead.score||0)>=5?'Gemiddeld':'Lage score'}</span>
+              <span class="pj-phase-badge">Fase ${lead.currentPhase||(lead.status==='client'?5:lead.agentsRanAt?4:lead.intakeSubmittedAt?3:lead.projectStartedAt?2:1)}</span>
               <span class="score-pill score-${scoreColor(lead.score || 0)}">${(lead.score || 0).toFixed(1)}</span>
-              ${isAdmin()
-                ? `<select class="status-pill status-${statusColor}" id="projectStatusSelect" onchange="changeLeadStatus('${lead.id}',this.value)" style="cursor:pointer;border:none;font-weight:600;font-size:12px;appearance:none;padding-right:18px;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 4px center">
-                    ${[['inbox','Inbox'],['approved','Goedgekeurd'],['sent','Verstuurd'],['replied','Gereageerd'],['meeting','Afspraak'],['client','Klant'],['dead','Dead']].map(([v,l]) => `<option value="${v}" ${lead.status===v?'selected':''}>${l}</option>`).join('')}
-                  </select>`
-                : `<span class="status-pill status-${statusColor}">${statusLabel}</span>`
-              }
-            </div>
-            <div class="project-meta">
-              ${lead.location ? `<span><i class="ti ti-map-pin"></i> ${esc(lead.location)}</span>` : ''}
-              ${lead.contactEmail ? `<span><i class="ti ti-mail"></i> ${esc(lead.contactEmail)}</span>` : ''}
             </div>
           </div>
-          <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap">
+          <div class="pj-actions">
             ${lead.projectStartedAt
               ? `<button class="btn btn-ghost btn-sm" onclick="editProjectConfig('${esc(lead.id)}')"><i class="ti ti-settings"></i> Aanpassen</button>`
               : ['approved','scheduled','sent','replied'].includes(lead.status)
                 ? `<button class="btn btn-primary btn-sm" onclick="startProject('${esc(lead.id)}')"><i class="ti ti-rocket"></i> Project starten</button>`
                 : ''}
+            ${isAdmin()
+              ? `<select class="status-pill status-${statusColor}" id="projectStatusSelect" onchange="changeLeadStatus('${lead.id}',this.value)" style="cursor:pointer;border:none;font-weight:600;font-size:12px;appearance:none;padding-right:18px;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 4px center">
+                  ${[['inbox','Inbox'],['approved','Goedgekeurd'],['sent','Verstuurd'],['replied','Gereageerd'],['meeting','Afspraak'],['client','Klant'],['dead','Dead']].map(([v,l]) => `<option value="${v}" ${lead.status===v?'selected':''}>${l}</option>`).join('')}
+                </select>`
+              : `<span class="status-pill status-${statusColor}">${statusLabel}</span>`
+            }
           </div>
         </div>
-        <div class="project-tabs">
-          <button class="project-tab${activeTab==='overzicht'?' active':''}" data-tab="overzicht" onclick="switchProjectTab('overzicht')">Overzicht</button>
-          <button class="project-tab${activeTab==='emails'?' active':''}" data-tab="emails" onclick="switchProjectTab('emails')">Emails</button>
-          ${lead.intakeToken ? `<button class="project-tab${activeTab==='intake'?' active':''}" data-tab="intake" onclick="switchProjectTab('intake')">${lead.intakeSubmittedAt ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Intake</button>` : ''}
-          <button class="project-tab${activeTab==='betalingen'?' active':''}" data-tab="betalingen" onclick="switchProjectTab('betalingen')">${(lead.payments||[]).filter(p=>p.status==='sent').length > 0 ? `<i class="ti ti-coin" style="color:var(--warning);margin-right:3px"></i>` : ''}Betalingen</button>
-          <button class="project-tab${activeTab==='voorstel'?' active':''}" data-tab="voorstel" onclick="switchProjectTab('voorstel')">${(lead.proposals?.length || lead.proposal) ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Voorstel</button>
-          <button class="project-tab${activeTab==='contract'?' active':''}" data-tab="contract" onclick="switchProjectTab('contract')">${lead.contract ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Contract</button>
-          <button class="project-tab${activeTab==='building'?' active':''}" data-tab="building" onclick="switchProjectTab('building')" style="${(lead.agentDeliverables||[]).some(d=>d.status==='wacht_op_goedkeuring') ? 'color:var(--warning);font-weight:700' : ''}">${(lead.agentDeliverables||[]).some(d=>d.status==='wacht_op_goedkeuring') ? '<i class="ti ti-clock" style="margin-right:3px;color:var(--warning)"></i>' : '<i class="ti ti-hammer" style="margin-right:3px"></i>'}Building${(lead.agentDeliverables||[]).filter(d=>d.status!=='error').length > 0 ? ` (${(lead.agentDeliverables||[]).filter(d=>d.status!=='error').length})` : ''}</button>
-          <button class="project-tab${activeTab==='afspraken'?' active':''}" data-tab="afspraken" onclick="switchProjectTab('afspraken')">Afspraken</button>
-          <button class="project-tab${activeTab==='bestanden'?' active':''}" data-tab="bestanden" onclick="switchProjectTab('bestanden')"><i class="ti ti-files" style="margin-right:3px"></i>Bestanden${(lead.projectFiles||[]).length > 0 ? ` (${(lead.projectFiles||[]).length})` : ''}</button>
-          <button class="project-tab${activeTab==='documenten'?' active':''}" data-tab="documenten" onclick="switchProjectTab('documenten')"><i class="ti ti-folder" style="margin-right:3px"></i>Documenten${(lead.documents||[]).length > 0 ? ` (${(lead.documents||[]).length})` : ''}</button>
-          <button class="project-tab${activeTab==='portaal'?' active':''}" data-tab="portaal" onclick="switchProjectTab('portaal')">${(lead.portalChat||[]).filter(m=>m.from==='client'&&!m.readAt).length > 0 ? `<i class="ti ti-message-circle" style="color:var(--danger);margin-right:3px"></i>` : ''}Klantportaal</button>
-          <button class="project-tab${activeTab==='hosting'?' active':''}" data-tab="hosting" onclick="switchProjectTab('hosting')"><i class="ti ti-server" style="margin-right:3px"></i>Hosting</button>
-          <button class="project-tab${activeTab==='geschiedenis'?' active':''}" data-tab="geschiedenis" onclick="switchProjectTab('geschiedenis')">Geschiedenis</button>
-          <button class="project-tab${activeTab==='notities'?' active':''}" data-tab="notities" onclick="switchProjectTab('notities')">Notities</button>
+        <div class="pj-phase-track">
+          ${['Lead ontdekt','Project gestart','Intake','Building','Opgeleverd'].map((l,i)=>{
+            const n=i+1;
+            const cur=lead.currentPhase||(lead.status==='client'?5:lead.agentsRanAt?4:lead.intakeSubmittedAt?3:lead.projectStartedAt?2:1);
+            const cls=n<cur?'done':n===cur?'current':'upcoming';
+            const icon=n<cur?'<i class="ti ti-check"></i>':String(n);
+            const line=i<4?`<div class="pj-ph-line${n<cur?' done':''}" style="flex:1"></div>`:'';
+            return `<div class="pj-ph-step"><div class="pj-ph-circle ${cls}">${icon}</div><div class="pj-ph-label">${l}</div></div>${line}`;
+          }).join('')}
         </div>
+        <div class="pj-stats-row">
+          <div class="pj-stat">📅 <span class="pj-stat-val">${lead.projectStartedAt ? new Date(lead.projectStartedAt).toLocaleDateString('nl-NL') : 'Niet gestart'}</span></div>
+          <span class="pj-stat-sep">|</span>
+          <div class="pj-stat">🛠️ <span class="pj-stat-val">${(lead.services||[]).length} diensten</span></div>
+          <span class="pj-stat-sep">|</span>
+          <div class="pj-stat">📦 <span class="pj-stat-val">${(lead.agentDeliverables||[]).filter(d=>d.status!=='error').length} deliverables</span></div>
+          <span class="pj-stat-sep">|</span>
+          <div class="pj-stat">💰 <span class="pj-stat-val">€${(lead.estimatedValue||0).toLocaleString('nl-NL')}</span></div>
+        </div>
+        ${lead.projectStartedAt && lead.intakeToken && !lead.intakeSubmittedAt ? `
+        <div class="pj-intake-banner">
+          <span style="font-size:16px;flex-shrink:0">⏳</span>
+          <span class="pj-intake-banner-text">Wacht op intake formulier — klant heeft het nog niet ingevuld</span>
+          <button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="navigator.clipboard.writeText(location.origin+'/intake/${esc(lead.id)}/${esc(lead.intakeToken||'')}').then(()=>toast('Link gekopieerd','success'))"><i class="ti ti-copy"></i> Kopieer link</button>
+        </div>` : ''}
+      </div>
+      <div class="pj-tab-bar">
+        <button class="project-tab${activeTab==='overzicht'?' active':''}" data-tab="overzicht" onclick="switchProjectTab('overzicht')">Overzicht</button>
+        <button class="project-tab${activeTab==='emails'?' active':''}" data-tab="emails" onclick="switchProjectTab('emails')">Emails</button>
+        ${lead.intakeToken ? `<button class="project-tab${activeTab==='intake'?' active':''}" data-tab="intake" onclick="switchProjectTab('intake')">${lead.intakeSubmittedAt ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Intake</button>` : ''}
+        <button class="project-tab${activeTab==='betalingen'?' active':''}" data-tab="betalingen" onclick="switchProjectTab('betalingen')">${(lead.payments||[]).filter(p=>p.status==='sent').length > 0 ? `<i class="ti ti-coin" style="color:var(--warning);margin-right:3px"></i>` : ''}Betalingen</button>
+        <button class="project-tab${activeTab==='voorstel'?' active':''}" data-tab="voorstel" onclick="switchProjectTab('voorstel')">${(lead.proposals?.length || lead.proposal) ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Voorstel</button>
+        <button class="project-tab${activeTab==='contract'?' active':''}" data-tab="contract" onclick="switchProjectTab('contract')">${lead.contract ? '<i class="ti ti-check" style="color:var(--success);margin-right:3px"></i>' : ''}Contract</button>
+        <button class="project-tab${activeTab==='building'?' active':''}" data-tab="building" onclick="switchProjectTab('building')" style="${(lead.agentDeliverables||[]).some(d=>d.status==='wacht_op_goedkeuring') ? 'color:var(--warning);font-weight:700' : ''}">${(lead.agentDeliverables||[]).some(d=>d.status==='wacht_op_goedkeuring') ? '<i class="ti ti-clock" style="margin-right:3px;color:var(--warning)"></i>' : '<i class="ti ti-hammer" style="margin-right:3px"></i>'}Building${(lead.agentDeliverables||[]).filter(d=>d.status!=='error').length > 0 ? ` (${(lead.agentDeliverables||[]).filter(d=>d.status!=='error').length})` : ''}</button>
+        <button class="project-tab${activeTab==='afspraken'?' active':''}" data-tab="afspraken" onclick="switchProjectTab('afspraken')">Afspraken</button>
+        <button class="project-tab${activeTab==='bestanden'?' active':''}" data-tab="bestanden" onclick="switchProjectTab('bestanden')"><i class="ti ti-files" style="margin-right:3px"></i>Bestanden${(lead.projectFiles||[]).length > 0 ? ` (${(lead.projectFiles||[]).length})` : ''}</button>
+        <button class="project-tab${activeTab==='documenten'?' active':''}" data-tab="documenten" onclick="switchProjectTab('documenten')"><i class="ti ti-folder" style="margin-right:3px"></i>Documenten${(lead.documents||[]).length > 0 ? ` (${(lead.documents||[]).length})` : ''}</button>
+        <button class="project-tab${activeTab==='portaal'?' active':''}" data-tab="portaal" onclick="switchProjectTab('portaal')">${(lead.portalChat||[]).filter(m=>m.from==='client'&&!m.readAt).length > 0 ? `<i class="ti ti-message-circle" style="color:var(--danger);margin-right:3px"></i>` : ''}Klantportaal</button>
+        <button class="project-tab${activeTab==='hosting'?' active':''}" data-tab="hosting" onclick="switchProjectTab('hosting')"><i class="ti ti-server" style="margin-right:3px"></i>Hosting</button>
+        <button class="project-tab${activeTab==='geschiedenis'?' active':''}" data-tab="geschiedenis" onclick="switchProjectTab('geschiedenis')">Geschiedenis</button>
+        <button class="project-tab${activeTab==='notities'?' active':''}" data-tab="notities" onclick="switchProjectTab('notities')">Notities</button>
       </div>
       <div class="project-content">
         ${tabOverzicht}
