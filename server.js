@@ -215,9 +215,13 @@ if (process.env.ADMIN_PASSWORD) {
   );
 })();
 
-async function sendPushToAll(title, body, url) {
+async function sendPushToAll(title, body, url, workspaceId) {
   const settings = readJSON('settings.json') || {};
-  const subs = readJSON('push-subscriptions.json') || [];
+  const allSubs = readJSON('push-subscriptions.json') || [];
+  // Only push to subscriptions belonging to the same workspace (or global when workspaceId is null)
+  const subs = workspaceId
+    ? allSubs.filter(s => s.workspaceId === workspaceId)
+    : allSubs.filter(s => !s.workspaceId);
   if (!subs.length) return;
   const payload = JSON.stringify({ title, body, url: url || '/app' });
   const dead = [];
@@ -235,7 +239,7 @@ async function sendPushToAll(title, body, url) {
     }
   }));
   if (dead.length) {
-    const cleaned = subs.filter(s => !dead.includes(s.id));
+    const cleaned = allSubs.filter(s => !dead.includes(s.id));
     writeJSON('push-subscriptions.json', cleaned);
   }
 }
@@ -13742,7 +13746,13 @@ app.post('/api/push/subscribe', authMiddleware, (req, res) => {
   const subs = readJSON('push-subscriptions.json') || [];
   const exists = subs.find(s => s.subscription.endpoint === subscription.endpoint);
   if (!exists) {
-    subs.push({ id: Date.now().toString(36), userId: req.user.id, subscription, createdAt: new Date().toISOString() });
+    subs.push({
+      id: Date.now().toString(36),
+      userId: req.user.id,
+      workspaceId: req.user.workspaceId || null,
+      subscription,
+      createdAt: new Date().toISOString(),
+    });
     writeJSON('push-subscriptions.json', subs);
   }
   res.json({ ok: true });
@@ -14772,12 +14782,18 @@ pgInitPromise.catch(err => {
 // ─── WebSocket client registry ────────────────────────────────────────────────
 const _wsClients = new Set();
 
-function broadcastWS(event, data = {}) {
+function broadcastWS(event, data = {}, workspaceId) {
   const msg = JSON.stringify({ event, data, ts: Date.now() });
   for (const client of _wsClients) {
-    if (client.readyState === WebSocket.OPEN) {
-      try { client.send(msg); } catch {}
+    if (client.readyState !== WebSocket.OPEN) continue;
+    // If the notification is workspace-scoped, only send to matching workspace clients.
+    // If workspaceId is null/undefined (global event), only send to superadmin clients (no workspaceId).
+    if (workspaceId) {
+      if (client._workspaceId !== workspaceId) continue;
+    } else {
+      if (client._workspaceId) continue;
     }
+    try { client.send(msg); } catch {}
   }
 }
 
@@ -14883,7 +14899,9 @@ if (require.main === module || process.env.NODE_ENV !== 'test') pgInitPromise.th
     let authenticated = false;
     if (token) {
       try {
-        jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, JWT_SECRET);
+        // Tag the socket with its workspace so broadcastWS can filter correctly
+        ws._workspaceId = decoded.workspaceId || null;
         authenticated = true;
       } catch {}
     }
