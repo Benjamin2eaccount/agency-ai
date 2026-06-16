@@ -211,7 +211,9 @@ app.whenReady().then(() => {
 
   // Ctrl/Cmd+Shift+A — close main window and go back to account launcher
   globalShortcut.register('CommandOrControl+Shift+A', () => {
-    if (mainWindow) mainWindow.close()
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.close()
+    }
     createLauncherWindow()
   })
 
