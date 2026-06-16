@@ -622,7 +622,37 @@ app.get('/setup/demo-users', async (req, res) => {
     writeJSON('leads.json', [...existingLeads, ...newLeads]);
     writeJSON('inbox.json', [...existingInbox, ...newInbox]);
 
-    // ── 3. Stats + activity ────────────────────────────────────────────────
+    // ── 3. Demo runs ───────────────────────────────────────────────────────
+    const DEMO_CITIES  = ['Amsterdam','Rotterdam','Utrecht','Den Haag','Eindhoven'];
+    const DEMO_NICHES  = ['beauty','food','fitness','real_estate','wellness'];
+    const existingRuns = (readJSON('runs.json') || []).filter(r => !r.isDemo);
+    const demoRuns = [];
+    for (let i = 29; i >= 0; i--) {
+      const found = rand(8, 18);
+      demoRuns.push({
+        id: `demo-run-${i}`,
+        isDemo: true,
+        startedAt: ago(i),
+        finishedAt: new Date(Date.now() - i * 86400_000 + rand(8,14) * 60_000).toISOString(),
+        leadsFound: found,
+        leadsProcessed: found + rand(2, 5),
+        city: DEMO_CITIES[i % DEMO_CITIES.length],
+        niche: DEMO_NICHES[i % DEMO_NICHES.length],
+        status: 'done',
+      });
+    }
+    writeJSON('runs.json', [...demoRuns, ...existingRuns]);
+
+    // ── 3b. Demo contacts ─────────────────────────────────────────────────
+    const existingContacts = (readJSON('contacts.json') || []).filter(c => !c.isDemo);
+    writeJSON('contacts.json', [
+      ...existingContacts,
+      { id:'demo-contact-1', isDemo:true, name:'Lotte Bakker', company:'Bakkerij Vers & Puur', email:'lotte@versenpuur.nl', phone:'06-12345678', service:'Social Media Management', message:'Ik wil graag meer weten over jullie social media diensten.', createdAt:ago(5), status:'new', type:'contact' },
+      { id:'demo-contact-2', isDemo:true, name:'Mark Jansen', company:'TechStart BV', email:'mark@techstart.nl', phone:'06-98765432', service:'Marketing Automatisering', message:'Kunnen jullie ons helpen met marketing automatisering?', createdAt:ago(3), status:'new', type:'contact' },
+      { id:'demo-contact-3', isDemo:true, name:'Sophie Verwaal', company:'Yoga & Welzijn Centrum', email:'sophie@yogawelzijn.nl', phone:'06-11223344', service:'AI Chatbot', message:'Demo aanvraag ontvangen van website.', createdAt:ago(1), status:'new', type:'demo' },
+    ]);
+
+    // ── 4. Stats + activity ────────────────────────────────────────────────
     const existingActivity = (readJSON('activity.json') || []).filter(a => !a.isDemo);
     const demoActivity = [];
     for (let i = 30; i >= 0; i--) {
@@ -8093,7 +8123,7 @@ app.delete('/api/inbox/:id', (req, res) => {
 // â"€â"€â"€ Runs â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 app.get('/api/runs', (req, res) => {
-  res.json(wsRead(req, 'runs.json', []));
+  res.json(scopeToUser(wsRead(req, 'runs.json', []), req));
 });
 
 app.post('/api/runs', (req, res) => {
@@ -11947,7 +11977,7 @@ app.get('/api/test-scrape', requireAdmin, async (req, res) => {
 });
 
 app.get('/api/activity', requireAdmin, (req, res) => {
-  const log = wsRead(req, 'activity.json', []);
+  const log = scopeToUser(wsRead(req, 'activity.json', []), req);
   const limit = parseInt(req.query.limit) || 100;
   res.json({ activity: log.slice(0, limit) });
 });
@@ -13603,7 +13633,7 @@ app.delete('/api/push/unsubscribe', authMiddleware, (req, res) => {
 // ─── Contact form (public) ───────────────────────────────────────────────────
 // ─── Contacts management ──────────────────────────────────────────────────────
 app.get('/api/contacts', authMiddleware, (req, res) => {
-  res.json(wsRead(req, 'contacts.json', []));
+  res.json(scopeToUser(wsRead(req, 'contacts.json', []), req));
 });
 
 app.patch('/api/contacts/:id', authMiddleware, (req, res) => {
