@@ -3499,7 +3499,7 @@ app.get('/api/superadmin/stats', requireSuperAdmin, (req, res) => {
 app.get('/api/superadmin/workspaces', requireSuperAdmin, (req, res) => {
   try {
     const db = getDb();
-    const workspaces = db.prepare('SELECT * FROM workspaces ORDER BY created_at DESC').all();
+    const workspaces = db.prepare("SELECT * FROM workspaces WHERE slug != 'superadmin' ORDER BY created_at DESC").all();
     const result = workspaces.map(ws => {
       const userCount = db.prepare('SELECT COUNT(*) as c FROM workspace_users WHERE workspace_id = ?').get(ws.id).c;
       return { ...ws, user_count: userCount };
@@ -3829,6 +3829,13 @@ app.get('/api/superadmin/system', requireSuperAdmin, (req, res) => {
     const emailCount = act.filter(a => a.type === 'email').length;
     const buildCount = act.filter(a => a.type === 'build').length;
     const mem = process.memoryUsage();
+    // AI rate stats (today)
+    const now = new Date(); const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const aiLog = typeof _aiCallLog !== 'undefined' ? _aiCallLog : [];
+    const aiCallsToday = aiLog.filter(t => t >= dayStart).length;
+    const costToday = act.filter(a => a.type === 'ai' && a.date && new Date(a.date).getTime() >= dayStart)
+      .reduce((s, a) => s + (a.costUsd || 0), 0);
+    const claudeKeySet = !!(process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY);
     res.json({
       node_version    : process.version,
       uptime_seconds  : Math.floor(process.uptime()),
@@ -3840,7 +3847,30 @@ app.get('/api/superadmin/system', requireSuperAdmin, (req, res) => {
       total_emails_sent: emailCount,
       total_builds    : buildCount,
       version         : '1.1.2',
+      claude_key_set  : claudeKeySet,
+      ai_calls_today  : aiCallsToday,
+      ai_cost_today_usd: Math.round(costToday * 1000) / 1000,
+      claude_model    : 'claude-sonnet-4-6',
     });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PATCH /api/superadmin/system/claude-key — update platform Claude API key
+app.patch('/api/superadmin/system/claude-key', requireSuperAdmin, (req, res) => {
+  try {
+    const { claudeKey } = req.body;
+    if (!claudeKey || !claudeKey.trim()) return res.status(400).json({ error: 'Sleutel mag niet leeg zijn' });
+    const key = claudeKey.trim();
+    if (!key.startsWith('sk-ant-')) return res.status(400).json({ error: 'Ongeldige Claude API sleutel (moet beginnen met sk-ant-)' });
+    // Update in-process env so all subsequent aiCall()s pick it up immediately
+    process.env.CLAUDE_API_KEY   = key;
+    process.env.ANTHROPIC_API_KEY = key;
+    // Persist encrypted in Agency AI's own global settings
+    const s = readJSON('settings.json') || {};
+    s.claudeApiKeyEncrypted = encryptApiKey(key);
+    writeJSON('settings.json', s);
+    console.log('[SuperAdmin] Claude API key updated');
+    res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

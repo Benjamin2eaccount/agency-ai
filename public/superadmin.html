@@ -1503,6 +1503,36 @@
         </div>
       </div>
 
+      <!-- Claude API key management -->
+      <div class="section-label" style="padding-left:2px;margin-top:24px;font-size:11px">
+        <i class="ti ti-robot" style="font-size:13px;margin-right:4px"></i>CLAUDE API
+      </div>
+      <div style="background:#18181b;border:1px solid #27272a;border-radius:10px;padding:20px;margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <span style="font-size:15px;font-weight:600;color:#f4f4f5">🤖 Claude API sleutel</span>
+          <span id="claudeKeyBadge" style="font-size:11px;padding:2px 8px;border-radius:99px;background:#052e16;color:#4ade80;font-weight:600">Laden…</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+          <div style="background:#09090b;border-radius:8px;padding:12px">
+            <div style="font-size:10px;color:#71717a;text-transform:uppercase;letter-spacing:.5px">Model</div>
+            <div style="font-size:13px;color:#f4f4f5;font-weight:600;margin-top:3px" id="claudeModel">—</div>
+          </div>
+          <div style="background:#09090b;border-radius:8px;padding:12px">
+            <div style="font-size:10px;color:#71717a;text-transform:uppercase;letter-spacing:.5px">Calls vandaag</div>
+            <div style="font-size:13px;color:#f4f4f5;font-weight:600;margin-top:3px" id="claudeCalls">—</div>
+          </div>
+          <div style="background:#09090b;border-radius:8px;padding:12px">
+            <div style="font-size:10px;color:#71717a;text-transform:uppercase;letter-spacing:.5px">Kosten vandaag</div>
+            <div style="font-size:13px;color:#f4f4f5;font-weight:600;margin-top:3px" id="claudeCost">—</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <input type="password" id="claudeKeyInput" placeholder="sk-ant-api03-…" style="flex:1;background:#09090b;border:1px solid #3f3f46;border-radius:7px;padding:9px 12px;color:#f4f4f5;font-size:13px;font-family:monospace">
+          <button onclick="saveClaudeKey()" style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer">Opslaan</button>
+        </div>
+        <div style="font-size:11px;color:#52525b;margin-top:8px">Geldt voor alle workspaces op dit platform. Sla nooit een workspace-specifieke sleutel op.</div>
+      </div>
+
       <div class="section-label" style="padding-left:2px;color:#f87171;font-size:11px">
         <i class="ti ti-alert-triangle" style="font-size:13px;margin-right:4px"></i>GEVAARLIJKE ACTIES
       </div>
@@ -2001,6 +2031,30 @@ async function loadSysteem() {
   document.getElementById('sysLeads').textContent   = d.total_leads;
   document.getElementById('sysEmails').textContent  = d.total_emails_sent;
   document.getElementById('sysBuilds').textContent  = d.total_builds;
+  // Claude API card
+  const badge = document.getElementById('claudeKeyBadge');
+  if (d.claude_key_set) {
+    badge.textContent = '✓ Ingesteld'; badge.style.background = '#052e16'; badge.style.color = '#4ade80';
+  } else {
+    badge.textContent = '✗ Niet ingesteld'; badge.style.background = '#2d1010'; badge.style.color = '#f87171';
+  }
+  document.getElementById('claudeModel').textContent = d.claude_model || 'claude-sonnet-4-6';
+  document.getElementById('claudeCalls').textContent = d.ai_calls_today ?? '—';
+  document.getElementById('claudeCost').textContent  = d.ai_cost_today_usd != null ? `$${d.ai_cost_today_usd.toFixed(3)}` : '—';
+}
+
+async function saveClaudeKey() {
+  const key = document.getElementById('claudeKeyInput').value.trim();
+  if (!key) { toast('Vul een sleutel in', 'err'); return; }
+  const r = await saFetch('/api/superadmin/system/claude-key', {
+    method: 'PATCH', body: JSON.stringify({ claudeKey: key })
+  });
+  const d = await r.json();
+  if (r.ok) {
+    toast('Claude API sleutel opgeslagen ✓');
+    document.getElementById('claudeKeyInput').value = '';
+    _loaded.systeem = false; await loadSysteem();
+  } else { toast(d.error || 'Fout bij opslaan', 'err'); }
 }
 
 async function forceStatusCheck() {
