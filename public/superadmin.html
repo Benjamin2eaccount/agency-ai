@@ -1826,6 +1826,9 @@ function renderWsTable() {
           ${ws.status === 'active' ? `<button class="btn-icon pause-btn" onclick="wsAction('${esc(ws.id)}','pause')" data-tip="Pauzeer"><i class="ti ti-player-pause"></i></button>` : ''}
           ${ws.status !== 'blocked' ? `<button class="btn-icon block-btn" onclick="wsAction('${esc(ws.id)}','block')" data-tip="Blokkeer"><i class="ti ti-ban"></i></button>` : `<button class="btn-icon" onclick="wsAction('${esc(ws.id)}','unblock')" data-tip="Deblokkeer"><i class="ti ti-lock-open"></i></button>`}
           <button class="btn-icon impersonate-btn" onclick="impersonate('${esc(ws.id)}')" data-tip="Inloggen als"><i class="ti ti-key"></i></button>
+          <button class="btn-icon edit-btn" onclick="renameWs('${esc(ws.id)}','${esc(ws.name)}')" data-tip="Naam wijzigen"><i class="ti ti-pencil"></i></button>
+          <button class="btn-icon" onclick="changeWsPassword('${esc(ws.id)}','${esc(ws.name)}')" data-tip="Wachtwoord wijzigen" style="color:var(--text-3)"><i class="ti ti-key"></i></button>
+          ${ws.slug !== 'superadmin' ? `<button class="btn-icon" onclick="deleteWs('${esc(ws.id)}','${esc(ws.name)}')" data-tip="Verwijderen" style="color:#f87171"><i class="ti ti-trash"></i></button>` : ''}
         </div>
       </td>
     </tr>`).join('');
@@ -2158,7 +2161,16 @@ async function openWsModal(id) {
 
   document.getElementById('wsModalFooter').innerHTML = `
     <button class="btn btn-ghost btn-sm" onclick="closeWsModal()">Sluiten</button>
-    <button class="btn btn-ghost btn-sm" onclick="impersonate('${esc(ws.id)}')">
+    ${ws.slug !== 'superadmin' ? `<button class="btn btn-ghost btn-sm" onclick="renameWs('${esc(ws.id)}','${esc(ws.name)}')">
+      <i class="ti ti-pencil" style="font-size:12px"></i> Naam wijzigen
+    </button>
+    <button class="btn btn-ghost btn-sm" onclick="changeWsPassword('${esc(ws.id)}','${esc(ws.name)}')">
+      <i class="ti ti-lock" style="font-size:12px"></i> Wachtwoord
+    </button>
+    <button class="btn btn-danger btn-sm" onclick="deleteWs('${esc(ws.id)}','${esc(ws.name)}')">
+      <i class="ti ti-trash" style="font-size:12px"></i> Verwijderen
+    </button>` : ''}
+    <button class="btn btn-primary btn-sm" onclick="impersonate('${esc(ws.id)}')">
       <i class="ti ti-key" style="font-size:12px"></i> Inloggen als
     </button>`;
 }
@@ -2174,6 +2186,59 @@ async function saveWsNotes(id) {
 function closeWsModal(e) {
   if (e && e.target !== document.getElementById('wsModal')) return;
   document.getElementById('wsModal').classList.remove('open');
+}
+
+// ── Workspace rename ──────────────────────────────────────────────────────────
+async function renameWs(id, currentName) {
+  const newName = prompt(`Nieuwe naam voor "${currentName}":`, currentName);
+  if (!newName || newName.trim() === currentName) return;
+  const r = await saFetch(`/api/superadmin/workspaces/${id}`, {
+    method: 'PATCH', body: JSON.stringify({ name: newName.trim() })
+  });
+  if (r.ok) {
+    toast('Naam bijgewerkt');
+    _workspaces = []; _loaded.workspaces = false; _loaded.overzicht = false;
+    if (_currentView === 'workspaces') await loadWorkspaces();
+    closeWsModal();
+  } else { const d = await r.json(); toast(d.error || 'Fout', 'err'); }
+}
+
+// ── Workspace password change ──────────────────────────────────────────────────
+async function changeWsPassword(id, name) {
+  const pw  = prompt(`Nieuw wachtwoord voor alle gebruikers van "${name}":\n(minimaal 6 tekens)`);
+  if (!pw) return;
+  if (pw.length < 6) { toast('Wachtwoord minimaal 6 tekens', 'err'); return; }
+  const pw2 = prompt('Bevestig wachtwoord:');
+  if (pw !== pw2) { toast('Wachtwoorden komen niet overeen', 'err'); return; }
+  const r = await saFetch(`/api/superadmin/workspaces/${id}/password`, {
+    method: 'PATCH', body: JSON.stringify({ password: pw })
+  });
+  if (r.ok) {
+    const d = await r.json();
+    toast(`Wachtwoord gewijzigd (${d.updated} gebruiker${d.updated !== 1 ? 's' : ''})`);
+  } else { const d = await r.json(); toast(d.error || 'Fout', 'err'); }
+}
+
+// ── Workspace hard delete ──────────────────────────────────────────────────────
+async function deleteWs(id, name) {
+  // Step 1: confirmation dialog
+  if (!confirm(`Weet je zeker dat je workspace "${name}" wil verwijderen?\n\nDit verwijdert:\n• Alle gebruikers\n• Alle data (leads, instellingen, etc.)\n• Alle betalingsrecords\n\nDit kan NIET ongedaan worden gemaakt.`)) return;
+
+  // Step 2: type-name confirmation
+  const typed = prompt(`Type de naam van de workspace om te bevestigen:\n\n"${name}"`);
+  if (!typed || typed.trim() !== name.trim()) {
+    if (typed !== null) toast('Naam komt niet overeen — verwijdering geannuleerd', 'err');
+    return;
+  }
+
+  const r = await saFetch(`/api/superadmin/workspaces/${id}`, { method: 'DELETE' });
+  if (r.ok) {
+    toast(`Workspace "${name}" verwijderd`);
+    _workspaces = []; _loaded.workspaces = false; _loaded.overzicht = false;
+    closeWsModal();
+    if (_currentView === 'workspaces') await loadWorkspaces();
+    else await loadOverzicht();
+  } else { const d = await r.json(); toast(d.error || 'Fout', 'err'); }
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

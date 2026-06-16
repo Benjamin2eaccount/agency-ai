@@ -709,6 +709,53 @@ app.get('/setup/reset-admin-password', async (req, res) => {
   }
 });
 
+// ── GET /setup/cleanup-agencyai — one-time cleanup of the legacy agencyai workspace ──
+app.get('/setup/cleanup-agencyai', async (req, res) => {
+  try {
+    const db = getDb();
+    const ws = db.prepare("SELECT * FROM workspaces WHERE slug = 'agencyai' OR id = 'ws_agencyai'").get();
+    if (!ws) {
+      return res.json({ ok: true, cleaned: false, message: 'Geen agencyai workspace gevonden — niets te doen' });
+    }
+
+    const wId = ws.id;
+    const results = { wId, name: ws.name, deleted: [] };
+
+    // 1. Remove scoped store keys (ws:ws_agencyai:*) — they fall through to global scope anyway
+    const scopedKeys = db.prepare("SELECT key FROM store WHERE key LIKE ?").all(`ws:${wId}:%`);
+    if (scopedKeys.length) {
+      const del = db.prepare("DELETE FROM store WHERE key = ?");
+      db.transaction(() => { scopedKeys.forEach(r => del.run(r.key)); })();
+      results.deleted.push(`${scopedKeys.length} scoped store keys`);
+    }
+
+    // 2. Remove workspace_users for this workspace
+    const usersDeleted = db.prepare('DELETE FROM workspace_users WHERE workspace_id = ?').run(wId);
+    results.deleted.push(`${usersDeleted.changes} workspace_users`);
+
+    // 3. Remove billing / activity records
+    try { db.prepare('DELETE FROM workspace_billing WHERE workspace_id = ?').run(wId); } catch {}
+    try { db.prepare('DELETE FROM workspace_activity WHERE workspace_id = ?').run(wId); } catch {}
+    try { db.prepare('DELETE FROM system_messages WHERE workspace_id = ?').run(wId); } catch {}
+
+    // 4. Remove the workspace row
+    db.prepare('DELETE FROM workspaces WHERE id = ?').run(wId);
+    results.deleted.push('workspace row');
+
+    // 5. Sync persisted store snapshots
+    try {
+      writeJSON('_workspaces.json',      db.prepare('SELECT * FROM workspaces').all());
+      writeJSON('_workspace_users.json', db.prepare('SELECT * FROM workspace_users').all());
+    } catch {}
+
+    console.log(`[setup/cleanup-agencyai] Workspace "${ws.name}" verwijderd. Items: ${results.deleted.join(', ')}`);
+    res.json({ ok: true, cleaned: true, results });
+  } catch (err) {
+    console.error('[setup/cleanup-agencyai]', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // readJSON / writeJSON are provided by database.js (SQLite-backed)
 
 function addActivity(type, label, opts) {
@@ -3566,15 +3613,61 @@ app.post('/api/superadmin/workspaces/:id/unblock', requireSuperAdmin, async (req
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// DELETE /api/superadmin/workspaces/:id — soft delete
-app.delete('/api/superadmin/workspaces/:id', requireSuperAdmin, (req, res) => {
+// DELETE /api/superadmin/workspaces/:id — hard delete (all data)
+app.delete('/api/superadmin/workspaces/:id', requireSuperAdmin, async (req, res) => {
   try {
     const db = getDb();
     const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(req.params.id);
     if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
-    const anon = `deleted-${Date.now()}@removed.invalid`;
-    db.prepare("UPDATE workspaces SET status='deleted', owner_email=?, owner_name='[verwijderd]' WHERE id=?").run(anon, ws.id);
+    if (ws.slug === 'superadmin') return res.status(403).json({ error: 'Superadmin workspace kan niet verwijderd worden' });
+
+    const wId = ws.id;
+
+    // 1. Delete all scoped store keys (ws:<id>:*)
+    const allKeys = db.prepare("SELECT key FROM store WHERE key LIKE ?").all(`ws:${wId}:%`);
+    if (allKeys.length) {
+      const del = db.prepare("DELETE FROM store WHERE key = ?");
+      db.transaction(() => { allKeys.forEach(r => del.run(r.key)); })();
+    }
+
+    // 2. Delete workspace_users
+    db.prepare('DELETE FROM workspace_users WHERE workspace_id = ?').run(wId);
+
+    // 3. Delete workspace_billing
+    try { db.prepare('DELETE FROM workspace_billing WHERE workspace_id = ?').run(wId); } catch {}
+
+    // 4. Delete workspace_activity
+    try { db.prepare('DELETE FROM workspace_activity WHERE workspace_id = ?').run(wId); } catch {}
+
+    // 5. Delete system messages for this workspace
+    try { db.prepare('DELETE FROM system_messages WHERE workspace_id = ?').run(wId); } catch {}
+
+    // 6. Delete workspace row itself
+    db.prepare('DELETE FROM workspaces WHERE id = ?').run(wId);
+
+    // 7. Sync persisted store snapshots
+    try {
+      writeJSON('_workspaces.json',      db.prepare('SELECT * FROM workspaces').all());
+      writeJSON('_workspace_users.json', db.prepare('SELECT * FROM workspace_users').all());
+    } catch {}
+
+    console.log(`[SuperAdmin] Workspace "${ws.name}" (${wId}) hard-deleted by ${req.user?.email}`);
     res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PATCH /api/superadmin/workspaces/:id/password — update all workspace_users passwords
+app.patch('/api/superadmin/workspaces/:id/password', requireSuperAdmin, async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password || password.length < 6) return res.status(400).json({ error: 'Wachtwoord minimaal 6 tekens' });
+    const db = getDb();
+    const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace niet gevonden' });
+    const hash = await bcrypt.hash(password, 12);
+    const result = db.prepare('UPDATE workspace_users SET password = ? WHERE workspace_id = ?').run(hash, ws.id);
+    console.log(`[SuperAdmin] Wachtwoord gewijzigd voor workspace "${ws.name}" (${result.changes} gebruikers)`);
+    res.json({ ok: true, updated: result.changes });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -14676,17 +14769,6 @@ function ensureWorkspaceSeed() {
         VALUES (?,?,?,?,?,?,?,?,datetime('now'))`)
         .run('ws_superadmin','superadmin','Agency AI Platform','info@agencyai.info','Benjamin van Hemert','agency','active','#2563EB');
       console.log('[Seed] Workspace superadmin aangemaakt ✓');
-    }
-
-    // Workspace: agencyai
-    const aaiWs = db.prepare("SELECT id FROM workspaces WHERE slug = 'agencyai'").get();
-    if (!aaiWs) {
-      const ref = `AAI-${new Date().getFullYear()}-${crypto.randomBytes(2).toString('hex').toUpperCase().slice(0,4)}`;
-      db.prepare(`INSERT INTO workspaces
-        (id, slug, name, owner_email, owner_name, plan, status, branding_color, payment_reference, activated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))`)
-        .run('ws_agencyai','agencyai','Agency AI','benjamin.van.hemert2@gmail.com','Benjamin van Hemert','agency','active','#2563EB',ref);
-      console.log('[Seed] Workspace agencyai aangemaakt ✓');
     }
 
     // User: superadmin (info@agencyai.info)

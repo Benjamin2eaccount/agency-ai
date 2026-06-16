@@ -49,23 +49,22 @@ module.exports = function createAuthRouter({ readJSON, writeJSON, JWT_SECRET }) 
     } catch { return null; }
   }
 
-  // Try to find workspace for a legacy users.json user (defaults to 'agencyai')
+  // Try to find workspace for a legacy users.json user
   function _workspaceForLegacyUser(user) {
     try {
-      // If user record already has a workspaceId field (future migration)
       if (user.workspaceId) return _ws().getWorkspaceById(user.workspaceId);
-      // Fall back to the seeded 'agencyai' workspace
-      return _ws().getWorkspaceBySlug('agencyai');
+      return null;
     } catch { return null; }
   }
 
   // Build extra JWT/response fields from a workspace (returns {} when none)
   function _workspacePayload(workspace, wsUser) {
     if (!workspace) return {};
-    const isSuperAdmin = workspace.slug === 'superadmin';
+    const isSuperAdmin = workspace.slug === 'superadmin' || wsUser?.role === 'superadmin';
     return {
-      workspaceId     : workspace.id,
-      workspaceSlug   : workspace.slug,
+      // Superadmins are not tied to any specific workspace — workspaceId is null
+      workspaceId     : isSuperAdmin ? null : workspace.id,
+      workspaceSlug   : isSuperAdmin ? 'superadmin' : workspace.slug,
       workspaceStatus : workspace.status,
       isSuperAdmin,
     };

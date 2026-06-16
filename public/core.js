@@ -182,9 +182,14 @@ function authHeaders() {
 }
 
 function logout() {
-  // Clean up workspace-specific impersonation keys before wiping storage
-  var wsSlug = localStorage.getItem('currentWorkspace');
-  if (wsSlug) localStorage.removeItem('impToken_' + wsSlug);
+  // Clear ALL impersonation keys before wiping storage
+  try {
+    Object.keys(localStorage).forEach(function(k) {
+      if (k === 'currentWorkspace' || k.indexOf('impToken_') === 0) {
+        localStorage.removeItem(k);
+      }
+    });
+  } catch(e) {}
   sessionStorage.clear();
   localStorage.clear();
   window.location.href = '/login';

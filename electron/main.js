@@ -209,12 +209,29 @@ app.whenReady().then(() => {
     if (mainWindow) mainWindow.reload()
   })
 
-  // Ctrl/Cmd+Shift+A — close main window and go back to account launcher
+  // Ctrl/Cmd+Shift+A — clear impersonation state, close main window, go back to launcher
   globalShortcut.register('CommandOrControl+Shift+A', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.close()
+      // Clear impersonation keys BEFORE closing so the partition is clean for next open
+      mainWindow.webContents.executeJavaScript(`
+        (function() {
+          try {
+            var keys = Object.keys(localStorage);
+            keys.forEach(function(k) {
+              if (k === 'currentWorkspace' || k.indexOf('impToken_') === 0) {
+                localStorage.removeItem(k);
+              }
+            });
+            sessionStorage.clear();
+          } catch(e) {}
+        })()
+      `).catch(() => {}).finally(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close()
+        createLauncherWindow()
+      })
+    } else {
+      createLauncherWindow()
     }
-    createLauncherWindow()
   })
 
   // Ctrl/Cmd+Shift+I — toggle DevTools in the main window
