@@ -775,28 +775,31 @@ function addActivity(type, label, opts) {
   writeJSON('activity.json', log);
 }
 
-function addNotification(type, title, body, leadId, link) {
-  const notifications = readJSON('notifications.json') || [];
+function addNotification(type, title, body, leadId, link, workspaceId) {
+  // Workspace-scoped storage: each workspace has its own notifications list
+  const _key = workspaceId ? `ws:${workspaceId}:notifications.json` : 'notifications.json';
+  const notifications = readJSON(_key) || [];
   const resolvedLink = link || (leadId ? `project:${leadId}` : null);
   notifications.unshift({
     id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
     type, title, body,
     leadId: leadId || null,
     link: resolvedLink,
+    workspaceId: workspaceId || null,
     read: false,
     createdAt: new Date().toISOString()
   });
   if (notifications.length > 200) notifications.splice(200);
-  writeJSON('notifications.json', notifications);
+  writeJSON(_key, notifications);
 
   const pushTypes = ['reply_received', 'intake_submitted', 'high_score_lead', 'payment_overdue', 'run_complete', 'calendly_booking', 'payment_received', 'client_question'];
   if (pushTypes.includes(type)) {
     const url = leadId ? `/app#lead-${leadId}` : '/app';
-    sendPushToAll(title, body, url).catch(() => {});
+    sendPushToAll(title, body, url, workspaceId).catch(() => {});
   }
 
-  // Broadcast to all connected WebSocket clients
-  broadcastWS('notification', { type, title, body, leadId, link: resolvedLink });
+  // Broadcast to workspace WebSocket clients only
+  broadcastWS('notification', { type, title, body, leadId, link: resolvedLink }, workspaceId);
 }
 
 // ─── Outgoing webhook helper ──────────────────────────────────────────────────
@@ -2131,7 +2134,7 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
   // Advance to Fase 2 — Uitvoering on intake submission
   if ((leads[idx].currentPhase || 1) < 2) leads[idx].currentPhase = 2;
   addLeadHistory(leads, leads[idx].id, { event: 'intakeSubmitted', label: 'Intake ingevuld door klant' });
-  addNotification('intake_submitted', `Intake ingevuld: ${leads[idx].companyName}`, `De intake is ingevuld door ${leads[idx].contactName || leads[idx].companyName}`, leads[idx].id, `project:${leads[idx].id}`);
+  addNotification('intake_submitted', `Intake ingevuld: ${leads[idx].companyName}`, `De intake is ingevuld door ${leads[idx].contactName || leads[idx].companyName}`, leads[idx].id, `project:${leads[idx].id}`, leads[idx].workspaceId || null);
   fireWebhooks('intake.submitted', { leadId: leads[idx].id, companyName: leads[idx].companyName, niche: leads[idx].niche, contactEmail: leads[idx].contactEmail, submittedAt: leads[idx].intakeSubmittedAt });
   writeJSON('leads.json', leads);
 
@@ -2589,7 +2592,7 @@ app.post('/api/portal/:token/message', (req, res) => {
   const preview = message.length > 60 ? message.substring(0, 60) + '...' : message;
   addLeadHistory(leads, lead.id, { event: 'clientMessage', label: `Klant bericht van ${name}: ${preview}` });
   writeJSON('leads.json', leads);
-  addNotification('client_question', `Klant vraag: ${lead.companyName}`, `${name}: ${preview}`, lead.id, `project:${lead.id}`);
+  addNotification('client_question', `Klant vraag: ${lead.companyName}`, `${name}: ${preview}`, lead.id, `project:${lead.id}`, lead.workspaceId || null);
   res.json({ ok: true });
 });
 
@@ -2633,7 +2636,7 @@ app.post('/api/portal/:token/upload', express.json({ limit: '15mb' }), async (re
   console.log('[Upload] clientUploads count:', leads[li].clientUploads.length);
   writeJSON('leads.json', leads);
 
-  addNotification('client_question', `📎 Bestand geüpload: ${safeName}`, `${leads[li].companyName} heeft een bestand geüpload`, leads[li].id, `project:${leads[li].id}`);
+  addNotification('client_question', `📎 Bestand geüpload: ${safeName}`, `${leads[li].companyName} heeft een bestand geüpload`, leads[li].id, `project:${leads[li].id}`, leads[li].workspaceId || null);
 
   // Return without content to keep response small
   const { content: _c, ...fileInfoPublic } = fileInfo;
@@ -3114,7 +3117,7 @@ app.post('/api/sites/:siteSlug/contact', async (req, res) => {
       const bodyText = `Hallo,\n\nEr is een nieuw bericht via uw website:\n\nNaam: ${name}\nEmail: ${email}${phone ? `\nTelefoon: ${phone}` : ''}${service ? `\nDienst: ${service}` : ''}\n\nBericht:\n${message || '(geen bericht)'}\n\nU kunt reageren via uw portaal.\n\nMet vriendelijke groet,\n${settings.agencyName || 'Agency AI'}`;
       sendEmail({ to: lead.contactEmail, subject: `Nieuw contactbericht via uw website — ${name}`, body: bodyText, settings, noCalendly: true }).catch(e => console.error('[Site contact email]', e.message));
     }
-    addNotification('client_question', `Contactformulier: ${lead.companyName}`, `${name}: ${(message || service || '').substring(0, 80)}`, lead.id, `project:${lead.id}`);
+    addNotification('client_question', `Contactformulier: ${lead.companyName}`, `${name}: ${(message || service || '').substring(0, 80)}`, lead.id, `project:${lead.id}`, lead.workspaceId || null);
   } else {
     // Save as generic contact if lead not found
     const contacts = readJSON('contacts.json') || [];
@@ -3152,7 +3155,7 @@ app.post('/api/portal/:token/hosting-request', requirePortalAuth, express.json()
       ? `${lead.companyName} heeft hosting inloggegevens gedeeld`
       : `${lead.companyName} wil hosting via Agency AI`,
     type === 'own' ? `Provider: ${provider || '?'}` : 'Hosting aanvraag via portaal',
-    lead.id
+    lead.id, `project:${lead.id}`, lead.workspaceId || null
   );
 
   const settings = readJSON('settings.json') || {};
@@ -7785,7 +7788,7 @@ app.post('/api/leads/:id/deliverables/:dIdx/approve', requireAdmin, async (req, 
   }
 
   addLeadHistory(leads, req.params.id, { event: 'deliverableApproved', label: `Levering goedgekeurd: ${d.service}` });
-  addNotification('run_complete', `Levering goedgekeurd: ${d.service}`, `${lead.companyName} — ${d.service}`, lead.id, `project:${lead.id}`);
+  addNotification('run_complete', `Levering goedgekeurd: ${d.service}`, `${lead.companyName} — ${d.service}`, lead.id, `project:${lead.id}`, req.user?.workspaceId);
   writeJSON('leads.json', leads);
   res.json({ ok: true });
 });
@@ -9012,7 +9015,7 @@ app.patch('/api/leads/:id/payments/:payId', requireAdmin, (req, res) => {
     const pay = leads[idx].payments[pIdx];
     addNotification('payment_received', `Betaling ontvangen: ${leads[idx].companyName}`,
       `€${(pay.amount || 0).toLocaleString('nl-NL')}${pay.description ? ' — ' + pay.description : ''}`,
-      leads[idx].id, `project:${leads[idx].id}`);
+      leads[idx].id, `project:${leads[idx].id}`, req.user?.workspaceId);
   }
   writeJSON('leads.json', leads);
   res.json(leads[idx].payments[pIdx]);
@@ -11878,7 +11881,7 @@ async function checkReplies() {
         }
 
         addActivity('reply', 'Reply ontvangen van ' + matched.companyName, { meta: { companyName: matched.companyName, leadId: matched.id } });
-        addNotification('reply_received', `Reply: ${matched.companyName}`, `${matched.companyName} heeft gereageerd op jouw email`, matched.id, `project:${matched.id}`);
+        addNotification('reply_received', `Reply: ${matched.companyName}`, `${matched.companyName} heeft gereageerd op jouw email`, matched.id, `project:${matched.id}`, matched.workspaceId || null);
         broadcastWS('new_reply', { leadId: matched.id, companyName: matched.companyName, repliedAt: matched.repliedAt });
         fireWebhooks('lead.replied', { leadId: matched.id, companyName: matched.companyName, niche: matched.niche, score: matched.score, location: matched.location, contactEmail: matched.contactEmail, repliedAt: matched.repliedAt });
         console.log(`[Reply] Reply gedetecteerd: ${matched.companyName} (${msgId})`);
@@ -11924,7 +11927,7 @@ async function checkReplies() {
             hit.bouncedAt    = new Date().toISOString();
             addLeadHistory(leads, hit.id, { event: 'bounced', label: `Email gebounced — ongeldig adres (${failedEmail})` });
             addActivity('bounce', `Bounce: ${hit.companyName}`, { meta: { companyName: hit.companyName, leadId: hit.id, email: failedEmail } });
-            addNotification('email_bounced', `Bounce: ${hit.companyName}`, `Email naar ${failedEmail} is niet aangekomen`, hit.id);
+            addNotification('email_bounced', `Bounce: ${hit.companyName}`, `Email naar ${failedEmail} is niet aangekomen`, hit.id, `project:${hit.id}`, hit.workspaceId || null);
             const bouncedDomain = failedEmail.split('@')[1];
             if (bouncedDomain) autoBlacklist(bouncedDomain, 'Email gebounced');
             bouncesFound++;
@@ -13499,7 +13502,7 @@ cron.schedule('0 9 * * *', async () => {
         const lIdx = allLeads.findIndex(l => l.id === lead.id);
         const pIdx = (allLeads[lIdx]?.payments || []).findIndex(p => p.id === pay.id);
         if (lIdx !== -1 && pIdx !== -1) { allLeads[lIdx].payments[pIdx].lastReminderAt = new Date().toISOString(); allLeads[lIdx].payments[pIdx].reminderCount = (allLeads[lIdx].payments[pIdx].reminderCount || 0) + 1; }
-        addNotification('payment_overdue', `Betaling te laat: ${lead.companyName}`, `€${pay.amount} is ${daysOverdue} dagen te laat — herinnering verstuurd`, lead.id);
+        addNotification('payment_overdue', `Betaling te laat: ${lead.companyName}`, `€${pay.amount} is ${daysOverdue} dagen te laat — herinnering verstuurd`, lead.id, `project:${lead.id}`, lead.workspaceId || null);
         console.log(`[Overdue] Herinnering verstuurd aan ${lead.companyName} voor €${pay.amount}`);
       } catch { /* optional */ }
     }
@@ -13590,22 +13593,22 @@ app.get('/api/audit-log', requireAdmin, (req, res) => {
 // ─── Notifications ───────────────────────────────────────────────────────────
 
 app.get('/api/notifications', authMiddleware, (req, res) => {
-  const notifications = readJSON('notifications.json') || [];
+  const notifications = wsRead(req, 'notifications.json', []);
   const unread = notifications.filter(n => !n.read).length;
   res.json({ notifications: notifications.slice(0, 50), unread });
 });
 
 app.post('/api/notifications/read-all', authMiddleware, (req, res) => {
-  const notifications = readJSON('notifications.json') || [];
+  const notifications = wsRead(req, 'notifications.json', []);
   notifications.forEach(n => { n.read = true; });
-  writeJSON('notifications.json', notifications);
+  wsWrite(req, 'notifications.json', notifications);
   res.json({ ok: true });
 });
 
 app.patch('/api/notifications/:id/read', authMiddleware, (req, res) => {
-  const notifications = readJSON('notifications.json') || [];
+  const notifications = wsRead(req, 'notifications.json', []);
   const idx = notifications.findIndex(n => n.id === req.params.id);
-  if (idx !== -1) { notifications[idx].read = true; writeJSON('notifications.json', notifications); }
+  if (idx !== -1) { notifications[idx].read = true; wsWrite(req, 'notifications.json', notifications); }
   res.json({ ok: true });
 });
 
@@ -13628,7 +13631,7 @@ app.post('/api/webhooks/calendly', (req, res) => {
         const idx = leads.findIndex(l => l.id === lead.id);
         leads[idx].calendlyBooking = { name: inviteeName, email: inviteeEmail, eventName, startTime, bookedAt: new Date().toISOString() };
         addLeadHistory(leads, lead.id, { event: 'calendlyBooked', label: `Gesprek ingepland: ${eventName}${startLabel ? ' op ' + startLabel : ''}` });
-        addNotification('calendly_booking', `Gesprek ingepland: ${inviteeName}`, `${eventName}${startLabel ? ' op ' + startLabel : ''}`, lead.id);
+        addNotification('calendly_booking', `Gesprek ingepland: ${inviteeName}`, `${eventName}${startLabel ? ' op ' + startLabel : ''}`, lead.id, `project:${lead.id}`, lead.workspaceId || null);
         writeJSON('leads.json', leads);
       } else {
         addNotification('calendly_booking', `Nieuw gesprek: ${inviteeName}`, `${eventName}${startLabel ? ' op ' + startLabel : ''} (${inviteeEmail})`);
@@ -13957,7 +13960,7 @@ app.post('/api/portal/:token/subscription-request', requirePortalAuth, async (re
   writeJSON('leads.json', leads);
   addNotification('client_question', `Abonnement verzoek: ${lead.companyName}`,
     `${type === 'add_service' ? 'Wil ' + serviceName + ' toevoegen' : type === 'pause' ? 'Wil pauzeren' : 'Wil opzeggen'}`,
-    lead.id, `project:${lead.id}`);
+    lead.id, `project:${lead.id}`, lead.workspaceId || null);
 
   const settings = readJSON('settings.json') || {};
   if (isResendReady(settings)) {
@@ -14027,7 +14030,7 @@ app.post('/api/portal/:token/order-service', requirePortalAuth, async (req, res)
     lead.id, lead.id, serviceName, servicePrice || 0, 'pending');
 
   addNotification('client_question', `Nieuwe dienst aanvraag: ${lead.companyName}`,
-    `Wil "${serviceName}" toevoegen`, lead.id, `project:${lead.id}`);
+    `Wil "${serviceName}" toevoegen`, lead.id, `project:${lead.id}`, lead.workspaceId || null);
 
   const settings = readJSON('settings.json') || {};
   if (isResendReady(settings)) {
