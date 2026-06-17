@@ -575,6 +575,7 @@ app.get('/setup/demo-users', async (req, res) => {
           ...(spec.repliedAt?[{event:'replied',label:'Klant heeft gereageerd',time:spec.repliedAt}]:[]),
         ],
         portalToken:spec.portalToken||null, currentPhase:spec.currentPhase||null,
+        portalPasswordSet:spec.portalPasswordSet||false,
         payments:spec.payments||[], agentDeliverables:spec.agentDeliverables||[],
         projectServices:spec.projectServices||null, clientMessages:spec.clientMessages||[],
         portalChat:spec.portalChat||[], portalWelcomeMessage:spec.portalWelcomeMessage||null,

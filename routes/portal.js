@@ -86,8 +86,22 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
   // ── GET /api/portal/:token ──────────────────────────────────────────────────
   // Returns requiresSetup/requiresLogin for unauthenticated requests on real portals.
   router.get('/:token', (req, res) => {
-    const leads    = readJSON('leads.json') || [];
-    const lead     = leads.find(l => l.portalToken === req.params.token);
+    // Search global store first, then all workspace-scoped stores (resilient to data
+    // migration — e.g. if leads ended up in ws:${id}:leads.json instead of leads.json)
+    let lead = (readJSON('leads.json') || []).find(l => l.portalToken === req.params.token);
+    if (!lead) {
+      try {
+        const db = typeof getDb === 'function' ? getDb() : null;
+        if (db) {
+          const keys = db.prepare("SELECT key FROM store WHERE key LIKE 'ws:%:leads.json'").all();
+          for (const { key } of keys) {
+            const wLeads = readJSON(key) || [];
+            lead = wLeads.find(l => l.portalToken === req.params.token);
+            if (lead) break;
+          }
+        }
+      } catch { /* non-fatal fallback search */ }
+    }
     if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
     if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd. Neem contact op met uw accountmanager.' });
 
