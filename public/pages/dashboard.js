@@ -56,6 +56,29 @@ function _dashIso(days = 0, hour = null, minute = 0) {
   return d.toISOString();
 }
 
+function _dashAddMinutes(iso, minutes) {
+  const t = new Date(iso || 0).getTime();
+  if (!Number.isFinite(t) || t <= 0) return iso;
+  return new Date(t + minutes * 60000).toISOString();
+}
+
+function _dashFirstDate(...values) {
+  for (const v of values) {
+    const t = new Date(v || 0).getTime();
+    if (Number.isFinite(t) && t > 0) return v;
+  }
+  return null;
+}
+
+function _dashTimelineTime(iso) {
+  const d = new Date(iso || 0);
+  if (!Number.isFinite(d.getTime())) return 'Vandaag';
+  if (_dashIsToday(iso)) {
+    return d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  }
+  return typeof relativeTime === 'function' ? relativeTime(iso) : d.toLocaleDateString('nl-NL');
+}
+
 function _dashHasClientSignal(lead) {
   const unreadChat = (lead.portalChat || []).some(m => m.from === 'client' && !m.readAt);
   const openContact = (lead.contactSubmissions || []).some(s => !s.readAt && !s.handledAt && !s.resolvedAt);
@@ -72,6 +95,76 @@ function _dashIsOverdueProject(lead) {
   const noDeliverables = lead.intakeSubmittedAt && !(lead.agentDeliverables || []).length && _dashAgeDays(lead.intakeSubmittedAt) > 14;
   const waitingApproval = (lead.agentDeliverables || []).some(d => d.status === 'wacht_op_goedkeuring' && d.builtAt && _dashAgeDays(d.builtAt) > 7);
   return openTaskOverdue || noIntake || noDeliverables || waitingApproval;
+}
+
+function _dashClientSignalTime(lead) {
+  const times = [];
+  (lead.portalChat || []).forEach(m => {
+    if (m.from === 'client' && !m.readAt) times.push(_dashFirstDate(m.time, m.createdAt, m.sentAt));
+  });
+  (lead.contactSubmissions || []).forEach(s => {
+    if (!s.readAt && !s.handledAt && !s.resolvedAt) times.push(_dashFirstDate(s.time, s.createdAt, s.submittedAt));
+  });
+  (lead.generatedSite?.feedback || []).forEach(f => {
+    if (!f.readAt && !f.handledAt && !f.resolvedAt) times.push(_dashFirstDate(f.time, f.createdAt));
+  });
+  return times.filter(Boolean).sort((a, b) => new Date(b) - new Date(a))[0] || null;
+}
+
+function buildDashboardActivityTimeline(leads = [], inbox = [], recentRuns = []) {
+  const items = [];
+  const push = (agent, text, time, color) => {
+    if (!text) return;
+    items.push({ agent, text, time: time || null, color });
+  };
+
+  recentRuns.slice(0, 3).forEach(r => {
+    const leadsFound = Number(r.leadsFound || r.found || 0);
+    const emailsPrepared = Number(r.emailsSent || r.approved || 0);
+    if (leadsFound > 0) push('Research Agent', `vond ${leadsFound} leads.`, r.createdAt, '#2563EB');
+    if (emailsPrepared > 0) push('Outreach Agent', `bereidde ${emailsPrepared} emails voor.`, _dashAddMinutes(r.createdAt, 12), '#0891B2');
+  });
+
+  const scheduledToday = (inbox || []).filter(i => i.status === 'scheduled' && _dashIsToday(i.scheduledAt));
+  if (scheduledToday.length) {
+    const firstScheduled = scheduledToday
+      .map(i => i.scheduledAt)
+      .filter(Boolean)
+      .sort((a, b) => new Date(a) - new Date(b))[0];
+    push('Outreach Agent', `plande ${scheduledToday.length} email${scheduledToday.length !== 1 ? 's' : ''} voor vandaag.`, firstScheduled, '#16A34A');
+  }
+
+  const pendingInbox = (inbox || []).filter(i => !i.status || i.status === 'pending');
+  const pendingTime = _dashFirstDate(...pendingInbox.map(i => i.createdAt || i.generatedAt || i.time));
+  if (pendingInbox.length && pendingTime) {
+    push('Outreach Agent', `zette ${pendingInbox.length} email${pendingInbox.length !== 1 ? 's' : ''} klaar voor review.`, pendingTime, '#D97706');
+  }
+
+  (leads || [])
+    .filter(l => l.repliedAt)
+    .sort((a, b) => new Date(b.repliedAt) - new Date(a.repliedAt))
+    .slice(0, 3)
+    .forEach(l => push('Sales Signal', `${l.companyName || 'Een lead'} reageerde.`, l.repliedAt, '#16A34A'));
+
+  (leads || [])
+    .filter(l => l.status === 'client' && _dashHasClientSignal(l))
+    .slice(0, 3)
+    .forEach(l => push('Portal Agent', `detecteerde feedback van ${l.companyName || 'een klant'}.`, _dashClientSignalTime(l), '#D97706'));
+
+  (leads || [])
+    .filter(l => ['approved','replied','client'].includes(l.status))
+    .filter(l => !(l.proposal || l.proposalGeneratedAt || (Array.isArray(l.proposals) && l.proposals.length)))
+    .slice(0, 2)
+    .forEach(l => push('Proposal Agent', `zette een volgende stap klaar voor ${l.companyName || 'een lead'}.`, _dashFirstDate(l.repliedAt, l.projectStartedAt, l.createdAt), '#7c3aed'));
+
+  (leads || [])
+    .filter(l => l.status === 'client' && _dashIsOverdueProject(l))
+    .slice(0, 2)
+    .forEach(l => push('Client Health', `${l.companyName || 'Een klant'} vraagt opvolging.`, _dashFirstDate(l.projectStartedAt, l.intakeSubmittedAt, l.createdAt), '#DC2626'));
+
+  return items
+    .sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0))
+    .slice(0, 8);
 }
 
 function shouldUseDashboardDemoState(leads = [], inbox = [], runs = [], stats = {}) {
@@ -523,19 +616,7 @@ async function renderDashboard() {
   ];
   const maxPhase = Math.max(...phases.map(p => p.count), 1);
 
-  // Activity feed (runs + replied + new clients)
-  const activity = [];
-  recentRuns.slice(0, 5).forEach(r => activity.push({
-    text: `Run: ${r.leadsFound||0} leads gevonden${r.emailsSent > 0 ? ' · ' + r.emailsSent + ' emails' : ''}`,
-    time: r.createdAt, color: '#2563EB'
-  }));
-  leads.filter(l => l.repliedAt).sort((a, b) => new Date(b.repliedAt) - new Date(a.repliedAt)).slice(0, 3).forEach(l =>
-    activity.push({ text: `${esc(l.companyName)} heeft gereageerd`, time: l.repliedAt, color: '#16A34A' })
-  );
-  leads.filter(l => l.status === 'client' && l.projectStartedAt).sort((a, b) => new Date(b.projectStartedAt) - new Date(a.projectStartedAt)).slice(0, 2).forEach(l =>
-    activity.push({ text: `${esc(l.companyName)} is klant geworden`, time: l.projectStartedAt, color: '#7c3aed' })
-  );
-  activity.sort((a, b) => new Date(b.time) - new Date(a.time));
+  const activity = buildDashboardActivityTimeline(leads, displayInbox, recentRuns);
 
   // Client health (compact)
   const now = Date.now();
@@ -704,19 +785,20 @@ async function renderDashboard() {
 
         <div class="db-card">
           <div class="db-card-hdr">
-            <div class="db-card-ttl">Recente activiteit</div>
+            <div class="db-card-ttl">Today's Activity Timeline</div>
+            <span class="db-badge grey">Vandaag</span>
           </div>
           ${activity.length === 0 ? `
             <div class="db-empty">
               <div class="db-empty-icon"><i class="ti ti-history"></i></div>
-              <div class="db-empty-text">Nog geen activiteit</div>
+              <div class="db-empty-text">Nog geen activiteit vandaag</div>
             </div>
           ` : activity.slice(0, 8).map(a => `
             <div class="db-activity-item">
               <div class="db-activity-dot" style="background:${a.color}"></div>
               <div class="db-activity-body">
-                <div class="db-activity-text">${a.text}</div>
-                <div class="db-activity-time">${relativeTime(a.time)}</div>
+                <div class="db-activity-text"><strong>${esc(a.agent)}</strong> ${esc(a.text)}</div>
+                <div class="db-activity-time">${_dashTimelineTime(a.time)}</div>
               </div>
             </div>
           `).join('')}
