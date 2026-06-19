@@ -45,6 +45,17 @@ function _dashIsOpenTask(task) {
   return task && task.done !== true && task.status !== 'klaar' && task.status !== 'done';
 }
 
+function _dashIsDemoId(id) {
+  return String(id || '').indexOf('demo-') === 0;
+}
+
+function _dashIso(days = 0, hour = null, minute = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  if (hour !== null) d.setHours(hour, minute, 0, 0);
+  return d.toISOString();
+}
+
 function _dashHasClientSignal(lead) {
   const unreadChat = (lead.portalChat || []).some(m => m.from === 'client' && !m.readAt);
   const openContact = (lead.contactSubmissions || []).some(s => !s.readAt && !s.handledAt && !s.resolvedAt);
@@ -61,6 +72,80 @@ function _dashIsOverdueProject(lead) {
   const noDeliverables = lead.intakeSubmittedAt && !(lead.agentDeliverables || []).length && _dashAgeDays(lead.intakeSubmittedAt) > 14;
   const waitingApproval = (lead.agentDeliverables || []).some(d => d.status === 'wacht_op_goedkeuring' && d.builtAt && _dashAgeDays(d.builtAt) > 7);
   return openTaskOverdue || noIntake || noDeliverables || waitingApproval;
+}
+
+function shouldUseDashboardDemoState(leads = [], inbox = [], runs = [], stats = {}) {
+  const meaningfulLead = (leads || []).some(l =>
+    ['approved','scheduled','sent','replied','client'].includes(l.status) ||
+    l.repliedAt || l.projectStartedAt || (l.agentDeliverables || []).length
+  );
+  const meaningfulInbox = (inbox || []).some(i => !i.status || ['pending','scheduled'].includes(i.status));
+  const meaningfulStats = (stats?.emailsSent || 0) > 0 || (stats?.clients || 0) > 0 || (stats?.replies || 0) > 0;
+  if ((leads || []).length + (inbox || []).length + (runs || []).length === 0) return true;
+  return (leads || []).length <= 1 && !(inbox || []).length && !(runs || []).length &&
+    !meaningfulLead && !meaningfulInbox && !meaningfulStats;
+}
+
+function buildDashboardDemoState(baseStats = {}) {
+  const leads = [
+    {
+      id: 'demo-lead-acme', _demo: true, companyName: 'Acme Studio', niche: 'Beauty',
+      location: 'Utrecht', status: 'replied', score: 9.1, estimatedValue: 2400,
+      createdAt: _dashIso(-1, 10), repliedAt: _dashIso(0, 9)
+    },
+    {
+      id: 'demo-lead-velora', _demo: true, companyName: 'Velora Dental', niche: 'Zorg',
+      location: 'Amsterdam', status: 'approved', score: 8.7, estimatedValue: 3200,
+      createdAt: _dashIso(-2, 14)
+    },
+    {
+      id: 'demo-client-nova', _demo: true, companyName: 'Studio Nova', niche: 'Creative',
+      location: 'Rotterdam', status: 'client', score: 8.4, estimatedValue: 1800,
+      projectStartedAt: _dashIso(-10, 11), payments: [{ status: 'sent', dueDate: _dashIso(-2, 12), amount: 895 }]
+    },
+    {
+      id: 'demo-client-koffie', _demo: true, companyName: 'Koffiebar Noord', niche: 'Horeca',
+      location: 'Haarlem', status: 'client', score: 8.9, estimatedValue: 1495,
+      projectStartedAt: _dashIso(-6, 13), intakeSubmittedAt: _dashIso(-5, 10),
+      portalChat: [{ id: 'demo-chat-1', from: 'client', message: 'Kunnen we de openingsuren aanpassen?', time: _dashIso(0, 8) }],
+      agentDeliverables: [{ status: 'wacht_op_goedkeuring', builtAt: _dashIso(-8, 16), service: 'Website update' }]
+    },
+    {
+      id: 'demo-client-lumen', _demo: true, companyName: 'Fysiopraktijk Lumen', niche: 'Zorg',
+      location: 'Leiden', status: 'client', score: 8.2, estimatedValue: 1295,
+      projectStartedAt: _dashIso(-18, 9), intakeSubmittedAt: _dashIso(-17, 13),
+      agentDeliverables: [{ status: 'approved', builtAt: _dashIso(-4, 15), service: 'Boekingssysteem' }],
+      payments: [{ status: 'paid', paidAt: _dashIso(-3, 12), amount: 1295 }]
+    }
+  ];
+
+  const inbox = [
+    { id: 'demo-inbox-1', _demo: true, leadId: 'demo-lead-acme', companyName: 'Acme Studio', niche: 'Beauty', location: 'Utrecht', score: 9.1, status: 'pending' },
+    { id: 'demo-inbox-2', _demo: true, leadId: 'demo-lead-velora', companyName: 'Velora Dental', niche: 'Zorg', location: 'Amsterdam', score: 8.7, status: 'pending' },
+    { id: 'demo-scheduled-1', _demo: true, companyName: 'Kapsalon Mira', status: 'scheduled', scheduledAt: _dashIso(0, 11) },
+    { id: 'demo-scheduled-2', _demo: true, companyName: 'Yoga Flow', status: 'scheduled', scheduledAt: _dashIso(0, 13) },
+    { id: 'demo-scheduled-3', _demo: true, companyName: 'Bakkerij Prins', status: 'scheduled', scheduledAt: _dashIso(0, 15) },
+    { id: 'demo-scheduled-4', _demo: true, companyName: 'Tandarts West', status: 'scheduled', scheduledAt: _dashIso(0, 16) }
+  ];
+
+  const runs = [
+    { id: 'demo-run-1', _demo: true, createdAt: _dashIso(0, 8), niche: 'Beauty', leadsFound: 12, emailsSent: 5, approved: 5, rejected: 2, status: 'done' },
+    { id: 'demo-run-2', _demo: true, createdAt: _dashIso(-1, 9), niche: 'Horeca', leadsFound: 9, emailsSent: 4, approved: 4, rejected: 1, status: 'done' },
+    { id: 'demo-run-3', _demo: true, createdAt: _dashIso(-2, 9), niche: 'Zorg', leadsFound: 11, emailsSent: 6, approved: 6, rejected: 2, status: 'done' }
+  ];
+
+  const stats = {
+    ...baseStats,
+    emailsSent: 18,
+    last24hLeads: 3,
+    clients: 3,
+    totalEarned: 1295,
+    pipelineValue: 10190,
+    replies: 1,
+    inboxPending: 2
+  };
+
+  return { leads, inbox, runs, stats };
 }
 
 function buildAgencyCopilotCard(leads = [], inbox = []) {
@@ -92,9 +177,10 @@ function buildAgencyCopilotCard(leads = [], inbox = []) {
     recommendation = { text: 'Geen urgente acties gevonden. Controleer later opnieuw.', view: 'dashboard' };
   }
 
-  const action = recommendation.id
+  const fallbackView = recommendation.id && _dashIsDemoId(recommendation.id) ? 'leads' : (recommendation.view || 'dashboard');
+  const action = recommendation.id && !_dashIsDemoId(recommendation.id)
     ? `openProjectPage('${esc(recommendation.id)}')`
-    : `setView('${esc(recommendation.view || 'dashboard')}')`;
+    : `setView('${esc(fallbackView)}')`;
 
   return `
     <div class="db-card db-copilot-card">
@@ -393,13 +479,25 @@ async function renderDashboard() {
 
   if (!stats) return;
 
-  state.stats = stats;
-  state.inbox = inbox || [];
-  state.leads = allLeads || [];
+  const realStats = stats || {};
+  const realInbox = inbox || [];
+  const realRuns = Array.isArray(runs) ? runs : [];
+  const realLeads = allLeads || [];
+  const useDashboardDemo = shouldUseDashboardDemoState(realLeads, realInbox, realRuns, realStats);
+  const demoState = useDashboardDemo ? buildDashboardDemoState(realStats) : null;
+  const displayStats = demoState?.stats || realStats;
+  const displayInbox = demoState?.inbox || realInbox;
+  const displayRuns = demoState?.runs || realRuns;
+  const displayLeads = demoState?.leads || realLeads;
 
-  const earned = stats.totalEarned || 0;
-  const pending = state.inbox.filter(i => !i.status || i.status === 'pending');
-  if (typeof updateInboxBadge === 'function') updateInboxBadge(pending.length);
+  state.stats = realStats;
+  state.inbox = realInbox;
+  state.leads = realLeads;
+
+  const earned = displayStats.totalEarned || 0;
+  const pending = displayInbox.filter(i => !i.status || i.status === 'pending');
+  const realPending = realInbox.filter(i => !i.status || i.status === 'pending');
+  if (typeof updateInboxBadge === 'function') updateInboxBadge(realPending.length);
 
   const settings = await apiJSON('/api/settings');
   state.settings = settings || {};
@@ -408,9 +506,9 @@ async function renderDashboard() {
   const nextRun = typeof getNextRunTime === 'function'
     ? getNextRunTime(settings?.dailyRunTime || '09:00')
     : { label: '—', countdown: '—', target: null };
-  const recentRuns = (Array.isArray(runs) ? runs : []).slice(0, 10);
+  const recentRuns = displayRuns.slice(0, 10);
 
-  const leads = state.leads;
+  const leads = displayLeads;
 
   // Pipeline phases (client-stage breakdown)
   const phaseIntake     = leads.filter(l => l.status === 'client' && l.projectStartedAt && !l.intakeSubmittedAt).length;
@@ -469,14 +567,19 @@ async function renderDashboard() {
   if (!dashboardContent) return;
 
   dashboardContent.innerHTML = `
-    ${settings?.isDemo ? `
+    ${useDashboardDemo ? `
+      <div class="db-demo-banner">
+        <i class="ti ti-flask"></i>
+        <strong>Demo data</strong> - Read-only voorbeeldweergave. Er is niets opgeslagen en demo-acties zijn uitgeschakeld.
+      </div>
+    ` : settings?.isDemo ? `
       <div class="db-demo-banner">
         <i class="ti ti-flask"></i>
         <strong>Demo modus actief</strong> — Gegevens zijn gesimuleerd en worden niet opgeslagen.
       </div>
     ` : ''}
 
-    ${buildDailyBriefingSection(leads, state.inbox, settings)}
+    ${buildDailyBriefingSection(leads, displayInbox, settings)}
 
     <div class="db-header">
       <div>
@@ -538,9 +641,9 @@ async function renderDashboard() {
           <div class="db-kpi-label">Emails verstuurd</div>
           <i class="ti ti-mail db-kpi-icon"></i>
         </div>
-        <div class="db-kpi-num">${stats.emailsSent || 0}</div>
-        <div class="db-kpi-trend ${stats.last24hLeads > 0 ? 'up' : 'nt'}">
-          ${stats.last24hLeads > 0 ? `+${stats.last24hLeads} vandaag` : 'Geen vandaag'}
+        <div class="db-kpi-num">${displayStats.emailsSent || 0}</div>
+        <div class="db-kpi-trend ${displayStats.last24hLeads > 0 ? 'up' : 'nt'}">
+          ${displayStats.last24hLeads > 0 ? `+${displayStats.last24hLeads} vandaag` : 'Geen vandaag'}
         </div>
       </div>
 
@@ -561,8 +664,8 @@ async function renderDashboard() {
           <i class="ti ti-currency-euro db-kpi-icon"></i>
         </div>
         <div class="db-kpi-num">€${earned.toLocaleString('nl-NL')}</div>
-        <div class="db-kpi-trend ${stats.clients > 0 ? 'up' : 'nt'}">
-          ${stats.clients > 0 ? `${stats.clients} klant${stats.clients !== 1 ? 'en' : ''}` : 'Geen klanten'}
+        <div class="db-kpi-trend ${displayStats.clients > 0 ? 'up' : 'nt'}">
+          ${displayStats.clients > 0 ? `${displayStats.clients} klant${displayStats.clients !== 1 ? 'en' : ''}` : 'Geen klanten'}
         </div>
       </div>
     </div>
@@ -590,8 +693,10 @@ async function renderDashboard() {
                 <div class="db-lead-sub">${[item.niche, item.location, item.score ? 'Score ' + item.score : ''].filter(Boolean).map(esc).join(' · ')}</div>
               </div>
               <div class="db-lead-actions">
-                ${isAdmin() ? `<button class="db-btn-approve" onclick="approve('${esc(item.id)}')">✓</button>` : ''}
-                <button class="db-btn-reject" onclick="disapprove('${esc(item.id)}')">✕</button>
+                ${item._demo ? `<span class="db-badge grey">Demo data</span>` : `
+                  ${isAdmin() ? `<button class="db-btn-approve" onclick="approve('${esc(item.id)}')">✓</button>` : ''}
+                  <button class="db-btn-reject" onclick="disapprove('${esc(item.id)}')">✕</button>
+                `}
               </div>
             </div>
           `).join('')}
@@ -619,8 +724,8 @@ async function renderDashboard() {
       </div>
 
       <div class="db-right-col">
-        ${buildAgencyCopilotCard(leads, state.inbox)}
-        ${buildLiveAgentActivityCard(leads, state.inbox, recentRuns)}
+        ${buildAgencyCopilotCard(leads, displayInbox)}
+        ${buildLiveAgentActivityCard(leads, displayInbox, recentRuns)}
 
         <div class="db-card">
           <div class="db-card-hdr">
@@ -666,9 +771,9 @@ async function renderDashboard() {
             </div>
           ` : ''}
           ${isAdmin() ? `
-            <button class="db-btn db-btn-ghost db-btn-sm" style="width:100%;justify-content:center" onclick="toggleAutoRun(${!!settings?.automationPaused})">
-              <i class="ti ti-${settings?.automationPaused ? 'player-play' : 'pause'}"></i>
-              ${settings?.automationPaused ? 'Auto-run hervatten' : 'Auto-run pauzeren'}
+            <button class="db-btn db-btn-ghost db-btn-sm" style="width:100%;justify-content:center" onclick="${useDashboardDemo ? `setView('runs')` : `toggleAutoRun(${!!settings?.automationPaused})`}">
+              <i class="ti ti-${useDashboardDemo ? 'player-play' : settings?.automationPaused ? 'player-play' : 'pause'}"></i>
+              ${useDashboardDemo ? 'Start echte run via Runs' : settings?.automationPaused ? 'Auto-run hervatten' : 'Auto-run pauzeren'}
             </button>
           ` : ''}
         </div>
@@ -684,7 +789,7 @@ async function renderDashboard() {
               <div class="db-empty-text">Nog geen klanten</div>
             </div>
           ` : healthRows.map(r => `
-            <div class="db-health-row" onclick="openProjectPage('${esc(r.id)}')">
+            <div class="db-health-row" onclick="${_dashIsDemoId(r.id) ? `setView('leads')` : `openProjectPage('${esc(r.id)}')`}">
               <div class="db-health-dot" style="background:${r.dot}"></div>
               <div class="db-health-info">
                 <div class="db-health-name">${esc(r.name)}</div>
