@@ -7,6 +7,13 @@ function _dashGreeting() {
   return 'Goedenavond';
 }
 
+function _dashDailyGreeting() {
+  const h = new Date().getHours();
+  if (h >= 6 && h < 12) return 'Good morning';
+  if (h >= 12 && h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
 function _initColor(name) {
   const COLORS = ['#2563eb','#7c3aed','#db2777','#dc2626','#d97706','#16a34a','#0891b2','#4f46e5'];
   if (!name) return COLORS[0];
@@ -106,6 +113,56 @@ function buildAgencyCopilotCard(leads = [], inbox = []) {
           <div class="db-copilot-rec-text">"${esc(recommendation.text)}"</div>
           <button class="db-card-lnk" onclick="${action}">Open</button>
         </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildDailyBriefingSection(leads = [], inbox = [], settings = {}) {
+  const activeLeads = (leads || []).filter(l => !['client','dead','disapproved','archived'].includes(l.status));
+  const warmLeads = activeLeads.filter(l => l.status === 'replied' || l.status === 'approved' || _dashScore(l) >= 8);
+  const clients = (leads || []).filter(l => l.status === 'client');
+  const delayedProjects = clients.filter(_dashIsOverdueProject);
+  const clientsAwaiting = clients.filter(_dashHasClientSignal);
+  const scheduledEmails = (inbox || []).filter(i => i.status === 'scheduled' && _dashIsToday(i.scheduledAt));
+  const pendingInbox = (inbox || []).filter(i => !i.status || i.status === 'pending');
+
+  const awaitingClient = clientsAwaiting[0];
+  const delayedProject = delayedProjects[0];
+  const warmLead = warmLeads.find(l => l.status === 'replied') || warmLeads[0];
+
+  let recommendation = 'Launch a new lead run.';
+  if (awaitingClient) {
+    recommendation = `Check portal feedback for ${awaitingClient.companyName || 'the client'}.`;
+  } else if (delayedProject) {
+    recommendation = `Review delayed projects, starting with ${delayedProject.companyName || 'the oldest project'}.`;
+  } else if (warmLead) {
+    recommendation = `Follow up with ${warmLead.companyName || 'the warm lead'} today.`;
+  } else if (scheduledEmails.length) {
+    recommendation = "Check today's scheduled emails.";
+  } else if (pendingInbox.length) {
+    recommendation = 'Review pending outreach emails.';
+  }
+
+  const adminName = settings?.myName || 'Admin';
+  return `
+    <div class="db-card" style="margin-bottom:20px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div style="min-width:240px;flex:1">
+          <div class="db-greeting">${_dashDailyGreeting()}, ${esc(adminName)}.</div>
+          <div class="db-greeting-sub">Agency AI reviewed today's activity.</div>
+        </div>
+        <div style="font-size:12px;color:#666;white-space:nowrap">${new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+      </div>
+      <div class="db-copilot-lines" style="margin-top:16px">
+        <div class="db-copilot-line"><span class="db-copilot-dot"></span><span>${warmLeads.length} warm lead${warmLeads.length !== 1 ? 's' : ''}.</span></div>
+        <div class="db-copilot-line"><span class="db-copilot-dot amber"></span><span>${delayedProjects.length} delayed project${delayedProjects.length !== 1 ? 's' : ''}.</span></div>
+        <div class="db-copilot-line"><span class="db-copilot-dot green"></span><span>${clientsAwaiting.length} client${clientsAwaiting.length !== 1 ? 's' : ''} awaiting feedback.</span></div>
+        <div class="db-copilot-line"><span class="db-copilot-dot blue"></span><span>${scheduledEmails.length} scheduled email${scheduledEmails.length !== 1 ? 's' : ''} today.</span></div>
+      </div>
+      <div class="db-copilot-rec">
+        <div class="db-copilot-rec-label">Recommendation</div>
+        <div class="db-copilot-rec-text">"${esc(recommendation)}"</div>
       </div>
     </div>
   `;
@@ -418,6 +475,8 @@ async function renderDashboard() {
         <strong>Demo modus actief</strong> — Gegevens zijn gesimuleerd en worden niet opgeslagen.
       </div>
     ` : ''}
+
+    ${buildDailyBriefingSection(leads, state.inbox, settings)}
 
     <div class="db-header">
       <div>
