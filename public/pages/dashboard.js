@@ -13,6 +13,104 @@ function _initColor(name) {
   return COLORS[name.trim().charCodeAt(0) % COLORS.length];
 }
 
+function _dashScore(lead) {
+  const raw = Number(lead?.score || lead?.leadScore || 0);
+  if (!Number.isFinite(raw)) return 0;
+  return raw > 10 ? raw / 10 : raw;
+}
+
+function _dashAgeDays(iso) {
+  const t = new Date(iso || 0).getTime();
+  if (!Number.isFinite(t) || t <= 0) return 0;
+  return (Date.now() - t) / 86400000;
+}
+
+function _dashIsToday(iso) {
+  const d = new Date(iso || 0);
+  if (!Number.isFinite(d.getTime())) return false;
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+}
+
+function _dashIsOpenTask(task) {
+  return task && task.done !== true && task.status !== 'klaar' && task.status !== 'done';
+}
+
+function _dashHasClientSignal(lead) {
+  const unreadChat = (lead.portalChat || []).some(m => m.from === 'client' && !m.readAt);
+  const openContact = (lead.contactSubmissions || []).some(s => !s.readAt && !s.handledAt && !s.resolvedAt);
+  const recentSiteFeedback = (lead.generatedSite?.feedback || []).some(f => !f.readAt && !f.handledAt && !f.resolvedAt && _dashAgeDays(f.time) <= 14);
+  return unreadChat || openContact || recentSiteFeedback;
+}
+
+function _dashIsOverdueProject(lead) {
+  const openTaskOverdue = (lead.tasks || []).some(t => {
+    const due = t.dueDate || t.deadline || t.date;
+    return _dashIsOpenTask(t) && due && new Date(due).getTime() < Date.now();
+  });
+  const noIntake = lead.projectStartedAt && !lead.intakeSubmittedAt && _dashAgeDays(lead.projectStartedAt) > 7;
+  const noDeliverables = lead.intakeSubmittedAt && !(lead.agentDeliverables || []).length && _dashAgeDays(lead.intakeSubmittedAt) > 14;
+  const waitingApproval = (lead.agentDeliverables || []).some(d => d.status === 'wacht_op_goedkeuring' && d.builtAt && _dashAgeDays(d.builtAt) > 7);
+  return openTaskOverdue || noIntake || noDeliverables || waitingApproval;
+}
+
+function buildAgencyCopilotCard(leads = [], inbox = []) {
+  const activeLeads = (leads || []).filter(l => !['client','dead','disapproved','archived'].includes(l.status));
+  const warmLeads = activeLeads.filter(l => l.status === 'replied' || l.status === 'approved' || _dashScore(l) >= 8);
+  const clients = (leads || []).filter(l => l.status === 'client');
+  const overdueProjects = clients.filter(_dashIsOverdueProject);
+  const clientsAwaiting = clients.filter(_dashHasClientSignal);
+  const scheduledToday = (inbox || []).filter(i => i.status === 'scheduled' && _dashIsToday(i.scheduledAt));
+  const pendingInbox = (inbox || []).filter(i => !i.status || i.status === 'pending');
+
+  const warmLead = warmLeads.find(l => l.status === 'replied') || warmLeads[0];
+  const clientSignal = clientsAwaiting[0];
+  const overdue = overdueProjects[0];
+
+  let recommendation = { text: 'Start een run om nieuwe kansen in de pijplijn te zetten.', view: 'runs' };
+  if (clientSignal) {
+    recommendation = { text: `Reageer vandaag op ${clientSignal.companyName || 'de klant'}.`, id: clientSignal.id };
+  } else if (overdue) {
+    recommendation = { text: `Pak ${overdue.companyName || 'het project'} vandaag op.`, id: overdue.id };
+  } else if (warmLead) {
+    recommendation = { text: `Volg ${warmLead.companyName || 'de warme lead'} vandaag op.`, id: warmLead.id };
+  } else if (scheduledToday.length) {
+    recommendation = { text: 'Controleer de geplande emails voor vandaag.', view: 'inbox' };
+  } else if (pendingInbox.length) {
+    recommendation = 'Beoordeel de inbox zodat warme kansen niet blijven liggen.';
+    recommendation = { text: recommendation, view: 'inbox' };
+  } else if (clients.length) {
+    recommendation = { text: 'Geen urgente acties gevonden. Controleer later opnieuw.', view: 'dashboard' };
+  }
+
+  const action = recommendation.id
+    ? `openProjectPage('${esc(recommendation.id)}')`
+    : `setView('${esc(recommendation.view || 'dashboard')}')`;
+
+  return `
+    <div class="db-card db-copilot-card">
+      <div class="db-card-hdr">
+        <div class="db-card-ttl"><i class="ti ti-sparkles" style="color:#2563EB"></i> Agency Copilot</div>
+      </div>
+      <div class="db-copilot-lines">
+        <div class="db-copilot-line"><span class="db-copilot-dot"></span><span>${warmLeads.length} warme lead${warmLeads.length !== 1 ? 's' : ''}.</span></div>
+        <div class="db-copilot-line"><span class="db-copilot-dot amber"></span><span>${overdueProjects.length} vertraagde project${overdueProjects.length !== 1 ? 'en' : ''}.</span></div>
+        <div class="db-copilot-line"><span class="db-copilot-dot green"></span><span>${clientsAwaiting.length} klant${clientsAwaiting.length !== 1 ? 'en' : ''} wacht${clientsAwaiting.length === 1 ? '' : 'en'} op reactie.</span></div>
+        <div class="db-copilot-line"><span class="db-copilot-dot blue"></span><span>${scheduledToday.length} geplande email${scheduledToday.length !== 1 ? 's' : ''} vandaag.</span></div>
+      </div>
+      <div class="db-copilot-rec">
+        <div class="db-copilot-rec-label">Aanbeveling</div>
+        <div class="db-copilot-rec-row">
+          <div class="db-copilot-rec-text">"${esc(recommendation.text)}"</div>
+          <button class="db-card-lnk" onclick="${action}">Open</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 async function renderDashboard() {
   const appView = document.getElementById('appView');
   appView.innerHTML = `
@@ -106,6 +204,16 @@ async function renderDashboard() {
       .db-empty-icon{font-size:24px;margin-bottom:6px}
       .db-empty-text{font-size:13px}
       .db-demo-banner{background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.25);border-radius:8px;padding:10px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;font-size:13px;color:#D97706}
+      .db-copilot-lines{display:flex;flex-direction:column;gap:7px}
+      .db-copilot-line{display:flex;align-items:center;gap:8px;font-size:13px;color:#D6D6D6}
+      .db-copilot-dot{width:6px;height:6px;border-radius:50%;background:#2563EB;flex-shrink:0}
+      .db-copilot-dot.amber{background:#D97706}
+      .db-copilot-dot.green{background:#16A34A}
+      .db-copilot-dot.blue{background:#0891B2}
+      .db-copilot-rec{margin-top:14px;padding-top:12px;border-top:1px solid #222}
+      .db-copilot-rec-label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#666;font-weight:700;margin-bottom:6px}
+      .db-copilot-rec-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+      .db-copilot-rec-text{font-size:13px;line-height:1.45;color:#F5F5F5}
       @media(max-width:1200px){.db-kpi-grid{grid-template-columns:repeat(2,1fr)}}
       @media(max-width:900px){.db-cols{grid-template-columns:1fr}}
       @media(max-width:600px){.db-kpi-grid{grid-template-columns:1fr 1fr}.db-fin-grid{flex-direction:column}.db-fin-item{border-right:none;border-bottom:1px solid #2A2A2A}.db-fin-item:last-child{border-bottom:none}.db-header-btns{width:100%}}
@@ -346,6 +454,8 @@ async function renderDashboard() {
       </div>
 
       <div class="db-right-col">
+        ${buildAgencyCopilotCard(leads, state.inbox)}
+
         <div class="db-card">
           <div class="db-card-hdr">
             <div class="db-card-ttl">Pipeline</div>
