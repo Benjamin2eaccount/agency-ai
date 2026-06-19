@@ -9,9 +9,9 @@ function _dashGreeting() {
 
 function _dashDailyGreeting() {
   const h = new Date().getHours();
-  if (h >= 6 && h < 12) return 'Good morning';
-  if (h >= 12 && h < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (h >= 6 && h < 12) return 'Goedemorgen';
+  if (h >= 12 && h < 18) return 'Goedemiddag';
+  return 'Goedenavond';
 }
 
 function _initColor(name) {
@@ -217,17 +217,17 @@ function buildDailyBriefingSection(leads = [], inbox = [], settings = {}) {
   const delayedProject = delayedProjects[0];
   const warmLead = warmLeads.find(l => l.status === 'replied') || warmLeads[0];
 
-  let recommendation = 'Launch a new lead run.';
+  let recommendation = 'Start een nieuwe leadrun.';
   if (awaitingClient) {
-    recommendation = `Check portal feedback for ${awaitingClient.companyName || 'the client'}.`;
+    recommendation = `Controleer portaalfeedback van ${awaitingClient.companyName || 'de klant'}.`;
   } else if (delayedProject) {
-    recommendation = `Review delayed projects, starting with ${delayedProject.companyName || 'the oldest project'}.`;
+    recommendation = `Bekijk vertraagde projecten, te beginnen met ${delayedProject.companyName || 'het oudste project'}.`;
   } else if (warmLead) {
-    recommendation = `Follow up with ${warmLead.companyName || 'the warm lead'} today.`;
+    recommendation = `Volg ${warmLead.companyName || 'de warme lead'} vandaag op.`;
   } else if (scheduledEmails.length) {
-    recommendation = "Check today's scheduled emails.";
+    recommendation = 'Controleer de geplande emails van vandaag.';
   } else if (pendingInbox.length) {
-    recommendation = 'Review pending outreach emails.';
+    recommendation = 'Beoordeel openstaande outreach-emails.';
   }
 
   const adminName = settings?.myName || 'Admin';
@@ -236,18 +236,18 @@ function buildDailyBriefingSection(leads = [], inbox = [], settings = {}) {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
         <div style="min-width:240px;flex:1">
           <div class="db-greeting">${_dashDailyGreeting()}, ${esc(adminName)}.</div>
-          <div class="db-greeting-sub">Agency AI reviewed today's activity.</div>
+          <div class="db-greeting-sub">Agency AI heeft de activiteit van vandaag bekeken.</div>
         </div>
         <div style="font-size:12px;color:#666;white-space:nowrap">${new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
       </div>
       <div class="db-copilot-lines" style="margin-top:16px">
-        <div class="db-copilot-line"><span class="db-copilot-dot"></span><span>${warmLeads.length} warm lead${warmLeads.length !== 1 ? 's' : ''}.</span></div>
-        <div class="db-copilot-line"><span class="db-copilot-dot amber"></span><span>${delayedProjects.length} delayed project${delayedProjects.length !== 1 ? 's' : ''}.</span></div>
-        <div class="db-copilot-line"><span class="db-copilot-dot green"></span><span>${clientsAwaiting.length} client${clientsAwaiting.length !== 1 ? 's' : ''} awaiting feedback.</span></div>
-        <div class="db-copilot-line"><span class="db-copilot-dot blue"></span><span>${scheduledEmails.length} scheduled email${scheduledEmails.length !== 1 ? 's' : ''} today.</span></div>
+        <div class="db-copilot-line"><span class="db-copilot-dot"></span><span>${warmLeads.length} warme lead${warmLeads.length !== 1 ? 's' : ''}.</span></div>
+        <div class="db-copilot-line"><span class="db-copilot-dot amber"></span><span>${delayedProjects.length} vertraagd project${delayedProjects.length !== 1 ? 'en' : ''}.</span></div>
+        <div class="db-copilot-line"><span class="db-copilot-dot green"></span><span>${clientsAwaiting.length} klant${clientsAwaiting.length !== 1 ? 'en' : ''} wacht${clientsAwaiting.length === 1 ? '' : 'en'} op feedback.</span></div>
+        <div class="db-copilot-line"><span class="db-copilot-dot blue"></span><span>${scheduledEmails.length} geplande email${scheduledEmails.length !== 1 ? 's' : ''} vandaag.</span></div>
       </div>
       <div class="db-copilot-rec">
-        <div class="db-copilot-rec-label">Recommendation</div>
+        <div class="db-copilot-rec-label">Aanbeveling</div>
         <div class="db-copilot-rec-text">"${esc(recommendation)}"</div>
       </div>
     </div>
@@ -855,50 +855,52 @@ async function renderDashboard() {
   // Countdown timer
   if (typeof startCountdown === 'function' && nextRun.target) startCountdown(nextRun.target);
 
-  // Upsell kansen (async)
-  const upsells = await apiJSON('/api/upsell') || [];
-  const dbUpsell = document.getElementById('db-upsell');
-  if (dbUpsell && upsells.length > 0) {
-    dbUpsell.innerHTML = `
-      <div class="db-card">
-        <div class="db-card-hdr">
-          <div class="db-card-ttl"><i class="ti ti-trending-up" style="color:#D97706"></i> Upsell kansen</div>
-          <span class="db-badge amber">${upsells.length} klant${upsells.length !== 1 ? 'en' : ''}</span>
-        </div>
-        <div style="overflow-x:auto">
-          <table class="db-tbl">
-            <thead>
-              <tr>
-                <th>Klant</th>
-                <th>Huidig</th>
-                <th>Aanbevolen</th>
-                <th>Potentieel</th>
-                <th>Actie</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${upsells.map(o => `
+  if (!useDashboardDemo) {
+    // Upsell kansen (async)
+    const upsells = await apiJSON('/api/upsell') || [];
+    const dbUpsell = document.getElementById('db-upsell');
+    if (dbUpsell && upsells.length > 0) {
+      dbUpsell.innerHTML = `
+        <div class="db-card">
+          <div class="db-card-hdr">
+            <div class="db-card-ttl"><i class="ti ti-trending-up" style="color:#D97706"></i> Upsell kansen</div>
+            <span class="db-badge amber">${upsells.length} klant${upsells.length !== 1 ? 'en' : ''}</span>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="db-tbl">
+              <thead>
                 <tr>
-                  <td style="font-weight:600">${esc(o.companyName)}</td>
-                  <td style="color:#666">${esc(o.currentService)}</td>
-                  <td><strong>${esc(o.upsellService)}</strong></td>
-                  <td style="color:#16A34A;font-weight:600">€${(o.upsellPrice||0).toLocaleString('nl-NL')}/mnd</td>
-                  <td>
-                    <button class="db-btn db-btn-ghost db-btn-sm" onclick="generateUpsellEmail('${esc(o.leadId)}')">
-                      <i class="ti ti-mail"></i> Email
-                    </button>
-                  </td>
+                  <th>Klant</th>
+                  <th>Huidig</th>
+                  <th>Aanbevolen</th>
+                  <th>Potentieel</th>
+                  <th>Actie</th>
                 </tr>
-              `).join('')}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                ${upsells.map(o => `
+                  <tr>
+                    <td style="font-weight:600">${esc(o.companyName)}</td>
+                    <td style="color:#666">${esc(o.currentService)}</td>
+                    <td><strong>${esc(o.upsellService)}</strong></td>
+                    <td style="color:#16A34A;font-weight:600">€${(o.upsellPrice||0).toLocaleString('nl-NL')}/mnd</td>
+                    <td>
+                      <button class="db-btn db-btn-ghost db-btn-sm" onclick="generateUpsellEmail('${esc(o.leadId)}')">
+                        <i class="ti ti-mail"></i> Email
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
-    `;
-  }
+      `;
+    }
 
-  // Revenue forecast (populates #db-financial)
-  renderForecastSection();
+    // Revenue forecast (populates #db-financial)
+    renderForecastSection();
+  }
 }
 
 async function renderForecastSection() {
