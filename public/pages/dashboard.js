@@ -241,6 +241,49 @@ function buildDashboardDemoState(baseStats = {}) {
   return { leads, inbox, runs, stats };
 }
 
+function _dashFallbackValue(fallback) {
+  if (Array.isArray(fallback)) return [];
+  if (fallback && typeof fallback === 'object') return { ...fallback };
+  return fallback;
+}
+
+function _dashIsObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+async function _dashSafeApi(label, path, fallback, isValid) {
+  try {
+    const value = await apiJSON(path);
+    if (value == null || (typeof isValid === 'function' && !isValid(value))) {
+      console.warn(`[Dashboard] ${label} unavailable; using safe fallback.`);
+      return { label, failed: true, value: _dashFallbackValue(fallback) };
+    }
+    return { label, failed: false, value };
+  } catch (err) {
+    console.warn(`[Dashboard] ${label} failed; using safe fallback.`, err);
+    return { label, failed: true, value: _dashFallbackValue(fallback) };
+  }
+}
+
+function _dashLoadWarningHTML(labels = []) {
+  if (!labels.length) return '';
+  const uniqueLabels = [...new Set(labels)];
+  const detail = uniqueLabels.length === 1
+    ? `${uniqueLabels[0]} is tijdelijk niet beschikbaar.`
+    : `${uniqueLabels.length} databronnen zijn tijdelijk niet beschikbaar.`;
+  return `
+    <div class="db-demo-banner">
+      <i class="ti ti-alert-triangle"></i>
+      <strong>Live data beperkt</strong> - ${esc(detail)} Veilige standaardwaarden worden getoond.
+    </div>
+  `;
+}
+
+function _dashRenderLoadWarnings(labels = []) {
+  const el = document.getElementById('dbLoadWarning');
+  if (el) el.innerHTML = _dashLoadWarningHTML(labels);
+}
+
 function buildAgencyCopilotCard(leads = [], inbox = []) {
   const activeLeads = (leads || []).filter(l => !['client','dead','disapproved','archived'].includes(l.status));
   const warmLeads = activeLeads.filter(l => l.status === 'replied' || l.status === 'approved' || _dashScore(l) >= 8);
@@ -563,19 +606,21 @@ async function renderDashboard() {
     <div id="dashboardContent"><div class="loading-state"><div class="spinner-lg"></div></div></div>
   `;
 
-  const [stats, inbox, runs, allLeads] = await Promise.all([
-    apiJSON('/api/stats'),
-    apiJSON('/api/inbox'),
-    apiJSON('/api/runs'),
-    apiJSON('/api/leads')
+  const [statsRes, inboxRes, runsRes, leadsRes] = await Promise.all([
+    _dashSafeApi('Statistieken', '/api/stats', {}, _dashIsObject),
+    _dashSafeApi('Inbox', '/api/inbox', [], Array.isArray),
+    _dashSafeApi('Runs', '/api/runs', [], Array.isArray),
+    _dashSafeApi('Leads', '/api/leads', [], Array.isArray)
   ]);
 
-  if (!stats) return;
+  const dashboardLoadWarnings = [statsRes, inboxRes, runsRes, leadsRes]
+    .filter(r => r.failed)
+    .map(r => r.label);
 
-  const realStats = stats || {};
-  const realInbox = inbox || [];
-  const realRuns = Array.isArray(runs) ? runs : [];
-  const realLeads = allLeads || [];
+  const realStats = statsRes.value || {};
+  const realInbox = Array.isArray(inboxRes.value) ? inboxRes.value : [];
+  const realRuns = Array.isArray(runsRes.value) ? runsRes.value : [];
+  const realLeads = Array.isArray(leadsRes.value) ? leadsRes.value : [];
   const useDashboardDemo = shouldUseDashboardDemoState(realLeads, realInbox, realRuns, realStats);
   const demoState = useDashboardDemo ? buildDashboardDemoState(realStats) : null;
   const displayStats = demoState?.stats || realStats;
@@ -592,7 +637,9 @@ async function renderDashboard() {
   const realPending = realInbox.filter(i => !i.status || i.status === 'pending');
   if (typeof updateInboxBadge === 'function') updateInboxBadge(realPending.length);
 
-  const settings = await apiJSON('/api/settings');
+  const settingsRes = await _dashSafeApi('Instellingen', '/api/settings', {}, _dashIsObject);
+  if (settingsRes.failed) dashboardLoadWarnings.push(settingsRes.label);
+  const settings = settingsRes.value || {};
   state.settings = settings || {};
   if (typeof updateSidebarLogo === 'function') updateSidebarLogo(settings?.agencyLogo || '');
 
@@ -659,6 +706,8 @@ async function renderDashboard() {
         <strong>Demo modus actief</strong> — Gegevens zijn gesimuleerd en worden niet opgeslagen.
       </div>
     ` : ''}
+
+    <div id="dbLoadWarning">${_dashLoadWarningHTML(dashboardLoadWarnings)}</div>
 
     ${buildDailyBriefingSection(leads, displayInbox, settings)}
 
@@ -939,7 +988,12 @@ async function renderDashboard() {
 
   if (!useDashboardDemo) {
     // Upsell kansen (async)
-    const upsells = await apiJSON('/api/upsell') || [];
+    const upsellRes = await _dashSafeApi('Upsell kansen', '/api/upsell', [], Array.isArray);
+    if (upsellRes.failed) {
+      dashboardLoadWarnings.push(upsellRes.label);
+      _dashRenderLoadWarnings(dashboardLoadWarnings);
+    }
+    const upsells = upsellRes.value || [];
     const dbUpsell = document.getElementById('db-upsell');
     if (dbUpsell && upsells.length > 0) {
       dbUpsell.innerHTML = `
@@ -981,23 +1035,31 @@ async function renderDashboard() {
     }
 
     // Revenue forecast (populates #db-financial)
-    renderForecastSection();
+    renderForecastSection(dashboardLoadWarnings);
   }
 }
 
-async function renderForecastSection() {
-  const forecast = await apiJSON('/api/stats/forecast');
-  if (!forecast) return;
+async function renderForecastSection(dashboardLoadWarnings = []) {
+  const forecastRes = await _dashSafeApi('Financieel overzicht', '/api/stats/forecast', {}, _dashIsObject);
+  if (forecastRes.failed) {
+    dashboardLoadWarnings.push(forecastRes.label);
+    _dashRenderLoadWarnings(dashboardLoadWarnings);
+    return;
+  }
+  const forecast = forecastRes.value || {};
   const section = document.getElementById('db-financial');
   if (!section) return;
   const fmt = n => '€' + (n || 0).toLocaleString('nl-NL');
-  const growthUp = forecast.growth_rate >= 0;
+  const growthRate = Number(forecast.growth_rate || 0);
+  const growthUp = growthRate >= 0;
   const growthSign = growthUp ? '+' : '';
+  const actualMonths = Array.isArray(forecast.months_actual) ? forecast.months_actual : [];
+  const projectedMonths = Array.isArray(forecast.months_projected) ? forecast.months_projected : [];
   section.innerHTML = `
     <div class="db-card">
       <div class="db-card-hdr">
         <div class="db-card-ttl">Financieel overzicht</div>
-        <span class="db-badge ${growthUp ? 'green' : 'red'}">${growthSign}${forecast.growth_rate}% vs vorige maand</span>
+        <span class="db-badge ${growthUp ? 'green' : 'red'}">${growthSign}${growthRate}% vs vorige maand</span>
       </div>
       <div class="db-fin-grid">
         <div class="db-fin-item">
@@ -1032,10 +1094,10 @@ async function renderForecastSection() {
 
   const canvas = document.getElementById('forecastChart');
   if (canvas && window.Chart) {
-    const actualLabels = forecast.months_actual.map(m => m.label);
-    const actualData   = forecast.months_actual.map(m => m.revenue);
-    const projLabels   = forecast.months_projected.map(m => m.label);
-    const projData     = forecast.months_projected.map(m => m.revenue);
+    const actualLabels = actualMonths.map(m => m.label);
+    const actualData   = actualMonths.map(m => m.revenue);
+    const projLabels   = projectedMonths.map(m => m.label);
+    const projData     = projectedMonths.map(m => m.revenue);
     new Chart(canvas, {
       type: 'line',
       data: {
