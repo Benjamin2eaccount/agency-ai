@@ -111,6 +111,112 @@ function buildAgencyCopilotCard(leads = [], inbox = []) {
   `;
 }
 
+function buildLiveAgentActivityCard(leads = [], inbox = [], recentRuns = []) {
+  const runList = Array.isArray(recentRuns) ? recentRuns : [];
+  const latestRun = runList[0] || null;
+  const newLeadsToday = (leads || []).filter(l => l.createdAt && _dashIsToday(l.createdAt)).length;
+  const researchQueue = (leads || []).filter(l => ['new','inbox','pending'].includes(l.status)).length;
+  const pendingInbox = (inbox || []).filter(i => !i.status || i.status === 'pending');
+  const scheduled = (inbox || []).filter(i => i.status === 'scheduled');
+  const scheduledToday = scheduled.filter(i => _dashIsToday(i.scheduledAt));
+  const proposalCandidates = (leads || []).filter(l =>
+    ['approved','replied','client'].includes(l.status) &&
+    !(l.proposal || l.proposalGeneratedAt || (Array.isArray(l.proposals) && l.proposals.length))
+  );
+  const deliverablesWaiting = (leads || []).filter(l =>
+    (l.agentDeliverables || []).some(d => d.status === 'wacht_op_goedkeuring')
+  );
+  const portalWaiting = (leads || []).filter(_dashHasClientSignal);
+  const clients = (leads || []).filter(l => l.status === 'client');
+
+  const hasAnyData = (leads || []).length || (inbox || []).length || runList.length;
+  if (!hasAnyData) {
+    return `
+      <div class="db-card">
+        <div class="db-card-hdr">
+          <div class="db-card-ttl"><i class="ti ti-activity" style="color:#2563EB"></i> Live Agents</div>
+        </div>
+        <div class="db-empty">
+          <div class="db-empty-icon"><i class="ti ti-robot"></i></div>
+          <div class="db-empty-text">Nog geen agentactiviteit</div>
+        </div>
+      </div>
+    `;
+  }
+
+  const researchDetail = newLeadsToday > 0
+    ? `${newLeadsToday} nieuwe lead${newLeadsToday !== 1 ? 's' : ''} vandaag gevonden.`
+    : latestRun?.createdAt
+      ? `Laatste run ${relativeTime(latestRun.createdAt)}.`
+      : researchQueue > 0
+        ? `${researchQueue} lead${researchQueue !== 1 ? 's' : ''} in onderzoek.`
+        : 'Wacht op de volgende run.';
+
+  const outreachDetail = scheduledToday.length > 0
+    ? `${scheduledToday.length} email${scheduledToday.length !== 1 ? 's' : ''} vandaag ingepland.`
+    : scheduled.length > 0
+      ? `${scheduled.length} email${scheduled.length !== 1 ? 's' : ''} ingepland.`
+      : pendingInbox.length > 0
+        ? `${pendingInbox.length} email${pendingInbox.length !== 1 ? 's' : ''} wacht${pendingInbox.length === 1 ? '' : 'en'} op beoordeling.`
+        : 'Geen outreach-acties open.';
+
+  const proposalDetail = deliverablesWaiting.length > 0
+    ? `${deliverablesWaiting.length} project${deliverablesWaiting.length !== 1 ? 'en' : ''} wacht${deliverablesWaiting.length === 1 ? '' : 'en'} op goedkeuring.`
+    : proposalCandidates.length > 0
+      ? `${proposalCandidates.length} voorstel${proposalCandidates.length !== 1 ? 'len' : ''} kan${proposalCandidates.length === 1 ? '' : 'nen'} worden voorbereid.`
+      : 'Geen voorstellen in wachtrij.';
+
+  const portalDetail = portalWaiting.length > 0
+    ? `${portalWaiting.length} klant${portalWaiting.length !== 1 ? 'en' : ''} vraagt${portalWaiting.length === 1 ? '' : 'en'} aandacht.`
+    : clients.length > 0
+      ? 'Wacht op klantacties.'
+      : 'Nog geen klantportalen actief.';
+
+  const rows = [
+    {
+      mark: newLeadsToday > 0 || researchQueue > 0 ? '●' : '○',
+      name: 'Research Agent',
+      detail: researchDetail,
+      color: newLeadsToday > 0 || researchQueue > 0 ? '#2563EB' : '#555'
+    },
+    {
+      mark: scheduled.length > 0 ? '✓' : pendingInbox.length > 0 ? '●' : '○',
+      name: 'Outreach Agent',
+      detail: outreachDetail,
+      color: scheduled.length > 0 ? '#16A34A' : pendingInbox.length > 0 ? '#D97706' : '#555'
+    },
+    {
+      mark: deliverablesWaiting.length > 0 || proposalCandidates.length > 0 ? '●' : '○',
+      name: 'Proposal Agent',
+      detail: proposalDetail,
+      color: deliverablesWaiting.length > 0 ? '#D97706' : proposalCandidates.length > 0 ? '#2563EB' : '#555'
+    },
+    {
+      mark: portalWaiting.length > 0 ? '●' : '○',
+      name: 'Portal Agent',
+      detail: portalDetail,
+      color: portalWaiting.length > 0 ? '#D97706' : '#555'
+    }
+  ];
+
+  return `
+    <div class="db-card">
+      <div class="db-card-hdr">
+        <div class="db-card-ttl"><i class="ti ti-activity" style="color:#2563EB"></i> Live Agents</div>
+      </div>
+      ${rows.map(r => `
+        <div class="db-activity-item">
+          <div class="db-activity-dot" style="background:${r.color}"></div>
+          <div class="db-activity-body">
+            <div class="db-activity-text"><strong>${r.mark} ${esc(r.name)}</strong></div>
+            <div class="db-activity-time">${esc(r.detail)}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 async function renderDashboard() {
   const appView = document.getElementById('appView');
   appView.innerHTML = `
@@ -455,6 +561,7 @@ async function renderDashboard() {
 
       <div class="db-right-col">
         ${buildAgencyCopilotCard(leads, state.inbox)}
+        ${buildLiveAgentActivityCard(leads, state.inbox, recentRuns)}
 
         <div class="db-card">
           <div class="db-card-hdr">
