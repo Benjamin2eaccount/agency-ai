@@ -895,6 +895,11 @@ class JobQueue {
 const jobQueue = new JobQueue();
 
 async function fireWebhooks(event, payload) {
+  // ── DEMO GUARD: skip real webhook firing for demo data ──
+  if (payload && (payload.isDemo || (payload.leadId && ((readJSON('leads.json') || []).find(l => l.id === payload.leadId) || {}).isDemo))) {
+    console.log(`[DEMO] Skipped fireWebhooks(${event}) for demo data`);
+    return;
+  }
   const hooks = (readJSON('webhooks.json') || []).filter(h => h.active !== false && (h.events || []).includes(event));
   if (!hooks.length) return;
   const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload });
@@ -1957,6 +1962,15 @@ function isDemoUser(req) {
 function scopeToUser(items, req) {
   const demo = isDemoUser(req);
   return (items || []).filter(i => demo ? !!i.isDemo : !i.isDemo);
+}
+
+// Returns true when the request involves demo data — either the user is a demo
+// account OR the lead/record being acted on has isDemo: true.  Used to skip
+// real external calls (email, AI, webhooks, payments) during demo sessions.
+function isDemoContext(req, record) {
+  if (isDemoUser(req)) return true;
+  if (record && record.isDemo) return true;
+  return false;
 }
 
 // Granular permission check for employee-role users.
@@ -4515,6 +4529,16 @@ app.post('/api/leads/:id/case-study', async (req, res) => {
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
+
+  // ── DEMO GUARD ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real case-study generation for ${lead.companyName}`);
+    const mockStudy = { title: `Case Study: ${lead.companyName}`, summary: 'Demo case study — geen echt AI-rapport gegenereerd.', sections: [], generatedAt: new Date().toISOString() };
+    leads[idx].caseStudy = mockStudy;
+    writeJSON('leads.json', leads);
+    return res.json(mockStudy);
+  }
+
   const settings = readJSON('settings.json') || {};
   const agencyName = settings.agencyName || 'Agency';
   const lang = lead.language || 'nl';
@@ -4746,6 +4770,27 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
     const idx = leads.findIndex(l => l.id === req.params.id);
     if (idx === -1) { send(0, 'Lead niet gevonden', 'error'); res.end(); return; }
     const lead = leads[idx];
+
+    // ── DEMO GUARD: skip AI calls and real emails, just update status ──
+    if (isDemoContext(req, lead)) {
+      console.log(`[DEMO] Skipped real start-project for ${lead.companyName}`);
+      if (!lead.portalToken) lead.portalToken = 'demo-portal-' + Date.now().toString(36);
+      if (!lead.intakeToken) lead.intakeToken = 'demo-intake-' + Date.now().toString(36);
+      lead.status = 'client';
+      lead.projectStartedAt = new Date().toISOString();
+      lead.currentPhase = 1;
+      addLeadHistory(leads, lead.id, { event: 'projectStarted', label: 'Project gestart [demo]' });
+      writeJSON('leads.json', leads);
+      send(1, 'Portaaltoegang instellen', 'done', { portalUrl: `${BASE_URL}/portal/${lead.portalToken}` });
+      send(2, 'Intake link genereren', 'done');
+      send(3, 'Welkomstmail versturen', 'done');
+      send(4, 'Projectplan genereren', 'done');
+      send(5, 'Onboarding script genereren', 'done');
+      send(0, 'Project gestart [demo]', 'complete');
+      res.end();
+      return;
+    }
+
     console.log(`[ProjectStart] Lead: "${lead.companyName}" | contactEmail: ${JSON.stringify(lead.contactEmail)} | type: ${typeof lead.contactEmail} | email field type: ${typeof lead.email}`);
     // Step 1 — Portal token
     send(1, 'Portaaltoegang instellen', 'running');
@@ -5086,6 +5131,20 @@ app.post('/api/leads/:id/proposals', requireAdmin, async (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
 
+  // ── DEMO GUARD: create proposal record but skip real email send ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real proposal send for ${lead.companyName}`);
+    const { services: svcs = [], validUntil: vu, note: n, btwEnabled: be, btwRate: br } = req.body;
+    const proposalNr = `VRS-DEMO-${Date.now().toString(36).toUpperCase()}`;
+    const total = (svcs || []).reduce((s, sv) => s + (parseFloat(sv.price) || 0), 0);
+    const rec = { id: proposalNr, proposalNr, createdAt: new Date().toISOString(), sentAt: new Date().toISOString(), status: 'sent', services: svcs, validUntil: vu || null, note: n || '', btwEnabled: !!be, btwRate: parseFloat(br) || 21, total };
+    if (!leads[idx].proposals) leads[idx].proposals = [];
+    leads[idx].proposals.unshift(rec);
+    addLeadHistory(leads, lead.id, { event: 'proposalCreated', label: `Voorstel ${proposalNr} aangemaakt [demo]` });
+    writeJSON('leads.json', leads);
+    return res.json({ proposal: rec });
+  }
+
   const { services, validUntil, note, btwEnabled, btwRate, sendToClient } = req.body;
   if (!Array.isArray(services) || !services.length) return res.status(400).json({ error: 'Geen diensten geselecteerd' });
 
@@ -5141,6 +5200,17 @@ app.post('/api/leads/:id/proposals/:proposalId/send', requireAdmin, async (req, 
   const idx      = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead     = leads[idx];
+
+  // ── DEMO GUARD ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real proposal send for ${lead.companyName}`);
+    const pIdx = (lead.proposals || []).findIndex(p => p.id === req.params.proposalId);
+    if (pIdx !== -1) { leads[idx].proposals[pIdx].sentAt = new Date().toISOString(); leads[idx].proposals[pIdx].status = 'sent'; }
+    addLeadHistory(leads, lead.id, { event: 'proposalSent', label: `Voorstel verstuurd [demo]` });
+    writeJSON('leads.json', leads);
+    return res.json({ ok: true });
+  }
+
   const proposal = (lead.proposals || []).find(p => p.id === req.params.proposalId);
   if (!proposal) return res.status(404).json({ error: 'Voorstel niet gevonden' });
 
@@ -5180,6 +5250,16 @@ app.post('/api/leads/:id/generate-proposal', requireAdmin, async (req, res) => {
 
   const leads = readJSON('leads.json') || [];
   const lead = leads.find(l => l.id === req.params.id);
+
+  // ── DEMO GUARD: skip AI call, return mock SSE ──
+  if (lead && isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real generate-proposal for ${lead.companyName}`);
+    send({ step: 1, label: 'Lead data analyseren' });
+    send({ step: 2, label: 'Voorstel genereren' });
+    send({ step: 3, label: 'Voorstel opslaan' });
+    send({ step: 0, label: 'Voorstel klaar [demo]', status: 'complete' });
+    return res.end();
+  }
   if (!lead) { send({ error: 'Lead niet gevonden' }); return res.end(); }
 
   const settings = readJSON('settings.json') || {};
@@ -5272,6 +5352,12 @@ app.post('/api/leads/:id/proposal/send', authMiddleware, async (req, res) => {
   const lead = leads.find(l => l.id === req.params.id);
   if (!lead?.proposal) return res.status(400).json({ error: 'Geen voorstel beschikbaar' });
 
+  // ── DEMO GUARD ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real proposal/send for ${lead.companyName}`);
+    return res.json({ ok: true });
+  }
+
   const settings = readJSON('settings.json') || {};
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
 
@@ -5307,6 +5393,16 @@ app.post('/api/leads/:id/generate-contract', requireAdmin, async (req, res) => {
   const leads = readJSON('leads.json') || [];
   const lead = leads.find(l => l.id === req.params.id);
   if (!lead) { send({ error: 'Lead niet gevonden' }); return res.end(); }
+
+  // ── DEMO GUARD ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real generate-contract for ${lead.companyName}`);
+    send({ step: 1, label: 'Contract data verzamelen' });
+    send({ step: 2, label: 'Contract genereren' });
+    send({ step: 3, label: 'Contract opslaan' });
+    send({ step: 0, label: 'Contract klaar [demo]', status: 'complete' });
+    return res.end();
+  }
 
   const settings = readJSON('settings.json') || {};
   const agencyName = settings.agencyName || 'Agency AI';
@@ -5395,6 +5491,12 @@ app.post('/api/leads/:id/contract/send', authMiddleware, async (req, res) => {
   const lead = leads.find(l => l.id === req.params.id);
   if (!lead?.contract) return res.status(400).json({ error: 'Geen contract beschikbaar' });
 
+  // ── DEMO GUARD ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real contract/send for ${lead.companyName}`);
+    return res.json({ ok: true });
+  }
+
   const settings = readJSON('settings.json') || {};
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
 
@@ -5437,6 +5539,18 @@ app.post('/api/leads/:id/generate-delivery', requireAdmin, async (req, res) => {
     const idx = leads.findIndex(l => l.id === req.params.id);
     if (idx === -1) { send(0, 'Lead niet gevonden', 'error'); res.end(); return; }
     const lead = leads[idx];
+
+    // ── DEMO GUARD ──
+    if (isDemoContext(req, lead)) {
+      console.log(`[DEMO] Skipped real generate-delivery for ${lead.companyName}`);
+      send(1, 'Content kalender genereren', 'done');
+      send(2, 'Chatbot FAQ flow genereren', 'done');
+      send(3, 'Projectmijlpalen uitwerken', 'done');
+      send(4, 'Upsell kansen analyseren', 'done');
+      send(0, 'Levering klaar [demo]', 'complete');
+      res.end();
+      return;
+    }
 
     const serviceNames = (lead.services || []).map(s => s.name).join(', ') || 'AI-marketingdiensten';
     const intakeContext = lead.intakeAnswers
@@ -5962,6 +6076,17 @@ app.post('/api/leads/:id/generate-site', requireAdmin, async (req, res) => {
     if (idx === -1) { send(0, 'Lead niet gevonden', 'error'); res.end(); return; }
     const lead = leads[idx];
 
+    // ── DEMO GUARD ──
+    if (isDemoContext(req, lead)) {
+      console.log(`[DEMO] Skipped real generate-site for ${lead.companyName}`);
+      send(1, 'Website data verzamelen', 'done');
+      send(2, 'Website genereren', 'done');
+      send(3, 'Website opslaan', 'done');
+      send(0, 'Website klaar [demo]', 'complete');
+      res.end();
+      return;
+    }
+
     const serviceNames = (lead.services || []).map(s => s.name).join(', ') || 'AI-diensten';
     const intakeContext = lead.intakeAnswers
       ? '\n\nIntake antwoorden:\n' + Object.entries(lead.intakeAnswers).map(([k, v]) => `- ${k}: ${v}`).join('\n')
@@ -6331,6 +6456,13 @@ app.post('/api/leads/:id/client-email', requireAdmin, async (req, res) => {
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
+
+  // ── DEMO GUARD ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real client-email for ${lead.companyName}`);
+    return res.json({ ok: true, subject: 'Demo email', body: 'Demo — geen echt email verstuurd.' });
+  }
+
   const { trigger, customNote, preview } = req.body;
 
   if (!CLIENT_EMAIL_TEMPLATES[trigger]) return res.status(400).json({ error: 'Ongeldig trigger type' });
@@ -6384,6 +6516,14 @@ app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
+
+  // ── DEMO GUARD ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real send-welcome for ${lead.companyName}`);
+    addLeadHistory(leads, lead.id, { event: 'welcomeEmailSent', label: 'Welkomstmail verstuurd [demo]' });
+    writeJSON('leads.json', leads);
+    return res.json({ ok: true, emailSent: true });
+  }
 
   const to = (lead.contactEmail || '').trim();
   if (!to) return res.status(400).json({ error: 'Geen contactEmail op deze lead — stel het handmatig in via Overzicht → potlood-knop.' });
@@ -6509,14 +6649,21 @@ app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
 app.post('/api/leads/:id/agent-chat', requireAdmin, async (req, res) => {
   const { problemType, message, action, deliverableIdx } = req.body || {};
   const leadId = req.params.id;
-  console.log('[AgentChat] leadId:', leadId);
-  console.log('[AgentChat] message:', message?.slice(0, 50));
-  console.log('[AgentChat] action:', action, '| deliverableIdx:', deliverableIdx);
 
   const leads = readJSON('leads.json') || [];
   const idx   = leads.findIndex(l => l.id === leadId);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead     = leads[idx];
+
+  // ── DEMO GUARD ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real agent-chat for ${lead.companyName}`);
+    return res.json({ built: false, response: 'Dit is een demo — AI-agent is niet actief. In de echte versie zou de agent hier een antwoord genereren.' });
+  }
+
+  console.log('[AgentChat] leadId:', leadId);
+  console.log('[AgentChat] message:', message?.slice(0, 50));
+  console.log('[AgentChat] action:', action, '| deliverableIdx:', deliverableIdx);
   const settings = readJSON('settings.json') || {};
 
   if (!message?.trim()) return res.status(400).json({ error: 'Geen bericht opgegeven' });
@@ -6760,6 +6907,18 @@ app.post('/api/leads/:id/manual-email', requireAdmin, async (req, res) => {
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
+
+  // ── DEMO GUARD ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real manual-email for ${lead.companyName}`);
+    const entry = { id: Date.now().toString(36), trigger: 'manual', subject, body, sentAt: new Date().toISOString() };
+    leads[idx].clientEmailLog = leads[idx].clientEmailLog || [];
+    leads[idx].clientEmailLog.push(entry);
+    addLeadHistory(leads, lead.id, { event: 'clientEmailSent', label: `Handmatige email: ${subject} [demo]` });
+    writeJSON('leads.json', leads);
+    return res.json({ ok: true });
+  }
+
   if (!lead.contactEmail) return res.status(400).json({ error: 'Lead heeft geen email adres' });
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
   await sendEmail({ to: lead.contactEmail, subject, body, settings });
@@ -6776,6 +6935,13 @@ app.post('/api/leads/:id/generate-delivery-email', requireAdmin, async (req, res
   const leads = readJSON('leads.json') || [];
   const lead  = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+
+  // ── DEMO GUARD ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real generate-delivery-email for ${lead.companyName}`);
+    return res.json({ text: 'Beste klant,\n\nUw leveringen staan klaar!\n\nMet vriendelijke groet,\nAgency AI [demo]' });
+  }
+
   const settings = readJSON('settings.json') || {};
   const isNL = (lead.language || 'nl') !== 'en';
   const deliverables = (lead.agentDeliverables || []).filter(d => d.status === 'done' || d.status === 'approved');
@@ -6861,6 +7027,17 @@ app.post('/api/leads/:id/send-delivery-email', requireAdmin, async (req, res) =>
   const idx   = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
+
+  // ── DEMO GUARD ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real send-delivery-email for ${lead.companyName}`);
+    leads[idx].opleveringEmail = leads[idx].opleveringEmail || {};
+    leads[idx].opleveringEmail.sentAt = new Date().toISOString();
+    addLeadHistory(leads, lead.id, { event: 'deliveryEmailSent', label: 'Oplevering email verstuurd [demo]' });
+    writeJSON('leads.json', leads);
+    return res.json({ ok: true });
+  }
+
   if (!lead.contactEmail) return res.status(400).json({ error: 'Klant heeft geen emailadres' });
   const settings = readJSON('settings.json') || {};
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld. Ga naar Instellingen → Email.' });
@@ -6997,6 +7174,13 @@ app.post('/api/leads/:id/send-admin-email', requireAdmin, async (req, res) => {
   const leads = readJSON('leads.json') || [];
   const lead  = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
+
+  // ── DEMO GUARD ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real send-admin-email for ${lead.companyName}`);
+    return res.json({ ok: true });
+  }
+
   const settings = readJSON('settings.json') || {};
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
   if (!settings.gmailAddress) return res.status(400).json({ error: 'Geen admin emailadres ingesteld in Instellingen → Email' });
@@ -7030,6 +7214,13 @@ app.post('/api/leads/:id/portal-reply', requireAdmin, async (req, res) => {
   lead.portalChat.push(entry);
   addLeadHistory(leads, lead.id, { event: 'adminPortalReply', label: `Portaalreactie verstuurd: ${message.trim().substring(0, 60)}` });
   writeJSON('leads.json', leads);
+
+  // ── DEMO GUARD: chat saved above, skip real email notification ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real portal-reply email for ${lead.companyName}`);
+    return res.json({ ok: true, entry });
+  }
+
   // Optionally email the client
   const clientEmail = (lead.contactEmail || '').trim();
   if (clientEmail && isResendReady(settings) && lead.portalToken) {
@@ -7063,6 +7254,18 @@ app.post('/api/leads/:id/run-agents', requireAdmin, async (req, res) => {
     const li       = leads.findIndex(l => l.id === req.params.id);
     if (li === -1) { send(-1, 'Lead niet gevonden', 'error'); res.end(); return; }
     const lead = leads[li];
+
+    // ── DEMO GUARD: skip real AI agent runs ──
+    if (isDemoContext(req, lead)) {
+      console.log(`[DEMO] Skipped real run-agents for ${lead.companyName}`);
+      const svcNames = (lead.services || []).map((s, i) => ({ idx: i, name: typeof s === 'string' ? s : s.name || 'Dienst' }));
+      for (const s of svcNames) {
+        send(s.idx, s.name, 'done', { deliverableType: 'HTML_BUILD' });
+      }
+      send(-1, 'Alle agents voltooid [demo]', 'complete');
+      res.end();
+      return;
+    }
 
     const services = lead.services || [];
     if (!services.length) { send(-1, 'Geen diensten ingesteld op dit project', 'error'); res.end(); return; }
@@ -7333,6 +7536,21 @@ app.post('/api/leads/:id/build-all-services', requireAdmin, async (req, res) => 
     const li       = leads.findIndex(l => l.id === req.params.id);
     if (li === -1) { sse({ type: 'error', service: '', message: 'Lead niet gevonden' }); res.end(); return; }
     const lead     = leads[li];
+
+    // ── DEMO GUARD: skip real AI builds, return mock SSE events ──
+    if (isDemoContext(req, lead)) {
+      console.log(`[DEMO] Skipped real build-all-services for ${lead.companyName}`);
+      const demoServices = (lead.services || []).map(s => typeof s === 'string' ? s : s.name || s.service || 'Dienst');
+      for (const svc of demoServices) {
+        sse({ type: 'start', service: svc });
+        sse({ type: 'progress', service: svc, percent: 100 });
+        sse({ type: 'done', service: svc, deliverableType: 'HTML_BUILD', url: '#' });
+      }
+      sse({ type: 'all_done', count: demoServices.length });
+      res.end();
+      return;
+    }
+
     // Support: explicit services array, serviceNames string array (for single retry), or all lead.services
     let services = lead.services || [];
     if (req.body?.services?.length) {
@@ -7775,6 +7993,14 @@ app.post('/api/leads/:id/deliverables/:dIdx/approve', requireAdmin, async (req, 
   leads[li].agentDeliverables[dIdx].approvedAt = new Date().toISOString();
   leads[li].agentDeliverables[dIdx].clientVisible = false; // admin must manually toggle eye to share
 
+  // ── DEMO GUARD: approve status but skip real email ──
+  if (isDemoContext(req, leads[li])) {
+    console.log(`[DEMO] Skipped real deliverable approve email for ${leads[li].companyName}`);
+    addLeadHistory(leads, req.params.id, { event: 'deliverableApproved', label: `Levering goedgekeurd: ${d.service} [demo]` });
+    writeJSON('leads.json', leads);
+    return res.json({ ok: true });
+  }
+
   // Email client — rich HTML for HTML deliverables, custom body for manual, generic fallback
   const lead = leads[li];
   if (isResendReady(settings) && lead.contactEmail) {
@@ -7861,6 +8087,12 @@ app.post('/api/leads/:id/deliverables/combine', requireAdmin, async (req, res) =
   const leads = readJSON('leads.json') || [];
   const li = leads.findIndex(l => l.id === req.params.id);
   if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+
+  // ── DEMO GUARD ──
+  if (isDemoContext(req, leads[li])) {
+    console.log(`[DEMO] Skipped real deliverables/combine for ${leads[li].companyName}`);
+    return res.json({ ok: true, message: 'Combine voltooid [demo]' });
+  }
 
   const { baseIdx, injectIdxs } = req.body;
   if (typeof baseIdx !== 'number' || !Array.isArray(injectIdxs) || injectIdxs.length === 0) {
@@ -8044,6 +8276,25 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
   if (emailDup) {
     inbox[idx].emailDuplicateWarning = { id: emailDup.id, companyName: emailDup.companyName, status: emailDup.status };
     console.warn(`[DupEmail] ${item.contactEmail} ook gebruikt door ${emailDup.companyName} (${emailDup.status})`);
+  }
+
+  // ── DEMO GUARD: skip all real sends, update statuses as-if it worked ──
+  if (isDemoContext(req, item)) {
+    console.log(`[DEMO] Skipped real approve/send for inbox item ${item.id} (${item.companyName})`);
+    inbox[idx].status  = 'sent';
+    inbox[idx].sentAt  = new Date().toISOString();
+    writeJSON('inbox.json', inbox);
+    const leads = readJSON('leads.json') || [];
+    const leadIdx = leads.findIndex(l => l.id === item.leadId);
+    if (leadIdx !== -1) {
+      leads[leadIdx].status  = 'sent';
+      leads[leadIdx].sentAt  = inbox[idx].sentAt;
+      leads[leadIdx].sentVersion = version;
+      addLeadHistory(leads, item.leadId, { event: 'sent', label: `Email verstuurd (versie ${version}) [demo]` });
+      writeJSON('leads.json', leads);
+    }
+    addActivity('email', 'Email verstuurd naar ' + (item.companyName || 'Onbekend') + ' [demo]', { meta: { companyName: item.companyName, leadId: item.leadId } });
+    return res.json(inbox[idx]);
   }
 
   // AI reply items: send our response email back to the business
@@ -8731,6 +8982,11 @@ app.patch('/api/settings/stripe', requireAdmin, (req, res) => {
 });
 
 app.post('/api/stripe/invoice', requireAdmin, async (req, res) => {
+  // ── DEMO GUARD ──
+  if (isDemoUser(req)) {
+    console.log('[DEMO] Skipped real Stripe invoice for demo user');
+    return res.json({ url: 'https://demo.agencyai.nl/stripe/demo-' + Date.now().toString(36) });
+  }
   const settings = readJSON('settings.json');
   if (!settings.stripeSecretKey) {
     return res.status(400).json({ error: 'Stripe sleutel niet ingesteld — voeg toe in Instellingen' });
@@ -8763,6 +9019,11 @@ app.post('/api/stripe/invoice', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/mollie/invoice', requireAdmin, async (req, res) => {
+  // ── DEMO GUARD ──
+  if (isDemoUser(req)) {
+    console.log('[DEMO] Skipped real Mollie invoice for demo user');
+    return res.json({ url: 'https://demo.agencyai.nl/mollie/demo-' + Date.now().toString(36) });
+  }
   const settings = readJSON('settings.json');
   if (!settings.mollieApiKey) {
     return res.status(400).json({ error: 'Mollie API sleutel niet ingesteld — voeg toe in Instellingen' });
@@ -8798,6 +9059,11 @@ app.post('/api/mollie/invoice', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/paypal/invoice', requireAdmin, (req, res) => {
+  // ── DEMO GUARD ──
+  if (isDemoUser(req)) {
+    console.log('[DEMO] Skipped real PayPal invoice for demo user');
+    return res.json({ url: 'https://demo.agencyai.nl/paypal/demo-' + Date.now().toString(36) });
+  }
   const settings = readJSON('settings.json');
   if (!settings.paypalMe) {
     return res.status(400).json({ error: 'PayPal.me naam niet ingesteld — voeg toe in Instellingen' });
@@ -8893,6 +9159,30 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
   const settings = readJSON('settings.json') || {};
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+
+  // ── DEMO GUARD: create payment record with fake URL, skip real payment provider ──
+  if (isDemoContext(req, leads[idx])) {
+    console.log(`[DEMO] Skipped real payment creation for ${leads[idx].companyName}`);
+    const { amount, description, method, dueDate } = req.body;
+    const fakePayment = {
+      id: 'demo-pay-' + Date.now().toString(36),
+      invoiceNr: 'FAC-DEMO-' + Date.now().toString(36).toUpperCase(),
+      amount: parseFloat(amount) || 0,
+      description: description || 'Demo betaling',
+      method: method || 'bank_transfer',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      dueDate: dueDate || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
+      paymentUrl: 'https://demo.agencyai.nl/betaallink/demo-' + Date.now().toString(36),
+      isDemo: true
+    };
+    if (!leads[idx].payments) leads[idx].payments = [];
+    leads[idx].payments.push(fakePayment);
+    addLeadHistory(leads, leads[idx].id, { event: 'paymentCreated', label: `Betaling aangemaakt: €${fakePayment.amount} [demo]` });
+    writeJSON('leads.json', leads);
+    return res.json({ payments: leads[idx].payments });
+  }
+
   const { type, amount, description, billing, method, dueDate, splitParts } = req.body;
   if (!amount || amount < 1) return res.status(400).json({ error: 'Ongeldig bedrag' });
 
@@ -9040,9 +9330,23 @@ app.post('/api/leads/:id/payments/:payId/remind', requireAdmin, async (req, res)
   const settings = readJSON('settings.json') || {};
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
+  const lead = leads[idx];
+
+  // ── DEMO GUARD ──
+  if (isDemoContext(req, lead)) {
+    console.log(`[DEMO] Skipped real payment reminder for ${lead.companyName}`);
+    const pay = (leads[idx].payments || []).find(p => p.id === req.params.payId);
+    if (pay) {
+      const pIdx = leads[idx].payments.findIndex(p => p.id === req.params.payId);
+      if (pIdx !== -1) { leads[idx].payments[pIdx].lastReminderAt = new Date().toISOString(); leads[idx].payments[pIdx].reminderCount = (leads[idx].payments[pIdx].reminderCount || 0) + 1; }
+    }
+    addLeadHistory(leads, lead.id, { event: 'paymentReminder', label: 'Betalingsherinnering verstuurd [demo]' });
+    writeJSON('leads.json', leads);
+    return res.json({ ok: true, subject: 'Betalingsherinnering [demo]' });
+  }
+
   const pay = (leads[idx].payments || []).find(p => p.id === req.params.payId);
   if (!pay) return res.status(404).json({ error: 'Betaling niet gevonden' });
-  const lead = leads[idx];
   const remindTo = (lead.contactEmail || '').trim();
   if (!remindTo) return res.status(400).json({ error: 'Geen e-mailadres bekend' });
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet geconfigureerd' });
@@ -9127,6 +9431,11 @@ app.post('/api/leads/:id/set-referrer', authMiddleware, (req, res) => {
 });
 
 app.post('/api/upsell/:leadId/email', async (req, res) => {
+  // ── DEMO GUARD ──
+  if (isDemoUser(req)) {
+    console.log('[DEMO] Skipped real upsell email generation for demo user');
+    return res.json({ email: { subject: 'Upsell voorstel [demo]', body: 'Demo upsell email — geen echt AI-bericht gegenereerd.' }, opp: { companyName: 'Demo', upsellService: 'Demo dienst' } });
+  }
   const settings = readJSON('settings.json');
   const stats    = readJSON('stats.json') || {};
   const opps     = stats.upsellOpportunities || [];
@@ -9149,6 +9458,11 @@ app.post('/api/upsell/:leadId/email', async (req, res) => {
 });
 
 app.post('/api/upsell/:leadId/send', async (req, res) => {
+  // ── DEMO GUARD ──
+  if (isDemoUser(req)) {
+    console.log('[DEMO] Skipped real upsell send for demo user');
+    return res.json({ ok: true });
+  }
   const settings = readJSON('settings.json');
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
   const { subject, body } = req.body;
@@ -11064,6 +11378,16 @@ CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
 // â"€â"€â"€ Find leads endpoint â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 app.post('/api/find-leads', requireAdmin, async (req, res) => {
+  // ── DEMO GUARD: no real AI run for demo users ──
+  if (isDemoUser(req)) {
+    console.log('[DEMO] Skipped real find-leads run for demo user');
+    const runs = readJSON('runs.json') || [];
+    const fakeRun = { id: 'demo-run-' + Date.now(), status: 'completed', startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), leadsFound: 12, leadsProcessed: 18, city: 'Amsterdam', niche: 'beauty', isDemo: true };
+    runs.push(fakeRun);
+    writeJSON('runs.json', runs);
+    addActivity('run', 'Run klaar: 12 leads gevonden [demo]', { meta: { leadsFound: 12, skipped: 6, totalValue: 8500 } });
+    return res.json({ ok: true, found: 12 });
+  }
   try {
     const overrides = req.body || {};
     const manual = overrides.manual !== false;
@@ -11103,6 +11427,7 @@ async function runFollowUpJob() {
   let markedDead = 0;
 
   for (const lead of leads) {
+    if (lead.isDemo) continue; // DEMO GUARD: never follow-up demo leads
     if (lead.status !== 'sent') continue;
     if (!lead.sentAt) continue;
 
@@ -12046,6 +12371,11 @@ app.delete('/api/run-templates/:id', (req, res) => {
 });
 
 app.post('/api/run-templates/:id/run', async (req, res) => {
+  // ── DEMO GUARD ──
+  if (isDemoUser(req)) {
+    console.log('[DEMO] Skipped real run-template execution for demo user');
+    return res.json({ ok: true, found: 10 });
+  }
   const templates = readJSON('run-templates.json') || [];
   const tmpl = templates.find(t => t.id === req.params.id);
   if (!tmpl) return res.status(404).json({ error: 'Sjabloon niet gevonden' });
