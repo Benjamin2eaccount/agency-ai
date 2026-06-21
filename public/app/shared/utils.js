@@ -5,7 +5,9 @@ function esc(str) {
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 function relativeTime(iso) {
-  const diff = Date.now() - new Date(iso).getTime();
+  const t = new Date(iso || 0).getTime();
+  if (!Number.isFinite(t) || t <= 0) return '—';
+  const diff = Date.now() - t;
   const m = Math.floor(diff / 60000);
   const h = Math.floor(diff / 3600000);
   const d = Math.floor(diff / 86400000);

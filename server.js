@@ -588,7 +588,7 @@ app.get('/setup/demo-users', async (req, res) => {
         linkedinDm:outreach.dm||null,
         voicenoteScript:outreach.voice||null,
         website:{speedScore:rand(45,85),hasSocialLinks:true,hasContactForm:true},
-        social:{engagementRate:(rand(5,30)/10).toFixed(1),postFrequency:'wekelijks',growthPotential:spec.score>=8?'hoog':'medium'},
+        social:{engagementRate:rand(5,30)/10,postFrequency:'wekelijks',growthPotential:spec.score>=8?'hoog':'medium'},
         history:spec.history||[
           {event:'created',label:'Lead toegevoegd via AI run',time:ago(spec.days)},
           ...(spec.sentAt?[{event:'sent',label:'Email verstuurd',time:spec.sentAt}]:[]),

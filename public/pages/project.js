@@ -184,8 +184,9 @@ async function renderProjectPage() {
         const websiteScore  = lead.website?.speedScore ?? null;
         const socialRaw     = lead.social?.growthPotential;
         const socialScore   = typeof socialRaw === 'number' ? socialRaw : null;
-        const engagePct     = lead.social?.engagementRate ?? null;
-        const engageScore   = engagePct !== null ? Math.min(10, Math.round(engagePct * 1.5)) : null;
+        const engagePctRaw  = lead.social?.engagementRate ?? null;
+        const engagePct     = engagePctRaw !== null ? Number(engagePctRaw) : null;
+        const engageScore   = engagePct !== null && !isNaN(engagePct) ? Math.min(10, Math.round(engagePct * 1.5)) : null;
         const urgencyMap    = { critical: { label: 'Kritiek', color: 'var(--danger)' }, high: { label: 'Hoog', color: '#f97316' }, hoog: { label: 'Hoog', color: '#f97316' }, medium: { label: 'Medium', color: 'var(--warning)' }, low: { label: 'Laag', color: 'var(--success)' } };
         const urgInfo       = urgencyMap[lead.urgency] || null;
         const barColor      = v => v >= 8 ? 'var(--success)' : v >= 5 ? 'var(--warning)' : 'var(--danger)';
@@ -193,7 +194,7 @@ async function renderProjectPage() {
           <div style="margin-bottom:10px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
               <span style="font-size:12px;color:var(--text-secondary)">${label}</span>
-              <span style="font-size:12px;font-weight:700;color:${barColor(val)}">${val.toFixed(1)}/10</span>
+              <span style="font-size:12px;font-weight:700;color:${barColor(val)}">${Number(val).toFixed(1)}/10</span>
             </div>
             <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
               <div style="height:100%;width:${val*10}%;background:${barColor(val)};border-radius:3px;transition:width 0.4s"></div>
@@ -207,7 +208,7 @@ async function renderProjectPage() {
             <div style="padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--surface)">
               ${scoreBar('Website kwaliteit', websiteScore)}
               ${scoreBar('Social media potentieel', socialScore)}
-              ${engageScore !== null ? scoreBar(`Engagement (${engagePct?.toFixed(1)}%)`, engageScore) : ''}
+              ${engageScore !== null ? scoreBar(`Engagement (${engagePct.toFixed(1)}%)`, engageScore) : ''}
               ${lead.score ? scoreBar('Totale score', lead.score) : ''}
               ${urgInfo ? `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:10px;border-top:1px solid var(--border)"><span style="font-size:12px;color:var(--text-secondary)">Urgentie</span><span style="font-size:12px;font-weight:700;color:${urgInfo.color}">${urgInfo.label}</span></div>` : ''}
             </div>

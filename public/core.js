@@ -364,7 +364,9 @@ function closeModal() {
 
 // ─── Relative time ────────────────────────────────────────────────────────────
 function relativeTime(iso) {
-  const diff = Date.now() - new Date(iso).getTime();
+  const t = new Date(iso || 0).getTime();
+  if (!Number.isFinite(t) || t <= 0) return '—';
+  const diff = Date.now() - t;
   const m = Math.floor(diff / 60000);
   const h = Math.floor(diff / 3600000);
   const d = Math.floor(diff / 86400000);
@@ -375,7 +377,10 @@ function relativeTime(iso) {
 }
 
 function formatDate(iso) {
-  return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '—';
+  return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function formatDateTime(iso) {
