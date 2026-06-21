@@ -814,7 +814,7 @@ async function emptyTrash() {
 
 function viewEmail(id) {
   const item = state.inbox.find(i => i.id === id);
-  if (!item?.email) return toast('Geen email beschikbaar', 'error');
+  if (!item?.emailA && !item?.email) return toast('Geen email beschikbaar', 'error');
   const card = document.getElementById('card-' + id);
   const version = card?.dataset.selectedVersion || 'A';
   const emailToShow = (version === 'B' && item.emailB) ? item.emailB : (item.emailA || item.email);

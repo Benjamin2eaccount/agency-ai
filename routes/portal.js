@@ -14,9 +14,15 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
   const jwt    = require('jsonwebtoken');
 
   // ── requirePortalAuth middleware ──────────────────────────────────────────────
-  // Skipped for demo portal. All real portals must send a valid portal JWT.
+  // Skipped for demo portals (any lead with isDemo:true). All real portals must send a valid portal JWT.
+  function _isDemoPortal(token) {
+    if (token === DEMO_TOKEN) return true;
+    const leads = readJSON('leads.json') || [];
+    const lead = leads.find(l => l.portalToken === token);
+    return !!(lead && lead.isDemo);
+  }
   function requirePortalAuth(req, res, next) {
-    if (req.params.token === DEMO_TOKEN) return next();
+    if (_isDemoPortal(req.params.token)) return next();
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'Niet ingelogd', requiresLogin: true });
@@ -109,7 +115,7 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
     const branding = _getBranding(lead, settings);
 
     // Demo portal — always open
-    const isDemo = req.params.token === DEMO_TOKEN;
+    const isDemo = req.params.token === DEMO_TOKEN || !!(lead.isDemo);
 
     if (!isDemo) {
       // First visit: password not set yet
