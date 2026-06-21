@@ -547,6 +547,22 @@ app.get('/setup/demo-users', async (req, res) => {
       { id:'demo-techstart',company:'TechStart BV',              name:'Tom Verhoeven',      email:'tom@techstart.nl',           city:'Amsterdam',  niche:'tech',        sub:'saas',         score:9.3, val:1250, days:6,  subj:'TechStart — demo aanvragen automatiseren?', svcs:[{name:'Marketing Automatisering',price:595,billing:'maandelijks'},{name:'AI Chatbot',price:195,billing:'maandelijks'},{name:'CRM Integratie',price:895,billing:'eenmalig'}], probs:['Demo pipeline loopt niet efficiënt','Weinig marketing leads'] },
       { id:'demo-foto',     company:'Fotostudio Lens',           name:'Anna Bergman',       email:'anna@fotostudiolens.nl',      city:'Utrecht',    niche:'photography', sub:'portret',      score:7.8, val:625,  days:7,  subj:'Fotostudio Lens — meer boekingen via Insta?',svcs:[{name:'Instagram Management',price:450,billing:'maandelijks'}],                                                             probs:['Inconsistent Instagram account','Weinig online bekendheid'] },
     ];
+    // ── Outreach content per inbox lead (opener, LinkedIn DM, voicenote) ─────
+    const DEMO_OUTREACH = {
+      'demo-bloom':    { opener:'Jullie signature balayage is populair op Instagram — 4.8 sterren op Google ook.', dm:'Hi Sophie, ik zag Bloom Beauty op Google Maps — prachtige reviews! We helpen salons met Instagram management waardoor ze 3x meer online boekingen krijgen. Kan ik even bellen?', voice:'Hey Sophie, met Agency AI. Ik zag dat Bloom Beauty super mooie reviews heeft maar nog weinig zichtbaar is op Instagram. Wij helpen salons met posts en advertenties zodat je agenda automatisch vol loopt. Zal ik een voorstel sturen?' },
+      'demo-trattoria':{ opener:'De foto\'s op jullie site zien er heerlijk uit — maar lastig te vinden bij "restaurant Rotterdam" op Google.', dm:'Hi Marco, Trattoria Bella Vista ziet er fantastisch uit! We helpen restaurants met social media waardoor ze 40% meer reserveringen krijgen. Even bellen?', voice:'Hey Marco, met Agency AI. Ik keek naar Trattoria Bella Vista en jullie hebben echt een mooi concept. Maar online worden jullie nog niet goed gevonden. Wij kunnen dat veranderen met social media. Mag ik een voorstel sturen?' },
+      'demo-fitlife':  { opener:'Zag dat jullie vorig jaar een nieuwe locatie geopend hebben — dat gaat goed!', dm:'Hi Daan, FitLife ziet er top uit! We automatiseren klantwerving voor personal trainers — gemiddeld 8 nieuwe klanten per maand. Kort gesprekje?', voice:'Hey Daan, met Agency AI. Ik zag dat FitLife mooie resultaten boekt maar online nog niet echt zichtbaar is. Wij bouwen websites en automatiseren de klantwerving zodat jij je op training kunt richten. Interesse?' },
+      'demo-vdberg':   { opener:'Jullie hebben mooie panden in portefeuille, maar "makelaar Den Haag" toont jullie niet op pagina 1.', dm:'Hi Peter, Van den Berg Makelaardij — mooi aanbod! Met SEO optimalisatie brengen we jullie naar pagina 1 van Google. Even sparren?', voice:'Hey Peter, met Agency AI. Ik googelde "makelaar Den Haag" en jullie kwamen niet in de top 10. Zonde want jullie hebben een sterk aanbod. Met SEO kunnen we dat fixen. Mag ik een voorstel sturen?' },
+      'demo-cafe':     { opener:'Jullie worden goed beoordeeld op TripAdvisor, maar op Facebook en Instagram is het stil.', dm:'Hi Jan, Café De Hoek is een fijne plek! We helpen horeca met Facebook ads waardoor er meer gasten binnenkomen. Zullen we bellen?', voice:'Hey Jan, met Agency AI. Café De Hoek heeft goede reviews maar bijna geen social media. Met gerichte Facebook ads kunnen we meer lokale gasten trekken. Zal ik even langskomen?' },
+      'demo-karin':    { opener:'Klanten moeten bellen voor een afspraak — een online boekingssysteem scheelt veel tijd.', dm:'Hi Karin, Studio Karin ziet er prachtig uit! We bouwen AI boekingssystemen waardoor klanten 24/7 online kunnen reserveren. Interesse?', voice:'Hey Karin, met Agency AI. Ik zag dat klanten bij Studio Karin nog moeten bellen voor een afspraak. Wij koppelen een online boekingssysteem aan je Instagram zodat klanten direct boeken. Meer weten?' },
+      'demo-garage':   { opener:'Jullie concurrent Autoservice Eindhoven staat #1 in Google — maar hun reviews zijn slechter dan jullie.', dm:'Hi Rob, Garage Smits heeft sterke reviews! Met Google Ads en lokale SEO komen jullie boven de concurrent. Kort gesprekje?', voice:'Hey Rob, met Agency AI. Jullie concurrent staat boven Garage Smits in Google terwijl jullie betere reviews hebben. Met de juiste aanpak draaien we dat om. Zal ik een voorstel sturen?' },
+      'demo-yoga':     { opener:'Jullie hebben 120+ leden maar ik zie geen automatische herinneringen — dat verklaart het verloop.', dm:'Hi Lisa, Yoga & Welzijn Centrum ziet er geweldig uit! We helpen studio\'s met marketing automatisering om leden vast te houden. Even bellen?', voice:'Hey Lisa, met Agency AI. Yoga & Welzijn heeft veel leden maar ook hoog verloop. Wij bouwen AI chatbots en automatiseren herinneringen zodat leden blijven terugkomen. Mag ik meer vertellen?' },
+      'demo-bouw':     { opener:'Jullie website laadt in 4,2 seconden — dat kost waarschijnlijk de helft van de bezoekers.', dm:'Hi Henk, BouwService Noord doet mooi werk! Met een snellere website en SEO krijgen jullie meer offerteaanvragen. Interesse?', voice:'Hey Henk, met Agency AI. Ik keek naar jullie website en die is echt traag. Dat kost klanten. Met een nieuwe website en SEO genereren we meer offertes. Zal ik een voorstel sturen?' },
+      'demo-bakkerij': { opener:'Jullie croissants hebben 5 sterren op Google — maar jullie verzamelen geen emailadressen.', dm:'Hi Marie, Bakkerij Vers & Puur klinkt heerlijk! Met email marketing brengen jullie vaste klanten terug. Zullen we even praten?', voice:'Hey Marie, met Agency AI. Vers & Puur heeft fantastische reviews maar geen manier om klanten terug te laten komen. Met email marketing lossen we dat op. Interesse?' },
+      'demo-techstart':{ opener:'Jullie productpagina ziet er sterk uit, maar het demo-aanvraagproces heeft 5 stappen — dat schrikt af.', dm:'Hi Tom, TechStart is een interessant product! We automatiseren demo-aanvragen en leads met AI. Kunnen we bellen deze week?', voice:'Hey Tom, met Agency AI. TechStart heeft een mooi product maar het demo-proces is te lang. Wij bouwen AI chatbots en automatiseren de hele funnel. Zal ik een voorstel sturen?' },
+      'demo-foto':     { opener:'Jullie portfolio op de website is prachtig, maar op Instagram posten jullie maar 2x per maand.', dm:'Hi Anna, Fotostudio Lens maakt prachtig werk! Met consistente Instagram posts krijg je veel meer boekingen. Even praten?', voice:'Hey Anna, met Agency AI. Jullie portfolio is echt mooi maar op Instagram is het stil. Met regelmatige posts en de juiste hashtags genereren we meer boekingen. Interesse?' },
+    };
+
     const PIPELINE_SPECS = [
       { id:'demo-monteur',  company:'Monteur Direct',       name:'Erik Visser',   email:'erik@monteurdirect.nl',    city:'Amsterdam', niche:'automotive',score:8.2, val:745,  status:'sent',     days:5,  sentAt:ago(5) },
       { id:'demo-huisdier', company:'Huisdier Paradijs',    name:'Sandra Kok',    email:'sandra@huisdierparadijs.nl',city:'Breda',    niche:'retail',    score:8.8, val:895,  status:'replied',  days:8,  sentAt:ago(8),   repliedAt:ago(3) },
@@ -555,6 +571,7 @@ app.get('/setup/demo-users', async (req, res) => {
 
     function buildLead(spec, status) {
       const emailA = { subject: spec.subj || `${spec.company} — meer klanten?`, body:`Beste ${spec.name},\n\nIk zag dat ${spec.company} al mooie dingen doet maar online meer kan halen. Zou u 20 minuten hebben?\n\nMet vriendelijke groet,\nAgency AI Demo` };
+      const outreach = DEMO_OUTREACH[spec.id] || {};
       return {
         id:spec.id, companyName:spec.company, contactName:spec.name, contactEmail:spec.email,
         websiteUrl:`https://www.${spec.id.replace('demo-','')}.nl`, phone:`+31 6 1${rand(1000000,9999999)}`,
@@ -567,15 +584,20 @@ app.get('/setup/demo-users', async (req, res) => {
         services:spec.svcs||[{name:'Social Media Management',price:450,billing:'maandelijks'}],
         emailA, emailB:emailA,
         subjectOptions:[emailA.subject,`${spec.company} — 3x meer bereik`,`Tip voor ${spec.company}`],
+        emailOpener:outreach.opener||null,
+        linkedinDm:outreach.dm||null,
+        voicenoteScript:outreach.voice||null,
         website:{speedScore:rand(45,85),hasSocialLinks:true,hasContactForm:true},
         social:{engagementRate:(rand(5,30)/10).toFixed(1),postFrequency:'wekelijks',growthPotential:spec.score>=8?'hoog':'medium'},
-        history:[
+        history:spec.history||[
           {event:'created',label:'Lead toegevoegd via AI run',time:ago(spec.days)},
           ...(spec.sentAt?[{event:'sent',label:'Email verstuurd',time:spec.sentAt}]:[]),
           ...(spec.repliedAt?[{event:'replied',label:'Klant heeft gereageerd',time:spec.repliedAt}]:[]),
         ],
         portalToken:spec.portalToken||null, currentPhase:spec.currentPhase||null,
         portalPasswordSet:spec.portalPasswordSet||false,
+        intakeToken:spec.intakeToken||null, intakeSubmittedAt:spec.intakeSubmittedAt||null,
+        intakeAnswers:spec.intakeAnswers||null,
         payments:spec.payments||[], agentDeliverables:spec.agentDeliverables||[],
         projectServices:spec.projectServices||null, clientMessages:spec.clientMessages||[],
         portalChat:spec.portalChat||[], portalWelcomeMessage:spec.portalWelcomeMessage||null,
@@ -593,7 +615,9 @@ app.get('/setup/demo-users', async (req, res) => {
         companyName:spec.company, contactEmail:spec.email, location:spec.city, niche:spec.niche,
         subNiche:spec.sub||spec.niche, score:spec.score, estimatedValue:spec.val,
         problems:lead.problems, services:lead.services, emailA:lead.emailA, emailB:lead.emailA,
-        subjectOptions:lead.subjectOptions, createdAt:lead.createdAt });
+        subjectOptions:lead.subjectOptions, emailOpener:lead.emailOpener,
+        linkedinDm:lead.linkedinDm, voicenoteScript:lead.voicenoteScript,
+        createdAt:lead.createdAt });
     }
     for (const spec of PIPELINE_SPECS) newLeads.push(buildLead(spec, spec.status));
 
@@ -604,6 +628,14 @@ app.get('/setup/demo-users', async (req, res) => {
       score:9.2, val:1500, days:30, sentAt:ago(30), repliedAt:ago(28), projectStartedAt:ago(25),
       portalToken:PORTAL_TOK, currentPhase:3, portalPasswordSet:true,
       portalWelcomeMessage:'Welkom bij uw klantportaal! Fase 3 is gestart — uw website en SEO rapport zijn klaar voor review.',
+      intakeToken:'demo-intake-portal', intakeSubmittedAt:ago(24),
+      intakeAnswers:{
+        'Wat is uw huidige website?':'Oude WordPress site, niet responsive, 5 jaar oud.',
+        'Welke diensten/producten biedt u aan?':'Retail webshop met lifestyle producten. Circa 200 artikelen.',
+        'Doelgroep?':'Mannen en vrouwen 25-45, geïnteresseerd in design en lifestyle producten.',
+        'Heeft u een huisstijl?':'Minimalistisch, wit met donkerblauw accent (#1e3a5f).',
+        'Wat zijn uw belangrijkste doelen?':'Meer organisch verkeer, hogere Google positie, professionele uitstraling.',
+      },
       projectServices:[
         {name:'Website bouwen',price:895,billing:'eenmalig'},
         {name:'SEO Optimalisatie',price:350,billing:'maandelijks'},
@@ -623,6 +655,177 @@ app.get('/setup/demo-users', async (req, res) => {
       ],
     }, 'client');
     newLeads.push(portalLead);
+
+    // ── 3 FULLY FLESHED CLIENT PROJECTS ──────────────────────────────────────
+
+    // PROJECT 1: Bella Cucina — Italian restaurant, Amsterdam
+    // Services: Professionele website bouwen + AI content voor social media
+    const project1 = buildLead({
+      id:'demo-project-bella', company:'Bella Cucina', name:'Giovanni Moretti',
+      email:'giovanni@bellacucina.nl', city:'Amsterdam', niche:'food', sub:'restaurant',
+      score:9.0, val:1290, days:21, sentAt:ago(21), repliedAt:ago(19), projectStartedAt:ago(17),
+      portalToken:'demo-bella-cucina-2026', currentPhase:4, portalPasswordSet:true,
+      portalWelcomeMessage:'Welkom Giovanni! Uw nieuwe website en social media content zijn klaar. Bekijk alles hieronder en laat weten als u vragen heeft.',
+      projectServices:[
+        {name:'Professionele website bouwen',price:995,billing:'eenmalig'},
+        {name:'AI content voor social media',price:295,billing:'maandelijks'},
+      ],
+      svcs:[{name:'Professionele website bouwen',price:995,billing:'eenmalig'},{name:'AI content voor social media',price:295,billing:'maandelijks'}],
+      probs:['Verouderde website','Geen social media strategie','Menu niet online te vinden'],
+      intakeToken:'demo-intake-bella', intakeSubmittedAt:ago(16),
+      intakeAnswers:{
+        'Wat is uw huidige website URL?':'www.bellacucina-oud.nl (verouderd, niet responsive)',
+        'Welke sfeer wilt u uitstralen?':'Warm, Italiaans, authentiek. Donkere kleuren met goud accenten.',
+        'Heeft u een logo en huisstijl?':'Ja, ons logo is een gouden olijftak. Kleuren: donkergroen (#1a3a2a) en goud (#c9a84c).',
+        'Wat zijn uw populairste gerechten?':'Ossobuco, huisgemaakte pasta, tiramisu. Alles vers bereid met ingrediënten uit Italië.',
+        'Openingstijden?':'Dinsdag t/m zondag 17:00-23:00, lunch alleen vrijdag t/m zondag 12:00-15:00.',
+        'Welke social media kanalen gebruikt u?':'Instagram (300 volgers) en Facebook (150 likes). Posten we bijna nooit op.',
+        'Doelgroep voor social media?':'Foodies 25-55 jaar in Amsterdam, koppels voor een avondje uit, zakelijke lunches.',
+      },
+      payments:[
+        {id:'demo-pay-bella-1',description:'Website bouwen + eerste maand social media',amount:1290,type:'once',billing:'eenmalig',method:'bank_transfer',status:'paid',paymentUrl:null,dueDate:ago(14),paidAt:ago(13),createdAt:ago(17),invoiceNr:'FAC-2026-004'},
+      ],
+      agentDeliverables:[
+        {id:'demo-del-bella-website',service:'Professionele website bouwen',type:'code',deliverableType:'HTML_BUILD',status:'approved',clientVisible:true,url:'https://demo-bella-cucina.agencyai.info',builtAt:ago(12),approvedAt:ago(10)},
+        {id:'demo-del-bella-social',service:'AI content voor social media',type:'document',deliverableType:'TEXT_DOCUMENT',status:'approved',clientVisible:true,content:'# Social Media Content Kalender — Bella Cucina\n\n## Week 1\n**Maandag** — Instagram Reel: Chef Giovanni die verse pasta maakt. Caption: "Elke dag vers, elke dag met liefde. Onze tagliatelle wordt nog steeds met de hand gerold. 🍝 #BellaCucina #VersePasta #AmsterdamFood"\n\n**Woensdag** — Foto post: Close-up van Ossobuco met polenta. Caption: "Ons geheim? 4 uur sudderen op laag vuur. Sommige dingen kun je niet haasten. Reserveer uw tafel via de link in bio."\n\n**Vrijdag** — Story serie: Behind the scenes in de keuken. 3 slides met ingrediënten uit Italië.\n\n**Zondag** — Carousel: "5 redenen waarom onze tiramisu anders is" — authentiek recept, mascarpone uit Napels, etc.\n\n## Week 2\n**Dinsdag** — Instagram Reel: Sfeerbeelden van het restaurant bij kaarslicht. Caption: "Waar elke avond een beetje vakantie voelt."\n\n**Donderdag** — Foto post: Seizoensmenu highlight.\n\n**Zaterdag** — User generated content repost van een gast.\n\n## Hashtag Strategie\nPrimair: #BellaCucina #ItaliaanskokenAmsterdam #AmsterdamRestaurant\nSecundair: #PastaLovers #AuthentiekItaliaans #FoodieAmsterdam\n\n## Tone of Voice\nWarm, persoonlijk, trots op traditie. Gebruik "wij" en "ons". Nooit te commercieel.',builtAt:ago(11),approvedAt:ago(9)},
+      ],
+      history:[
+        {event:'created',label:'Lead toegevoegd via AI run',time:ago(21)},
+        {event:'sent',label:'Email verstuurd',time:ago(21)},
+        {event:'replied',label:'Klant heeft gereageerd',time:ago(19)},
+        {event:'projectStarted',label:'Project gestart — welkomstmail verstuurd',time:ago(17)},
+        {event:'intakeSubmitted',label:'Intake ingevuld door klant',time:ago(16)},
+        {event:'agentBuild',label:'Website gebouwd door AI agent',time:ago(12)},
+        {event:'agentBuild',label:'Social media content gegenereerd',time:ago(11)},
+        {event:'deliverableApproved',label:'Levering goedgekeurd: Professionele website bouwen',time:ago(10)},
+        {event:'deliverableApproved',label:'Levering goedgekeurd: AI content voor social media',time:ago(9)},
+        {event:'paymentReceived',label:'Betaling ontvangen: €1.290',time:ago(13)},
+      ],
+      clientMessages:[
+        {id:'cm-bella-1',name:'Giovanni Moretti',message:'De website is prachtig! Precies de sfeer die we zochten.',time:ago(9)},
+      ],
+      portalChat:[
+        {id:'pc-bella-1',from:'client',name:'Giovanni Moretti',message:'Buongiorno! De website ziet er fantastisch uit. Kunnen we het menu nog updaten met onze zomergerechten?',time:ago(9)},
+        {id:'pc-bella-2',from:'admin',name:'Agency AI Demo',message:'Dank je Giovanni! Natuurlijk, stuur het nieuwe menu door en we passen het vandaag aan.',time:ago(8.5)},
+        {id:'pc-bella-3',from:'client',name:'Giovanni Moretti',message:'Hier het menu! We hebben 3 nieuwe pasta\'s en een zomerdessert toegevoegd.',time:ago(8)},
+        {id:'pc-bella-4',from:'admin',name:'Agency AI Demo',message:'Perfect, het menu is bijgewerkt op de website. De social media posts voor deze week zijn ook al ingepland met de nieuwe gerechten.',time:ago(7)},
+      ],
+    }, 'client');
+    newLeads.push(project1);
+
+    // PROJECT 2: StyleStore Online — fashion webshop, Rotterdam
+    // Services: Webshop opzetten + Google Ads met AI + Email marketing automatisering
+    const project2 = buildLead({
+      id:'demo-project-style', company:'StyleStore Online', name:'Femke de Groot',
+      email:'femke@stylestoreonline.nl', city:'Rotterdam', niche:'retail', sub:'webshop',
+      score:8.5, val:1540, days:25, sentAt:ago(25), repliedAt:ago(23), projectStartedAt:ago(20),
+      portalToken:'demo-stylestore-2026', currentPhase:4, portalPasswordSet:true,
+      portalWelcomeMessage:'Welkom Femke! Uw webshop, Google Ads en email flows zijn opgeleverd. Bekijk hieronder de resultaten.',
+      projectServices:[
+        {name:'Webshop opzetten',price:795,billing:'eenmalig'},
+        {name:'Google Ads met AI',price:450,billing:'maandelijks'},
+        {name:'Email marketing automatisering',price:295,billing:'maandelijks'},
+      ],
+      svcs:[{name:'Webshop opzetten',price:795,billing:'eenmalig'},{name:'Google Ads met AI',price:450,billing:'maandelijks'},{name:'Email marketing automatisering',price:295,billing:'maandelijks'}],
+      probs:['Geen online verkoopkanaal','Concurrent verkoopt al online','Geen email database'],
+      intakeToken:'demo-intake-style', intakeSubmittedAt:ago(18),
+      intakeAnswers:{
+        'Wat verkoopt u precies?':'Duurzame dameskleding: jurken, tops, broeken en accessoires. Alles van Europese merken.',
+        'Prijsrange producten?':'€39 - €189. Gemiddelde orderwaarde rond €85.',
+        'Welke betaalmethoden wilt u?':'iDEAL, creditcard en Klarna achteraf betalen.',
+        'Heeft u productfoto\'s?':'Ja, professionele foto\'s van alle 120 producten. Witte achtergrond en lifestyle shots.',
+        'Wat is uw merkidentiteit?':'Minimalistisch, duurzaam, vrouwelijk. Kleuren: zacht roze (#f5e6e0) en donkergrijs (#2d2d2d).',
+        'Doelgroep?':'Vrouwen 25-45 jaar die bewust kopen. Geïnteresseerd in duurzame mode.',
+        'Verzending?':'Gratis verzending boven €75. Standaard €4,95. Retour binnen 30 dagen.',
+      },
+      payments:[
+        {id:'demo-pay-style-1',description:'Webshop opzetten + eerste maand ads & email',amount:1540,type:'once',billing:'eenmalig',method:'bank_transfer',status:'paid',paymentUrl:null,dueDate:ago(16),paidAt:ago(15),createdAt:ago(20),invoiceNr:'FAC-2026-005'},
+      ],
+      agentDeliverables:[
+        {id:'demo-del-style-shop',service:'Webshop opzetten',type:'code',deliverableType:'HTML_BUILD',status:'approved',clientVisible:true,url:'https://demo-stylestore.agencyai.info',builtAt:ago(14),approvedAt:ago(12)},
+        {id:'demo-del-style-ads',service:'Google Ads met AI',type:'document',deliverableType:'TEXT_DOCUMENT',status:'approved',clientVisible:true,content:'# Google Ads Campagne — StyleStore Online\n\n## Campagne 1: Branded Search\n**Keywords:** stylestore online, stylestore kleding, stylestore duurzaam\n**Koppen:**\n1. "StyleStore Online — Duurzame Damesmode"\n2. "Ontdek Onze Nieuwe Collectie | Gratis Verzending >€75"\n3. "Bewust Kopen, Mooi Dragen — StyleStore"\n**Beschrijvingen:**\n1. "120+ items van Europese merken. Duurzaam geproduceerd. Bestel vandaag, morgen in huis. Retour binnen 30 dagen."\n2. "Van casual tot chic — duurzame mode die past bij jouw stijl. Klarna achteraf betalen beschikbaar."\n\n## Campagne 2: Product Category\n**Ad Group: Jurken**\n- "Duurzame Jurken Vanaf €49 | StyleStore"\n- "Europese Kwaliteit, Eerlijke Prijs — Ontdek Onze Jurken"\n\n**Ad Group: Tops**\n- "Duurzame Tops & Blouses | StyleStore Online"\n- "Van Katoen Tot Linnen — Bewust Geproduceerd"\n\n## Budget Advies\nStartbudget: €15/dag. Verwachte CPC: €0,45-€0,80. Verwachte ROAS: 4-6x na optimalisatie.',builtAt:ago(13),approvedAt:ago(11)},
+        {id:'demo-del-style-email',service:'Email marketing automatisering',type:'document',deliverableType:'TEXT_DOCUMENT',status:'approved',clientVisible:true,content:'# Email Marketing Flows — StyleStore Online\n\n## Flow 1: Welkomstreeks (3 emails)\n**Email 1 (direct):** "Welkom bij StyleStore — 10% korting op je eerste bestelling"\nInhoud: Bedankt voor aanmelding, merkwaarden uitleggen, kortingscode WELKOM10.\n\n**Email 2 (dag 3):** "Dit maakt onze mode anders"\nInhoud: Verhaal achter de merken, duurzaamheid, kwaliteitsgarantie.\n\n**Email 3 (dag 7):** "De favorieten van deze week"\nInhoud: 4 bestverkochte items met foto\'s en prijzen.\n\n## Flow 2: Verlaten Winkelwagen (3 emails)\n**Email 1 (1 uur):** "Je hebt iets achtergelaten"\nInhoud: Product foto + "Nog beschikbaar — rond je bestelling af."\n\n**Email 2 (24 uur):** "Gratis verzending als je vandaag bestelt"\nInhoud: Urgentie + gratis verzending incentive.\n\n**Email 3 (72 uur):** "Laatste kans — 5% extra korting"\nInhoud: Kortingscode LAATSTE5 + product reminder.\n\n## Flow 3: Post-Purchase\n**Email 1 (dag 3):** Verzendbevestiging + verwachte levertijd.\n**Email 2 (dag 10):** Review verzoek + "Deel je look op Instagram".\n**Email 3 (dag 30):** "Nieuwe collectie die bij jouw stijl past" — gepersonaliseerde aanbevelingen.',builtAt:ago(12),approvedAt:ago(10)},
+      ],
+      history:[
+        {event:'created',label:'Lead toegevoegd via AI run',time:ago(25)},
+        {event:'sent',label:'Email verstuurd',time:ago(25)},
+        {event:'replied',label:'Klant heeft gereageerd',time:ago(23)},
+        {event:'projectStarted',label:'Project gestart — welkomstmail verstuurd',time:ago(20)},
+        {event:'intakeSubmitted',label:'Intake ingevuld door klant',time:ago(18)},
+        {event:'agentBuild',label:'Webshop gebouwd door AI agent',time:ago(14)},
+        {event:'agentBuild',label:'Google Ads campagne gegenereerd',time:ago(13)},
+        {event:'agentBuild',label:'Email marketing flows opgezet',time:ago(12)},
+        {event:'deliverableApproved',label:'Levering goedgekeurd: Webshop opzetten',time:ago(12)},
+        {event:'deliverableApproved',label:'Levering goedgekeurd: Google Ads met AI',time:ago(11)},
+        {event:'deliverableApproved',label:'Levering goedgekeurd: Email marketing automatisering',time:ago(10)},
+        {event:'paymentReceived',label:'Betaling ontvangen: €1.540',time:ago(15)},
+      ],
+      clientMessages:[
+        {id:'cm-style-1',name:'Femke de Groot',message:'De webshop ziet er super professioneel uit!',time:ago(11)},
+      ],
+      portalChat:[
+        {id:'pc-style-1',from:'client',name:'Femke de Groot',message:'Wow, de webshop is echt mooi geworden! Kunnen we de productcategorieën nog aanpassen?',time:ago(11)},
+        {id:'pc-style-2',from:'admin',name:'Agency AI Demo',message:'Dank je Femke! Welke categorieën wil je toevoegen of wijzigen?',time:ago(10.5)},
+        {id:'pc-style-3',from:'client',name:'Femke de Groot',message:'Ik wil graag "Nieuw binnen" en "Sale" als aparte categorieën. En de Google Ads zien er goed uit, maar kunnen we ook een campagne voor Instagram ads toevoegen?',time:ago(10)},
+        {id:'pc-style-4',from:'admin',name:'Agency AI Demo',message:'De categorieën zijn toegevoegd! Voor Instagram ads kunnen we dat als uitbreiding meenemen — ik stuur je een voorstel.',time:ago(9)},
+      ],
+    }, 'client');
+    newLeads.push(project2);
+
+    // PROJECT 3: PowerGym Fitness — fitness studio, Utrecht
+    // Services: AI chatbot voor website + Lokale SEO optimalisatie
+    const project3 = buildLead({
+      id:'demo-project-gym', company:'PowerGym Fitness', name:'Rick van der Linden',
+      email:'rick@powergymfitness.nl', city:'Utrecht', niche:'fitness', sub:'sportschool',
+      score:8.8, val:545, days:18, sentAt:ago(18), repliedAt:ago(16), projectStartedAt:ago(14),
+      portalToken:'demo-powergym-2026', currentPhase:4, portalPasswordSet:true,
+      portalWelcomeMessage:'Welkom Rick! Uw AI chatbot en SEO rapport zijn klaar. De chatbot staat al live op uw website.',
+      projectServices:[
+        {name:'AI chatbot voor website',price:195,billing:'maandelijks'},
+        {name:'Lokale SEO optimalisatie',price:350,billing:'maandelijks'},
+      ],
+      svcs:[{name:'AI chatbot voor website',price:195,billing:'maandelijks'},{name:'Lokale SEO optimalisatie',price:350,billing:'maandelijks'}],
+      probs:['Veel vragen via telefoon kosten tijd','Concurrent scoort hoger in Google Maps','Geen online proefles boeken'],
+      intakeToken:'demo-intake-gym', intakeSubmittedAt:ago(13),
+      intakeAnswers:{
+        'Welke abonnementen biedt u aan?':'Basis €29,99/mnd (fitnessruimte), Plus €44,99/mnd (+ groepslessen), Premium €59,99/mnd (+ personal training 1x/week).',
+        'Openingstijden?':'Maandag t/m vrijdag 06:00-22:00, weekend 08:00-20:00. Feestdagen 10:00-18:00.',
+        'Welke groepslessen heeft u?':'Spinning, HIIT, Yoga, Boxing, Pilates. 5-8 lessen per dag.',
+        'Heeft u een proefles mogelijkheid?':'Ja, eerste les gratis. Daarna 3-daagse proefpas voor €9,99.',
+        'Wat zijn de meest gestelde vragen van klanten?':'Prijzen, openingstijden, proefles boeken, parkeren (gratis parking voor 50 auto\'s), kleedkamers/douches, personal training tarieven.',
+        'Huisstijl?':'Zwart (#1a1a1a) met fel oranje (#ff6b00) accent. Stoer maar toegankelijk.',
+        'Website URL?':'www.powergymfitness.nl — is 4 jaar oud en niet mobiel-vriendelijk.',
+      },
+      payments:[
+        {id:'demo-pay-gym-1',description:'Eerste maand AI chatbot + SEO',amount:545,type:'once',billing:'maandelijks',method:'bank_transfer',status:'paid',paymentUrl:null,dueDate:ago(10),paidAt:ago(9),createdAt:ago(14),invoiceNr:'FAC-2026-006'},
+      ],
+      agentDeliverables:[
+        {id:'demo-del-gym-chatbot',service:'AI chatbot voor website',type:'code',deliverableType:'HTML_BUILD',status:'approved',clientVisible:true,url:'https://demo-powergym-chatbot.agencyai.info',builtAt:ago(9),approvedAt:ago(7)},
+        {id:'demo-del-gym-seo',service:'Lokale SEO optimalisatie',type:'document',deliverableType:'STRATEGY_DOCUMENT',status:'approved',clientVisible:true,content:'# Lokale SEO Rapport — PowerGym Fitness Utrecht\n\n## Huidige Situatie\n- Google Maps positie: #8 voor "sportschool Utrecht" (doel: top 3)\n- Website snelheid: 3,8s (doel: <2s)\n- Google Bedrijfsprofiel: 67 reviews, 4.6 sterren (goed!)\n- Ontbrekend: geoptimaliseerde meta titles, lokale structured data\n\n## Gevonden Problemen\n1. **Title tags** niet geoptimaliseerd — huidige: "Home | PowerGym" → moet: "PowerGym Fitness Utrecht | Sportschool met Groepslessen & PT"\n2. **Meta descriptions** ontbreken op 4 van 6 pagina\'s\n3. **Google Bedrijfsprofiel** mist openingstijden updates en wekelijkse posts\n4. **Geen lokale backlinks** — 0 vermeldingen op Yelp, Funda Sport, etc.\n5. **Afbeeldingen** hebben geen alt-teksten (15 foto\'s)\n6. **Geen schema markup** voor LocalBusiness, GymOrSportsActivityLocation\n\n## Actieplan\n### Maand 1 — Technische Basis\n- Title tags + meta descriptions optimaliseren alle pagina\'s\n- Schema.org LocalBusiness + GymOrSportsActivityLocation markup toevoegen\n- Alt-teksten op alle afbeeldingen\n- Google Bedrijfsprofiel: categorieën aanscherpen, foto\'s toevoegen\n\n### Maand 2 — Content & Lokaal\n- 4 blogartikelen: "Beste sportschool Utrecht", "Groepslessen Utrecht", etc.\n- Google Posts: 2x per week (aanbiedingen, lestijden, events)\n- Lokale directories aanmelden (10+ bronnen)\n\n### Maand 3 — Reviews & Autoriteit\n- Review campagne: QR code bij balie, email na eerste bezoek\n- Lokale samenwerkingen zoeken (fysiotherapeut, voedingscoach)\n- Maandelijks SEO rapport met positie-tracking\n\n## Verwachte Resultaten (3 maanden)\n- Stijging van #8 naar top 3 voor "sportschool Utrecht"\n- 30% meer websiteverkeer via Google\n- 15+ nieuwe reviews per maand via automatische campagne',builtAt:ago(8),approvedAt:ago(6)},
+      ],
+      history:[
+        {event:'created',label:'Lead toegevoegd via AI run',time:ago(18)},
+        {event:'sent',label:'Email verstuurd',time:ago(18)},
+        {event:'replied',label:'Klant heeft gereageerd',time:ago(16)},
+        {event:'projectStarted',label:'Project gestart — welkomstmail verstuurd',time:ago(14)},
+        {event:'intakeSubmitted',label:'Intake ingevuld door klant',time:ago(13)},
+        {event:'agentBuild',label:'AI chatbot gebouwd',time:ago(9)},
+        {event:'agentBuild',label:'SEO rapport gegenereerd',time:ago(8)},
+        {event:'deliverableApproved',label:'Levering goedgekeurd: AI chatbot voor website',time:ago(7)},
+        {event:'deliverableApproved',label:'Levering goedgekeurd: Lokale SEO optimalisatie',time:ago(6)},
+        {event:'paymentReceived',label:'Betaling ontvangen: €545',time:ago(9)},
+      ],
+      clientMessages:[
+        {id:'cm-gym-1',name:'Rick van der Linden',message:'De chatbot werkt perfect, leden vinden het handig!',time:ago(5)},
+      ],
+      portalChat:[
+        {id:'pc-gym-1',from:'client',name:'Rick van der Linden',message:'Hey, de chatbot is live! Alleen vraagt hij nu bij "personal training" om te bellen. Kan hij ook direct een afspraak inplannen?',time:ago(5)},
+        {id:'pc-gym-2',from:'admin',name:'Agency AI Demo',message:'Goed idee Rick! We voegen een directe booking-link toe aan het chatbot antwoord voor personal training.',time:ago(4.5)},
+        {id:'pc-gym-3',from:'client',name:'Rick van der Linden',message:'Top! En het SEO rapport is duidelijk. We gaan die QR codes bij de balie neerleggen voor reviews.',time:ago(4)},
+        {id:'pc-gym-4',from:'admin',name:'Agency AI Demo',message:'Super! We zien dat jullie Google positie al van #8 naar #5 is gestegen. De blogartikelen zijn ingepland voor volgende week.',time:ago(3)},
+      ],
+    }, 'client');
+    newLeads.push(project3);
 
     writeJSON('leads.json', [...existingLeads, ...newLeads]);
     writeJSON('inbox.json', [...existingInbox, ...newInbox]);
