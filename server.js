@@ -1,11 +1,12 @@
 require('dotenv').config();
+const logger = require('./lib/logger');
 
 // Global error handlers — log instead of silent crash
 process.on('uncaughtException', (err) => {
-  console.error('[FATAL] Uncaught exception:', err?.message, err?.stack);
+  logger.error('Uncaught exception', { error: err?.message });
 });
 process.on('unhandledRejection', (reason) => {
-  console.error('[FATAL] Unhandled rejection:', reason?.message || reason);
+  logger.error('Unhandled rejection', { error: reason?.message || String(reason) });
 });
 
 const express = require('express');
@@ -1148,7 +1149,7 @@ async function _sendWebhookWithRetry(hook, body, wId, event, maxRetries = 3) {
       if (attempt < maxRetries) {
         await new Promise(r => setTimeout(r, attempt * 2000));
       } else {
-        console.warn(`[Webhook] ${hook.url} failed after ${maxRetries} attempts:`, e.message);
+        logger.warn(`Webhook failed after ${maxRetries} attempts: ${hook.url}`, { error: e.message });
         const all = wsReadWs(wId, 'webhooks.json', []);
         const idx = all.findIndex(h => h.id === hook.id);
         if (idx !== -1) { all[idx].lastStatus = 'error'; wsWriteWs(wId, 'webhooks.json', all); }
@@ -4056,6 +4057,15 @@ app.get('/health', (req, res) => {
       clients:      leads.filter(l => l.status === 'client').length,
       pending:      inbox.filter(i => !i.sentAt && !i.declinedAt).length,
     },
+    workspaceCount: getAllWorkspaceIds().length,
+    cronStale: (() => {
+      try {
+        const db = require('./database').getDb();
+        const row = db.prepare("SELECT MAX(ran_at) AS last FROM cron_logs WHERE status='ok'").get();
+        if (!row || !row.last) return true;
+        return (Date.now() - new Date(row.last).getTime()) > 25 * 60 * 60 * 1000; // >25h = stale
+      } catch { return null; }
+    })(),
     agencyName: settings.agencyName || 'Agency AI',
     checkedAt:  new Date().toISOString(),
   });
@@ -14049,6 +14059,40 @@ if (require.main === module || process.env.NODE_ENV !== 'test') pgInitPromise.th
     console.log(`[WS] Client verbonden (${_wsClients.size} actief)`);
   });
   console.log('[WS] WebSocket server actief op /ws');
+
+  // ── Graceful shutdown ────────────────────────────────────────────────────
+  let _shuttingDown = false;
+  function gracefulShutdown(signal) {
+    if (_shuttingDown) return;
+    _shuttingDown = true;
+    logger.info(`${signal} received — shutting down gracefully`);
+
+    // Stop accepting new connections
+    server.close(() => {
+      logger.info('HTTP server closed');
+    });
+
+    // Close WebSocket clients
+    wss.clients.forEach(ws => {
+      try { ws.close(1001, 'Server shutting down'); } catch {}
+    });
+
+    // Close database
+    try {
+      const { getDb } = require('./database');
+      getDb().close();
+      logger.info('Database connection closed');
+    } catch {}
+
+    // Force exit after 10s if connections don't drain
+    setTimeout(() => {
+      logger.warn('Forced exit after timeout');
+      process.exit(0);
+    }, 10000).unref();
+  }
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 });
 
 // Export app for testing
