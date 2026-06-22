@@ -2040,7 +2040,7 @@ async function loadSysteem() {
   }
   document.getElementById('claudeModel').textContent = d.claude_model || 'claude-sonnet-4-6';
   document.getElementById('claudeCalls').textContent = d.ai_calls_today ?? '—';
-  document.getElementById('claudeCost').textContent  = d.ai_cost_today_usd != null ? `$${d.ai_cost_today_usd.toFixed(3)}` : '—';
+  document.getElementById('claudeCost').textContent  = d.ai_cost_today_usd != null ? `$${(Number(d.ai_cost_today_usd)||0).toFixed(3)}` : '—';
 }
 
 async function saveClaudeKey() {
