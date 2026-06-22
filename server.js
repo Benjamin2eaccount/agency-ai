@@ -24,6 +24,7 @@ const { readJSON, writeJSON, pgInitPromise, getDb } = require('./database');
 const agentCore = require('./lib/agentCore');
 const { analyzeWebsite } = require('./lib/websiteAnalyzer');
 const { createEmailService, sanitizeSubject: _sanitizeSubject, generateInvoiceNumber: _generateInvoiceNumber, isResendReady: _isResendReady } = require('./lib/email');
+const { createServiceContext } = require('./lib/cron');
 const dnsPromises = require('dns').promises;
 const PDFDocument = require('pdfkit');
 
@@ -1865,6 +1866,9 @@ const _emailService = createEmailService({
   BASE_URL,
   aiJSON: (...args) => aiJSON(...args),
 });
+
+// Cron service context deps — used by createServiceContext(wId, _cronDeps)
+const _cronDeps = { wsReadWs, wsWriteWs, sendEmail, addActivity, addNotification, fireWebhooks };
 
 // Returns true when the requesting user is a demo account.
 // Demo accounts use usernames containing 'demo' (e.g. admin@demo.agencyai.info).
