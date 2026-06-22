@@ -49,7 +49,7 @@ module.exports = function createPaymentsRouter(deps) {
     throw new Error('Onbekende betaalmethode');
   }
 
-router.post('/api/stripe/invoice', requireAdmin, async (req, res) => {
+router.post('/stripe/invoice', requireAdmin, async (req, res) => {
   // ── DEMO GUARD ──
   if (isDemoUser(req)) {
     console.log('[DEMO] Skipped real Stripe invoice for demo user');
@@ -86,7 +86,7 @@ router.post('/api/stripe/invoice', requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/api/mollie/invoice', requireAdmin, async (req, res) => {
+router.post('/mollie/invoice', requireAdmin, async (req, res) => {
   // ── DEMO GUARD ──
   if (isDemoUser(req)) {
     console.log('[DEMO] Skipped real Mollie invoice for demo user');
@@ -126,7 +126,7 @@ router.post('/api/mollie/invoice', requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/api/paypal/invoice', requireAdmin, (req, res) => {
+router.post('/paypal/invoice', requireAdmin, (req, res) => {
   // ── DEMO GUARD ──
   if (isDemoUser(req)) {
     console.log('[DEMO] Skipped real PayPal invoice for demo user');
@@ -146,7 +146,7 @@ router.post('/api/paypal/invoice', requireAdmin, (req, res) => {
 // ─── Payments per lead ───────────────────────────────────────────────────────
 
 
-router.get('/api/payments', (req, res) => {
+router.get('/payments', (req, res) => {
   const leads = wsRead(req, 'leads.json', []);
   const all = [];
   for (const lead of leads) {
@@ -158,7 +158,7 @@ router.get('/api/payments', (req, res) => {
   res.json(all);
 });
 
-router.get('/api/payments/overview', authMiddleware, (req, res) => {
+router.get('/payments/overview', authMiddleware, (req, res) => {
   const leads = wsRead(req, 'leads.json', []);
   const rows = [];
   leads.forEach(lead => {
@@ -181,14 +181,14 @@ router.get('/api/payments/overview', authMiddleware, (req, res) => {
   res.json(rows);
 });
 
-router.get('/api/leads/:id/payments', (req, res) => {
+router.get('/leads/:id/payments', (req, res) => {
   const leads = wsRead(req, 'leads.json', []);
   const lead = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
   res.json(lead.payments || []);
 });
 
-router.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
+router.post('/leads/:id/payments', requireAdmin, async (req, res) => {
   const leads = wsRead(req, 'leads.json', []);
   const settings = wsRead(req, 'settings.json', {});
   const idx = leads.findIndex(l => l.id === req.params.id);
@@ -330,14 +330,15 @@ router.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
   }
 });
 
-router.patch('/api/leads/:id/payments/:payId', requireAdmin, (req, res) => {
+router.patch('/leads/:id/payments/:payId', requireAdmin, (req, res) => {
   const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const pIdx = (leads[idx].payments || []).findIndex(p => p.id === req.params.payId);
   if (pIdx === -1) return res.status(404).json({ error: 'Betaling niet gevonden' });
   const prevPayStatus = leads[idx].payments[pIdx].status;
-  leads[idx].payments[pIdx] = { ...leads[idx].payments[pIdx], ...req.body };
+  const { id: _pid, createdAt: _pca, isDemo: _pdm, ...safePayBody } = req.body || {};
+  leads[idx].payments[pIdx] = { ...leads[idx].payments[pIdx], ...safePayBody };
   if (req.body.status === 'paid' && !leads[idx].payments[pIdx].paidAt) leads[idx].payments[pIdx].paidAt = new Date().toISOString();
   if (req.body.status === 'paid' && prevPayStatus !== 'paid') {
     trackFunnelEvent(leads[idx].id, 'payment_received');
@@ -350,7 +351,7 @@ router.patch('/api/leads/:id/payments/:payId', requireAdmin, (req, res) => {
   res.json(leads[idx].payments[pIdx]);
 });
 
-router.delete('/api/leads/:id/payments/:payId', requireAdmin, (req, res) => {
+router.delete('/leads/:id/payments/:payId', requireAdmin, (req, res) => {
   const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
@@ -359,7 +360,7 @@ router.delete('/api/leads/:id/payments/:payId', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-router.post('/api/leads/:id/payments/:payId/remind', requireAdmin, async (req, res) => {
+router.post('/leads/:id/payments/:payId/remind', requireAdmin, async (req, res) => {
   const leads = wsRead(req, 'leads.json', []);
   const settings = wsRead(req, 'settings.json', {});
   const idx = leads.findIndex(l => l.id === req.params.id);

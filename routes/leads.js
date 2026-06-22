@@ -55,7 +55,8 @@ router.get('/export.csv', (req, res) => {
 
 router.post('/', (req, res) => {
   const leads = wsRead(req, 'leads.json', []);
-  const lead = { id: Date.now().toString(), createdAt: new Date().toISOString(), ...req.body };
+  const { id: _id, createdAt: _ca, isDemo: _dm, portalToken: _pt, intakeToken: _it, ...safeBody } = req.body || {};
+  const lead = { ...safeBody, id: Date.now().toString(), createdAt: new Date().toISOString() };
   leads.push(lead);
   wsWrite(req, 'leads.json', leads);
   res.json(lead);
@@ -186,7 +187,8 @@ router.patch('/:id', (req, res) => {
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const prevStatus = leads[idx].status;
-  leads[idx] = { ...leads[idx], ...req.body };
+  const { id: _id, createdAt: _ca, isDemo: _dm, portalToken: _pt, intakeToken: _it, ...safeBody } = req.body || {};
+  leads[idx] = { ...leads[idx], ...safeBody };
   // Migrate old-format tasks (no id) to new format
   if (leads[idx].tasks) {
     leads[idx].tasks = leads[idx].tasks.map((t, i) => t.id ? t : {
@@ -261,7 +263,8 @@ router.patch('/:id/tasks/:taskId', async (req, res) => {
     }
   }
   if (tIdx === -1) return res.status(404).json({ error: 'Taak niet gevonden' });
-  leads[idx].tasks[tIdx] = { ...leads[idx].tasks[tIdx], ...req.body };
+  const { id: _tid, createdAt: _tca, ...safeTaskBody } = req.body || {};
+  leads[idx].tasks[tIdx] = { ...leads[idx].tasks[tIdx], ...safeTaskBody };
   if (req.body.status === 'klaar' && !leads[idx].tasks[tIdx].doneAt) leads[idx].tasks[tIdx].doneAt = new Date().toISOString();
   wsWrite(req, 'leads.json', leads);
   res.json(leads[idx].tasks[tIdx]);

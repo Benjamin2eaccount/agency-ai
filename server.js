@@ -1894,30 +1894,7 @@ function isDemoContext(req, record) {
 
 // Granular permission check for employee-role users.
 // Admins always pass. Employees need the specific permission in their JSON list.
-function requirePermission(perm) {
-  return (req, res, next) => {
-    if (req.user?.role === 'admin') return next();
-    const perms = JSON.parse(req.user?.permissions || '[]');
-    if (perms.includes(perm)) return next();
-    res.status(403).json({ error: `Geen toegang — rechten vereist: ${perm}` });
-  };
-}
-
-// Browser-friendly auth: redirects to /login for page navigations instead of returning JSON 401
-function requireAuth(req, res, next) {
-  const header = req.headers['authorization'];
-  if (!header || !header.startsWith('Bearer ')) {
-    if (req.headers.accept?.includes('text/html')) {
-      return res.redirect('/login');
-    }
-    return res.status(401).json({ error: 'Niet geautoriseerd' });
-  }
-  return authMiddleware(req, res, next);
-}
-
 // ── Auth routes (public — no middleware) ────────────────────────────────────
-
-// loginRateLimit moved to routes/auth.js — removed dead copy from server.js
 
 // ── Auth routes — migrated to routes/auth.js ────────────────────────────────
 app.use('/api/auth', require('./routes/auth')({ readJSON, writeJSON, JWT_SECRET }));
@@ -7640,7 +7617,8 @@ app.get('/api/runs', (req, res) => {
 
 app.post('/api/runs', (req, res) => {
   const runs = wsRead(req, 'runs.json', []);
-  const run = { id: Date.now().toString(), createdAt: new Date().toISOString(), ...req.body };
+  const { id: _rid, createdAt: _rca, ...safeRunBody } = req.body || {};
+  const run = { ...safeRunBody, id: Date.now().toString(), createdAt: new Date().toISOString() };
   runs.unshift(run);
   if (runs.length > 100) runs.splice(100);
   wsWrite(req, 'runs.json', runs);
@@ -8749,13 +8727,6 @@ async function checkWebsite(url) {
 // â"€â"€â"€ 6-agent pipeline â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 // â"€â"€ Per-lead processing helper (agents 2-6 + build item) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-function guessContactEmail(websiteUrl) {
-  if (!websiteUrl) return null;
-  const domain = websiteUrl.replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].toLowerCase();
-  if (!domain || !domain.includes('.')) return null;
-  return 'info@' + domain;
-}
-
 function isDuplicate(lead, workspaceId) {
   const wId = workspaceId || null;
   const existing = wsReadWs(wId, 'leads.json') || [];
@@ -10544,11 +10515,6 @@ app.post('/api/follow-ups/run', async (req, res) => {
 
 // ─── Reply detection via Gmail IMAP ──────────────────────────────────────────
 
-const IMAP_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-function toImapDate(d) {
-  return `${d.getDate()}-${IMAP_MONTHS[d.getMonth()]}-${d.getFullYear()}`;
-}
-
 function extractReplyText(rawBody) {
   if (!rawBody) return '';
 
@@ -11600,38 +11566,42 @@ app.get('/api/users', requireAdmin, (req, res) => {
 });
 
 app.post('/api/users', requireAdmin, async (req, res) => {
-  const { username, password, name, role, permissions } = req.body;
-  if (!username || !password || !name) return res.status(400).json({ error: 'username, password en name verplicht' });
-  if (!['admin', 'employee'].includes(role)) return res.status(400).json({ error: 'Ongeldig role (admin of employee)' });
-  const users = readJSON('users.json') || [];
-  if (users.find(u => u.username === username)) return res.status(409).json({ error: 'Gebruikersnaam al in gebruik' });
-  const newUser = {
-    id: Date.now().toString(), username, password: await bcrypt.hash(password, 12),
-    name, role, permissions: Array.isArray(permissions) ? permissions : null,
-    createdAt: new Date().toISOString()
-  };
-  users.push(newUser);
-  writeJSON('users.json', users);
-  res.json({ ok: true, id: newUser.id });
+  try {
+    const { username, password, name, role, permissions } = req.body;
+    if (!username || !password || !name) return res.status(400).json({ error: 'username, password en name verplicht' });
+    if (!['admin', 'employee'].includes(role)) return res.status(400).json({ error: 'Ongeldig role (admin of employee)' });
+    const users = readJSON('users.json') || [];
+    if (users.find(u => u.username === username)) return res.status(409).json({ error: 'Gebruikersnaam al in gebruik' });
+    const newUser = {
+      id: Date.now().toString(), username, password: await bcrypt.hash(password, 12),
+      name, role, permissions: Array.isArray(permissions) ? permissions : null,
+      createdAt: new Date().toISOString()
+    };
+    users.push(newUser);
+    writeJSON('users.json', users);
+    res.json({ ok: true, id: newUser.id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.patch('/api/users/:id', requireAdmin, async (req, res) => {
-  const users = readJSON('users.json') || [];
-  const idx = users.findIndex(u => u.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Gebruiker niet gevonden' });
-  const { name, username, role, password, permissions } = req.body;
-  if (name) users[idx].name = name;
-  if (username) {
-    const clash = users.find(u => u.username === username && u.id !== req.params.id);
-    if (clash) return res.status(409).json({ error: 'Gebruikersnaam al in gebruik' });
-    users[idx].username = username;
-  }
-  if (role && ['admin', 'employee'].includes(role)) users[idx].role = role;
-  if (password) users[idx].password = await bcrypt.hash(password, 12);
-  if (Array.isArray(permissions)) users[idx].permissions = permissions;
-  if (role === 'admin') users[idx].permissions = null; // admins have no perm restrictions
-  writeJSON('users.json', users);
-  res.json({ ok: true });
+  try {
+    const users = readJSON('users.json') || [];
+    const idx = users.findIndex(u => u.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Gebruiker niet gevonden' });
+    const { name, username, role, password, permissions } = req.body;
+    if (name) users[idx].name = name;
+    if (username) {
+      const clash = users.find(u => u.username === username && u.id !== req.params.id);
+      if (clash) return res.status(409).json({ error: 'Gebruikersnaam al in gebruik' });
+      users[idx].username = username;
+    }
+    if (role && ['admin', 'employee'].includes(role)) users[idx].role = role;
+    if (password) users[idx].password = await bcrypt.hash(password, 12);
+    if (Array.isArray(permissions)) users[idx].permissions = permissions;
+    if (role === 'admin') users[idx].permissions = null;
+    writeJSON('users.json', users);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.delete('/api/users/:id', requireAdmin, (req, res) => {
@@ -13447,14 +13417,16 @@ app.put('/api/portal/:token/profile', requirePortalAuth, (req, res) => {
 
 // Task 23 — Portal password change
 app.post('/api/portal/:token/change-password', requirePortalAuth, async (req, res) => {
-  const leads = wsRead(req, 'leads.json') || [];
-  const lead = leads.find(l => l.portalToken === req.params.token);
-  if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
-  const { newPassword } = req.body;
-  if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'Wachtwoord minimaal 6 tekens' });
-  lead.portalPassword = await bcrypt.hash(newPassword, 10);
-  wsWrite(req, 'leads.json', leads);
-  res.json({ ok: true });
+  try {
+    const leads = wsRead(req, 'leads.json') || [];
+    const lead = leads.find(l => l.portalToken === req.params.token);
+    if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'Wachtwoord minimaal 6 tekens' });
+    lead.portalPassword = await bcrypt.hash(newPassword, 10);
+    wsWrite(req, 'leads.json', leads);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Task 21 — Set portal theme color (admin)
@@ -13746,14 +13718,6 @@ function runNightlyBackup() {
     logCron('nightly_backup', 'ok', `${files.length} bestanden`);
     console.log('[Backup] Nachtelijke backup opgeslagen:', stamp);
   } catch (e) { logCron('nightly_backup', 'error', e.message); console.error('[Backup] Fout:', e.message); }
-}
-
-// Task 44 — IP whitelist for admin login
-function checkIpWhitelist(req, settings) {
-  const whitelist = settings.adminIpWhitelist;
-  if (!whitelist || !Array.isArray(whitelist) || whitelist.length === 0) return true;
-  const clientIp = req.ip || req.connection?.remoteAddress || '';
-  return whitelist.some(ip => clientIp.includes(ip));
 }
 
 app.get('/api/settings/ip-whitelist', requireAdmin, (req, res) => {
