@@ -2186,6 +2186,18 @@ function getAllWorkspaceIds() {
   }
 }
 
+// Cross-workspace lead lookup for public (pre-auth) routes.
+// Searches all workspaces to find a lead matching a predicate.
+// Returns { leads, lead, leadIndex, workspaceId } or null.
+function findLeadAcrossWorkspaces(predicate) {
+  for (const wId of getAllWorkspaceIds()) {
+    const leads = wsReadWs(wId, 'leads.json') || [];
+    const idx = leads.findIndex(predicate);
+    if (idx !== -1) return { leads, lead: leads[idx], leadIndex: idx, workspaceId: wId };
+  }
+  return null;
+}
+
 // Returns true when the requesting user is a demo account.
 // Demo accounts use usernames containing 'demo' (e.g. admin@demo.agencyai.info).
 function isDemoUser(req) {
@@ -2256,12 +2268,12 @@ app.get('/intake/:leadId/:token', (req, res) => {
 });
 
 app.get('/api/intake/:leadId/:token', async (req, res) => {
-  const leads = readJSON('leads.json') || [];
-  const lead = leads.find(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
-  if (!lead) return res.status(404).json({ error: 'Intake link ongeldig of verlopen' });
+  const data = findLeadAcrossWorkspaces(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
+  if (!data) return res.status(404).json({ error: 'Intake link ongeldig of verlopen' });
+  const { leads, lead, workspaceId } = data;
 
   if (lead.intakeSubmittedAt) {
-    return res.json({ submitted: true, companyName: lead.companyName, agencyName: (readJSON('settings.json') || {}).agencyName || 'Agency AI' });
+    return res.json({ submitted: true, companyName: lead.companyName, agencyName: (wsReadWs(workspaceId, 'settings.json') || {}).agencyName || 'Agency AI' });
   }
 
   // Generate questions with AI if not yet cached
@@ -2346,10 +2358,10 @@ Return ONLY valid JSON (no markdown):
     );
     const idx = leads.findIndex(l => l.id === lead.id);
     leads[idx] = lead;
-    writeJSON('leads.json', leads);
+    wsWriteWs(workspaceId, 'leads.json', leads);
   }
 
-  const settings = readJSON('settings.json') || {};
+  const settings = wsReadWs(workspaceId, 'settings.json') || {};
   res.json({
     submitted: false,
     companyName: lead.companyName,
@@ -2361,9 +2373,9 @@ Return ONLY valid JSON (no markdown):
 });
 
 app.post('/api/intake/:leadId/:token', async (req, res) => {
-  const leads = readJSON('leads.json') || [];
-  const idx = leads.findIndex(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
-  if (idx === -1) return res.status(404).json({ error: 'Intake link ongeldig' });
+  const data = findLeadAcrossWorkspaces(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
+  if (!data) return res.status(404).json({ error: 'Intake link ongeldig' });
+  const { leads, leadIndex: idx, workspaceId } = data;
   if (leads[idx].intakeSubmittedAt) return res.status(409).json({ error: 'Intake al ingediend' });
 
   leads[idx].intakeAnswers = req.body.answers || {};
@@ -2372,17 +2384,17 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
   // Advance to Fase 2 — Uitvoering on intake submission
   if ((leads[idx].currentPhase || 1) < 2) leads[idx].currentPhase = 2;
   addLeadHistory(leads, leads[idx].id, { event: 'intakeSubmitted', label: 'Intake ingevuld door klant' });
-  addNotification('intake_submitted', `Intake ingevuld: ${leads[idx].companyName}`, `De intake is ingevuld door ${leads[idx].contactName || leads[idx].companyName}`, leads[idx].id, `project:${leads[idx].id}`, leads[idx].workspaceId || null);
-  fireWebhooks('intake.submitted', { leadId: leads[idx].id, companyName: leads[idx].companyName, niche: leads[idx].niche, contactEmail: leads[idx].contactEmail, submittedAt: leads[idx].intakeSubmittedAt }, req.user?.workspaceId);
-  writeJSON('leads.json', leads);
+  addNotification('intake_submitted', `Intake ingevuld: ${leads[idx].companyName}`, `De intake is ingevuld door ${leads[idx].contactName || leads[idx].companyName}`, leads[idx].id, `project:${leads[idx].id}`, workspaceId);
+  fireWebhooks('intake.submitted', { leadId: leads[idx].id, companyName: leads[idx].companyName, niche: leads[idx].niche, contactEmail: leads[idx].contactEmail, submittedAt: leads[idx].intakeSubmittedAt }, workspaceId);
+  wsWriteWs(workspaceId, 'leads.json', leads);
 
-  const settings = readJSON('settings.json') || {};
+  const settings = wsReadWs(workspaceId, 'settings.json') || {};
 
   // Notify team
   if (isResendReady(settings)) {
     try {
       const answersText = Object.entries(req.body.answers || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
-      await sendEmail({ to: settings.gmailAddress, subject: `[Intake ingevuld] ${leads[idx].companyName}`, body: `De intake van ${leads[idx].companyName} is ingevuld.\n\nAntwoorden:\n${answersText}`, settings, workspaceId: req.user?.workspaceId});
+      await sendEmail({ to: settings.gmailAddress, subject: `[Intake ingevuld] ${leads[idx].companyName}`, body: `De intake van ${leads[idx].companyName} is ingevuld.\n\nAntwoorden:\n${answersText}`, settings, workspaceId});
     } catch { /* optional */ }
   }
 
@@ -2392,10 +2404,10 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
   if (settings.autoClientEmails?.intakeReceived !== false && intakeConfirmTo && isResendReady(settings)) {
     try {
       const email = await generateClientEmail(lead, 'intakeReceived', settings);
-      await sendEmail({ to: intakeConfirmTo, subject: email.subject, body: email.body, settings, workspaceId: req.user?.workspaceId});
+      await sendEmail({ to: intakeConfirmTo, subject: email.subject, body: email.body, settings, workspaceId});
       if (!leads[idx].clientEmailLog) leads[idx].clientEmailLog = [];
       leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'intakeReceived', subject: email.subject, body: email.body, to: intakeConfirmTo, sentAt: new Date().toISOString(), sentBy: 'systeem' });
-      writeJSON('leads.json', leads);
+      wsWriteWs(workspaceId, 'leads.json', leads);
     } catch { /* optional */ }
   }
 
@@ -2404,10 +2416,11 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
     s.name && (s.name.toLowerCase().includes('website') || s.name.toLowerCase().includes('site'))
   );
   if (hasWebsiteService && !lead.generatedSite) {
+    const _wsId = workspaceId; // capture for async closure
     setImmediate(async () => {
       try {
-        const freshLeads = readJSON('leads.json') || [];
-        const freshSettings = readJSON('settings.json') || {};
+        const freshLeads = wsReadWs(_wsId, 'leads.json') || [];
+        const freshSettings = wsReadWs(_wsId, 'settings.json') || {};
         const freshIdx = freshLeads.findIndex(l => l.id === lead.id);
         if (freshIdx === -1 || freshLeads[freshIdx].generatedSite) return;
         const freshLead = freshLeads[freshIdx];
@@ -2450,12 +2463,12 @@ Use ${colors.primary} as accent color. Scroll-triggered animations. Mobile respo
         const baseUrl = BASE_URL;
         const siteUrl = `${baseUrl}/sites/${siteSlug}`;
 
-        const updatedLeads = readJSON('leads.json') || [];
+        const updatedLeads = wsReadWs(_wsId, 'leads.json') || [];
         const updIdx = updatedLeads.findIndex(l => l.id === freshLead.id);
         if (updIdx !== -1) {
           updatedLeads[updIdx].generatedSite = { siteSlug, siteUrl, generatedAt: new Date().toISOString(), content, status: 'preview', feedback: [], html: siteHtml };
           addLeadHistory(updatedLeads, freshLead.id, { event: 'siteGenerated', label: `Website auto-gegenereerd na intake: ${siteUrl}` });
-          writeJSON('leads.json', updatedLeads);
+          wsWriteWs(_wsId, 'leads.json', updatedLeads);
         }
         console.log(`[Website] Auto-generated for ${freshLead.companyName}: ${siteUrl}`);
       } catch (e) { console.error('[Website] Auto-generate failed:', e.message); }
@@ -2477,35 +2490,35 @@ app.get('/track/open/:token', (req, res) => {
   // Async update — don't block the pixel response
   setImmediate(() => {
     try {
-      const leads = readJSON('leads.json') || [];
-      const idx = leads.findIndex(l => l.trackingToken === token);
-      if (idx === -1) return;
+      const data = findLeadAcrossWorkspaces(l => l.trackingToken === token);
+      if (!data) return;
+      const { leads, leadIndex: idx, workspaceId: wId } = data;
       const now = new Date().toISOString();
       if (!leads[idx].openedAt) {
         leads[idx].openedAt = now;
         leads[idx].emailOpened = true;
         addLeadHistory(leads, leads[idx].id, { event: 'opened', label: 'Email geopend' });
-        addActivity('open', 'Email geopend door ' + (leads[idx].companyName || 'Onbekend'), { meta: { leadId: leads[idx].id } });
+        addActivity('open', 'Email geopend door ' + (leads[idx].companyName || 'Onbekend'), { meta: { leadId: leads[idx].id }, workspaceId: wId });
         trackFunnelEvent(leads[idx].id, 'email_opened');
         console.log(`[Tracking] Email geopend: ${leads[idx].companyName}`);
       }
       leads[idx].openCount = (leads[idx].openCount || 0) + 1;
       leads[idx].lastOpenedAt = now;
-      writeJSON('leads.json', leads);
+      wsWriteWs(wId, 'leads.json', leads);
 
-      const inbox = readJSON('inbox.json') || [];
+      const inbox = wsReadWs(wId, 'inbox.json') || [];
       const iIdx = inbox.findIndex(i => i.trackingToken === token);
       if (iIdx !== -1) {
         if (!inbox[iIdx].openedAt) inbox[iIdx].openedAt = now;
         inbox[iIdx].openCount = (inbox[iIdx].openCount || 0) + 1;
-        writeJSON('inbox.json', inbox);
+        wsWriteWs(wId, 'inbox.json', inbox);
       }
     } catch { /* silent */ }
   });
 });
 
 app.get('/agency', (req, res) => {
-  const s        = readJSON('settings.json') || {};
+  const s        = wsReadWs('ws_agencyai', 'settings.json') || {};
   const name     = s.agencyName  || 'Agency AI';
   const myName   = s.myName      || '';
   const myTitle  = s.myTitle     || 'AI Growth Specialist';
@@ -2522,7 +2535,7 @@ app.get('/agency', (req, res) => {
       ${sv.description ? `<div class="srv-desc">${esc(sv.description)}</div>` : ''}
     </div>`).join('');
 
-  const leads = readJSON('leads.json') || [];
+  const leads = wsReadWs('ws_agencyai', 'leads.json') || [];
   const publishedCases = leads.filter(l => l.caseStudy && l.caseStudy.published === true).slice(0, 6);
   const caseCards = publishedCases.map(l => {
     const cs = l.caseStudy;
@@ -2814,11 +2827,16 @@ app.post('/api/gmail/webhook', async (req, res) => {
   res.status(200).json({ ok: true });
 
   try {
-    const settings = readJSON('settings.json') || {};
-    const expectedToken = settings.webhookToken || '';
-    const receivedToken  = req.query.token || '';
-
-    if (!expectedToken || receivedToken !== expectedToken) {
+    // Validate webhook token against any workspace's settings
+    const receivedToken = req.query.token || '';
+    let tokenValid = false;
+    if (receivedToken) {
+      for (const wId of getAllWorkspaceIds()) {
+        const s = wsReadWs(wId, 'settings.json') || {};
+        if (s.webhookToken && s.webhookToken === receivedToken) { tokenValid = true; break; }
+      }
+    }
+    if (!tokenValid) {
       console.warn('[Webhook] Ongeldig of ontbrekend token — verzoek genegeerd');
       return;
     }
@@ -2854,10 +2872,9 @@ app.post('/api/contact-form', async (req, res) => {
       type: 'website_form', status: 'new',
       createdAt: new Date().toISOString(),
     };
-    const key = `ws:${ws.id}:contacts.json`;
-    const contacts = readJSON(key) || [];
+    const contacts = wsReadWs(ws.id, 'contacts.json') || [];
     contacts.unshift(contact);
-    writeJSON(key, contacts);
+    wsWriteWs(ws.id, 'contacts.json', contacts);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2865,10 +2882,12 @@ app.post('/api/contact-form', async (req, res) => {
 });
 
 // Public contact form — must be BEFORE app.use('/api', authMiddleware)
+// Scoped to default workspace (ws_agencyai) — Agency AI's own contact form.
 app.post('/api/contact', async (req, res) => {
   const { name, company, email, phone, service, message } = req.body;
   if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
-  const contacts = readJSON('contacts.json') || [];
+  const wId = 'ws_agencyai';
+  const contacts = wsReadWs(wId, 'contacts.json') || [];
   contacts.unshift({
     id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
     name, company: company || '', email, phone: phone || '',
@@ -2876,17 +2895,16 @@ app.post('/api/contact', async (req, res) => {
     createdAt: new Date().toISOString(),
     status: 'new'
   });
-  writeJSON('contacts.json', contacts);
-  addNotification('contact_form', `Nieuwe aanvraag: ${name}`, `${company ? company + ' — ' : ''}${service || 'Algemene aanvraag'}`, null, 'contacts');
-  const settings = readJSON('settings.json') || {};
+  wsWriteWs(wId, 'contacts.json', contacts);
+  addNotification('contact_form', `Nieuwe aanvraag: ${name}`, `${company ? company + ' — ' : ''}${service || 'Algemene aanvraag'}`, null, 'contacts', wId);
+  const settings = wsReadWs(wId, 'settings.json') || {};
   if (isResendReady(settings)) {
     try {
       await sendEmail({
         to: settings.gmailAddress,
         subject: `Nieuwe aanvraag: ${name}${company ? ' — ' + company : ''}`,
         body: `Nieuwe websiteaanvraag:\n\nNaam: ${name}\nBedrijf: ${company || '—'}\nEmail: ${email}\nTelefoon: ${phone || '—'}\nDienst: ${service || '—'}\n\nBericht:\n${message || '—'}`,
-        settings
-     , workspaceId: req.user?.workspaceId});
+        settings, workspaceId: wId});
     } catch (_) { /* email is optional */ }
   }
   res.json({ ok: true });
@@ -2919,9 +2937,10 @@ app.post('/api/demo-request', async (req, res) => {
       // Non-fatal: still respond OK so the user doesn't see an error
     }
 
-    // Save to contacts.json so it appears in the Contacten page
+    // Save to contacts.json so it appears in the Contacten page (default workspace)
+    const wId = 'ws_agencyai';
     try {
-      const contacts = readJSON('contacts.json') || [];
+      const contacts = wsReadWs(wId, 'contacts.json') || [];
       contacts.unshift({
         id: 'demo-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
         name, company: company || '', email, phone: phone || '',
@@ -2931,7 +2950,7 @@ app.post('/api/demo-request', async (req, res) => {
         createdAt: new Date().toISOString(),
         status: 'new'
       });
-      writeJSON('contacts.json', contacts);
+      wsWriteWs(wId, 'contacts.json', contacts);
     } catch (cErr) {
       console.warn('[demo-request] Contacts save error:', cErr.message);
     }
@@ -2940,7 +2959,7 @@ app.post('/api/demo-request', async (req, res) => {
       addNotification('contact_form',
         `Demo aanvraag: ${name}${company ? ' — ' + company : ''}`,
         `${clients ? clients + ' klanten · ' : ''}${email}`,
-        null, 'contacts'
+        null, 'contacts', wId
       );
     } catch (notifErr) {
       console.warn('[demo-request] Notification error:', notifErr.message);
@@ -2951,14 +2970,13 @@ app.post('/api/demo-request', async (req, res) => {
     console.log('[demo-request] response sent');
 
     // Fire notification email in the background (fire-and-forget)
-    const settings = readJSON('settings.json') || {};
+    const settings = wsReadWs(wId, 'settings.json') || {};
     if (isResendReady(settings)) {
       sendEmail({
         to: settings.gmailAddress,
         subject: `Nieuwe demo aanvraag van ${name}${company ? ' - ' + company : ''}`,
         body: `Nieuwe demo aanvraag:\n\nNaam: ${name}\nBedrijf: ${company || '—'}\nEmail: ${email}\nTelefoon: ${phone || '—'}\nHuidig aantal klanten: ${clients || '—'}\n\nBericht:\n${message || '—'}`,
-        settings
-     , workspaceId: req.user?.workspaceId}).catch(err => console.warn('[demo-request] Email failed:', err.message));
+        settings, workspaceId: wId}).catch(err => console.warn('[demo-request] Email failed:', err.message));
     }
   } catch (err) {
     console.error('[demo-request] Unhandled error:', err.message, err.stack);
@@ -3041,23 +3059,25 @@ app.get('/update/:filename', (req, res) => {
 });
 
 // Public order form — must be BEFORE app.use('/api', authMiddleware)
+// Scoped to default workspace (ws_agencyai) since no user context exists.
 app.post('/api/order', async (req, res) => {
   const { name, company, email, phone, service, message } = req.body;
   if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
+  const wId = 'ws_agencyai';
 
   // Save to contacts with type "order"
-  const contacts = readJSON('contacts.json') || [];
+  const contacts = wsReadWs(wId, 'contacts.json') || [];
   const contactId = Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
   contacts.unshift({
     id: contactId, name, company: company || '', email, phone: phone || '',
     service: service || '', message: message || '',
     type: 'order', createdAt: new Date().toISOString(), status: 'new'
   });
-  writeJSON('contacts.json', contacts);
+  wsWriteWs(wId, 'contacts.json', contacts);
 
   // Create lead in pipeline with status "besteld"
-  const settings   = readJSON('settings.json') || {};
-  const allLeads   = readJSON('leads.json')    || [];
+  const settings   = wsReadWs(wId, 'settings.json') || {};
+  const allLeads   = wsReadWs(wId, 'leads.json')    || [];
   const allServices = settings.services || DEFAULT_SERVICES;
   const matchedSvc = allServices.find(s => s.name === service);
   const leadId = 'ord-' + Date.now().toString(36);
@@ -3067,10 +3087,11 @@ app.post('/api/order', async (req, res) => {
     contactName:   name,
     contactEmail:  email,
     phone:         phone || '',
-    niche:         matchedSvc ? 'bestelling' : 'bestelling',
+    niche:         'bestelling',
     location:      '',
     status:        'besteld',
     source:        'bestellen',
+    workspaceId:   wId,
     services:      matchedSvc ? [{ name: matchedSvc.name, price: matchedSvc.price, billing: matchedSvc.billing }] : (service ? [{ name: service, price: 0, billing: 'eenmalig' }] : []),
     estimatedValue: matchedSvc ? matchedSvc.price : 0,
     notes:         message || '',
@@ -3078,10 +3099,10 @@ app.post('/api/order', async (req, res) => {
     createdAt:     new Date().toISOString()
   };
   allLeads.unshift(newLead);
-  writeJSON('leads.json', allLeads);
+  wsWriteWs(wId, 'leads.json', allLeads);
 
   // Notify admin
-  addNotification('contact_form', `Nieuwe bestelling: ${name}`, `${company ? company + ' — ' : ''}${service || 'Dienst onbekend'}`, leadId, `project:${leadId}`);
+  addNotification('contact_form', `Nieuwe bestelling: ${name}`, `${company ? company + ' — ' : ''}${service || 'Dienst onbekend'}`, leadId, `project:${leadId}`, wId);
 
   // Confirmation email to customer
   if (isResendReady(settings)) {
@@ -3091,8 +3112,7 @@ app.post('/api/order', async (req, res) => {
         to: email,
         subject: `Bestelling ontvangen — ${settings.agencyName || 'Agency AI'}`,
         body: `Hoi ${name},\n\nBedankt voor je bestelling! We hebben je aanvraag voor "${service || 'onze dienst'}" ontvangen.\n\nWe nemen binnen 1 werkdag contact met je op om alles door te nemen.${calendlyCta}\n\nMet vriendelijke groet,\n${settings.myName || 'Het team'}\n${settings.agencyName || 'Agency AI'}`,
-        settings
-     , workspaceId: req.user?.workspaceId});
+        settings, workspaceId: wId});
     } catch (_) { /* non-critical */ }
   }
 
@@ -3103,8 +3123,7 @@ app.post('/api/order', async (req, res) => {
         to: settings.gmailAddress,
         subject: `Nieuwe bestelling: ${name}${company ? ' — ' + company : ''} — ${service}`,
         body: `Nieuwe bestelling via de website:\n\nNaam: ${name}\nBedrijf: ${company || '—'}\nEmail: ${email}\nTelefoon: ${phone || '—'}\nDienst: ${service || '—'}\n\nBericht:\n${message || '—'}\n\nLead aangemaakt in pipeline: ${leadId}`,
-        settings
-     , workspaceId: req.user?.workspaceId});
+        settings, workspaceId: wId});
     } catch (_) { /* non-critical */ }
   }
 
@@ -3112,12 +3131,14 @@ app.post('/api/order', async (req, res) => {
 });
 
 // Public booking form — MexyDigital (and any future client sites)
+// Scoped to default workspace (ws_agencyai) since no user context exists.
 app.post('/api/booking/:client', async (req, res) => {
   const { service, price, duration, date, time, naam, bedrijf, email, tel, website, notities } = req.body;
   if (!naam || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
+  const wId = 'ws_agencyai';
 
   const client = req.params.client;
-  const contacts = readJSON('contacts.json') || [];
+  const contacts = wsReadWs(wId, 'contacts.json') || [];
   contacts.unshift({
     id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
     name: naam, company: bedrijf || '', email, phone: tel || '',
@@ -3125,27 +3146,25 @@ app.post('/api/booking/:client', async (req, res) => {
     bookingDate: date, bookingTime: time, bookingDuration: duration, bookingPrice: price,
     type: 'booking', client, createdAt: new Date().toISOString(), status: 'new'
   });
-  writeJSON('contacts.json', contacts);
+  wsWriteWs(wId, 'contacts.json', contacts);
 
-  addNotification('contact_form', `Nieuwe boeking: ${naam}`, `${bedrijf ? bedrijf + ' — ' : ''}${service} op ${date} ${time}`, null, 'contacts');
+  addNotification('contact_form', `Nieuwe boeking: ${naam}`, `${bedrijf ? bedrijf + ' — ' : ''}${service} op ${date} ${time}`, null, 'contacts', wId);
 
-  const settings = readJSON('settings.json') || {};
+  const settings = wsReadWs(wId, 'settings.json') || {};
   if (isResendReady(settings)) {
     try {
       await sendEmail({
         to: email,
         subject: `Afspraak bevestigd: ${service} op ${date} om ${time}`,
         body: `Hoi ${naam},\n\nJe afspraak is bevestigd!\n\nDienst: ${service} (${price})\nDatum: ${date}\nTijd: ${time}\nDuur: ${duration}\n${bedrijf ? 'Bedrijf: ' + bedrijf + '\n' : ''}${website ? 'Website: ' + website + '\n' : ''}\n${notities ? 'Notities: ' + notities + '\n\n' : '\n'}We kijken ernaar uit!\n\nMet vriendelijke groet,\nHet MexyDigital team`,
-        settings
-     , workspaceId: req.user?.workspaceId});
+        settings, workspaceId: wId});
     } catch (_) { /* non-critical */ }
     try {
       await sendEmail({
         to: settings.gmailAddress,
         subject: `Nieuwe afspraak: ${naam} — ${service}`,
         body: `Er is een nieuwe afspraak gemaakt via de boekingspagina.\n\nNaam: ${naam}\n${bedrijf ? 'Bedrijf: ' + bedrijf + '\n' : ''}Email: ${email}\n${tel ? 'Telefoon: ' + tel + '\n' : ''}Dienst: ${service} (${price})\nDatum: ${date}\nTijd: ${time}\nDuur: ${duration}\n${notities ? '\nNotities: ' + notities : ''}`,
-        settings
-     , workspaceId: req.user?.workspaceId});
+        settings, workspaceId: wId});
     } catch (_) { /* non-critical */ }
   }
 
@@ -3153,23 +3172,21 @@ app.post('/api/booking/:client', async (req, res) => {
 });
 
 // Public services list — used by landing page (must be before authMiddleware)
+// Reads from default workspace since this is the Agency AI landing page.
 app.get('/api/services', (req, res) => {
-  const settings = readJSON('settings.json') || {};
+  const settings = wsReadWs('ws_agencyai', 'settings.json') || {};
   res.json(settings.services || DEFAULT_SERVICES);
 });
 
 // Contact form submissions from built client sites — public, no auth
+// Uses cross-workspace lead search to find the matching lead by siteSlug.
 app.post('/api/sites/:siteSlug/contact', async (req, res) => {
   if (!/^[a-z0-9-]+$/.test(req.params.siteSlug)) return res.status(404).json({ error: 'Niet gevonden' });
   const { name, email, phone, message, service } = req.body;
   if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
 
   const siteSlug = req.params.siteSlug;
-  const leads = readJSON('leads.json') || [];
-  const settings = readJSON('settings.json') || {};
-
-  // Find lead whose generated site matches this slug
-  const lead = leads.find(l => {
+  const data = findLeadAcrossWorkspaces(l => {
     if (l.generatedSite?.siteSlug === siteSlug) return true;
     if ((l.agentBuilds || []).some(b => (b.url || '').includes(`/sites/${siteSlug}/`))) return true;
     const compSlug = (l.companyName || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
@@ -3182,33 +3199,36 @@ app.post('/api/sites/:siteSlug/contact', async (req, res) => {
     siteSlug, submittedAt: new Date().toISOString()
   };
 
-  if (lead) {
+  if (data) {
+    const { leads, lead, workspaceId: wId } = data;
+    const settings = wsReadWs(wId, 'settings.json') || {};
     if (!lead.contactSubmissions) lead.contactSubmissions = [];
     lead.contactSubmissions.unshift(submission);
     addLeadHistory(leads, lead.id, { event: 'contactFormSubmission', label: `Contactformulier ingevuld door ${name} via gebouwde website` });
-    writeJSON('leads.json', leads);
+    wsWriteWs(wId, 'leads.json', leads);
 
     // Notify lead's contact email
     if (lead.contactEmail && isResendReady(settings)) {
       const bodyText = `Hallo,\n\nEr is een nieuw bericht via uw website:\n\nNaam: ${name}\nEmail: ${email}${phone ? `\nTelefoon: ${phone}` : ''}${service ? `\nDienst: ${service}` : ''}\n\nBericht:\n${message || '(geen bericht)'}\n\nU kunt reageren via uw portaal.\n\nMet vriendelijke groet,\n${settings.agencyName || 'Agency AI'}`;
-      sendEmail({ to: lead.contactEmail, subject: `Nieuw contactbericht via uw website — ${name}`, body: bodyText, settings, noCalendly: true, workspaceId: req.user?.workspaceId}).catch(e => console.error('[Site contact email]', e.message));
+      sendEmail({ to: lead.contactEmail, subject: `Nieuw contactbericht via uw website — ${name}`, body: bodyText, settings, noCalendly: true, workspaceId: wId}).catch(e => console.error('[Site contact email]', e.message));
     }
-    addNotification('client_question', `Contactformulier: ${lead.companyName}`, `${name}: ${(message || service || '').substring(0, 80)}`, lead.id, `project:${lead.id}`, lead.workspaceId || null);
+    addNotification('client_question', `Contactformulier: ${lead.companyName}`, `${name}: ${(message || service || '').substring(0, 80)}`, lead.id, `project:${lead.id}`, wId);
   } else {
-    // Save as generic contact if lead not found
-    const contacts = readJSON('contacts.json') || [];
+    // Save as generic contact in default workspace if lead not found
+    const contacts = wsReadWs('ws_agencyai', 'contacts.json') || [];
     contacts.unshift({ ...submission, type: 'site_contact', source: siteSlug });
-    writeJSON('contacts.json', contacts);
+    wsWriteWs('ws_agencyai', 'contacts.json', contacts);
   }
 
   res.json({ success: true });
 });
 
 // ── Public: client submits hosting request from portal ────────────────────────
+// Uses cross-workspace lead search by portal token.
 app.post('/api/portal/:token/hosting-request', requirePortalAuth, express.json(), async (req, res) => {
-  const leads = readJSON('leads.json') || [];
-  const lead  = leads.find(l => l.portalToken === req.params.token);
-  if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+  const data = findLeadAcrossWorkspaces(l => l.portalToken === req.params.token);
+  if (!data) return res.status(404).json({ error: 'Portaal niet gevonden' });
+  const { lead, workspaceId: wId } = data;
   if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd' });
 
   const { type, provider, panelUrl, username, password, ftpData, notes } = req.body || {};
@@ -3231,10 +3251,10 @@ app.post('/api/portal/:token/hosting-request', requirePortalAuth, express.json()
       ? `${lead.companyName} heeft hosting inloggegevens gedeeld`
       : `${lead.companyName} wil hosting via Agency AI`,
     type === 'own' ? `Provider: ${provider || '?'}` : 'Hosting aanvraag via portaal',
-    lead.id, `project:${lead.id}`, lead.workspaceId || null
+    lead.id, `project:${lead.id}`, wId
   );
 
-  const settings = readJSON('settings.json') || {};
+  const settings = wsReadWs(wId, 'settings.json') || {};
   if (isResendReady(settings)) {
     const subject = type === 'own'
       ? `Hosting inloggegevens — ${lead.companyName}`
@@ -3247,7 +3267,7 @@ app.post('/api/portal/:token/hosting-request', requirePortalAuth, express.json()
       : [`Klant ${lead.companyName} wil hosting via Agency AI voor hun project.`,
          `Regel een hosting account aan en mail de inloggegevens naar: ${lead.contactEmail}`,
          `Notities: ${notes || '—'}`];
-    sendEmail({ to: settings.gmailAddress, subject, body: bodyLines.join('\n\n'), settings, workspaceId: req.user?.workspaceId}).catch(() => {});
+    sendEmail({ to: settings.gmailAddress, subject, body: bodyLines.join('\n\n'), settings, workspaceId: wId}).catch(() => {});
   }
 
   res.json({ ok: true, id: row.lastInsertRowid });
@@ -3427,13 +3447,13 @@ app.post('/api/register/demo', async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?)`)
       .run(naam, bedrijf, email, tel || '', klanten || '', plan || 'starter', bericht || '');
 
-    // Notification
-    try { addNotification('contact_form', `Demo aanvraag: ${naam} — ${bedrijf}`, email, null, 'contacts'); } catch (err) { console.error(`[DB]`, err.message);}
+    // Notification — goes to default workspace (platform-level)
+    try { addNotification('contact_form', `Demo aanvraag: ${naam} — ${bedrijf}`, email, null, 'contacts', 'ws_agencyai'); } catch (err) { console.error(`[DB]`, err.message);}
 
     res.json({ ok: true, type: 'demo' });
 
     // Fire emails in background
-    const settings = readJSON('settings.json') || {};
+    const settings = wsReadWs('ws_agencyai', 'settings.json') || {};
     if (isResendReady(settings)) {
       const planLabel = { starter: 'Starter €197/m', pro: 'Pro €497/m', agency: 'Agency €997/m' }[plan] || plan;
       // Email to admin
@@ -3441,10 +3461,10 @@ app.post('/api/register/demo', async (req, res) => {
         to      : 'info@agencyai.info',
         subject : `Nieuwe demo aanvraag: ${naam} — ${bedrijf}`,
         body    : `Nieuwe demo aanvraag:\n\nNaam: ${naam}\nBedrijf: ${bedrijf}\nEmail: ${email}\nTel: ${tel||'—'}\nKlanten: ${klanten||'—'}\nPlan: ${planLabel}\n\nBericht:\n${bericht||'—'}`,
-        settings, workspaceId: req.user?.workspaceId}).catch(() => {});
+        settings, workspaceId: 'ws_agencyai'}).catch(() => {});
       // Confirmation to applicant
       const conf = buildRegEmail('demo_confirm', { naam, plan });
-      sendEmail({ to: email, subject: conf.subject, html: conf.html, settings, workspaceId: req.user?.workspaceId}).catch(() => {});
+      sendEmail({ to: email, subject: conf.subject, html: conf.html, settings, workspaceId: 'ws_agencyai'}).catch(() => {});
     }
   } catch (err) {
     console.error('[register/demo]', err.message);
@@ -3506,27 +3526,27 @@ app.post('/api/register/direct', async (req, res) => {
     db.prepare(`INSERT INTO workspace_billing (id, workspace_id, amount, status, reference, due_date)
       VALUES (?, ?, ?, 'pending', ?, ?)`).run(billingId, ws.id, amount, ref, dueDate.toISOString());
 
-    // Notification to admin
+    // Notification to admin (platform-level, default workspace)
     try {
       addNotification('contact_form',
         `Nieuwe registratie: ${naam} — ${bedrijf}`,
         `Plan: ${planKey} €${amount}/m · Ref: ${ref}`,
-        null, 'contacts'
+        null, 'contacts', 'ws_agencyai'
       );
     } catch (err) { console.error(`[Notification]`, err.message);}
 
     res.json({ ok: true, type: 'direct', paymentReference: ref, iban: 'NL62RABO0301339430', amount });
 
     // Send emails in background
-    const settings = readJSON('settings.json') || {};
+    const settings = wsReadWs('ws_agencyai', 'settings.json') || {};
     if (isResendReady(settings)) {
       const welcome = buildRegEmail('welcome_payment', { naam, plan: planKey, amount, ref });
-      sendEmail({ to: email, subject: welcome.subject, html: welcome.html, settings, workspaceId: req.user?.workspaceId}).catch(() => {});
+      sendEmail({ to: email, subject: welcome.subject, html: welcome.html, settings, workspaceId: 'ws_agencyai'}).catch(() => {});
       sendEmail({
         to      : 'info@agencyai.info',
         subject : `Nieuwe registratie: ${naam} — ${bedrijf} (${planKey} €${amount}/m)`,
         body    : `Nieuwe directe registratie:\n\nNaam: ${naam}\nBedrijf: ${bedrijf}\nEmail: ${email}\nPlan: ${planKey} €${amount}/maand\nWorkspace slug: ${slug}\nBetaalreferentie: ${ref}\n\nActiveer het account via het super admin panel.`,
-        settings, workspaceId: req.user?.workspaceId}).catch(() => {});
+        settings, workspaceId: 'ws_agencyai'}).catch(() => {});
     }
   } catch (err) {
     console.error('[register/direct]', err.message);
