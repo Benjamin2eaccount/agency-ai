@@ -309,7 +309,7 @@ async function generateProposal(leadId) {
 
 async function downloadClientUpload(leadId, filename) {
   const url = `/api/leads/${encodeURIComponent(leadId)}/client-uploads/${encodeURIComponent(filename)}`;
-  console.log('[DownloadBtn] URL:', url);
+  if (typeof _log === 'function') _log('[DownloadBtn] URL:', url);
   try {
     const res = await api(url);
     if (!res.ok) { toast('Download mislukt (' + res.status + ')', 'error'); return; }
