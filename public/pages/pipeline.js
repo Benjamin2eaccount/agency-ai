@@ -5,7 +5,7 @@ window.STATUS_LABELS = Object.assign(window.STATUS_LABELS || {}, {
   'auto-approved': 'Auto-goedgekeurd', scheduled: 'Ingepland',
   followup1: 'Follow-up 1', followup2: 'Follow-up 2',
   replied: 'Gereageerd', meeting: 'Afspraak',
-  client: 'Klant ✓', disapproved: 'Afgewezen', dead: 'Dead',
+  client: 'Klant ✓', disapproved: 'Afgewezen', dead: 'Inactief',
   bounced: 'Niet aangekomen', delivery_delayed: 'Vertraagd'
 });
 const STATUS_LABELS = window.STATUS_LABELS;
@@ -26,7 +26,7 @@ const PIPELINE_GROUPS = [
   { key: 'inbox',       label: 'Inbox / wacht',    dot: '#2563eb', statuses: ['inbox','pending','new','approved'] },
   { key: 'bounced',     label: 'Niet aangekomen',  dot: '#dc2626', statuses: ['bounced','delivery_delayed'] },
   { key: 'disapproved', label: 'Afgekeurd',        dot: '#6b7280', statuses: ['disapproved'] },
-  { key: 'dead',        label: 'Dead',             dot: '#9b9b98', statuses: ['dead'] }
+  { key: 'dead',        label: 'Inactief',          dot: '#9b9b98', statuses: ['dead'] }
 ];
 
 function _plHealth(l) {
@@ -287,7 +287,7 @@ const KANBAN_COLS = [
   { key: 'replied',  label: 'Gereageerd',       color: '#d97706', statuses: ['replied'] },
   { key: 'bounced',  label: 'Niet aangekomen',  color: '#dc2626', statuses: ['bounced', 'delivery_delayed'] },
   { key: 'client',   label: 'Klant',            color: '#059669', statuses: ['client'] },
-  { key: 'dead',     label: 'Dead',             color: '#9b9b98', statuses: ['dead', 'disapproved'] }
+  { key: 'dead',     label: 'Inactief',          color: '#9b9b98', statuses: ['dead', 'disapproved'] }
 ];
 
 function buildKanbanCard(l) {

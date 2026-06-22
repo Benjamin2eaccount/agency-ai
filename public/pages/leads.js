@@ -715,7 +715,7 @@ async function renderLeads() {
         sent:        ['rgba(37,99,235,.15)','#60A5FA','Verstuurd'],
         replied:     ['rgba(139,92,246,.15)','#A78BFA','Gereageerd'],
         client:      ['rgba(37,99,235,.2)','#93C5FD','Klant'],
-        dead:        ['rgba(220,38,38,.1)','#EF4444','Dead'],
+        dead:        ['rgba(220,38,38,.1)','#EF4444','Inactief'],
         archived:    ['rgba(255,255,255,.05)','#555','Archief'],
         disapproved: ['rgba(220,38,38,.1)','#EF4444','Afgewezen'],
       };
@@ -886,7 +886,7 @@ async function renderLeads() {
       <button class="ld-chip" data-status="sent">Verstuurd</button>
       <button class="ld-chip" data-status="replied">Gereageerd</button>
       <button class="ld-chip" data-status="client">Klant</button>
-      <button class="ld-chip" data-status="dead">Dead</button>
+      <button class="ld-chip" data-status="dead">Inactief</button>
       <button class="ld-chip" data-status="archived">Archief</button>
     </div>
     <div class="ld-filter-row">

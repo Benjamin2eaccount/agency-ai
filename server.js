@@ -2585,6 +2585,8 @@ app.post('/api/demo-request', async (req, res) => {
     console.log('[demo-request] body:', { name, company, email, clients });
 
     if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Ongeldig emailadres' });
+    if (name.length > 200 || (company && company.length > 200)) return res.status(400).json({ error: 'Naam of bedrijfsnaam te lang' });
 
     // Ensure table exists and insert — wrapped so a DB error still sends a response
     try {
