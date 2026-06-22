@@ -285,6 +285,16 @@ router.patch('/automation', requireAdmin, (req, res) => {
   if (req.body.targetSubNiches !== undefined) settings.targetSubNiches = req.body.targetSubNiches;
   if (req.body.autoArchiveEnabled !== undefined) settings.autoArchiveEnabled = req.body.autoArchiveEnabled;
   if (req.body.autoArchiveDays    !== undefined) settings.autoArchiveDays    = parseInt(req.body.autoArchiveDays) || 30;
+  if (req.body.notificationPreferences !== undefined && typeof req.body.notificationPreferences === 'object') {
+    const VALID_TYPES = ['reply_received', 'intake_submitted', 'high_score_lead', 'payment_overdue', 'run_complete', 'calendly_booking', 'payment_received', 'client_question', 'contact_form', 'email_bounced'];
+    const clean = {};
+    for (const [k, v] of Object.entries(req.body.notificationPreferences)) {
+      if (VALID_TYPES.includes(k) || VALID_TYPES.some(t => k === t + '_push')) {
+        clean[k] = v === true || v === false ? v : true;
+      }
+    }
+    settings.notificationPreferences = { ...(settings.notificationPreferences || {}), ...clean };
+  }
   wsWrite(req, 'settings.json', settings);
   scheduleCron(); // re-schedule if run time changed
   scheduleBriefingCron(); // re-schedule briefing if time changed

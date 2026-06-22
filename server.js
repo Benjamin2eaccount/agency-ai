@@ -1007,6 +1007,11 @@ function addActivity(type, label, opts) {
 }
 
 function addNotification(type, title, body, leadId, link, workspaceId) {
+  // Check notification preferences — if the workspace has disabled this type, skip silently
+  const settings = wsReadWs(workspaceId, 'settings.json', {});
+  const prefs = settings.notificationPreferences || {};
+  if (prefs[type] === false) return;
+
   const notifications = wsReadWs(workspaceId, 'notifications.json', []);
   const resolvedLink = link || (leadId ? `project:${leadId}` : null);
   notifications.unshift({
@@ -1022,7 +1027,7 @@ function addNotification(type, title, body, leadId, link, workspaceId) {
   wsWriteWs(workspaceId, 'notifications.json', notifications);
 
   const pushTypes = ['reply_received', 'intake_submitted', 'high_score_lead', 'payment_overdue', 'run_complete', 'calendly_booking', 'payment_received', 'client_question'];
-  if (pushTypes.includes(type)) {
+  if (pushTypes.includes(type) && prefs[type + '_push'] !== false) {
     const url = leadId ? `/app#lead-${leadId}` : '/app';
     sendPushToAll(title, body, url, workspaceId).catch(() => {});
   }
@@ -1129,26 +1134,45 @@ async function fireWebhooks(event, payload, workspaceId) {
   if (!hooks.length) return;
   const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload });
   for (const hook of hooks) {
-    try {
-      const r = await fetch(hook.url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'User-Agent': 'AgencyAI-Webhook/1.0' },
-        body,
-        signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
-      });
-      const all = wsReadWs(wId, 'webhooks.json', []);
-      const idx = all.findIndex(h => h.id === hook.id);
-      if (idx !== -1) {
-        all[idx].lastTriggeredAt = new Date().toISOString();
-        all[idx].lastStatus = r.ok ? 'ok' : `${r.status}`;
-        wsWriteWs(wId, 'webhooks.json', all);
+    let attempt = 0;
+    const maxRetries = 3;
+    const delays = [0, 2000, 5000]; // backoff: immediate, 2s, 5s
+    let lastError = null;
+    let lastStatus = null;
+    while (attempt < maxRetries) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, delays[attempt] || 5000));
+      try {
+        const r = await fetch(hook.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'User-Agent': 'AgencyAI-Webhook/1.0' },
+          body,
+          signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
+        });
+        lastStatus = r.ok ? 'ok' : `${r.status}`;
+        if (r.ok) break;
+        lastError = `HTTP ${r.status}`;
+      } catch (e) {
+        lastError = e.message;
+        lastStatus = 'error';
       }
-    } catch (e) {
-      console.warn(`[Webhook] ${hook.url} fout:`, e.message);
-      const all = wsReadWs(wId, 'webhooks.json', []);
-      const idx = all.findIndex(h => h.id === hook.id);
-      if (idx !== -1) { all[idx].lastStatus = 'error'; wsWriteWs(wId, 'webhooks.json', all); }
+      attempt++;
     }
+    // Update webhook status + delivery log
+    const all = wsReadWs(wId, 'webhooks.json', []);
+    const idx = all.findIndex(h => h.id === hook.id);
+    if (idx !== -1) {
+      all[idx].lastTriggeredAt = new Date().toISOString();
+      all[idx].lastStatus = lastStatus;
+      if (!all[idx].deliveryLog) all[idx].deliveryLog = [];
+      all[idx].deliveryLog.unshift({
+        event, status: lastStatus, attempts: attempt + 1,
+        error: lastStatus !== 'ok' ? lastError : null,
+        at: new Date().toISOString()
+      });
+      if (all[idx].deliveryLog.length > 50) all[idx].deliveryLog.splice(50);
+      wsWriteWs(wId, 'webhooks.json', all);
+    }
+    if (lastStatus !== 'ok') console.warn(`[Webhook] ${hook.url} failed after ${attempt} retries: ${lastError}`);
   }
 }
 
@@ -8356,20 +8380,35 @@ function guessContactEmail(websiteUrl) {
   return 'info@' + domain;
 }
 
+function normalizeDomain(url) {
+  if (!url) return '';
+  return url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].replace(/:\d+$/, '').toLowerCase().trim();
+}
+
 function isDuplicate(lead, workspaceId) {
   const wId = workspaceId || null;
   const existing = wsReadWs(wId, 'leads.json') || [];
   if (!existing.length) return null;
   const nameLower  = (lead.companyName  || '').toLowerCase().trim();
-  const domainRaw  = (lead.websiteUrl   || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
+  const domainRaw  = normalizeDomain(lead.websiteUrl);
   const emailLower = (lead.contactEmail || lead.email || '').toLowerCase().trim();
+  const emailDomain = emailLower ? emailLower.split('@')[1] || '' : '';
   for (const e of existing) {
     const eName   = (e.companyName  || '').toLowerCase().trim();
-    const eDomain = (e.websiteUrl   || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
+    const eDomain = normalizeDomain(e.websiteUrl);
     const eEmail  = (e.contactEmail || e.email || '').toLowerCase().trim();
+    // Exact matches
     if (nameLower  && eName   && nameLower  === eName)   return e;
     if (domainRaw  && eDomain && domainRaw  === eDomain) return e;
     if (emailLower && eEmail  && emailLower === eEmail && e.id !== lead.id)  return e;
+    // Fuzzy name match — Levenshtein distance <= 2 for names 5+ chars
+    if (nameLower && eName && nameLower.length >= 5 && eName.length >= 5) {
+      const dist = levenshtein(nameLower, eName);
+      if (dist > 0 && dist <= 2) return e;
+    }
+    // Cross-check: website domain matches email domain (same company, different URL format)
+    if (domainRaw && eEmail && eEmail.split('@')[1] === domainRaw) return e;
+    if (emailDomain && eDomain && emailDomain === eDomain) return e;
   }
   return null;
 }
@@ -12282,6 +12321,12 @@ app.delete('/api/webhooks/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/api/webhooks/:id/delivery-log', requireAdmin, (req, res) => {
+  const hook = (wsRead(req, 'webhooks.json') || []).find(h => h.id === req.params.id);
+  if (!hook) return res.status(404).json({ error: 'Niet gevonden' });
+  res.json({ deliveryLog: hook.deliveryLog || [], lastTriggeredAt: hook.lastTriggeredAt, lastStatus: hook.lastStatus });
+});
+
 app.post('/api/webhooks/:id/test', requireAdmin, async (req, res) => {
   const hook = (wsRead(req, 'webhooks.json') || []).find(h => h.id === req.params.id);
   if (!hook) return res.status(404).json({ error: 'Niet gevonden' });
@@ -12924,13 +12969,35 @@ app.get('/api/leads/fuzzy-duplicates', requireAdmin, (req, res) => {
   const leads = wsRead(req, 'leads.json') || [];
   const threshold = parseInt(req.query.threshold) || 3;
   const dupes = [];
+  const seen = new Set();
   for (let i=0;i<leads.length;i++) {
     for (let j=i+1;j<leads.length;j++) {
+      const key = `${leads[i].id}:${leads[j].id}`;
+      if (seen.has(key)) continue;
       const a = (leads[i].companyName||'').toLowerCase();
       const b = (leads[j].companyName||'').toLowerCase();
-      if (Math.abs(a.length-b.length) > threshold*2) continue;
-      const dist = levenshtein(a,b);
-      if (dist <= threshold && dist > 0) dupes.push({ lead1: leads[i].id, name1: leads[i].companyName, lead2: leads[j].id, name2: leads[j].companyName, distance: dist });
+      let reason = null;
+      // Fuzzy name match
+      if (a && b && Math.abs(a.length-b.length) <= threshold*2) {
+        const dist = levenshtein(a,b);
+        if (dist <= threshold && dist > 0) reason = `name (distance: ${dist})`;
+      }
+      // Domain match
+      if (!reason) {
+        const d1 = normalizeDomain(leads[i].websiteUrl);
+        const d2 = normalizeDomain(leads[j].websiteUrl);
+        if (d1 && d2 && d1 === d2) reason = `domain (${d1})`;
+      }
+      // Email domain match
+      if (!reason) {
+        const e1 = (leads[i].contactEmail || leads[i].email || '').toLowerCase().split('@')[1] || '';
+        const e2 = (leads[j].contactEmail || leads[j].email || '').toLowerCase().split('@')[1] || '';
+        if (e1 && e2 && e1 === e2 && !['gmail.com','hotmail.com','outlook.com','yahoo.com'].includes(e1)) reason = `email domain (${e1})`;
+      }
+      if (reason) {
+        seen.add(key);
+        dupes.push({ lead1: leads[i].id, name1: leads[i].companyName, lead2: leads[j].id, name2: leads[j].companyName, reason });
+      }
     }
   }
   res.json({ duplicates: dupes.slice(0,50) });
