@@ -985,7 +985,8 @@ app.get('/setup/cleanup-agencyai', requireSetupToken, async (req, res) => {
 
 function addActivity(type, label, opts) {
   opts = opts || {};
-  let log = readJSON('activity.json') || [];
+  const wId = opts.workspaceId || null;
+  let log = wsReadWs(wId, 'activity.json', []);
   log.unshift({
     id:        Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
     type,
@@ -997,13 +998,11 @@ function addActivity(type, label, opts) {
     meta:      opts.meta      || {}
   });
   if (log.length > 500) log = log.slice(0, 500);
-  writeJSON('activity.json', log);
+  wsWriteWs(wId, 'activity.json', log);
 }
 
 function addNotification(type, title, body, leadId, link, workspaceId) {
-  // Workspace-scoped storage: each workspace has its own notifications list
-  const _key = workspaceId ? `ws:${workspaceId}:notifications.json` : 'notifications.json';
-  const notifications = readJSON(_key) || [];
+  const notifications = wsReadWs(workspaceId, 'notifications.json', []);
   const resolvedLink = link || (leadId ? `project:${leadId}` : null);
   notifications.unshift({
     id: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
@@ -1015,7 +1014,7 @@ function addNotification(type, title, body, leadId, link, workspaceId) {
     createdAt: new Date().toISOString()
   });
   if (notifications.length > 200) notifications.splice(200);
-  writeJSON(_key, notifications);
+  wsWriteWs(workspaceId, 'notifications.json', notifications);
 
   const pushTypes = ['reply_received', 'intake_submitted', 'high_score_lead', 'payment_overdue', 'run_complete', 'calendly_booking', 'payment_received', 'client_question'];
   if (pushTypes.includes(type)) {
@@ -1114,13 +1113,14 @@ class JobQueue {
 
 const jobQueue = new JobQueue();
 
-async function fireWebhooks(event, payload) {
+async function fireWebhooks(event, payload, workspaceId) {
+  const wId = workspaceId || null;
   // ── DEMO GUARD: skip real webhook firing for demo data ──
-  if (payload && (payload.isDemo || (payload.leadId && ((readJSON('leads.json') || []).find(l => l.id === payload.leadId) || {}).isDemo))) {
+  if (payload && (payload.isDemo || (payload.leadId && ((wsReadWs(wId, 'leads.json', [])).find(l => l.id === payload.leadId) || {}).isDemo))) {
     console.log(`[DEMO] Skipped fireWebhooks(${event}) for demo data`);
     return;
   }
-  const hooks = (readJSON('webhooks.json') || []).filter(h => h.active !== false && (h.events || []).includes(event));
+  const hooks = (wsReadWs(wId, 'webhooks.json', [])).filter(h => h.active !== false && (h.events || []).includes(event));
   if (!hooks.length) return;
   const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload });
   for (const hook of hooks) {
@@ -1131,18 +1131,18 @@ async function fireWebhooks(event, payload) {
         body,
         signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
       });
-      const all = readJSON('webhooks.json') || [];
+      const all = wsReadWs(wId, 'webhooks.json', []);
       const idx = all.findIndex(h => h.id === hook.id);
       if (idx !== -1) {
         all[idx].lastTriggeredAt = new Date().toISOString();
         all[idx].lastStatus = r.ok ? 'ok' : `${r.status}`;
-        writeJSON('webhooks.json', all);
+        wsWriteWs(wId, 'webhooks.json', all);
       }
     } catch (e) {
       console.warn(`[Webhook] ${hook.url} fout:`, e.message);
-      const all = readJSON('webhooks.json') || [];
+      const all = wsReadWs(wId, 'webhooks.json', []);
       const idx = all.findIndex(h => h.id === hook.id);
-      if (idx !== -1) { all[idx].lastStatus = 'error'; writeJSON('webhooks.json', all); }
+      if (idx !== -1) { all[idx].lastStatus = 'error'; wsWriteWs(wId, 'webhooks.json', all); }
     }
   }
 }
@@ -1172,8 +1172,8 @@ function getSeasonalContext(lang = 'nl') {
   return ctx;
 }
 
-function isBlacklisted(lead) {
-  const list = readJSON('blacklist.json') || [];
+function isBlacklisted(lead, workspaceId) {
+  const list = wsReadWs(workspaceId || null, 'blacklist.json', []);
   if (!list.length) return false;
   const name   = (lead.companyName  || '').toLowerCase().trim();
   const domain = (lead.websiteUrl   || '').replace(/^https?:\/\//,'').split('/')[0].toLowerCase().trim();
@@ -1206,13 +1206,14 @@ function isBlacklisted(lead) {
   return false;
 }
 
-function autoBlacklist(domain, reason) {
+function autoBlacklist(domain, reason, workspaceId) {
   if (!domain || domain.length < 3) return;
-  const list = readJSON('blacklist.json') || [];
+  const wId = workspaceId || null;
+  const list = wsReadWs(wId, 'blacklist.json', []);
   if (list.some(e => e.value === domain)) return;
   list.unshift({ id: 'bl-auto-' + Date.now(), type: 'domain', value: domain, reason, autoAdded: true, addedAt: new Date().toISOString() });
-  writeJSON('blacklist.json', list);
-  addActivity('blacklist', `[${domain}] automatisch geblokkeerd: ${reason}`, {});
+  wsWriteWs(wId, 'blacklist.json', list);
+  addActivity('blacklist', `[${domain}] automatisch geblokkeerd: ${reason}`, { workspaceId: wId });
   console.log(`[AutoBlacklist] ${domain} geblokkeerd: ${reason}`);
 }
 
@@ -1241,7 +1242,7 @@ const SUB_NICHES = {
 // Heuristics: restaurants avoid lunch/dinner prep hours; B2B avoids Monday
 // morning + Friday afternoon; retail does best weekday mornings.
 // Default: Tuesday/Thursday 10:00-11:00.
-function getOptimalSendTime(niche, country) {
+function getOptimalSendTime(niche, country, workspaceId) {
   const n = (niche || '').toLowerCase();
   let targetDay, targetHour, why;
   if (n.includes('restaurant') || n.includes('food') || n.includes('horeca') || n.includes('café') || n.includes('eetcafé') || n.includes('bakkerij') || n.includes('ijssalon') || n.includes('traiteur')) {
@@ -1269,7 +1270,7 @@ function getOptimalSendTime(niche, country) {
   // Historical reply data per niche: when this niche+country combo has a measured
   // best send hour (rolling average of reply hours), prefer it over the heuristic.
   try {
-    const mem = (readJSON('memory.json') || {})[getMemoryKey(niche, country)];
+    const mem = (wsReadWs(workspaceId || null, 'memory.json', {}))[getMemoryKey(niche, country)];
     if (mem && mem.replies >= 3 && Number.isInteger(mem.bestReplyHour) && mem.bestReplyHour >= 7 && mem.bestReplyHour <= 17) {
       targetHour = mem.bestReplyHour;
       why = `historische reply data (${mem.replies} replies rond ${mem.bestReplyHour}:00)`;
@@ -1291,8 +1292,9 @@ function getMemoryKey(niche, country) {
          `_${(country||'unknown').toLowerCase().replace(/[^a-z]/g,'')}`;
 }
 
-function updateMemory(niche, country, type) {
-  const memory = readJSON('memory.json') || {};
+function updateMemory(niche, country, type, workspaceId) {
+  const wId = workspaceId || null;
+  const memory = wsReadWs(wId, 'memory.json', {});
   const key = getMemoryKey(niche, country);
   if (!memory[key]) {
     memory[key] = { niche: niche||'unknown', country: (country||'unknown').toUpperCase(), sent: 0, replied: 0, replyRate: 0 };
@@ -1311,12 +1313,13 @@ function updateMemory(niche, country, type) {
   }
   const { sent, replied } = memory[key];
   memory[key].replyRate = sent > 0 ? Math.round((replied / sent) * 1000) / 10 : 0;
-  writeJSON('memory.json', memory);
+  wsWriteWs(wId, 'memory.json', memory);
 }
 
-function updateMemoryVersion(niche, country, version, type) {
+function updateMemoryVersion(niche, country, version, type, workspaceId) {
   if (!version) return;
-  const memory = readJSON('memory.json') || {};
+  const wId = workspaceId || null;
+  const memory = wsReadWs(wId, 'memory.json', {});
   const key = getMemoryKey(niche, country);
   if (!memory[key]) memory[key] = { niche: niche||'unknown', country: (country||'unknown').toUpperCase(), sent: 0, replied: 0, replyRate: 0 };
   const v = version === 'B' ? 'vB' : 'vA';
@@ -1331,11 +1334,11 @@ function updateMemoryVersion(niche, country, version, type) {
     else if (rateB - rateA >= 10) memory[key].autoPickVersion = 'B';
     else delete memory[key].autoPickVersion;
   }
-  writeJSON('memory.json', memory);
+  wsWriteWs(wId, 'memory.json', memory);
 }
 
-function getAutoPickVersion(niche, country) {
-  return (readJSON('memory.json') || {})[getMemoryKey(niche, country)]?.autoPickVersion || null;
+function getAutoPickVersion(niche, country, workspaceId) {
+  return (wsReadWs(workspaceId || null, 'memory.json', {}))[getMemoryKey(niche, country)]?.autoPickVersion || null;
 }
 
 // ITEM 8: Conversion tracking + ML score boost
@@ -1356,9 +1359,10 @@ function _websiteBucket(speedScore) {
   return 'high';
 }
 
-function updateMemoryConversion(niche, country, type, followers, websiteScore) {
+function updateMemoryConversion(niche, country, type, followers, websiteScore, workspaceId) {
   if (!niche && !country) return;
-  const memory = readJSON('memory.json') || {};
+  const wId = workspaceId || null;
+  const memory = wsReadWs(wId, 'memory.json', {});
   const key = getMemoryKey(niche, country);
   if (!memory[key]) memory[key] = { niche: niche||'unknown', country: (country||'unknown').toUpperCase(), sent: 0, replied: 0, replyRate: 0 };
   const entry = memory[key];
@@ -1377,11 +1381,11 @@ function updateMemoryConversion(niche, country, type, followers, websiteScore) {
   entry.conversionRate = total > 0 ? Math.round(((entry.converted || 0) / total) * 1000) / 10 : 0;
   if (entry.convertedProfiles) entry.bestFollowerRange = Object.entries(entry.convertedProfiles).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
   if (entry.convertedWebsiteScores) entry.bestWebsiteScore = Object.entries(entry.convertedWebsiteScores).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
-  writeJSON('memory.json', memory);
+  wsWriteWs(wId, 'memory.json', memory);
 }
 
-function getConversionBoost(niche, country, followers, websiteScore) {
-  const entry = (readJSON('memory.json') || {})[getMemoryKey(niche, country)];
+function getConversionBoost(niche, country, followers, websiteScore, workspaceId) {
+  const entry = (wsReadWs(workspaceId || null, 'memory.json', {}))[getMemoryKey(niche, country)];
   if (!entry) return 0;
   const total = (entry.converted || 0) + (entry.lost || 0);
   if (total < 3) return 0;
@@ -1979,7 +1983,7 @@ async function generateInvoicePDF({ invoiceNr, invoiceDate, dueDate, lead, servi
   });
 }
 
-async function sendEmail({ to, subject, body, html, settings: _settings = {}, trackingToken, noCalendly = true, isColdOutreach = false, attachments = [] }) {
+async function sendEmail({ to, subject, body, html, settings: _settings = {}, trackingToken, noCalendly = true, isColdOutreach = false, attachments = [], workspaceId: _wsId = null }) {
   // Normalise "to" — Resend requires a clean plain string
   const toStr = Array.isArray(to) ? to[0] : to;
   const toRaw = (typeof toStr === 'string' ? toStr : String(toStr || ''));
@@ -1998,11 +2002,11 @@ async function sendEmail({ to, subject, body, html, settings: _settings = {}, tr
   }
   console.log(`[Email] Versturen naar: "${toFinal}" (origineel: ${JSON.stringify(toRaw)})`);
 
-  const s = readJSON('settings.json') || {};
+  const s = wsReadWs(_wsId, 'settings.json', {});
 
   // Auto-suppress Calendly for clients who have already submitted their intake form
   if (!noCalendly) {
-    const allLeads = readJSON('leads.json') || [];
+    const allLeads = wsReadWs(_wsId, 'leads.json', []);
     const matchedLead = allLeads.find(l => (l.contactEmail || '').toLowerCase().trim() === toFinal);
     if (matchedLead?.intakeSubmittedAt || matchedLead?.status === 'client') noCalendly = true;
   }
@@ -2142,24 +2146,44 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-// ── Workspace-aware data read ──────────────────────────────────────────────────
-// For workspace tokens that are NOT ws_agencyai, read workspace-scoped data
-// with NO fallback to global data. This ensures impersonated sessions see only
-// their own workspace's data (empty for new workspaces) instead of Agency AI's.
-function wsRead(req, key, fallback = null) {
-  const wId = req.user?.workspaceId;
-  if (!wId || wId === 'ws_agencyai') {
-    return readJSON(key) ?? fallback; // legacy / agencyai: global data
+// ── Workspace-aware data read/write ─────────────────────────────────────────────
+// Core ID-based helpers: used by both route handlers and non-request contexts
+// (cron jobs, helpers). For ws_agencyai or no workspace, reads/writes global data.
+function wsReadWs(workspaceId, key, fallback = null) {
+  if (!workspaceId || workspaceId === 'ws_agencyai') {
+    return readJSON(key) ?? fallback;
   }
-  return readJSON(`ws:${wId}:${key}`) ?? fallback; // isolated workspace data
+  return readJSON(`ws:${workspaceId}:${key}`) ?? fallback;
+}
+
+function wsWriteWs(workspaceId, key, value) {
+  if (!workspaceId || workspaceId === 'ws_agencyai') {
+    return writeJSON(key, value);
+  }
+  return writeJSON(`ws:${workspaceId}:${key}`, value);
+}
+
+// Request-based wrappers: extract workspaceId from req.user
+function wsRead(req, key, fallback = null) {
+  return wsReadWs(req.user?.workspaceId, key, fallback);
 }
 
 function wsWrite(req, key, value) {
-  const wId = req.user?.workspaceId;
-  if (!wId || wId === 'ws_agencyai') {
-    return writeJSON(key, value); // legacy / agencyai: global data
+  return wsWriteWs(req.user?.workspaceId, key, value);
+}
+
+// Returns all active workspace IDs (for cron job iteration)
+function getAllWorkspaceIds() {
+  try {
+    const { getDb } = require('./database');
+    const rows = getDb().prepare("SELECT id FROM workspaces WHERE status IN ('active','trial')").all();
+    const ids = rows.map(r => r.id);
+    // Always include the default workspace for legacy/single-tenant mode
+    if (!ids.includes('ws_agencyai')) ids.unshift('ws_agencyai');
+    return ids;
+  } catch {
+    return ['ws_agencyai']; // fallback: single workspace
   }
-  return writeJSON(`ws:${wId}:${key}`, value); // isolated workspace data
 }
 
 // Returns true when the requesting user is a demo account.
