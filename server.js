@@ -1223,15 +1223,6 @@ function addLeadHistory(leads, leadId, event) {
   lead.history.push({ ...event, time: new Date().toISOString() });
 }
 
-function logAction(action, entityType, entityId, details) {
-  try {
-    const { getDb } = require('./database');
-    const dbInst = getDb();
-    if (!dbInst) return;
-    dbInst.prepare('INSERT INTO audit_log (action, entity_type, entity_id, details) VALUES (?, ?, ?, ?)').run(action, entityType || null, String(entityId || ''), JSON.stringify(details || {}));
-  } catch(e) { console.log('[Audit] Log error:', e.message); }
-}
-
 const NL_DAYS = ['zondag','maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag'];
 
 const SUB_NICHES = {
@@ -2218,24 +2209,7 @@ function requireAuth(req, res, next) {
 
 // ── Auth routes (public — no middleware) ────────────────────────────────────
 
-// Simple in-memory login rate limiter: max 10 attempts per IP per 15 minutes
-const _loginAttempts = new Map();
-// loginRateLimit moved to routes/auth.js — kept here as no-op in case of references
-function loginRateLimit(req, res, next) {
-  const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-  const now = Date.now();
-  const window = 15 * 60 * 1000; // 15 minutes
-  const max = 10;
-  const entry = _loginAttempts.get(ip) || { count: 0, resetAt: now + window };
-  if (now > entry.resetAt) { entry.count = 0; entry.resetAt = now + window; }
-  entry.count++;
-  _loginAttempts.set(ip, entry);
-  if (entry.count > max) {
-    const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
-    return res.status(429).json({ error: `Te veel inlogpogingen. Probeer het opnieuw over ${Math.ceil(retryAfter / 60)} minuten.` });
-  }
-  next();
-}
+// loginRateLimit moved to routes/auth.js — removed dead copy from server.js
 
 // ── Auth routes — migrated to routes/auth.js ────────────────────────────────
 app.use('/api/auth', require('./routes/auth')({ readJSON, writeJSON, JWT_SECRET }));
