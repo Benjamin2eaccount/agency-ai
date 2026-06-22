@@ -974,7 +974,7 @@ async function renderSettings() {
       <button class="st-nav-item"        data-tab="api"        onclick="switchSettingsTab('api')">        <i class="ti ti-plug-connected"></i> Integraties</button>
       ${isAdmin() ? `<button class="st-nav-item" data-tab="team" onclick="switchSettingsTab('team')"><i class="ti ti-users"></i> Team</button>` : ''}
       <button class="st-nav-item"        data-tab="services"   onclick="switchSettingsTab('services')">   <i class="ti ti-briefcase"></i> Diensten</button>
-      <button class="st-nav-item"        data-tab="usage"      onclick="switchSettingsTab('usage')">      <i class="ti ti-chart-bar"></i> Usage</button>
+      <button class="st-nav-item"        data-tab="usage"      onclick="switchSettingsTab('usage')">      <i class="ti ti-chart-bar"></i> Gebruik</button>
       ${isAdmin() ? `<button class="st-nav-item" data-tab="auditlog" onclick="switchSettingsTab('auditlog')"><i class="ti ti-list-search"></i> Audit log</button>` : ''}
       ${isAdmin() ? `<button class="st-nav-item" data-tab="components" onclick="switchSettingsTab('components')"><i class="ti ti-puzzle"></i> Components</button>` : ''}
       ${isAdmin() ? `<button class="st-nav-item" data-tab="templates" onclick="switchSettingsTab('templates')"><i class="ti ti-palette"></i> Templates</button>` : ''}
@@ -1690,7 +1690,7 @@ async function renderSettings() {
       <div class="st-tab-pane" id="stab-usage">
         <div class="stg-section">
           <div class="stg-section-header">
-            <div class="stg-title">📊 Usage &amp; Limieten</div>
+            <div class="stg-title">📊 Gebruik &amp; Limieten</div>
             <div class="stg-sub">Huidig gebruik en limieten van jouw plan</div>
           </div>
           <div id="usageContent"><div class="loading-state"><div class="spinner-sm"></div></div></div>
