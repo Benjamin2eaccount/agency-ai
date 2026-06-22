@@ -4333,29 +4333,34 @@ app.post('/api/analyze-company', requireAdmin, async (req, res) => {
 // ── Health check (public) ──────────────────────────────────────────────────────
 
 app.get('/health', (req, res) => {
-  const settings  = wsRead(req, 'settings.json', {});
+  const settings  = readJSON('settings.json') || {};
   const runs      = readJSON('runs.json') || [];
   const lastRun   = runs.length ? runs[runs.length - 1] : null;
   const apiKeyOk  = isClaudeReady(settings);
-  const emailOk   = !!(settings.resendApiKey || process.env.RESEND_API_KEY);
+  const emailOk   = isResendReady(settings);
+  const gmailOk   = isGmailReady(settings);
   const pgOk      = !!process.env.DATABASE_URL;
   const mem       = process.memoryUsage();
 
-  const checks = { claude_api: apiKeyOk, email: emailOk, postgres: pgOk };
-  const criticalOk = apiKeyOk;
-  const allOk = apiKeyOk && emailOk;
+  // DB ping
+  let dbOk = false;
+  try { const { getDb } = require('./database'); getDb().prepare('SELECT 1').get(); dbOk = true; } catch {}
+
+  const checks = { claude_api: apiKeyOk ? 'ok' : 'missing', resend: emailOk ? 'ok' : 'not_configured', gmail_imap: gmailOk ? 'configured' : 'not_configured', database: dbOk ? 'ok' : 'error', postgresql: pgOk ? 'configured' : 'sqlite_only' };
+  const criticalOk = dbOk && apiKeyOk;
+  const allOk = criticalOk && emailOk;
 
   const now        = Date.now();
   const callsToday = _aiCallLog.filter(e => e.ts >= now - 86400000).length;
-  const leads      = wsRead(req, 'leads.json', []);
-  const inbox      = wsRead(req, 'inbox.json', []);
+  const leads      = readJSON('leads.json') || [];
+  const inbox      = readJSON('inbox.json') || [];
 
   res.json({
     status:       allOk ? 'ok' : criticalOk ? 'degraded' : 'down',
     uptime:       Math.floor(process.uptime()),
     uptimeLabel:  formatUptime(process.uptime()),
     checks,
-    lastRun:      lastRun ? { time: lastRun.createdAt, leadsFound: lastRun.leadsFound || 0 } : null,
+    lastRun:      lastRun ? { time: lastRun.createdAt || lastRun.startedAt, leadsFound: lastRun.leadsFound || 0 } : null,
     recentErrors: RUN_ERRORS.slice(0, 5),
     version:      require('./package.json').version,
     nodeVersion:  process.version,
@@ -4365,7 +4370,7 @@ app.get('/health', (req, res) => {
     stats: {
       totalLeads:   leads.length,
       clients:      leads.filter(l => l.status === 'client').length,
-      pending:      inbox.filter(i => !i.status || i.status === 'pending').length,
+      pending:      inbox.filter(i => !i.sentAt && !i.declinedAt).length,
     },
     agencyName: settings.agencyName || 'Agency AI',
     checkedAt:  new Date().toISOString(),
@@ -14974,50 +14979,7 @@ app.get('/api/cron-logs', requireAdmin, (req, res) => {
   } catch { res.json([]); }
 });
 
-// Task 41 — Extended health check
-app.get('/health', (req, res) => {
-  const settings = readJSON('settings.json') || {};
-  const hasClaudeKey = !!(process.env.CLAUDE_API_KEY && process.env.CLAUDE_API_KEY !== 'your_anthropic_api_key_here');
-  const gmailOk = isGmailReady(settings);
-  const resendOk = isResendReady(settings);
-  const pgOk = !!process.env.DATABASE_URL;
-
-  // DB ping
-  let dbOk = false;
-  try { const { getDb } = require('./database'); getDb().prepare('SELECT 1').get(); dbOk = true; } catch {}
-
-  // IMAP check
-  const imapOk = !!(settings.gmailAddress && settings.gmailPassword !== '__encrypted__' ? settings.gmailPassword : null) || !!settings.gmailPasswordEncrypted;
-
-  const status = dbOk && hasClaudeKey ? 'ok' : 'degraded';
-  const uptime = process.uptime();
-  const h = Math.floor(uptime/3600), m = Math.floor((uptime%3600)/60);
-  res.json({
-    status,
-    uptime: Math.floor(uptime),
-    uptimeLabel: `${h}u ${m}m`,
-    memUsageMb: Math.round(process.memoryUsage().heapUsed/1024/1024),
-    heapUsedMb: Math.round(process.memoryUsage().heapUsed/1024/1024),
-    nodeVersion: process.version,
-    checks: {
-      claude_api: hasClaudeKey ? 'ok' : 'missing',
-      resend: resendOk ? 'ok' : 'not_configured',
-      gmail_imap: imapOk ? 'configured' : 'not_configured',
-      database: dbOk ? 'ok' : 'error',
-      postgresql: pgOk ? 'configured' : 'sqlite_only'
-    },
-    lastRun: (readJSON('runs.json')||[]).slice(-1)[0]?.startedAt || null,
-    aiCallsToday: _aiCallLog.filter(t => Date.now()-t < 86400000).length,
-    stats: {
-      totalLeads: (readJSON('leads.json')||[]).length,
-      clients: (readJSON('leads.json')||[]).filter(l=>l.status==='client').length,
-      pending: (readJSON('inbox.json')||[]).filter(i=>!i.sentAt&&!i.declinedAt).length
-    },
-    agencyName: settings.agencyName || 'Agency AI',
-    recentErrors: RUN_ERRORS.slice(0,5),
-    checkedAt: new Date().toISOString()
-  });
-});
+// Task 41 — Extended health check (REMOVED: consolidated into primary /health route above)
 
 // Task 42 — Settings export/import
 app.get('/api/settings/export', requireAdmin, (req, res) => {
