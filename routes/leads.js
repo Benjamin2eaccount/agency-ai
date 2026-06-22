@@ -55,7 +55,11 @@ router.get('/export.csv', (req, res) => {
 
 router.post('/', (req, res) => {
   const leads = wsRead(req, 'leads.json', []);
-  const lead = { id: Date.now().toString(), createdAt: new Date().toISOString(), ...req.body };
+  // Whitelist allowed fields — prevent client from injecting id, createdAt, portalToken, isDemo, etc.
+  const BLOCKED_FIELDS = ['id', 'createdAt', 'portalToken', 'portalPassword', 'portalPasswordSet', 'isDemo', 'workspaceId'];
+  const safeBody = { ...req.body };
+  BLOCKED_FIELDS.forEach(f => delete safeBody[f]);
+  const lead = { id: Date.now().toString(), createdAt: new Date().toISOString(), ...safeBody };
   leads.push(lead);
   wsWrite(req, 'leads.json', leads);
   res.json(lead);
@@ -176,7 +180,10 @@ router.patch('/:id/case-study', (req, res) => {
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   if (!leads[idx].caseStudy) return res.status(404).json({ error: 'Geen case study' });
-  leads[idx].caseStudy = { ...leads[idx].caseStudy, ...req.body };
+  const ALLOWED = ['title', 'industry', 'challenge', 'solution', 'results', 'quote', 'quoteName', 'published'];
+  const safeBody = {};
+  ALLOWED.forEach(k => { if (req.body[k] !== undefined) safeBody[k] = req.body[k]; });
+  leads[idx].caseStudy = { ...leads[idx].caseStudy, ...safeBody };
   wsWrite(req, 'leads.json', leads);
   res.json(leads[idx].caseStudy);
 });
@@ -186,7 +193,10 @@ router.patch('/:id', (req, res) => {
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const prevStatus = leads[idx].status;
-  leads[idx] = { ...leads[idx], ...req.body };
+  const BLOCKED_FIELDS = ['id', 'createdAt', 'portalToken', 'portalPassword', 'portalPasswordSet', 'isDemo', 'workspaceId'];
+  const safeBody = { ...req.body };
+  BLOCKED_FIELDS.forEach(f => delete safeBody[f]);
+  leads[idx] = { ...leads[idx], ...safeBody };
   // Migrate old-format tasks (no id) to new format
   if (leads[idx].tasks) {
     leads[idx].tasks = leads[idx].tasks.map((t, i) => t.id ? t : {
@@ -261,7 +271,10 @@ router.patch('/:id/tasks/:taskId', async (req, res) => {
     }
   }
   if (tIdx === -1) return res.status(404).json({ error: 'Taak niet gevonden' });
-  leads[idx].tasks[tIdx] = { ...leads[idx].tasks[tIdx], ...req.body };
+  const TASK_BLOCKED = ['id', 'createdAt'];
+  const safeTaskBody = { ...req.body };
+  TASK_BLOCKED.forEach(f => delete safeTaskBody[f]);
+  leads[idx].tasks[tIdx] = { ...leads[idx].tasks[tIdx], ...safeTaskBody };
   if (req.body.status === 'klaar' && !leads[idx].tasks[tIdx].doneAt) leads[idx].tasks[tIdx].doneAt = new Date().toISOString();
   wsWrite(req, 'leads.json', leads);
   res.json(leads[idx].tasks[tIdx]);
@@ -289,7 +302,7 @@ router.patch('/:id/tasks/:taskId', async (req, res) => {
               wsWrite(req, 'leads.json', freshLeads);
             }
             console.log(`[ClientEmail] weekComplete week ${week} → ${lead.companyName}`);
-          } catch { /* optional */ }
+          } catch (err) { console.error(`[ClientEmail] weekComplete failed for ${lead.companyName}:`, err.message); }
         }
       }
     }

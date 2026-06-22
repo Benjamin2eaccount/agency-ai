@@ -4,8 +4,9 @@
  */
 'use strict';
 const express = require('express');
+const bcrypt = require('bcryptjs');
 
-module.exports = function createSettingsRouter({ wsRead, wsWrite, getDb, requireAdmin, encryptApiKey, encryptGmailPassword, getGmailPassword, isGmailReady, isClaudeReady, buildEmailHTML }) {
+module.exports = function createSettingsRouter({ wsRead, wsWrite, getDb, requireAdmin, encryptApiKey, encryptGmailPassword, getGmailPassword, isGmailReady, isClaudeReady, buildEmailHTML, readJSON, writeJSON, DEFAULT_SERVICES, scheduleCron, scheduleBriefingCron, scheduleBackupCron }) {
   const router = express.Router();
 
 router.get('', (req, res) => {
@@ -49,7 +50,7 @@ router.get('', (req, res) => {
     }
 
     // ── Tenant workspace: ONLY workspace-scoped settings, never global ───────
-    const WorkspaceStore = require('./lib/workspaceStore');
+    const WorkspaceStore = require('../lib/workspaceStore');
     const store = new WorkspaceStore(wId);
     const ws_s = store.readDirect('settings.json') || {}; // null → empty object, NO global fallback
 

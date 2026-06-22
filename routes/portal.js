@@ -321,7 +321,8 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, wsReadWs, ws
   // ── POST /api/portal/:token/site-feedback ───────────────────────────────────
   router.post('/:token/site-feedback', requirePortalAuth, (req, res) => {
     const { feedback } = req.body;
-    if (!feedback) return res.status(400).json({ error: 'Feedback verplicht' });
+    if (!feedback || typeof feedback !== 'string') return res.status(400).json({ error: 'Feedback verplicht' });
+    if (feedback.length > 5000) return res.status(400).json({ error: 'Feedback te lang (max 5000 tekens)' });
     const data = _findLeadData(req.params.token);
     if (!data) return res.status(404).json({ error: 'Portaal niet gevonden' });
     const { leads, lead, wId } = data;
@@ -338,6 +339,8 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, wsReadWs, ws
   router.post('/:token/message', requirePortalAuth, (req, res) => {
     const { name, message } = req.body;
     if (!name || !message) return res.status(400).json({ error: 'Naam en bericht verplicht' });
+    if (typeof name !== 'string' || typeof message !== 'string') return res.status(400).json({ error: 'Ongeldige invoer' });
+    if (name.length > 200 || message.length > 5000) return res.status(400).json({ error: 'Invoer te lang' });
     const data = _findLeadData(req.params.token);
     if (!data) return res.status(404).json({ error: 'Portaal niet gevonden' });
     const { leads, lead, wId } = data;

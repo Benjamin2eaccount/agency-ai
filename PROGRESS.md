@@ -73,7 +73,29 @@ Still in server.js (extraction deferred — deeply coupled):
 ---
 
 ## Part 2 — Deep Correctness Audit
-Status: PENDING
+Status: COMPLETE
+
+Full audit of all 16 files (8 route files + 7 lib files + server.js).
+See AUDIT.md for detailed findings table.
+
+**Critical bugs fixed:**
+- `require('./database')` wrong path in routes/stats.js → crashed /api/stats/funnel
+- `require('./lib/workspaceStore')` wrong path in routes/settings.js → crashed tenant settings
+- 5 missing factory deps in routes/superadmin.js (wsRead, wsWrite, readJSON, writeJSON, JWT_SECRET) → ReferenceError on any superadmin route using them
+- 6 missing factory deps in routes/settings.js (readJSON, writeJSON, DEFAULT_SERVICES, scheduleCron, scheduleBriefingCron, scheduleBackupCron) → ReferenceError on password change, cron reschedule
+
+**Security fixes:**
+- 6 routes with `...req.body` field injection → blocked server-generated fields (id, createdAt, portalToken, isDemo, workspaceId)
+- Portal text fields now length-bounded (5000 chars max)
+- Stats days parameter clamped to 1-365
+
+**Error handling:**
+- Added `asyncHandler()` utility + global Express error handler for unhandled async rejections
+- Wrapped 7 highest-risk public routes with asyncHandler
+- Fixed stats/extended returning HTTP 200 for errors → 500
+- Gated debug logs in email.js behind `process.env.DEBUG_EMAIL`
+
+Tests: 15/15 passing after all changes.
 
 ## Part 3 — Test Coverage
 Status: PENDING

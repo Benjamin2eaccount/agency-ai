@@ -49,7 +49,7 @@ router.get('', (req, res) => {
 
 router.get('/detailed', (req, res) => {
   const leads = scopeToUser(wsRead(req, 'leads.json', []), req);
-  const days  = parseInt(req.query.days || '30', 10);
+  const days  = Math.min(Math.max(parseInt(req.query.days || '30', 10) || 30, 1), 365);
   const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
   const byDate = {};
@@ -149,7 +149,7 @@ router.get('/extended', authMiddleware, (req, res) => {
       return leads.filter(l => l.sentAt && new Date(l.sentAt)>=weekStart && new Date(l.sentAt)<weekEnd).length;
     });
     res.json({ totalSent, totalReplied, replyRate, avgScore, activeProjects, omzetDeze, omzetVorige, niches, statuses, emailsPerWeek });
-  } catch(e) { res.json({ error: e.message }); }
+  } catch(e) { console.error('[Stats/extended]', e.message); res.status(500).json({ error: e.message }); }
 });
 
 router.get('/ab', authMiddleware, (req, res) => {
@@ -265,7 +265,6 @@ router.get('/pnl', authMiddleware, (req, res) => {
 });
 
 router.get('/funnel', requireAdmin, (req, res) => {
-  const { getDb } = require('./database');
   const db = getDb();
   const STAGES = ['lead_found','lead_emailed','email_opened','email_replied','project_started','intake_completed','first_build','invoice_sent','payment_received'];
   const result = STAGES.map(event => {

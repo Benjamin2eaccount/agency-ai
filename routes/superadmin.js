@@ -5,8 +5,9 @@
 'use strict';
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
-module.exports = function createSuperadminRouter({ getDb, requireSuperAdmin, sendEmail, buildRegEmail, isResendReady, encryptApiKey }) {
+module.exports = function createSuperadminRouter({ getDb, requireSuperAdmin, sendEmail, buildRegEmail, isResendReady, encryptApiKey, wsRead, wsWrite, readJSON, writeJSON, JWT_SECRET }) {
   const router = express.Router();
   const { autoStatusCheck } = require('../lib/workspace');
 

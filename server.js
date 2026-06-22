@@ -39,6 +39,11 @@ if (!process.env.JWT_SECRET) console.warn('[Security] JWT_SECRET not set — usi
 const DATA_DIR = path.join(__dirname, 'data');
 const BASE_URL = process.env.BASE_URL || 'https://www.agencyai.info';
 
+// ── Async route error wrapper — catches unhandled rejections in Express 4 ─────
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
 // ── In-memory error log (last 100, resets on restart) ─────────────────────────
 const RUN_ERRORS = [];
 function logError(type, message, details = null) {
@@ -1971,7 +1976,7 @@ app.get('/intake/:leadId/:token', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'intake.html'));
 });
 
-app.get('/api/intake/:leadId/:token', async (req, res) => {
+app.get('/api/intake/:leadId/:token', asyncHandler(async (req, res) => {
   const data = findLeadAcrossWorkspaces(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
   if (!data) return res.status(404).json({ error: 'Intake link ongeldig of verlopen' });
   const { leads, lead, workspaceId } = data;
@@ -2074,9 +2079,9 @@ Return ONLY valid JSON (no markdown):
     services: (lead.services || []).map(s => s.name),
     questions: lead.intakeQuestions,
   });
-});
+}));
 
-app.post('/api/intake/:leadId/:token', async (req, res) => {
+app.post('/api/intake/:leadId/:token', asyncHandler(async (req, res) => {
   const data = findLeadAcrossWorkspaces(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
   if (!data) return res.status(404).json({ error: 'Intake link ongeldig' });
   const { leads, leadIndex: idx, workspaceId } = data;
@@ -2180,7 +2185,7 @@ Use ${colors.primary} as accent color. Scroll-triggered animations. Mobile respo
   }
 
   res.json({ ok: true });
-});
+}));
 
 // ── Public agency website ─────────────────────────────────────────────────────
 // ── Email open tracking pixel (public) ───────────────────────────────────────
@@ -2526,7 +2531,7 @@ app.get('/api/sites/:siteSlug/uploads/:filename', (req, res) => {
 
 // ─── Gmail Pub/Sub webhook (public — no auth, validated by secret token) ──────
 
-app.post('/api/gmail/webhook', async (req, res) => {
+app.post('/api/gmail/webhook', asyncHandler(async (req, res) => {
   // Acknowledge immediately — Pub/Sub will retry if we respond too slowly
   res.status(200).json({ ok: true });
 
@@ -2559,7 +2564,7 @@ app.post('/api/gmail/webhook', async (req, res) => {
   } catch (err) {
     console.error('[Webhook] Fout:', err.message);
   }
-});
+}));
 
 // Public workspace contact form — submitted from client websites (no auth)
 app.post('/api/contact-form', async (req, res) => {
@@ -2587,7 +2592,7 @@ app.post('/api/contact-form', async (req, res) => {
 
 // Public contact form — must be BEFORE app.use('/api', authMiddleware)
 // Scoped to default workspace (ws_agencyai) — Agency AI's own contact form.
-app.post('/api/contact', async (req, res) => {
+app.post('/api/contact', asyncHandler(async (req, res) => {
   const { name, company, email, phone, service, message } = req.body;
   if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
   const wId = 'ws_agencyai';
@@ -2612,7 +2617,7 @@ app.post('/api/contact', async (req, res) => {
     } catch (_) { /* email is optional */ }
   }
   res.json({ ok: true });
-});
+}));
 
 // ── Demo requests (public) ───────────────────────────────────────────────────
 app.post('/api/demo-request', async (req, res) => {
@@ -2764,7 +2769,7 @@ app.get('/update/:filename', (req, res) => {
 
 // Public order form — must be BEFORE app.use('/api', authMiddleware)
 // Scoped to default workspace (ws_agencyai) since no user context exists.
-app.post('/api/order', async (req, res) => {
+app.post('/api/order', asyncHandler(async (req, res) => {
   const { name, company, email, phone, service, message } = req.body;
   if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
   const wId = 'ws_agencyai';
@@ -2832,11 +2837,11 @@ app.post('/api/order', async (req, res) => {
   }
 
   res.json({ ok: true, leadId });
-});
+}));
 
 // Public booking form — MexyDigital (and any future client sites)
 // Scoped to default workspace (ws_agencyai) since no user context exists.
-app.post('/api/booking/:client', async (req, res) => {
+app.post('/api/booking/:client', asyncHandler(async (req, res) => {
   const { service, price, duration, date, time, naam, bedrijf, email, tel, website, notities } = req.body;
   if (!naam || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
   const wId = 'ws_agencyai';
@@ -2873,7 +2878,7 @@ app.post('/api/booking/:client', async (req, res) => {
   }
 
   res.json({ ok: true });
-});
+}));
 
 // Public services list — used by landing page (must be before authMiddleware)
 // Reads from default workspace since this is the Agency AI landing page.
@@ -2884,7 +2889,7 @@ app.get('/api/services', (req, res) => {
 
 // Contact form submissions from built client sites — public, no auth
 // Uses cross-workspace lead search to find the matching lead by siteSlug.
-app.post('/api/sites/:siteSlug/contact', async (req, res) => {
+app.post('/api/sites/:siteSlug/contact', asyncHandler(async (req, res) => {
   if (!/^[a-z0-9-]+$/.test(req.params.siteSlug)) return res.status(404).json({ error: 'Niet gevonden' });
   const { name, email, phone, message, service } = req.body;
   if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
@@ -2925,7 +2930,7 @@ app.post('/api/sites/:siteSlug/contact', async (req, res) => {
   }
 
   res.json({ success: true });
-});
+}));
 
 // ── Public: client submits hosting request from portal ────────────────────────
 // Uses cross-workspace lead search by portal token.
@@ -3274,7 +3279,7 @@ const requireSuperAdmin = (req, res, next) => {
 
 // ─── Super admin API (extracted to routes/superadmin.js) ──────────────────────
 const superadminRouter = require('./routes/superadmin')({
-  getDb, requireSuperAdmin, sendEmail, buildRegEmail, isResendReady, encryptApiKey
+  getDb, requireSuperAdmin, sendEmail, buildRegEmail, isResendReady, encryptApiKey, wsRead, wsWrite, readJSON, writeJSON, JWT_SECRET
 });
 app.use('/api/superadmin', superadminRouter);
 
@@ -7243,7 +7248,10 @@ app.get('/api/runs', (req, res) => {
 
 app.post('/api/runs', (req, res) => {
   const runs = wsRead(req, 'runs.json', []);
-  const run = { id: Date.now().toString(), createdAt: new Date().toISOString(), ...req.body };
+  const RUN_BLOCKED = ['id', 'createdAt'];
+  const safeRunBody = { ...req.body };
+  RUN_BLOCKED.forEach(f => delete safeRunBody[f]);
+  const run = { id: Date.now().toString(), createdAt: new Date().toISOString(), ...safeRunBody };
   runs.unshift(run);
   if (runs.length > 100) runs.splice(100);
   wsWrite(req, 'runs.json', runs);
@@ -7261,7 +7269,7 @@ app.get('/api/agents/metrics', (req, res) => {
 
 // ─── Settings (extracted to routes/settings.js) ─────────────────────────────
 const settingsRouter = require('./routes/settings')({
-  wsRead, wsWrite, getDb, requireAdmin, encryptApiKey, encryptGmailPassword, getGmailPassword, isGmailReady, isClaudeReady, buildEmailHTML
+  wsRead, wsWrite, getDb, requireAdmin, encryptApiKey, encryptGmailPassword, getGmailPassword, isGmailReady, isClaudeReady, buildEmailHTML, readJSON, writeJSON, DEFAULT_SERVICES, scheduleCron, scheduleBriefingCron, scheduleBackupCron
 });
 app.use('/api/settings', settingsRouter);
 
@@ -7641,7 +7649,10 @@ app.patch('/api/leads/:id/payments/:payId', requireAdmin, (req, res) => {
   const pIdx = (leads[idx].payments || []).findIndex(p => p.id === req.params.payId);
   if (pIdx === -1) return res.status(404).json({ error: 'Betaling niet gevonden' });
   const prevPayStatus = leads[idx].payments[pIdx].status;
-  leads[idx].payments[pIdx] = { ...leads[idx].payments[pIdx], ...req.body };
+  const PAY_BLOCKED = ['id', 'createdAt', 'leadId'];
+  const safePayBody = { ...req.body };
+  PAY_BLOCKED.forEach(f => delete safePayBody[f]);
+  leads[idx].payments[pIdx] = { ...leads[idx].payments[pIdx], ...safePayBody };
   if (req.body.status === 'paid' && !leads[idx].payments[pIdx].paidAt) leads[idx].payments[pIdx].paidAt = new Date().toISOString();
   if (req.body.status === 'paid' && prevPayStatus !== 'paid') {
     trackFunnelEvent(leads[idx].id, 'payment_received');
@@ -13168,6 +13179,16 @@ function ensureWorkspaceSeed() {
     console.warn('[Seed] ensureWorkspaceSeed fout:', err.message);
   }
 }
+
+// ── Global Express error handler — catches asyncHandler errors + unhandled throws ──
+app.use((err, req, res, _next) => {
+  const route = `${req.method} ${req.originalUrl}`;
+  console.error(`[Express] Unhandled error on ${route}:`, err?.message, err?.stack);
+  logError('express', err?.message || 'Unknown error', { route });
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Er is een interne fout opgetreden' });
+  }
+});
 
 if (require.main === module || process.env.NODE_ENV !== 'test') pgInitPromise.then(() => {
   ensureWorkspaceSeed(); // Run before server starts — safe on every deploy
