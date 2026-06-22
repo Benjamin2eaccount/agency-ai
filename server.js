@@ -10932,9 +10932,10 @@ function daysSince(isoDate) {
 }
 
 let _followUpRunning = false;
-async function runFollowUpJob() {
+async function runFollowUpJob(workspaceId) {
   if (_followUpRunning) { console.log('[FollowUp] Already running — skipped'); return; }
   _followUpRunning = true;
+  const wId = workspaceId || null;
   try {
   const settings  = wsReadWs(wId, 'settings.json');
   if (settings.automationPaused) return;
@@ -11520,9 +11521,10 @@ Rules:
 }
 
 let _repliesRunning = false;
-async function checkReplies() {
+async function checkReplies(workspaceId) {
   if (_repliesRunning) { console.log('[IMAP] Already running — skipped'); return { count: 0, names: [] }; }
   _repliesRunning = true;
+  const wId = workspaceId || null;
   try {
   const settings = wsReadWs(wId, 'settings.json');
   if (!isGmailReady(settings)) {
@@ -13075,7 +13077,8 @@ cron.schedule('0 10 * * *', async () => {
   }
 });
 
-async function runAutoArchive() {
+async function runAutoArchive(workspaceId) {
+  const wId = workspaceId || null;
   const settings = wsReadWs(wId, 'settings.json') || {};
   if (!settings.autoArchiveEnabled) return;
   const archiveDays = parseInt(settings.autoArchiveDays) || 30;
@@ -14715,7 +14718,8 @@ function ensureWorkspaceSeed() {
 if (require.main === module || process.env.NODE_ENV !== 'test') pgInitPromise.then(() => {
   ensureWorkspaceSeed(); // Run before server starts — safe on every deploy
   const server = app.listen(PORT, () => {
-    const s = wsRead(req, 'settings.json') || {};
+    // Startup context: no req available, read global settings directly
+    const s = readJSON('settings.json') || {};
     const runTime      = s.dailyRunTime      || '09:00';
     const briefingTime = s.dailyBriefingTime || '08:45';
     const backupTime   = s.backupTime        || '02:00';
