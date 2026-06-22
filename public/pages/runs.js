@@ -497,7 +497,7 @@ async function loadActivityLog() {
       const color = _ACTIVITY_COLORS[e.type] || 'var(--text-muted)';
       const time  = new Date(e.timestamp).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
       const dollarSign = String.fromCharCode(36);
-      const cost  = e.costUsd > 0 ? `<span class="text-muted" style="font-size:11px;margin-left:8px">${dollarSign}${e.costUsd.toFixed(4)}</span>` : '';
+      const cost  = e.costUsd > 0 ? `<span class="text-muted" style="font-size:11px;margin-left:8px">${dollarSign}${(Number(e.costUsd)||0).toFixed(4)}</span>` : '';
       const tok   = e.tokensIn > 0 ? `<span class="text-muted" style="font-size:11px;margin-left:6px">${formatNumber(e.tokensIn + e.tokensOut)} tok</span>` : '';
       return `<div class="activity-log-row">
         <div class="activity-log-icon" style="background:${color}18;color:${color}">

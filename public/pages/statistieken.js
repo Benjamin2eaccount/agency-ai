@@ -200,7 +200,7 @@ async function loadStatsData(days) {
   const body = document.getElementById('statsBody');
   if (!body) return;
 
-  const fmt = function(n) { return n >= 1000 ? (n/1000).toFixed(1) + 'K' : String(n || 0); };
+  const fmt = function(n) { n = Number(n) || 0; return n >= 1000 ? (n/1000).toFixed(1) + 'K' : String(n); };
   const fmtEur = function(n) { return '€' + (n >= 1000 ? (n/1000).toFixed(0) + 'K' : String(Math.round(n || 0))); };
   const fmtEurFull = function(n) { return '€' + Math.round(n || 0).toLocaleString('nl-NL'); };
 

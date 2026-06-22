@@ -13035,7 +13035,7 @@ async function sendDailyBriefing() {
     '<tr><td style="padding:8px 12px;font-size:14px;font-weight:600">' + l.companyName + '</td>' +
     '<td style="padding:8px 12px;font-size:13px;color:#6b7280">' + (l.niche || '—') + '</td>' +
     '<td style="padding:8px 12px;font-size:13px;color:#6b7280">' + (l.country || '—') + '</td>' +
-    '<td style="padding:8px 12px;font-size:14px;font-weight:700;color:#6366f1">' + (l.score || 0).toFixed(1) + '</td></tr>'
+    '<td style="padding:8px 12px;font-size:14px;font-weight:700;color:#6366f1">' + (Number(l.score) || 0).toFixed(1) + '</td></tr>'
   ).join('');
 
   const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head>' +

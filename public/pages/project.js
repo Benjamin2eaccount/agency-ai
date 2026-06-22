@@ -208,7 +208,7 @@ async function renderProjectPage() {
             <div style="padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--surface)">
               ${scoreBar('Website kwaliteit', websiteScore)}
               ${scoreBar('Social media potentieel', socialScore)}
-              ${engageScore !== null ? scoreBar(`Engagement (${engagePct.toFixed(1)}%)`, engageScore) : ''}
+              ${engageScore !== null && engagePct != null ? scoreBar(`Engagement (${Number(engagePct).toFixed(1)}%)`, engageScore) : ''}
               ${lead.score ? scoreBar('Totale score', lead.score) : ''}
               ${urgInfo ? `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:10px;border-top:1px solid var(--border)"><span style="font-size:12px;color:var(--text-secondary)">Urgentie</span><span style="font-size:12px;font-weight:700;color:${urgInfo.color}">${urgInfo.label}</span></div>` : ''}
             </div>
@@ -4682,9 +4682,9 @@ function createPayment(leadId) {
         </div>
       </div>
       ${s.btwEnabled ? `<div class="btw-breakdown" id="btwBreakdownPay">
-        <div class="btw-row"><span>Excl. BTW</span><span id="btwExclPay">€ ${defaultAmount.toFixed(2).replace('.',',')}</span></div>
-        <div class="btw-row"><span>BTW ${s.btwRate !== undefined ? s.btwRate : 21}%</span><span id="btwAmtPay">€ ${(defaultAmount * (s.btwRate !== undefined ? s.btwRate : 21) / 100).toFixed(2).replace('.',',')}</span></div>
-        <div class="btw-row btw-total"><span>Incl. BTW</span><span id="btwInclPay">€ ${(defaultAmount * (1 + (s.btwRate !== undefined ? s.btwRate : 21) / 100)).toFixed(2).replace('.',',')}</span></div>
+        <div class="btw-row"><span>Excl. BTW</span><span id="btwExclPay">€ ${(Number(defaultAmount)||0).toFixed(2).replace('.',',')}</span></div>
+        <div class="btw-row"><span>BTW ${s.btwRate !== undefined ? s.btwRate : 21}%</span><span id="btwAmtPay">€ ${((Number(defaultAmount)||0) * (s.btwRate !== undefined ? s.btwRate : 21) / 100).toFixed(2).replace('.',',')}</span></div>
+        <div class="btw-row btw-total"><span>Incl. BTW</span><span id="btwInclPay">€ ${((Number(defaultAmount)||0) * (1 + (s.btwRate !== undefined ? s.btwRate : 21) / 100)).toFixed(2).replace('.',',')}</span></div>
       </div>` : ''}
       <div class="form-group">
         <label>Omschrijving</label>
@@ -5871,7 +5871,7 @@ function createInvoice(leadId) {
         <label>Bedrag ${s.btwEnabled ? 'excl. BTW ' : ''}(€)</label>
         <input type="number" id="invoiceAmount" value="${lead.estimatedValue || 800}" min="1" oninput="updateBtwBreakdown('invoice')">
       </div>
-      ${s.btwEnabled ? (() => { const base = lead.estimatedValue || 800; const rate = s.btwRate !== undefined ? s.btwRate : 21; const btw = base * rate / 100; return `<div class="btw-breakdown" id="btwBreakdownInvoice">
+      ${s.btwEnabled ? (() => { const base = Number(lead.estimatedValue) || 800; const rate = s.btwRate !== undefined ? Number(s.btwRate) : 21; const btw = base * rate / 100; return `<div class="btw-breakdown" id="btwBreakdownInvoice">
         <div class="btw-row"><span>Excl. BTW</span><span id="btwExclInvoice">€ ${base.toFixed(2).replace('.',',')}</span></div>
         <div class="btw-row"><span>BTW ${rate}%</span><span id="btwAmtInvoice">€ ${btw.toFixed(2).replace('.',',')}</span></div>
         <div class="btw-row btw-total"><span>Incl. BTW</span><span id="btwInclInvoice">€ ${(base+btw).toFixed(2).replace('.',',')}</span></div>
@@ -5924,7 +5924,7 @@ function updateBtwBreakdown(prefix) {
   const rate = s.btwRate !== undefined ? s.btwRate : 21;
   const btw  = Math.round(base * rate) / 100;
   const incl = Math.round((base + btw) * 100) / 100;
-  const fmt  = v => '€ ' + v.toFixed(2).replace('.', ',');
+  const fmt  = v => '€ ' + (Number(v) || 0).toFixed(2).replace('.', ',');
   const sfx  = prefix === 'pay' ? 'Pay' : 'Invoice';
   const exEl = document.getElementById('btwExcl' + sfx);
   const bEl  = document.getElementById('btwAmt'  + sfx);
