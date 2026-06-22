@@ -29,8 +29,13 @@ const PDFDocument = require('pdfkit');
 const app = express();
 app.set('trust proxy', 1); // Railway sits behind a proxy; needed for correct req.ip in rate limiters
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'agency_ai_secret';
-if (!process.env.JWT_SECRET) console.warn('[Security] JWT_SECRET not set — using insecure default. Set JWT_SECRET in environment variables.');
+const IS_PRODUCTION = process.env.NODE_ENV === 'production' || !!process.env.RAILWAY_ENVIRONMENT || !!process.env.DATABASE_URL;
+if (!process.env.JWT_SECRET && IS_PRODUCTION) {
+  console.error('[FATAL] JWT_SECRET is not set in production. Refusing to start with an insecure default.');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET || 'agency_ai_secret_dev_only';
+if (!process.env.JWT_SECRET) console.warn('[Security] JWT_SECRET not set — using insecure dev-only default. Set JWT_SECRET in environment variables for production.');
 const DATA_DIR = path.join(__dirname, 'data');
 const BASE_URL = process.env.BASE_URL || 'https://www.agencyai.info';
 
@@ -510,11 +515,23 @@ app.get('/demo/klant', (req, res) => {
   res.redirect('/portal/demo-klant-portal-2026');
 });
 
+// ── Setup token guard — all /setup/* routes require this token ────────────────
+// In production, set SETUP_TOKEN env var. Without it, setup routes are disabled.
+const SETUP_TOKEN = process.env.SETUP_TOKEN || (IS_PRODUCTION ? '' : 'dev-setup-token');
+function requireSetupToken(req, res, next) {
+  const token = req.query.token || req.headers['x-setup-token'] || '';
+  if (!SETUP_TOKEN) {
+    return res.status(403).json({ error: 'Setup routes are disabled. Set SETUP_TOKEN env var to enable.' });
+  }
+  if (token !== SETUP_TOKEN) {
+    return res.status(401).json({ error: 'Invalid or missing setup token. Pass ?token=YOUR_SETUP_TOKEN' });
+  }
+  next();
+}
+
 // ── /setup/demo-users — seeds demo accounts into PostgreSQL ──────────────────
-// Safe to call multiple times (idempotent). Public route — no auth needed.
-// Users are stored as JSON in the key-value store (not a dedicated SQL table),
-// so writeJSON() is the correct way to persist them to both SQLite and PG.
-app.get('/setup/demo-users', async (req, res) => {
+// Requires SETUP_TOKEN query param. Idempotent.
+app.get('/setup/demo-users', requireSetupToken, async (req, res) => {
   try {
     const DEMO_PASS  = 'Demo2026!';
     const DEMO_HASH  = bcrypt.hashSync(DEMO_PASS, 12);
@@ -897,9 +914,8 @@ app.get('/setup/demo-users', async (req, res) => {
 });
 
 // ── /setup/reset-admin-password — one-time password reset ────────────────────
-// Finds the first non-demo admin and sets password to Admin2026!
-// Safe to call multiple times (idempotent). Public route — no auth needed.
-app.get('/setup/reset-admin-password', async (req, res) => {
+// Requires SETUP_TOKEN. Finds the first non-demo admin and sets password.
+app.get('/setup/reset-admin-password', requireSetupToken, async (req, res) => {
   try {
     const users = readJSON('users.json') || [];
     const idx   = users.findIndex(u => u.role === 'admin' && !u.username.includes('demo'));
@@ -918,7 +934,8 @@ app.get('/setup/reset-admin-password', async (req, res) => {
 });
 
 // ── GET /setup/cleanup-agencyai — one-time cleanup of the legacy agencyai workspace ──
-app.get('/setup/cleanup-agencyai', async (req, res) => {
+// Requires SETUP_TOKEN.
+app.get('/setup/cleanup-agencyai', requireSetupToken, async (req, res) => {
   try {
     const db = getDb();
     const ws = db.prepare("SELECT * FROM workspaces WHERE slug = 'agencyai' OR id = 'ws_agencyai'").get();
@@ -2114,7 +2131,7 @@ function authMiddleware(req, res, next) {
     if (!found) return res.status(401).json({ error: 'API sleutel ongeldig' });
     found.lastUsed = new Date().toISOString();
     writeJSON('api-keys.json', keys);
-    req.user = { id: found.userId, username: found.username, role: found.role, name: found.keyLabel };
+    req.user = { id: found.userId, username: found.username, role: found.role, name: found.keyLabel, workspaceId: found.workspaceId || null };
     return next();
   }
 
@@ -4325,6 +4342,7 @@ app.post('/api/auth/api-keys', (req, res) => {
     userId: req.user.id,
     username: req.user.username,
     role: req.user.role,
+    workspaceId: req.user.workspaceId || null,
     keyLabel: label || 'API Sleutel',
     keyPrefix: rawKey.slice(0, 18) + '...',
     keyHash: hashApiKey(rawKey),
