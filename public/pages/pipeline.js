@@ -26,7 +26,7 @@ const PIPELINE_GROUPS = [
   { key: 'inbox',       label: 'Inbox / wacht',    dot: '#2563eb', statuses: ['inbox','pending','new','approved'] },
   { key: 'bounced',     label: 'Niet aangekomen',  dot: '#dc2626', statuses: ['bounced','delivery_delayed'] },
   { key: 'disapproved', label: 'Afgekeurd',        dot: '#6b7280', statuses: ['disapproved'] },
-  { key: 'dead',        label: 'Dead',             dot: '#9b9b98', statuses: ['dead'] }
+  { key: 'dead',        label: 'Inactief',          dot: '#9b9b98', statuses: ['dead'] }
 ];
 
 function _plHealth(l) {
