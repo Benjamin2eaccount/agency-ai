@@ -3698,18 +3698,28 @@ app.get('/health', (req, res) => {
   const leads      = wsRead(req, 'leads.json') || [];
   const inbox      = wsRead(req, 'inbox.json') || [];
 
+  // Workspace count
+  let workspaceCount = 0;
+  try { workspaceCount = getAllWorkspaceIds().length; } catch { /* safe fallback */ }
+
+  // Cron staleness — flag if last run is older than 48h
+  const lastRunTime = lastRun ? new Date(lastRun.createdAt || lastRun.startedAt).getTime() : 0;
+  const cronStale = lastRunTime > 0 && (now - lastRunTime) > 48 * 3600000;
+
   res.json({
     status:       allOk ? 'ok' : criticalOk ? 'degraded' : 'down',
     uptime:       Math.floor(process.uptime()),
     uptimeLabel:  formatUptime(process.uptime()),
     checks,
     lastRun:      lastRun ? { time: lastRun.createdAt || lastRun.startedAt, leadsFound: lastRun.leadsFound || 0 } : null,
+    cronStale,
     recentErrors: RUN_ERRORS.slice(0, 5),
     version:      require('./package.json').version,
     nodeVersion:  process.version,
     memUsageMb:   Math.round(mem.rss / 1024 / 1024),
     heapUsedMb:   Math.round(mem.heapUsed / 1024 / 1024),
     aiCallsToday: callsToday,
+    workspaceCount,
     stats: {
       totalLeads:   leads.length,
       clients:      leads.filter(l => l.status === 'client').length,
@@ -13248,9 +13258,10 @@ function ensureWorkspaceSeed() {
 }
 
 // ── Global Express error handler — catches asyncHandler errors + unhandled throws ──
+const log = require('./lib/logger');
 app.use((err, req, res, _next) => {
   const route = `${req.method} ${req.originalUrl}`;
-  console.error(`[Express] Unhandled error on ${route}:`, err?.message, err?.stack);
+  log.error('Express', err?.message || 'Unknown error', { route, stack: err?.stack?.split('\n')[1]?.trim() });
   logError('express', err?.message || 'Unknown error', { route });
   if (!res.headersSent) {
     res.status(500).json({ error: 'Er is een interne fout opgetreden' });
@@ -13332,6 +13343,24 @@ if (require.main === module || process.env.NODE_ENV !== 'test') pgInitPromise.th
     console.log(`[WS] Client verbonden (${_wsClients.size} actief)`);
   });
   console.log('[WS] WebSocket server actief op /ws');
+
+  // ── Graceful shutdown ────────────────────────────────────────────────────
+  function shutdown(signal) {
+    log.info('Shutdown', `${signal} received — closing server`, { uptime: Math.floor(process.uptime()) });
+    server.close(() => {
+      log.info('Shutdown', 'HTTP server closed');
+      // Close WebSocket connections
+      wss.clients.forEach(ws => ws.close(1001, 'Server shutting down'));
+      // Close SQLite DB
+      try { const { getDb } = require('./database'); getDb().close(); } catch { /* already closed */ }
+      log.info('Shutdown', 'Clean exit');
+      process.exit(0);
+    });
+    // Force kill after 10s if connections hang
+    setTimeout(() => { log.warn('Shutdown', 'Forcing exit after 10s timeout'); process.exit(1); }, 10000).unref();
+  }
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 });
 
 // Export app for testing
