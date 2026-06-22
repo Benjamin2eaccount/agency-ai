@@ -9,17 +9,35 @@ const path    = require('path');
 
 const DEMO_TOKEN = 'demo-klant-portal-2026';
 
-module.exports = function createPortalRouter({ readJSON, writeJSON, addNotification, addLeadHistory, computeRealAnalytics, getDb, JWT_SECRET, bcrypt }) {
+module.exports = function createPortalRouter({ readJSON, writeJSON, wsReadWs, wsWriteWs, getAllWorkspaceIds, addNotification, addLeadHistory, computeRealAnalytics, getDb, JWT_SECRET, bcrypt }) {
   const router = express.Router();
   const jwt    = require('jsonwebtoken');
+
+  // ── Workspace-aware lead lookup ────────────────────────────────────────────
+  // Portal routes are public (no req.user). Searches all workspaces for the lead.
+  function _findLeadData(portalToken) {
+    for (const wId of getAllWorkspaceIds()) {
+      const leads = wsReadWs(wId, 'leads.json') || [];
+      const idx = leads.findIndex(l => l.portalToken === portalToken);
+      if (idx !== -1) return { leads, lead: leads[idx], leadIndex: idx, wId };
+    }
+    return null;
+  }
+
+  function _saveLeads(wId, leads) {
+    wsWriteWs(wId, 'leads.json', leads);
+  }
+
+  function _getSettings(wId) {
+    return wsReadWs(wId, 'settings.json') || {};
+  }
 
   // ── requirePortalAuth middleware ──────────────────────────────────────────────
   // Skipped for demo portals (any lead with isDemo:true). All real portals must send a valid portal JWT.
   function _isDemoPortal(token) {
     if (token === DEMO_TOKEN) return true;
-    const leads = readJSON('leads.json') || [];
-    const lead = leads.find(l => l.portalToken === token);
-    return !!(lead && lead.isDemo);
+    const data = _findLeadData(token);
+    return !!(data && data.lead && data.lead.isDemo);
   }
   function requirePortalAuth(req, res, next) {
     if (_isDemoPortal(req.params.token)) return next();
@@ -92,26 +110,12 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
   // ── GET /api/portal/:token ──────────────────────────────────────────────────
   // Returns requiresSetup/requiresLogin for unauthenticated requests on real portals.
   router.get('/:token', (req, res) => {
-    // Search global store first, then all workspace-scoped stores (resilient to data
-    // migration — e.g. if leads ended up in ws:${id}:leads.json instead of leads.json)
-    let lead = (readJSON('leads.json') || []).find(l => l.portalToken === req.params.token);
-    if (!lead) {
-      try {
-        const db = typeof getDb === 'function' ? getDb() : null;
-        if (db) {
-          const keys = db.prepare("SELECT key FROM store WHERE key LIKE 'ws:%:leads.json'").all();
-          for (const { key } of keys) {
-            const wLeads = readJSON(key) || [];
-            lead = wLeads.find(l => l.portalToken === req.params.token);
-            if (lead) break;
-          }
-        }
-      } catch { /* non-fatal fallback search */ }
-    }
-    if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    const data = _findLeadData(req.params.token);
+    if (!data) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    const { lead, wId } = data;
     if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd. Neem contact op met uw accountmanager.' });
 
-    const settings = readJSON('settings.json') || {};
+    const settings = _getSettings(wId);
     const branding = _getBranding(lead, settings);
 
     // Demo portal — always open
@@ -223,9 +227,9 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
     const { service, text, priority } = req.body || {};
     if (!text || !text.trim()) return res.status(400).json({ error: 'Beschrijf wat er moet veranderen' });
     const prio = ['Laag', 'Normaal', 'Hoog'].includes(priority) ? priority : 'Normaal';
-    const leads = readJSON('leads.json') || [];
-    const lead  = leads.find(l => l.portalToken === req.params.token);
-    if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    const data = _findLeadData(req.params.token);
+    if (!data) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    const { leads, lead, wId } = data;
     if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd' });
 
     lead.revisionRequests = lead.revisionRequests || [];
@@ -239,7 +243,7 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
     };
     lead.revisionRequests.push(rev);
     addLeadHistory(leads, lead.id, { event: 'revision', label: `Revisie aangevraagd (${prio}): ${rev.text.substring(0, 60)}${rev.text.length > 60 ? '...' : ''}` });
-    writeJSON('leads.json', leads);
+    _saveLeads(wId, leads);
     addNotification('client_question', `🔁 Revisie aanvraag: ${lead.companyName}`, `${rev.service} — ${rev.text.substring(0, 80)}`, lead.id, `project:${lead.id}`);
     res.json({ ok: true, revision: rev });
   });
@@ -250,14 +254,14 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
     const { score, feedback } = req.body || {};
     const n = parseInt(score, 10);
     if (!n || n < 1 || n > 10) return res.status(400).json({ error: 'Score 1-10 verplicht' });
-    const leads = readJSON('leads.json') || [];
-    const lead  = leads.find(l => l.portalToken === req.params.token);
-    if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    const data = _findLeadData(req.params.token);
+    if (!data) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    const { leads, lead, wId } = data;
     if (lead.npsResponse) return res.status(400).json({ error: 'Al ingevuld — bedankt!' });
 
     lead.npsResponse = { score: n, feedback: (feedback || '').substring(0, 2000), submittedAt: new Date().toISOString() };
     addLeadHistory(leads, lead.id, { event: 'nps', label: `NPS score: ${n}/10` });
-    writeJSON('leads.json', leads);
+    _saveLeads(wId, leads);
     addNotification('client_question', `⭐ NPS van ${lead.companyName}: ${n}/10`, (feedback || '').substring(0, 100) || 'Geen toelichting', lead.id, `project:${lead.id}`);
     res.json({ ok: true });
   });
@@ -265,9 +269,9 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
   // ── POST /api/portal/:token/set-password ────────────────────────────────────
   // First-time password setup. Returns portal JWT on success.
   router.post('/:token/set-password', express.json(), async (req, res) => {
-    const leads = readJSON('leads.json') || [];
-    const li    = leads.findIndex(l => l.portalToken === req.params.token);
-    if (li === -1) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    const data = _findLeadData(req.params.token);
+    if (!data) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    const { leads, leadIndex: li, wId } = data;
     if (req.params.token === DEMO_TOKEN) return res.status(400).json({ error: 'Demo portaal heeft geen wachtwoord nodig' });
 
     const { password } = req.body || {};
@@ -277,7 +281,7 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
     leads[li].portalPassword    = hash;
     leads[li].portalPasswordSet = true;
     leads[li].portalLastLogin   = new Date().toISOString();
-    writeJSON('leads.json', leads);
+    _saveLeads(wId, leads);
 
     const token = jwt.sign(
       { portalToken: req.params.token, leadId: leads[li].id, companyName: leads[li].companyName },
@@ -290,9 +294,9 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
   // ── POST /api/portal/:token/login ───────────────────────────────────────────
   // Returning visitor login. Returns portal JWT on success.
   router.post('/:token/login', express.json(), async (req, res) => {
-    const leads = readJSON('leads.json') || [];
-    const li    = leads.findIndex(l => l.portalToken === req.params.token);
-    if (li === -1) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    const data = _findLeadData(req.params.token);
+    if (!data) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    const { leads, leadIndex: li, wId } = data;
     if (req.params.token === DEMO_TOKEN) return res.status(400).json({ error: 'Demo portaal heeft geen login nodig' });
 
     if (!leads[li].portalPasswordSet) return res.status(400).json({ error: 'Wachtwoord nog niet ingesteld' });
@@ -304,7 +308,7 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
     if (!match) return res.status(401).json({ error: 'Onjuist wachtwoord' });
 
     leads[li].portalLastLogin = new Date().toISOString();
-    writeJSON('leads.json', leads);
+    _saveLeads(wId, leads);
 
     const token = jwt.sign(
       { portalToken: req.params.token, leadId: leads[li].id, companyName: leads[li].companyName },
@@ -318,15 +322,15 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
   router.post('/:token/site-feedback', requirePortalAuth, (req, res) => {
     const { feedback } = req.body;
     if (!feedback) return res.status(400).json({ error: 'Feedback verplicht' });
-    const leads = readJSON('leads.json') || [];
-    const lead  = leads.find(l => l.portalToken === req.params.token);
-    if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    const data = _findLeadData(req.params.token);
+    if (!data) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    const { leads, lead, wId } = data;
     if (!lead.generatedSite) return res.status(400).json({ error: 'Geen website gegenereerd' });
     if (!lead.generatedSite.feedback) lead.generatedSite.feedback = [];
     const preview = feedback.length > 60 ? feedback.substring(0, 60) + '...' : feedback;
     lead.generatedSite.feedback.push({ text: feedback, time: new Date().toISOString(), by: lead.companyName || 'klant' });
     addLeadHistory(leads, lead.id, { event: 'siteFeedback', label: `Website feedback van klant: ${preview}` });
-    writeJSON('leads.json', leads);
+    _saveLeads(wId, leads);
     res.json({ ok: true });
   });
 
@@ -334,33 +338,32 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
   router.post('/:token/message', requirePortalAuth, (req, res) => {
     const { name, message } = req.body;
     if (!name || !message) return res.status(400).json({ error: 'Naam en bericht verplicht' });
-    const leads = readJSON('leads.json') || [];
-    const lead  = leads.find(l => l.portalToken === req.params.token);
-    if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    const data = _findLeadData(req.params.token);
+    if (!data) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    const { leads, lead, wId } = data;
     if (!lead.clientMessages) lead.clientMessages = [];
     lead.clientMessages.push({ name, message, time: new Date().toISOString(), read: false });
     if (!lead.portalChat) lead.portalChat = [];
     lead.portalChat.push({ id: 'pc-' + Date.now(), from: 'client', name, message, time: new Date().toISOString() });
     const preview = message.length > 60 ? message.substring(0, 60) + '...' : message;
     addLeadHistory(leads, lead.id, { event: 'clientMessage', label: `Klant bericht van ${name}: ${preview}` });
-    writeJSON('leads.json', leads);
+    _saveLeads(wId, leads);
     addNotification('client_question', `Klant vraag: ${lead.companyName}`, `${name}: ${preview}`, lead.id, `project:${lead.id}`);
     res.json({ ok: true });
   });
 
   // ── GET /api/portal/:token/chat ─────────────────────────────────────────────
   router.get('/:token/chat', requirePortalAuth, (req, res) => {
-    const leads = readJSON('leads.json') || [];
-    const lead  = leads.find(l => l.portalToken === req.params.token);
-    if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
-    res.json({ chat: lead.portalChat || [], companyName: lead.companyName });
+    const data = _findLeadData(req.params.token);
+    if (!data) return res.status(404).json({ error: 'Portaal niet gevonden' });
+    res.json({ chat: data.lead.portalChat || [], companyName: data.lead.companyName });
   });
 
   // ── POST /api/portal/:token/upload ─────────────────────────────────────────
   router.post('/:token/upload', requirePortalAuth, express.json({ limit: '15mb' }), async (req, res) => {
-    const leads = readJSON('leads.json') || [];
-    const li = leads.findIndex(l => l.portalToken === req.params.token);
-    if (li === -1) return res.status(404).json({ error: 'Niet gevonden' });
+    const data = _findLeadData(req.params.token);
+    if (!data) return res.status(404).json({ error: 'Niet gevonden' });
+    const { leads, leadIndex: li, wId } = data;
     if (leads[li].portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd' });
 
     const { filename, mimeType, dataBase64, size } = req.body || {};
@@ -378,7 +381,7 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
     if (!leads[li].clientUploads.some(u => u.filename === fileInfo.filename)) {
       leads[li].clientUploads.push(fileInfo);
     }
-    writeJSON('leads.json', leads);
+    _saveLeads(wId, leads);
     addNotification('client_question', `📎 Bestand geüpload: ${safeName}`, `${leads[li].companyName} heeft een bestand geüpload`, leads[li].id, `project:${leads[li].id}`);
 
     const { content: _c, ...fileInfoPublic } = fileInfo;
@@ -387,25 +390,24 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, addNotificat
 
   // ── DELETE /api/portal/:token/upload/:filename ──────────────────────────────
   router.delete('/:token/upload/:filename', requirePortalAuth, (req, res) => {
-    const leads = readJSON('leads.json') || [];
-    const li = leads.findIndex(l => l.portalToken === req.params.token);
-    if (li === -1) return res.status(404).json({ error: 'Niet gevonden' });
+    const data = _findLeadData(req.params.token);
+    if (!data) return res.status(404).json({ error: 'Niet gevonden' });
+    const { leads, leadIndex: li, wId } = data;
     if (leads[li].portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd' });
     const safeName = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
     const uploads  = leads[li].clientUploads || [];
     if (!uploads.find(f => f.filename === safeName)) return res.status(404).json({ error: 'Bestand niet gevonden' });
     leads[li].clientUploads = uploads.filter(f => f.filename !== safeName);
-    writeJSON('leads.json', leads);
+    _saveLeads(wId, leads);
     res.json({ ok: true });
   });
 
   // ── GET /api/portal/:token/download/:filename ───────────────────────────────
   router.get('/:token/download/:filename', requirePortalAuth, (req, res) => {
-    const leads = readJSON('leads.json') || [];
-    const lead  = leads.find(l => l.portalToken === req.params.token);
-    if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
-    if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd' });
-    const upload = _findUpload(lead.clientUploads, req.params.filename);
+    const data = _findLeadData(req.params.token);
+    if (!data) return res.status(404).json({ error: 'Niet gevonden' });
+    if (data.lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd' });
+    const upload = _findUpload(data.lead.clientUploads, req.params.filename);
     if (!upload) return res.status(404).json({ error: 'Bestand niet gevonden' });
     _serveUpload(upload, res);
   });

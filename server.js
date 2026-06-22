@@ -2724,7 +2724,7 @@ ${caseCards ? `
 });
 
 // ── Portal API routes — migrated to routes/portal.js ────────────────────────
-app.use('/api/portal', require('./routes/portal')({ readJSON, writeJSON, addNotification, addLeadHistory, computeRealAnalytics, getDb: () => require('./database').getDb(), JWT_SECRET, bcrypt }));
+app.use('/api/portal', require('./routes/portal')({ readJSON, writeJSON, wsReadWs, wsWriteWs, getAllWorkspaceIds, addNotification, addLeadHistory, computeRealAnalytics, getDb: () => require('./database').getDb(), JWT_SECRET, bcrypt }));
 
 // ── Portal JWT middleware for legacy routes still in server.js ───────────────
 function requirePortalAuth(req, res, next) {
@@ -13055,17 +13055,21 @@ function scheduleCron() {
   const schedule = `${minute} ${hour} * * *`;
 
   if (cronJob) cronJob.stop();
-  cronJob = cron.schedule(schedule, () => {
+  cronJob = cron.schedule(schedule, async () => {
     console.log(`[Cron] Dagelijkse run gestart om ${time}`);
-    jobQueue.add('find_leads_cron', () => runFindLeadsJob({}, false), {}).catch(err => logError('cron_run', 'Dagelijkse run mislukt', err.message));
+    for (const wId of getAllWorkspaceIds()) {
+      await jobQueue.add('find_leads_cron', () => runFindLeadsJob({}, false, wId), {}).catch(err => logError('cron_run', 'Dagelijkse run mislukt', err.message));
+    }
   });
   console.log(`[Cron] Dagelijkse run ingepland om ${time} (${schedule})`);
 }
 
 // Follow-up cron: daily at 10:00
-cron.schedule('0 10 * * *', () => {
+cron.schedule('0 10 * * *', async () => {
   console.log('[Cron] Follow-up check gestart');
-  runFollowUpJob().catch(err => logError('cron_followup', 'Follow-up cron mislukt', err.message));
+  for (const wId of getAllWorkspaceIds()) {
+    await runFollowUpJob(wId).catch(err => logError('cron_followup', 'Follow-up cron mislukt', err.message));
+  }
 });
 
 async function runAutoArchive() {
@@ -13096,37 +13100,42 @@ async function runAutoArchive() {
 }
 
 // Auto-archive cron: daily at 10:30
-cron.schedule('30 10 * * *', () => {
+cron.schedule('30 10 * * *', async () => {
   console.log('[Cron] Auto-archief check gestart');
-  runAutoArchive().catch(err => console.error('[Cron AutoArchive] Fout:', err.message));
+  for (const wId of getAllWorkspaceIds()) {
+    await runAutoArchive(wId).catch(err => console.error('[Cron AutoArchive] Fout:', err.message));
+  }
 });
 
 // Custom domain verification — daily 10:30
 cron.schedule('30 10 * * *', async () => {
-  try {
-    const leads   = wsRead(req, 'leads.json') || [];
-    let changed   = false;
-    for (const lead of leads) {
-      if (!lead.customDomain) continue;
-      try {
-        const domain = lead.customDomain.startsWith('http') ? lead.customDomain : `http://${lead.customDomain}`;
-        const r = await fetch(domain, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(8000) });
-        const newStatus = r.ok ? 'active' : 'error';
-        if (lead.customDomainStatus !== newStatus) { lead.customDomainStatus = newStatus; changed = true; }
-      } catch {
-        if (lead.customDomainStatus !== 'pending') { lead.customDomainStatus = 'error'; changed = true; }
+  for (const wId of getAllWorkspaceIds()) {
+    try {
+      const leads   = wsReadWs(wId, 'leads.json') || [];
+      let changed   = false;
+      for (const lead of leads) {
+        if (!lead.customDomain) continue;
+        try {
+          const domain = lead.customDomain.startsWith('http') ? lead.customDomain : `http://${lead.customDomain}`;
+          const r = await fetch(domain, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(8000) });
+          const newStatus = r.ok ? 'active' : 'error';
+          if (lead.customDomainStatus !== newStatus) { lead.customDomainStatus = newStatus; changed = true; }
+        } catch {
+          if (lead.customDomainStatus !== 'pending') { lead.customDomainStatus = 'error'; changed = true; }
+        }
       }
-    }
-    if (changed) wsWrite(req, 'leads.json', leads);
-    console.log('[DomainCheck] Verificatie voltooid');
-  } catch (e) { console.log('[DomainCheck] Fout:', e.message); }
+      if (changed) wsWriteWs(wId, 'leads.json', leads);
+    } catch (e) { console.log('[DomainCheck] Fout:', e.message); }
+  }
+  console.log('[DomainCheck] Verificatie voltooid');
 });
 
 // Birthday emails — daily 09:05
 cron.schedule('5 9 * * *', async () => {
+  for (const wId of getAllWorkspaceIds()) {
   try {
-    const leads = wsRead(req, 'leads.json') || [];
-    const settings = wsRead(req, 'settings.json') || {};
+    const leads = wsReadWs(wId, 'leads.json') || [];
+    const settings = wsReadWs(wId, 'settings.json') || {};
     if (!isResendReady(settings)) return;
     const today = new Date();
     const mmdd = `${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
@@ -13141,22 +13150,25 @@ cron.schedule('5 9 * * *', async () => {
     }
     if (birthdays.length) console.log(`[Birthday] Sent ${birthdays.length} birthday emails`);
   } catch(e) { console.log('[Birthday] Cron error:', e.message); }
+  } // end workspace loop
 });
 
 // Data retention — cleanup archived leads older than 90 days (Sunday 03:00)
 cron.schedule('0 3 * * 0', async () => {
-  try {
-    const leads = wsRead(req, 'leads.json') || [];
-    const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
-    const before = leads.length;
-    const cleaned = leads.filter(l => !(l.status === 'archived' && l.archivedAt && l.archivedAt < cutoff));
-    if (cleaned.length < before) {
-      wsWrite(req, 'leads.json', cleaned);
-      const deleted = before - cleaned.length;
-      console.log(`[CLEANUP] Deleted ${deleted} old archived leads (>90 days)`);
-      addActivity('cleanup', `${deleted} gearchiveerde leads verwijderd (>90 dagen)`);
-    }
-  } catch(e) { console.log('[CLEANUP] Error:', e.message); }
+  for (const wId of getAllWorkspaceIds()) {
+    try {
+      const leads = wsReadWs(wId, 'leads.json') || [];
+      const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
+      const before = leads.length;
+      const cleaned = leads.filter(l => !(l.status === 'archived' && l.archivedAt && l.archivedAt < cutoff));
+      if (cleaned.length < before) {
+        wsWriteWs(wId, 'leads.json', cleaned);
+        const deleted = before - cleaned.length;
+        console.log(`[CLEANUP] Deleted ${deleted} old archived leads (>90 days)`);
+        addActivity('cleanup', `${deleted} gearchiveerde leads verwijderd (>90 dagen)`, { workspaceId: wId });
+      }
+    } catch(e) { console.log('[CLEANUP] Error:', e.message); }
+  }
 });
 
 let briefingCronJob = null;
@@ -13166,52 +13178,66 @@ function scheduleBriefingCron() {
   const time = settings.dailyBriefingTime || '08:45';
   const [h, m] = time.split(':').map(Number);
   if (briefingCronJob) briefingCronJob.stop();
-  briefingCronJob = cron.schedule(m + ' ' + h + ' * * *', () => {
+  briefingCronJob = cron.schedule(m + ' ' + h + ' * * *', async () => {
     console.log('[Cron] Dagelijkse briefing gestart');
-    sendDailyBriefing(wId).catch(err => console.error('[Cron Briefing] Fout:', err.message));
+    for (const wId of getAllWorkspaceIds()) {
+      await sendDailyBriefing(wId).catch(err => console.error('[Cron Briefing] Fout:', err.message));
+    }
   });
   console.log('[Cron] Dagelijkse briefing ingepland om ' + time);
 }
 
 // Upsell check cron: daily at 11:00
-cron.schedule('0 11 * * *', () => {
+cron.schedule('0 11 * * *', async () => {
   console.log('[Cron] Upsell check gestart');
-  runUpsellCheck(wId).catch(err => console.error('[Cron Upsell] Fout:', err.message));
+  for (const wId of getAllWorkspaceIds()) {
+    await runUpsellCheck(wId).catch(err => console.error('[Cron Upsell] Fout:', err.message));
+  }
 });
 
 // Agent 7 — post-delivery follow-ups (day 3/7/14/30 after approved deliverable): daily 09:45
-cron.schedule('45 9 * * *', () => {
+cron.schedule('45 9 * * *', async () => {
   console.log('[Cron] Agent 7 post-delivery follow-ups gestart');
-  runPostDeliveryFollowups(wId).catch(err => console.error('[Cron Agent7] Fout:', err.message));
+  for (const wId of getAllWorkspaceIds()) {
+    await runPostDeliveryFollowups(wId).catch(err => console.error('[Cron Agent7] Fout:', err.message));
+  }
 });
 
 // Monthly report cron: 1st of every month at 09:00
-cron.schedule('0 9 1 * *', () => {
+cron.schedule('0 9 1 * *', async () => {
   console.log('[Cron] Maandrapport generatie gestart');
-  runMonthlyReports(wId).catch(err => console.error('[Cron Maandrapport] Fout:', err.message));
+  for (const wId of getAllWorkspaceIds()) {
+    await runMonthlyReports(wId).catch(err => console.error('[Cron Maandrapport] Fout:', err.message));
+  }
 });
 
 // Weekly client updates: every Friday at 16:00
-cron.schedule('0 16 * * 5', () => {
+cron.schedule('0 16 * * 5', async () => {
   console.log('[Cron] Weekupdates voor klanten gestart');
-  runWeeklyUpdates(wId).catch(err => console.error('[Cron WeeklyUpdate] Fout:', err.message));
+  for (const wId of getAllWorkspaceIds()) {
+    await runWeeklyUpdates(wId).catch(err => console.error('[Cron WeeklyUpdate] Fout:', err.message));
+  }
 });
 
 // Referral check cron: daily at 12:00
-cron.schedule('0 12 * * *', () => {
+cron.schedule('0 12 * * *', async () => {
   console.log('[Cron] Referral check gestart');
-  runReferralCheck(wId).catch(err => console.error('[Cron Referral] Fout:', err.message));
+  for (const wId of getAllWorkspaceIds()) {
+    await runReferralCheck(wId).catch(err => console.error('[Cron Referral] Fout:', err.message));
+  }
 });
 
 // Reply detection cron: every 2 hours (skipped when real-time webhook is active)
-cron.schedule('0 */2 * * *', () => {
-  const s = wsRead(req, 'settings.json') || {};
-  if (s.webhookConfigured) {
-    console.log('[Cron] Reply check overgeslagen — webhook is actief');
-    return;
+cron.schedule('0 */2 * * *', async () => {
+  for (const wId of getAllWorkspaceIds()) {
+    const s = wsReadWs(wId, 'settings.json') || {};
+    if (s.webhookConfigured) {
+      console.log('[Cron] Reply check overgeslagen — webhook is actief');
+      continue;
+    }
+    console.log('[Cron] Reply check gestart');
+    await jobQueue.add('check_replies', () => checkReplies(wId), {}).catch(err => console.error('[Cron Reply] Fout:', err.message));
   }
-  console.log('[Cron] Reply check gestart');
-  jobQueue.add('check_replies', () => checkReplies(), {}).catch(err => console.error('[Cron Reply] Fout:', err.message));
 });
 
 // Scheduled send cron: every minute (with lock to prevent duplicate sends)
@@ -13220,6 +13246,7 @@ cron.schedule('* * * * *', async () => {
   if (_scheduledSendRunning) { console.log('[Scheduled] Vorige run nog actief — overgeslagen'); return; }
   _scheduledSendRunning = true;
   try {
+  for (const wId of getAllWorkspaceIds()) {
   const inbox = wsReadWs(wId, 'inbox.json') || [];
   const now = new Date();
   const due = inbox.filter(i => i.status === 'scheduled' && i.scheduledAt && new Date(i.scheduledAt) <= now);
@@ -13283,6 +13310,7 @@ cron.schedule('* * * * *', async () => {
     wsWriteWs(wId, 'inbox.json', inbox);
     wsWriteWs(wId, 'leads.json', leads);
   }
+  } // end workspace loop
   } catch (err) {
     console.error('[Scheduled] Cron error:', err.message);
   } finally {
@@ -13300,8 +13328,10 @@ cron.schedule('0 3 * * *', () => {
 });
 
 // Task 29 — Weekly admin report: every Monday 08:00
-cron.schedule('0 8 * * 1', () => {
-  runWeeklyAdminReport(wId).catch(e => console.error('[Cron WeeklyReport]', e.message));
+cron.schedule('0 8 * * 1', async () => {
+  for (const wId of getAllWorkspaceIds()) {
+    await runWeeklyAdminReport(wId).catch(e => console.error('[Cron WeeklyReport]', e.message));
+  }
 });
 
 // ─── Workspace status auto-check ─────────────────────────────────────────────

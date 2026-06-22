@@ -132,6 +132,7 @@ module.exports = function createAuthRouter({ readJSON, writeJSON, JWT_SECRET }) 
     }
 
     // ── IP whitelist (admin-only, settings.json) ─────────────────────────────
+    // Global read: IP whitelist checked before workspace context is established
     const settings = readJSON('settings.json') || {};
     if (user.role === 'admin' && settings.adminIpWhitelist?.length > 0) {
       const clientIp = req.ip || req.connection?.remoteAddress || '';
