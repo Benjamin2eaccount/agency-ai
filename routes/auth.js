@@ -46,7 +46,7 @@ module.exports = function createAuthRouter({ readJSON, writeJSON, JWT_SECRET }) 
   function _workspaceForWsUser(wsUser) {
     try {
       return _ws().getWorkspaceById(wsUser.workspace_id);
-    } catch { return null; }
+    } catch { /* workspace lookup non-fatal */ return null; }
   }
 
   // Try to find workspace for a legacy users.json user
@@ -54,7 +54,7 @@ module.exports = function createAuthRouter({ readJSON, writeJSON, JWT_SECRET }) 
     try {
       if (user.workspaceId) return _ws().getWorkspaceById(user.workspaceId);
       return null;
-    } catch { return null; }
+    } catch { /* workspace lookup non-fatal */ return null; }
   }
 
   // Build extra JWT/response fields from a workspace (returns {} when none)
@@ -132,6 +132,7 @@ module.exports = function createAuthRouter({ readJSON, writeJSON, JWT_SECRET }) 
     }
 
     // ── IP whitelist (admin-only, settings.json) ─────────────────────────────
+    // Global read: IP whitelist checked before workspace context is established
     const settings = readJSON('settings.json') || {};
     if (user.role === 'admin' && settings.adminIpWhitelist?.length > 0) {
       const clientIp = req.ip || req.connection?.remoteAddress || '';
@@ -183,7 +184,7 @@ module.exports = function createAuthRouter({ readJSON, writeJSON, JWT_SECRET }) 
         const { getDb } = require('../database');
         getDb().prepare("UPDATE workspaces SET last_active_at = datetime('now') WHERE id = ?")
           .run(workspace.id);
-      } catch {}
+      } catch (err) { console.error(`[DB]`, err.message); }
     }
 
     res.json({
@@ -204,7 +205,7 @@ module.exports = function createAuthRouter({ readJSON, writeJSON, JWT_SECRET }) 
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
       res.json({ valid: true, user: decoded });
-    } catch {
+    } catch { /* parse fallback */
       res.json({ valid: false });
     }
   });

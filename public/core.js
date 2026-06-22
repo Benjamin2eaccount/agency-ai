@@ -1,18 +1,22 @@
+// Debug logging: only enabled via localStorage.debugMode = 'true'
+var _dbg = typeof localStorage !== 'undefined' && localStorage.getItem('debugMode') === 'true';
+function _log() { if (_dbg) console.log.apply(console, arguments); }
+
 // ─── Impersonation hash import — runs synchronously before DOMContentLoaded ──
 // Relay page redirects to /app/#_imp=1&token=...&slug=...&name=...
 // Reading here (before any DOMContentLoaded handler) guarantees sessionStorage is
 // populated before the auth guard fires.
 ;(function() {
   var h = window.location.hash;
-  console.log('[hash-import] hash:', h ? h.substring(0, 50) : '(empty)');
+  _log('[hash-import] hash:', h ? h.substring(0, 50) : '(empty)');
   if (h && h.indexOf('_imp=1') !== -1) {
     try {
       var params = new URLSearchParams(h.substring(1));
       var tok  = params.get('token');
       var slug = params.get('slug') || '';
       var nm   = params.get('name') || '';
-      console.log('[hash-import] token found:', !!tok);
-      console.log('[hash-import] slug:', slug);
+      _log('[hash-import] token found:', !!tok);
+      _log('[hash-import] slug:', slug);
       if (tok) {
         // sessionStorage: used while the tab is open
         sessionStorage.setItem('agencyToken',    tok);
@@ -140,15 +144,15 @@ const state = {
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
 function getToken() {
   const sess = sessionStorage.getItem('agencyToken');
-  console.log('[getToken] sessionStorage:', sess ? 'found' : 'empty');
+  _log('[getToken] sessionStorage:', sess ? 'found' : 'empty');
   if (sess) return sess;
 
   const currentWS = localStorage.getItem('currentWorkspace');
-  console.log('[getToken] currentWorkspace:', currentWS);
+  _log('[getToken] currentWorkspace:', currentWS);
 
   if (currentWS) {
     const impToken = localStorage.getItem('impToken_' + currentWS);
-    console.log('[getToken] impToken_' + currentWS + ':', impToken ? 'found' : 'empty');
+    _log('[getToken] impToken_' + currentWS + ':', impToken ? 'found' : 'empty');
     if (impToken) {
       sessionStorage.setItem('agencyToken',    impToken);
       sessionStorage.setItem('agencyRole',     'admin');
@@ -159,7 +163,7 @@ function getToken() {
   }
 
   const local = localStorage.getItem('agencyToken');
-  console.log('[getToken] localStorage agencyToken:', local ? 'found' : 'empty');
+  _log('[getToken] localStorage agencyToken:', local ? 'found' : 'empty');
   return local;
 }
 
@@ -817,7 +821,7 @@ function initWebSocket() {
   } catch { return; }
 
   _ws.onopen = () => {
-    console.log('[WS] Verbonden');
+    _log('[WS] Verbonden');
     if (_wsReconnectTimer) { clearTimeout(_wsReconnectTimer); _wsReconnectTimer = null; }
   };
 
@@ -851,7 +855,7 @@ function initWebSocket() {
   };
 
   _ws.onclose = (evt) => {
-    console.log('[WS] Verbinding verbroken, herverbinden in 15s...', evt.code);
+    _log('[WS] Verbinding verbroken, herverbinden in 15s...', evt.code);
     _ws = null;
     if (evt.code !== 4001) { // 4001 = unauthorized, don't retry
       _wsReconnectTimer = setTimeout(initWebSocket, 15000);

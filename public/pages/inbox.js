@@ -261,8 +261,8 @@ function buildAiReplyCard(item) {
 }
 
 window.startProjectFromInbox = function(itemId, leadId) {
-  console.log('[InboxStart] clicked, leadId:', leadId);
-  console.log('[InboxStart] modal fn:', typeof openProjectConfigModal);
+  if (typeof _log === 'function') _log('[InboxStart] clicked, leadId:', leadId);
+  if (typeof _log === 'function') _log('[InboxStart] modal fn:', typeof openProjectConfigModal);
   window._inboxProjectStart = { itemId, leadId };
   openProjectConfigModal(leadId, false);
 };

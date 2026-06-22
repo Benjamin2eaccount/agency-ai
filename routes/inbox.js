@@ -160,11 +160,11 @@ router.patch('/:id/approve', async (req, res) => {
       inbox[idx].sentAt = new Date().toISOString();
 
       addActivity('email', 'Email verstuurd naar ' + (inbox[idx].companyName || 'Onbekend'), { meta: { companyName: inbox[idx].companyName, leadId: inbox[idx].leadId } });
-      const stats = readJSON('stats.json') || {};
+      const stats = wsRead(req, 'stats.json') || {};
       stats.emailsSent = (stats.emailsSent || 0) + 1;
       if (!stats.abStats) stats.abStats = { aApproved: 0, bApproved: 0 };
       stats.abStats[version === 'B' ? 'bApproved' : 'aApproved']++;
-      writeJSON('stats.json', stats);
+      wsWrite(req, 'stats.json', stats);
       console.log(`[Email] Verstuurd (versie ${version}): "${chosenEmail?.subject}" -> ${recipientEmail}`);
     } catch (err) {
       console.error('[Email] Fout:', err.message);
