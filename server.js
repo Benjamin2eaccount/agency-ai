@@ -3791,7 +3791,7 @@ app.post('/api/superadmin/workspaces/:id/activate', requireSuperAdmin, async (re
     logActivity(ws.id, req.user.id, 'activated', { by: req.user.email });
     res.json({ ok: true });
     // Send activation email
-    const settings = readJSON('settings.json') || {};
+    const settings = wsRead(req, 'settings.json', {});
     if (isResendReady(settings)) {
       const email = buildRegEmail('account_activated', { naam: ws.owner_name || ws.owner_email, slug: ws.slug });
       sendEmail({ to: ws.owner_email, subject: email.subject, html: email.html, settings }).catch(() => {});
@@ -3809,7 +3809,7 @@ app.post('/api/superadmin/workspaces/:id/pause', requireSuperAdmin, async (req, 
     const { logActivity } = require('./lib/workspace');
     logActivity(ws.id, req.user.id, 'paused', { by: req.user.email });
     res.json({ ok: true });
-    const settings = readJSON('settings.json') || {};
+    const settings = wsRead(req, 'settings.json', {});
     if (isResendReady(settings)) {
       const email = buildRegEmail('account_paused', { naam: ws.owner_name || ws.owner_email, amount: ws.billing_amount, ref: ws.payment_reference });
       sendEmail({ to: ws.owner_email, subject: email.subject, html: email.html, settings }).catch(() => {});
@@ -3827,7 +3827,7 @@ app.post('/api/superadmin/workspaces/:id/block', requireSuperAdmin, async (req, 
     const { logActivity } = require('./lib/workspace');
     logActivity(ws.id, req.user.id, 'blocked', { by: req.user.email });
     res.json({ ok: true });
-    const settings = readJSON('settings.json') || {};
+    const settings = wsRead(req, 'settings.json', {});
     if (isResendReady(settings)) {
       const email = buildRegEmail('account_blocked', { naam: ws.owner_name || ws.owner_email });
       sendEmail({ to: ws.owner_email, subject: email.subject, html: email.html, settings }).catch(() => {});
@@ -3847,7 +3847,7 @@ app.post('/api/superadmin/workspaces/:id/unblock', requireSuperAdmin, async (req
     const { logActivity } = require('./lib/workspace');
     logActivity(ws.id, req.user.id, 'unblocked', { by: req.user.email });
     res.json({ ok: true });
-    const settings = readJSON('settings.json') || {};
+    const settings = wsRead(req, 'settings.json', {});
     if (isResendReady(settings)) {
       const email = buildRegEmail('account_activated', { naam: ws.owner_name || ws.owner_email, slug: ws.slug });
       sendEmail({ to: ws.owner_email, subject: email.subject, html: email.html, settings }).catch(() => {});
@@ -3946,7 +3946,7 @@ app.post('/api/superadmin/workspaces/:id/impersonate', requireSuperAdmin, (req, 
 
     console.log('[impersonate] user found:', wsUser?.email, '| role:', wsUser?.role);
     if (!wsUser) return res.status(404).json({ error: 'Geen admin gebruiker gevonden voor deze workspace. Maak eerst een gebruiker aan.' });
-    const settings = readJSON('settings.json') || {};
+    const settings = wsRead(req, 'settings.json', {});
     const token = jwt.sign({
       id: wsUser.id, userId: wsUser.id, username: wsUser.email, name: wsUser.name,
       role: wsUser.role, email: wsUser.email,
@@ -3996,7 +3996,7 @@ app.post('/api/superadmin/billing/:id/confirm', requireSuperAdmin, async (req, r
     res.json({ ok: true, wasActivated: wasPaymentPending });
     // Send activation email if workspace was pending/paused
     if (wasPaymentPending) {
-      const settings = readJSON('settings.json') || {};
+      const settings = wsRead(req, 'settings.json', {});
       if (isResendReady(settings)) {
         const email = buildRegEmail('account_activated', { naam: ws.owner_name || ws.owner_email, slug: ws.slug });
         sendEmail({ to: ws.owner_email, subject: email.subject, html: email.html, settings }).catch(() => {});
@@ -4066,7 +4066,7 @@ app.post('/api/superadmin/messages', requireSuperAdmin, (req, res) => {
 app.get('/api/superadmin/system', requireSuperAdmin, (req, res) => {
   try {
     const db = getDb();
-    const leads  = readJSON('leads.json') || [];
+    const leads  = wsRead(req, 'leads.json', []);
     const act    = readJSON('activity.json') || [];
     const emailCount = act.filter(a => a.type === 'email').length;
     const buildCount = act.filter(a => a.type === 'build').length;
@@ -4108,9 +4108,9 @@ app.patch('/api/superadmin/system/claude-key', requireSuperAdmin, (req, res) => 
     process.env.CLAUDE_API_KEY   = key;
     process.env.ANTHROPIC_API_KEY = key;
     // Persist encrypted in Agency AI's own global settings
-    const s = readJSON('settings.json') || {};
+    const s = wsRead(req, 'settings.json', {});
     s.claudeApiKeyEncrypted = encryptApiKey(key);
-    writeJSON('settings.json', s);
+    wsWrite(req, 'settings.json', s);
     console.log('[SuperAdmin] Claude API key updated');
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -4310,7 +4310,7 @@ app.patch('/api/hosting-requests/:id', requireAdmin, async (req, res) => {
 
   // When admin marks as done (status='done') for agency hosting, optionally email client
   if (status === 'done' && clientEmail && hostingInfo) {
-    const settings = readJSON('settings.json') || {};
+    const settings = wsRead(req, 'settings.json', {});
     if (isResendReady(settings)) {
       sendEmail({
         to: clientEmail,
@@ -4374,7 +4374,7 @@ app.post('/api/claude', async (req, res) => {
   if (!prompt) return res.status(400).json({ error: 'Prompt verplicht' });
 
   try {
-    const apiKey = getClaudeApiKey(readJSON('settings.json') || {});
+    const apiKey = getClaudeApiKey(wsRead(req, 'settings.json', {}));
     if (!apiKey) return res.status(400).json({ error: 'Claude API sleutel niet ingesteld' });
     const { default: fetch } = await import('node-fetch');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -4435,7 +4435,7 @@ app.post('/api/analyze-company', requireAdmin, async (req, res) => {
     estimatedFollowers: estimatedFollowers || 0, companySize: companySize || 'small'
   };
   try {
-    const settings = readJSON('settings.json') || {};
+    const settings = wsRead(req, 'settings.json', {});
     console.log(`[Aangepast bedrijf] ${companyName} analyseren...`);
     const dupCheck = isDuplicate(lead);
     if (dupCheck) return res.status(409).json({ error: `Duplicaat: ${lead.companyName} bestaat al (status: ${dupCheck.status})`, existing: { id: dupCheck.id, status: dupCheck.status } });
@@ -4476,10 +4476,10 @@ app.post('/api/analyze-company', requireAdmin, async (req, res) => {
     if (!result) return res.status(400).json({ error: 'Overgeslagen: bedrijf staat op de blacklist' });
     const { item, leadRecord } = result;
 
-    const inbox = readJSON('inbox.json') || [];
-    writeJSON('inbox.json', [item, ...inbox]);
-    const allLeads = readJSON('leads.json') || [];
-    writeJSON('leads.json', [leadRecord, ...allLeads]);
+    const inbox = wsRead(req, 'inbox.json', []);
+    wsWrite(req, 'inbox.json', [item, ...inbox]);
+    const allLeads = wsRead(req, 'leads.json', []);
+    wsWrite(req, 'leads.json', [leadRecord, ...allLeads]);
 
     const stats = readJSON('stats.json') || {};
     writeJSON('stats.json', { ...stats, leadsFound: (stats.leadsFound || 0) + 1, pipelineValue: (stats.pipelineValue || 0) + (item.estimatedValue || 0) });
@@ -4495,7 +4495,7 @@ app.post('/api/analyze-company', requireAdmin, async (req, res) => {
 // ── Health check (public) ──────────────────────────────────────────────────────
 
 app.get('/health', (req, res) => {
-  const settings  = readJSON('settings.json') || {};
+  const settings  = wsRead(req, 'settings.json', {});
   const runs      = readJSON('runs.json') || [];
   const lastRun   = runs.length ? runs[runs.length - 1] : null;
   const apiKeyOk  = isClaudeReady(settings);
@@ -4509,8 +4509,8 @@ app.get('/health', (req, res) => {
 
   const now        = Date.now();
   const callsToday = _aiCallLog.filter(e => e.ts >= now - 86400000).length;
-  const leads      = readJSON('leads.json') || [];
-  const inbox      = readJSON('inbox.json') || [];
+  const leads      = wsRead(req, 'leads.json', []);
+  const inbox      = wsRead(req, 'inbox.json', []);
 
   res.json({
     status:       allOk ? 'ok' : criticalOk ? 'degraded' : 'down',
@@ -4722,7 +4722,7 @@ app.get('/api/leads/unread-portal-count', authMiddleware, (req, res) => {
 app.get('/api/leads/check-duplicate', (req, res) => {
   const { name, domain, email } = req.query;
   if (!name && !domain && !email) return res.json({ duplicate: false });
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const nameLower  = (name   || '').toLowerCase().trim();
   const domLower   = (domain || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase().trim();
   const emailLower = (email  || '').toLowerCase().trim();
@@ -4739,14 +4739,14 @@ app.get('/api/leads/check-duplicate', (req, res) => {
 });
 
 app.get('/api/leads/:id/reports', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead  = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
   res.json(lead.reports || []);
 });
 
 app.post('/api/leads/:id/case-study', async (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
@@ -4756,11 +4756,11 @@ app.post('/api/leads/:id/case-study', async (req, res) => {
     console.log(`[DEMO] Skipped real case-study generation for ${lead.companyName}`);
     const mockStudy = { title: `Case Study: ${lead.companyName}`, summary: 'Demo case study — geen echt AI-rapport gegenereerd.', sections: [], generatedAt: new Date().toISOString() };
     leads[idx].caseStudy = mockStudy;
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     return res.json(mockStudy);
   }
 
-  const settings = readJSON('settings.json') || {};
+  const settings = wsRead(req, 'settings.json', {});
   const agencyName = settings.agencyName || 'Agency';
   const lang = lead.language || 'nl';
   const isNL = lang === 'nl';
@@ -4803,7 +4803,7 @@ Write a realistic, convincing case study. Invent plausible results (percentages,
     caseStudy.published = caseStudy.published || false;
     leads[idx].caseStudy = caseStudy;
     addLeadHistory(leads, lead.id, { event: 'caseStudy', label: 'Case study gegenereerd' });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     res.json(caseStudy);
   } catch (err) {
     console.error('[Case study] Fout:', err.message);
@@ -4812,17 +4812,17 @@ Write a realistic, convincing case study. Invent plausible results (percentages,
 });
 
 app.patch('/api/leads/:id/case-study', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   if (!leads[idx].caseStudy) return res.status(404).json({ error: 'Geen case study' });
   leads[idx].caseStudy = { ...leads[idx].caseStudy, ...req.body };
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json(leads[idx].caseStudy);
 });
 
 app.patch('/api/leads/:id', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const prevStatus = leads[idx].status;
@@ -4852,21 +4852,21 @@ app.patch('/api/leads/:id', (req, res) => {
     if (b.estimatedValue) parts.push(`prijs: €${b.estimatedValue}`);
     if (parts.length) addLeadHistory(leads, req.params.id, { event: 'projectConfig', label: `Project config bijgewerkt — ${parts.join(', ')}` });
   }
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json(leads[idx]);
 });
 
 app.delete('/api/leads/:id', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const filtered = leads.filter(l => l.id !== req.params.id);
-  writeJSON('leads.json', filtered);
+  wsWrite(req, 'leads.json', filtered);
   res.json({ ok: true });
 });
 
 // ─── Tasks per lead ──────────────────────────────────────────────────────────
 
 app.get('/api/tasks', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const users = readJSON('users.json') || [];
   const userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
   const all = [];
@@ -4883,7 +4883,7 @@ app.get('/api/tasks', (req, res) => {
 });
 
 app.post('/api/leads/:id/tasks', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const { title, description, week, priority, assigneeId, status } = req.body;
@@ -4896,12 +4896,12 @@ app.post('/api/leads/:id/tasks', (req, res) => {
   };
   if (!leads[idx].tasks) leads[idx].tasks = [];
   leads[idx].tasks.push(task);
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json(task);
 });
 
 app.patch('/api/leads/:id/tasks/:taskId', async (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   let tIdx = (leads[idx].tasks || []).findIndex(t => t.id === req.params.taskId);
@@ -4919,12 +4919,12 @@ app.patch('/api/leads/:id/tasks/:taskId', async (req, res) => {
   if (tIdx === -1) return res.status(404).json({ error: 'Taak niet gevonden' });
   leads[idx].tasks[tIdx] = { ...leads[idx].tasks[tIdx], ...req.body };
   if (req.body.status === 'klaar' && !leads[idx].tasks[tIdx].doneAt) leads[idx].tasks[tIdx].doneAt = new Date().toISOString();
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json(leads[idx].tasks[tIdx]);
 
   // Auto week-complete email: check if all tasks in this week are now done
   if (req.body.status === 'klaar') {
-    const settings = readJSON('settings.json') || {};
+    const settings = wsRead(req, 'settings.json', {});
     if (settings.autoClientEmails?.weekComplete !== false) {
       const week = leads[idx].tasks[tIdx].week || 1;
       const weekTasks = (leads[idx].tasks || []).filter(t => (t.week||1) === week);
@@ -4937,12 +4937,12 @@ app.patch('/api/leads/:id/tasks/:taskId', async (req, res) => {
           try {
             const email = await generateClientEmail(lead, 'weekComplete', settings, { week, tasksDone: weekTasks.length, tasksTotal: weekTasks.length });
             await sendEmail({ to: lead.contactEmail, subject: email.subject, body: email.body, settings });
-            const freshLeads = readJSON('leads.json') || [];
+            const freshLeads = wsRead(req, 'leads.json', []);
             const fIdx = freshLeads.findIndex(l => l.id === lead.id);
             if (fIdx !== -1) {
               if (!freshLeads[fIdx].clientEmailLog) freshLeads[fIdx].clientEmailLog = [];
               freshLeads[fIdx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'weekComplete', week, subject: email.subject, body: email.body, to: lead.contactEmail, sentAt: new Date().toISOString(), sentBy: 'systeem' });
-              writeJSON('leads.json', freshLeads);
+              wsWrite(req, 'leads.json', freshLeads);
             }
             console.log(`[ClientEmail] weekComplete week ${week} → ${lead.companyName}`);
           } catch { /* optional */ }
@@ -4953,23 +4953,23 @@ app.patch('/api/leads/:id/tasks/:taskId', async (req, res) => {
 });
 
 app.delete('/api/leads/:id/tasks/:taskId', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   leads[idx].tasks = (leads[idx].tasks || []).filter(t => t.id !== req.params.taskId);
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 app.post('/api/leads/:id/portal/generate', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const token = Math.random().toString(36).substr(2, 8) + Math.random().toString(36).substr(2, 4);
   leads[idx].portalToken = token;
   if (!leads[idx].currentPhase) leads[idx].currentPhase = 1;
   addLeadHistory(leads, req.params.id, { event: 'portalCreated', label: 'Klantportaal aangemaakt' });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ token });
 });
 
@@ -4986,8 +4986,8 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
   };
 
   try {
-    const leads = readJSON('leads.json') || [];
-    const settings = readJSON('settings.json') || {};
+    const leads = wsRead(req, 'leads.json', []);
+    const settings = wsRead(req, 'settings.json', {});
     const idx = leads.findIndex(l => l.id === req.params.id);
     if (idx === -1) { send(0, 'Lead niet gevonden', 'error'); res.end(); return; }
     const lead = leads[idx];
@@ -5001,7 +5001,7 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
       lead.projectStartedAt = new Date().toISOString();
       lead.currentPhase = 1;
       addLeadHistory(leads, lead.id, { event: 'projectStarted', label: 'Project gestart [demo]' });
-      writeJSON('leads.json', leads);
+      wsWrite(req, 'leads.json', leads);
       send(1, 'Portaaltoegang instellen', 'done', { portalUrl: `${BASE_URL}/portal/${lead.portalToken}` });
       send(2, 'Intake link genereren', 'done');
       send(3, 'Welkomstmail versturen', 'done');
@@ -5028,7 +5028,7 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
     }
     const intakeUrl = `${BASE_URL}/intake/${lead.id}/${lead.intakeToken}`;
     // Save tokens now so links are valid even if later steps fail
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     send(2, 'Intake link genereren', 'done', { intakeUrl });
 
     // Step 3 — Welcome email to client
@@ -5120,7 +5120,7 @@ Antwoord ALLEEN als JSON: { "tasks": [{ "title": "string", "description": "strin
       createdAt: new Date().toISOString()
     }));
     addLeadHistory(leads, lead.id, { event: 'projectStarted', label: 'Project gestart via Project Engine' });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     send(9, 'Status bijwerken naar klant', 'done');
 
     send(0, 'Project engine voltooid', 'complete', { intakeUrl, portalUrl });
@@ -5346,8 +5346,8 @@ async function generateProposalPDF({ proposalNr, lead, services, validUntil, not
 // ─── New Proposals API ────────────────────────────────────────────────────────
 
 app.post('/api/leads/:id/proposals', requireAdmin, async (req, res) => {
-  const leads    = readJSON('leads.json') || [];
-  const settings = readJSON('settings.json') || {};
+  const leads    = wsRead(req, 'leads.json', []);
+  const settings = wsRead(req, 'settings.json', {});
   const idx      = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
@@ -5362,7 +5362,7 @@ app.post('/api/leads/:id/proposals', requireAdmin, async (req, res) => {
     if (!leads[idx].proposals) leads[idx].proposals = [];
     leads[idx].proposals.unshift(rec);
     addLeadHistory(leads, lead.id, { event: 'proposalCreated', label: `Voorstel ${proposalNr} aangemaakt [demo]` });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     return res.json({ proposal: rec });
   }
 
@@ -5407,7 +5407,7 @@ app.post('/api/leads/:id/proposals', requireAdmin, async (req, res) => {
       }
     }
 
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     res.json({ ok: true, proposalNr, proposal: leads[idx].proposals[0], pdfBase64: pdfBuffer.toString('base64') });
   } catch (err) {
     console.error('[Proposal]', err.message);
@@ -5416,8 +5416,8 @@ app.post('/api/leads/:id/proposals', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/leads/:id/proposals/:proposalId/send', requireAdmin, async (req, res) => {
-  const leads    = readJSON('leads.json') || [];
-  const settings = readJSON('settings.json') || {};
+  const leads    = wsRead(req, 'leads.json', []);
+  const settings = wsRead(req, 'settings.json', {});
   const idx      = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead     = leads[idx];
@@ -5428,7 +5428,7 @@ app.post('/api/leads/:id/proposals/:proposalId/send', requireAdmin, async (req, 
     const pIdx = (lead.proposals || []).findIndex(p => p.id === req.params.proposalId);
     if (pIdx !== -1) { leads[idx].proposals[pIdx].sentAt = new Date().toISOString(); leads[idx].proposals[pIdx].status = 'sent'; }
     addLeadHistory(leads, lead.id, { event: 'proposalSent', label: `Voorstel verstuurd [demo]` });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     return res.json({ ok: true });
   }
 
@@ -5454,7 +5454,7 @@ app.post('/api/leads/:id/proposals/:proposalId/send', requireAdmin, async (req, 
     const pIdx = leads[idx].proposals.findIndex(p => p.id === req.params.proposalId);
     if (pIdx !== -1) { leads[idx].proposals[pIdx].sentAt = new Date().toISOString(); leads[idx].proposals[pIdx].status = 'sent'; }
     addLeadHistory(leads, lead.id, { event: 'proposalSent', label: `Voorstel ${proposal.proposalNr} verstuurd naar ${to}` });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -5469,7 +5469,7 @@ app.post('/api/leads/:id/generate-proposal', requireAdmin, async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   const send = obj => res.write('data: ' + JSON.stringify(obj) + '\n\n');
 
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead = leads.find(l => l.id === req.params.id);
 
   // ── DEMO GUARD: skip AI call, return mock SSE ──
@@ -5483,7 +5483,7 @@ app.post('/api/leads/:id/generate-proposal', requireAdmin, async (req, res) => {
   }
   if (!lead) { send({ error: 'Lead niet gevonden' }); return res.end(); }
 
-  const settings = readJSON('settings.json') || {};
+  const settings = wsRead(req, 'settings.json', {});
   const agencyName = settings.agencyName || 'Agency AI';
   const myName     = settings.myName     || '';
   const myTitle    = settings.myTitle    || 'AI Growth Specialist';
@@ -5558,7 +5558,7 @@ Use a professional colour scheme with blue (#2563eb) accent. Max 800 words. Retu
     leads[idx].proposal = proposalHtml.trim();
     leads[idx].proposalGeneratedAt = generatedAt;
     addLeadHistory(leads, req.params.id, { event: 'proposalGenerated', label: 'Voorstel gegenereerd' });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
 
     send({ done: true, proposal: leads[idx].proposal, generatedAt });
     res.end();
@@ -5569,7 +5569,7 @@ Use a professional colour scheme with blue (#2563eb) accent. Max 800 words. Retu
 });
 
 app.post('/api/leads/:id/proposal/send', authMiddleware, async (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead = leads.find(l => l.id === req.params.id);
   if (!lead?.proposal) return res.status(400).json({ error: 'Geen voorstel beschikbaar' });
 
@@ -5579,7 +5579,7 @@ app.post('/api/leads/:id/proposal/send', authMiddleware, async (req, res) => {
     return res.json({ ok: true });
   }
 
-  const settings = readJSON('settings.json') || {};
+  const settings = wsRead(req, 'settings.json', {});
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
 
   const to = lead.contactEmail;
@@ -5596,7 +5596,7 @@ app.post('/api/leads/:id/proposal/send', authMiddleware, async (req, res) => {
     const idx = leads.findIndex(l => l.id === req.params.id);
     leads[idx].proposalSentAt = new Date().toISOString();
     addLeadHistory(leads, req.params.id, { event: 'proposalSent', label: `Voorstel verstuurd naar ${to}` });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -5611,7 +5611,7 @@ app.post('/api/leads/:id/generate-contract', requireAdmin, async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   const send = obj => res.write('data: ' + JSON.stringify(obj) + '\n\n');
 
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead = leads.find(l => l.id === req.params.id);
   if (!lead) { send({ error: 'Lead niet gevonden' }); return res.end(); }
 
@@ -5625,7 +5625,7 @@ app.post('/api/leads/:id/generate-contract', requireAdmin, async (req, res) => {
     return res.end();
   }
 
-  const settings = readJSON('settings.json') || {};
+  const settings = wsRead(req, 'settings.json', {});
   const agencyName = settings.agencyName || 'Agency AI';
   const myName     = settings.myName     || '';
   const myTitle    = settings.myTitle    || 'AI Growth Specialist';
@@ -5697,7 +5697,7 @@ Use clean tables and white space. Return ONLY the HTML.`;
     leads[idx].contract = contractHtml.trim();
     leads[idx].contractGeneratedAt = generatedAt;
     addLeadHistory(leads, req.params.id, { event: 'contractGenerated', label: 'Contract gegenereerd' });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
 
     send({ done: true, contract: leads[idx].contract, generatedAt });
     res.end();
@@ -5708,7 +5708,7 @@ Use clean tables and white space. Return ONLY the HTML.`;
 });
 
 app.post('/api/leads/:id/contract/send', authMiddleware, async (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead = leads.find(l => l.id === req.params.id);
   if (!lead?.contract) return res.status(400).json({ error: 'Geen contract beschikbaar' });
 
@@ -5718,7 +5718,7 @@ app.post('/api/leads/:id/contract/send', authMiddleware, async (req, res) => {
     return res.json({ ok: true });
   }
 
-  const settings = readJSON('settings.json') || {};
+  const settings = wsRead(req, 'settings.json', {});
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
 
   const to = lead.contactEmail;
@@ -5735,7 +5735,7 @@ app.post('/api/leads/:id/contract/send', authMiddleware, async (req, res) => {
     const idx = leads.findIndex(l => l.id === req.params.id);
     leads[idx].contractSentAt = new Date().toISOString();
     addLeadHistory(leads, req.params.id, { event: 'contractSent', label: `Contract verstuurd naar ${to}` });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -5755,8 +5755,8 @@ app.post('/api/leads/:id/generate-delivery', requireAdmin, async (req, res) => {
   };
 
   try {
-    const leads = readJSON('leads.json') || [];
-    const settings = readJSON('settings.json') || {};
+    const leads = wsRead(req, 'leads.json', []);
+    const settings = wsRead(req, 'settings.json', {});
     const idx = leads.findIndex(l => l.id === req.params.id);
     if (idx === -1) { send(0, 'Lead niet gevonden', 'error'); res.end(); return; }
     const lead = leads[idx];
@@ -6085,7 +6085,7 @@ ${(d.sections||[]).length?`<div style="margin-top:12px;border:1px solid #e5e7eb;
     // Advance to Fase 2 — Uitvoering if not already past it
     if ((leads[idx].currentPhase || 1) < 2) leads[idx].currentPhase = 2;
     addLeadHistory(leads, lead.id, { event: 'deliveryGenerated', label: 'AI leveringen gegenereerd (content kalender, chatbot FAQ, mijlpalen)' });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
 
     // Auto-send AI delivery email to client
     if (settings.autoClientEmails?.deliveryReady !== false && lead.contactEmail && isResendReady(settings)) {
@@ -6094,7 +6094,7 @@ ${(d.sections||[]).length?`<div style="margin-top:12px;border:1px solid #e5e7eb;
         await sendEmail({ to: lead.contactEmail, subject: email.subject, body: email.body, settings });
         if (!leads[idx].clientEmailLog) leads[idx].clientEmailLog = [];
         leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'deliveryReady', subject: email.subject, body: email.body, to: lead.contactEmail, sentAt: new Date().toISOString(), sentBy: 'systeem' });
-        writeJSON('leads.json', leads);
+        wsWrite(req, 'leads.json', leads);
       } catch { /* optional */ }
     }
     send(5, 'Opslaan & klant notificeren', 'done');
@@ -6216,7 +6216,7 @@ function computeRealAnalytics(lead) {
 }
 
 app.get('/api/leads/:id/real-analytics', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead  = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
   res.json(computeRealAnalytics(lead));
@@ -6225,7 +6225,7 @@ app.get('/api/leads/:id/real-analytics', requireAdmin, (req, res) => {
 // ─── Document Vault ───────────────────────────────────────────────────────────
 
 app.get('/api/leads/:id/documents', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead  = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
   res.json({ documents: lead.documents || [] });
@@ -6234,7 +6234,7 @@ app.get('/api/leads/:id/documents', requireAdmin, (req, res) => {
 app.post('/api/leads/:id/documents', requireAdmin, (req, res) => {
   const { type, title, content, description, username, visible } = req.body;
   if (!title?.trim() || !type) return res.status(400).json({ error: 'Titel en type zijn verplicht' });
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const users = readJSON('users.json') || [];
   const idx   = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
@@ -6253,30 +6253,30 @@ app.post('/api/leads/:id/documents', requireAdmin, (req, res) => {
   };
   leads[idx].documents.push(doc);
   addLeadHistory(leads, leads[idx].id, { event: 'documentAdded', label: `Document toegevoegd: ${doc.title}` });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true, document: doc });
 });
 
 app.patch('/api/leads/:id/documents/:docId', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx   = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const docIdx = (leads[idx].documents || []).findIndex(d => d.id === req.params.docId);
   if (docIdx === -1) return res.status(404).json({ error: 'Document niet gevonden' });
   const allowed = ['title', 'content', 'description', 'username', 'visible'];
   allowed.forEach(k => { if (req.body[k] !== undefined) leads[idx].documents[docIdx][k] = req.body[k]; });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 app.delete('/api/leads/:id/documents/:docId', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx   = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const before = (leads[idx].documents || []).length;
   leads[idx].documents = (leads[idx].documents || []).filter(d => d.id !== req.params.docId);
   if (leads[idx].documents.length === before) return res.status(404).json({ error: 'Document niet gevonden' });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
@@ -6291,8 +6291,8 @@ app.post('/api/leads/:id/generate-site', requireAdmin, async (req, res) => {
   };
 
   try {
-    const leads = readJSON('leads.json') || [];
-    const settings = readJSON('settings.json') || {};
+    const leads = wsRead(req, 'leads.json', []);
+    const settings = wsRead(req, 'settings.json', {});
     const idx = leads.findIndex(l => l.id === req.params.id);
     if (idx === -1) { send(0, 'Lead niet gevonden', 'error'); res.end(); return; }
     const lead = leads[idx];
@@ -6439,7 +6439,7 @@ Geef ALLEEN de volledige HTML terug. Geen uitleg, geen markdown, geen backticks.
       html: siteHtml   // stored in DB so the file can be restored after Railway redeploy
     };
     addLeadHistory(leads, lead.id, { event: 'siteGenerated', label: `Website gegenereerd: ${siteUrl}` });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     send(3, 'Website opslaan en URL aanmaken', 'done');
 
     // Step 4 — Send preview to client
@@ -6451,7 +6451,7 @@ Geef ALLEEN de volledige HTML terug. Geen uitleg, geen markdown, geen backticks.
         await sendEmail({ to: contactEmail, subject, body, settings });
         if (!leads[idx].clientEmailLog) leads[idx].clientEmailLog = [];
         leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'sitePreview', subject, body, to: contactEmail, sentAt: new Date().toISOString(), sentBy: 'systeem' });
-        writeJSON('leads.json', leads);
+        wsWrite(req, 'leads.json', leads);
       } catch { /* optional */ }
     }
     send(4, 'Preview link versturen naar klant', 'done');
@@ -6464,7 +6464,7 @@ Geef ALLEEN de volledige HTML terug. Geen uitleg, geen markdown, geen backticks.
 });
 
 app.get('/api/leads/:id/site', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
   if (!lead.generatedSite) return res.json({ exists: false });
@@ -6477,7 +6477,7 @@ app.get('/api/leads/:id/site', (req, res) => {
 app.patch('/api/leads/:id/site', requireAdmin, (req, res) => {
   const { html } = req.body;
   if (!html) return res.status(400).json({ error: 'HTML verplicht' });
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   if (!leads[idx].generatedSite) return res.status(400).json({ error: 'Geen website gegenereerd' });
@@ -6486,28 +6486,28 @@ app.patch('/api/leads/:id/site', requireAdmin, (req, res) => {
   catch (e) { return res.status(500).json({ error: e.message }); }
   leads[idx].generatedSite.lastEditedAt = new Date().toISOString();
   addLeadHistory(leads, leads[idx].id, { event: 'siteEdited', label: 'Website HTML bewerkt' });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 app.post('/api/leads/:id/site/feedback', (req, res) => {
   const { feedback } = req.body;
   if (!feedback) return res.status(400).json({ error: 'Feedback verplicht' });
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   if (!leads[idx].generatedSite) return res.status(400).json({ error: 'Geen website gegenereerd' });
   if (!leads[idx].generatedSite.feedback) leads[idx].generatedSite.feedback = [];
   leads[idx].generatedSite.feedback.push({ text: feedback, time: new Date().toISOString(), by: req.user?.name || 'team' });
   addLeadHistory(leads, leads[idx].id, { event: 'siteFeedback', label: `Website feedback: ${feedback.substring(0, 60)}` });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 // SEO meta inject
 app.post('/api/leads/:id/site/seo', requireAdmin, (req, res) => {
   const { title, description, keywords } = req.body || {};
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx   = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const site  = leads[idx].generatedSite;
@@ -6536,13 +6536,13 @@ app.post('/api/leads/:id/site/seo', requireAdmin, (req, res) => {
   try { fs.writeFileSync(htmlPath, html, 'utf8'); } catch (e) { return res.status(500).json({ error: e.message }); }
   leads[idx].generatedSite.seo = { title, description, keywords, updatedAt: new Date().toISOString() };
   addLeadHistory(leads, leads[idx].id, { event: 'siteSeo', label: 'Website SEO meta tags bijgewerkt' });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 // Version revert
 app.post('/api/leads/:id/site/revert/:versionIdx', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx   = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const site  = leads[idx].generatedSite;
@@ -6565,20 +6565,20 @@ app.post('/api/leads/:id/site/revert/:versionIdx', requireAdmin, (req, res) => {
   leads[idx].generatedSite.generatedAt = target.savedAt;
   leads[idx].generatedSite.template = target.template || 'modern';
   addLeadHistory(leads, leads[idx].id, { event: 'siteReverted', label: `Website teruggezet naar versie van ${new Date(target.savedAt).toLocaleDateString('nl-NL')}` });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 app.patch('/api/leads/:id/site/status', requireAdmin, (req, res) => {
   const { status } = req.body;
   if (!['preview', 'live'].includes(status)) return res.status(400).json({ error: 'Ongeldige status' });
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   if (!leads[idx].generatedSite) return res.status(400).json({ error: 'Geen website gegenereerd' });
   leads[idx].generatedSite.status = status;
   addLeadHistory(leads, leads[idx].id, { event: 'siteStatus', label: `Website status: ${status}` });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
@@ -6672,8 +6672,8 @@ Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`,
 }
 
 app.post('/api/leads/:id/client-email', requireAdmin, async (req, res) => {
-  const leads = readJSON('leads.json') || [];
-  const settings = readJSON('settings.json') || {};
+  const leads = wsRead(req, 'leads.json', []);
+  const settings = wsRead(req, 'settings.json', {});
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
@@ -6692,7 +6692,7 @@ app.post('/api/leads/:id/client-email', requireAdmin, async (req, res) => {
   if (trigger === 'welcome' && !lead.intakeToken) {
     leads[idx].intakeToken = Math.random().toString(36).substr(2, 10) + Date.now().toString(36);
     lead.intakeToken = leads[idx].intakeToken;
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
   }
 
   try {
@@ -6721,7 +6721,7 @@ app.post('/api/leads/:id/client-email', requireAdmin, async (req, res) => {
       sentBy: req.user?.name || req.user?.username || 'systeem'
     });
     addLeadHistory(leads, lead.id, { event: 'clientEmailSent', label: `Email verstuurd: ${CLIENT_EMAIL_TEMPLATES[trigger].trigger} → ${to}` });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
 
     console.log(`[ClientEmail] ${trigger} → ${lead.companyName} <${to}>`);
     res.json({ ok: true, subject: email.subject });
@@ -6732,8 +6732,8 @@ app.post('/api/leads/:id/client-email', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
-  const leads = readJSON('leads.json') || [];
-  const settings = readJSON('settings.json') || {};
+  const leads = wsRead(req, 'leads.json', []);
+  const settings = wsRead(req, 'settings.json', {});
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
@@ -6742,7 +6742,7 @@ app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
   if (isDemoContext(req, lead)) {
     console.log(`[DEMO] Skipped real send-welcome for ${lead.companyName}`);
     addLeadHistory(leads, lead.id, { event: 'welcomeEmailSent', label: 'Welkomstmail verstuurd [demo]' });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     return res.json({ ok: true, emailSent: true });
   }
 
@@ -6857,7 +6857,7 @@ app.post('/api/leads/:id/send-welcome', requireAdmin, async (req, res) => {
 
     await sendEmail({ to, subject: `Welkom bij ${agencyName} — jouw toegangslinks`, html, settings });
     addLeadHistory(leads, lead.id, { event: 'welcomeEmailSent', label: `Welkomstmail verstuurd naar ${to}` });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     res.json({ ok: true, to });
   } catch (err) {
     console.error('[WelcomeEmail] Fout:', err.message);
@@ -6871,7 +6871,7 @@ app.post('/api/leads/:id/agent-chat', requireAdmin, async (req, res) => {
   const { problemType, message, action, deliverableIdx } = req.body || {};
   const leadId = req.params.id;
 
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx   = leads.findIndex(l => l.id === leadId);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead     = leads[idx];
@@ -6885,7 +6885,7 @@ app.post('/api/leads/:id/agent-chat', requireAdmin, async (req, res) => {
   console.log('[AgentChat] leadId:', leadId);
   console.log('[AgentChat] message:', message?.slice(0, 50));
   console.log('[AgentChat] action:', action, '| deliverableIdx:', deliverableIdx);
-  const settings = readJSON('settings.json') || {};
+  const settings = wsRead(req, 'settings.json', {});
 
   if (!message?.trim()) return res.status(400).json({ error: 'Geen bericht opgegeven' });
 
@@ -7067,7 +7067,7 @@ Use brand color ${chatStyle.color} as accent. Load font "${chatStyle.font}" from
       }
 
       addLeadHistory(leads, leadId, { event: 'agentBuild', label: `Agent bouwde: ${typeSlug}` });
-      writeJSON('leads.json', leads);
+      wsWrite(req, 'leads.json', leads);
 
       return res.json({ built: true, url, typeSlug, companySlug, response: `✓ Gebouwd! Beschikbaar op: ${url}` });
     }
@@ -7096,7 +7096,7 @@ Schrijf in het Nederlands.`;
 
 // ── Agent chat persistence ────────────────────────────────────────────────────
 app.get('/api/leads/:id/agent-chats', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
   res.json(lead.agentChats || {});
@@ -7105,16 +7105,16 @@ app.get('/api/leads/:id/agent-chats', (req, res) => {
 app.patch('/api/leads/:id/agent-chats', (req, res) => {
   const { chats } = req.body || {};
   if (!chats || typeof chats !== 'object') return res.status(400).json({ error: 'Geen chats opgegeven' });
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   leads[idx].agentChats = chats;
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 app.get('/api/leads/:id/client-emails', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
   res.json(lead.clientEmailLog || []);
@@ -7123,8 +7123,8 @@ app.get('/api/leads/:id/client-emails', (req, res) => {
 app.post('/api/leads/:id/manual-email', requireAdmin, async (req, res) => {
   const { subject, body } = req.body;
   if (!subject || !body) return res.status(400).json({ error: 'Onderwerp en inhoud zijn verplicht' });
-  const leads = readJSON('leads.json') || [];
-  const settings = readJSON('settings.json') || {};
+  const leads = wsRead(req, 'leads.json', []);
+  const settings = wsRead(req, 'settings.json', {});
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
@@ -7136,7 +7136,7 @@ app.post('/api/leads/:id/manual-email', requireAdmin, async (req, res) => {
     leads[idx].clientEmailLog = leads[idx].clientEmailLog || [];
     leads[idx].clientEmailLog.push(entry);
     addLeadHistory(leads, lead.id, { event: 'clientEmailSent', label: `Handmatige email: ${subject} [demo]` });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     return res.json({ ok: true });
   }
 
@@ -7147,13 +7147,13 @@ app.post('/api/leads/:id/manual-email', requireAdmin, async (req, res) => {
   leads[idx].clientEmailLog = leads[idx].clientEmailLog || [];
   leads[idx].clientEmailLog.push(entry);
   addLeadHistory(leads, lead.id, { event: 'clientEmailSent', label: `Handmatige email: ${subject}` });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   addActivity('email', `Handmatige email → ${lead.companyName}`, { leadId: lead.id });
   res.json({ ok: true });
 });
 
 app.post('/api/leads/:id/generate-delivery-email', requireAdmin, async (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead  = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
 
@@ -7163,7 +7163,7 @@ app.post('/api/leads/:id/generate-delivery-email', requireAdmin, async (req, res
     return res.json({ text: 'Beste klant,\n\nUw leveringen staan klaar!\n\nMet vriendelijke groet,\nAgency AI [demo]' });
   }
 
-  const settings = readJSON('settings.json') || {};
+  const settings = wsRead(req, 'settings.json', {});
   const isNL = (lead.language || 'nl') !== 'en';
   const deliverables = (lead.agentDeliverables || []).filter(d => d.status === 'done' || d.status === 'approved');
   const htmlDelivs   = deliverables.filter(d => d.type === 'code');
@@ -7229,11 +7229,11 @@ RULES:
     const subject = result.subject || `Uw project is klaar — ${lead.companyName}`;
     const body    = result.body || '';
     // Persist to lead so UI can show saved state
-    const leadsW = readJSON('leads.json') || [];
+    const leadsW = wsRead(req, 'leads.json', []);
     const wIdx   = leadsW.findIndex(l => l.id === req.params.id);
     if (wIdx !== -1) {
       leadsW[wIdx].opleveringEmail = { subject, body, generatedAt: new Date().toISOString(), sentAt: leadsW[wIdx].opleveringEmail?.sentAt || null };
-      writeJSON('leads.json', leadsW);
+      wsWrite(req, 'leads.json', leadsW);
     }
     res.json({ subject, body });
   } catch (err) {
@@ -7244,7 +7244,7 @@ RULES:
 app.post('/api/leads/:id/send-delivery-email', requireAdmin, async (req, res) => {
   const { subject, body } = req.body;
   if (!subject || !body) return res.status(400).json({ error: 'Onderwerp en inhoud zijn verplicht' });
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx   = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
@@ -7255,12 +7255,12 @@ app.post('/api/leads/:id/send-delivery-email', requireAdmin, async (req, res) =>
     leads[idx].opleveringEmail = leads[idx].opleveringEmail || {};
     leads[idx].opleveringEmail.sentAt = new Date().toISOString();
     addLeadHistory(leads, lead.id, { event: 'deliveryEmailSent', label: 'Oplevering email verstuurd [demo]' });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     return res.json({ ok: true });
   }
 
   if (!lead.contactEmail) return res.status(400).json({ error: 'Klant heeft geen emailadres' });
-  const settings = readJSON('settings.json') || {};
+  const settings = wsRead(req, 'settings.json', {});
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld. Ga naar Instellingen → Email.' });
   await sendEmail({ to: lead.contactEmail, subject, body, settings });
   const sentAt = new Date().toISOString();
@@ -7268,14 +7268,14 @@ app.post('/api/leads/:id/send-delivery-email', requireAdmin, async (req, res) =>
   leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'deliveryEmail', subject, body, sentAt });
   if (leads[idx].opleveringEmail) leads[idx].opleveringEmail.sentAt = sentAt;
   addLeadHistory(leads, lead.id, { event: 'clientEmailSent', label: 'Oplevering email verstuurd' });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   addActivity('email', `Oplevering email → ${lead.companyName}`, { leadId: lead.id });
   res.json({ ok: true });
 });
 
 // ── Project files ───────────────────────────────────────────────────────────
 app.get('/api/leads/:id/client-uploads/:filename', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead  = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
 
@@ -7290,7 +7290,7 @@ app.get('/api/leads/:id/client-uploads/:filename', requireAdmin, (req, res) => {
 });
 
 app.get('/api/leads/:id/project-files', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead  = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
   res.json(lead.projectFiles || []);
@@ -7299,7 +7299,7 @@ app.get('/api/leads/:id/project-files', requireAdmin, (req, res) => {
 app.post('/api/leads/:id/project-files', requireAdmin, (req, res) => {
   const { name, type, url, problem } = req.body;
   if (!name || !url) return res.status(400).json({ error: 'Naam en URL zijn verplicht' });
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx   = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const file = {
@@ -7315,12 +7315,12 @@ app.post('/api/leads/:id/project-files', requireAdmin, (req, res) => {
   };
   leads[idx].projectFiles = leads[idx].projectFiles || [];
   leads[idx].projectFiles.push(file);
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json(file);
 });
 
 app.patch('/api/leads/:id/project-files/:fileId', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx   = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const files = leads[idx].projectFiles || [];
@@ -7328,24 +7328,24 @@ app.patch('/api/leads/:id/project-files/:fileId', requireAdmin, (req, res) => {
   if (fIdx === -1) return res.status(404).json({ error: 'Bestand niet gevonden' });
   Object.assign(files[fIdx], req.body);
   leads[idx].projectFiles = files;
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json(files[fIdx]);
 });
 
 app.delete('/api/leads/:id/project-files/:fileId', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx   = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   leads[idx].projectFiles = (leads[idx].projectFiles || []).filter(f => f.id !== req.params.fileId);
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 app.post('/api/leads/:id/generate-admin-instructions', requireAdmin, async (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead  = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
-  const settings    = readJSON('settings.json') || {};
+  const settings    = wsRead(req, 'settings.json', {});
   const deliverables = (lead.agentDeliverables || []).filter(d => d.status === 'done' || d.status === 'approved');
   const openTasks   = (lead.tasks || []).filter(t => t.status !== 'klaar');
   const delivList   = deliverables.map(d => `- ${d.service}: ${d.url ? (d.url.startsWith('http') ? d.url : BASE_URL + d.url) : '(geen URL)'} [${d.type || 'document'}]`).join('\n') || '(geen deliverables gebouwd)';
@@ -7392,7 +7392,7 @@ Max 500 woorden. Geef direct de tekst terug, geen JSON.`;
 app.post('/api/leads/:id/send-admin-email', requireAdmin, async (req, res) => {
   const { text } = req.body;
   if (!text) return res.status(400).json({ error: 'Geen tekst opgegeven' });
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead  = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
 
@@ -7402,7 +7402,7 @@ app.post('/api/leads/:id/send-admin-email', requireAdmin, async (req, res) => {
     return res.json({ ok: true });
   }
 
-  const settings = readJSON('settings.json') || {};
+  const settings = wsRead(req, 'settings.json', {});
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
   if (!settings.gmailAddress) return res.status(400).json({ error: 'Geen admin emailadres ingesteld in Instellingen → Email' });
   try {
@@ -7414,27 +7414,27 @@ app.post('/api/leads/:id/send-admin-email', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/leads/:id/portal/read', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
   if (lead.clientMessages) lead.clientMessages.forEach(m => { m.read = true; });
   if (lead.portalChat) lead.portalChat.filter(m => m.from === 'client').forEach(m => { m.readAt = m.readAt || new Date().toISOString(); });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 app.post('/api/leads/:id/portal-reply', requireAdmin, async (req, res) => {
   const { message } = req.body;
   if (!message?.trim()) return res.status(400).json({ error: 'Bericht verplicht' });
-  const leads    = readJSON('leads.json') || [];
-  const settings = readJSON('settings.json') || {};
+  const leads    = wsRead(req, 'leads.json', []);
+  const settings = wsRead(req, 'settings.json', {});
   const lead     = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
   if (!lead.portalChat) lead.portalChat = [];
   const entry = { id: 'pa-' + Date.now(), from: 'admin', name: settings.myName || settings.agencyName || 'Agency', message: message.trim(), time: new Date().toISOString() };
   lead.portalChat.push(entry);
   addLeadHistory(leads, lead.id, { event: 'adminPortalReply', label: `Portaalreactie verstuurd: ${message.trim().substring(0, 60)}` });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
 
   // ── DEMO GUARD: chat saved above, skip real email notification ──
   if (isDemoContext(req, lead)) {
@@ -7470,8 +7470,8 @@ app.post('/api/leads/:id/run-agents', requireAdmin, async (req, res) => {
     res.write(`data: ${JSON.stringify({ idx, label, status, ...extra })}\n\n`);
 
   try {
-    const leads    = readJSON('leads.json') || [];
-    const settings = readJSON('settings.json') || {};
+    const leads    = wsRead(req, 'leads.json', []);
+    const settings = wsRead(req, 'settings.json', {});
     const li       = leads.findIndex(l => l.id === req.params.id);
     if (li === -1) { send(-1, 'Lead niet gevonden', 'error'); res.end(); return; }
     const lead = leads[li];
@@ -7604,7 +7604,7 @@ Wees concreet: welke tools, welke stappen, welke instellingen.`);
 
     leads[li].agentDeliverables = deliverables;
     leads[li].agentsRanAt = new Date().toISOString();
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     addLeadHistory(leads, req.params.id, { event: 'agentsRan', label: `Agents bouwden ${deliverables.length} leveringen` });
 
     send(-1, 'Klaar', 'complete', { deliverables });
@@ -7752,8 +7752,8 @@ app.post('/api/leads/:id/build-all-services', requireAdmin, async (req, res) => 
   } catch {}
 
   try {
-    const leads    = readJSON('leads.json') || [];
-    const settings = readJSON('settings.json') || {};
+    const leads    = wsRead(req, 'leads.json', []);
+    const settings = wsRead(req, 'settings.json', {});
     const li       = leads.findIndex(l => l.id === req.params.id);
     if (li === -1) { sse({ type: 'error', service: '', message: 'Lead niet gevonden' }); res.end(); return; }
     const lead     = leads[li];
@@ -8146,7 +8146,7 @@ ${bookingDel.html.substring(0, 8000)}`).catch(() => '');
     const existing = (leads[li].agentDeliverables || []).filter(d => d.status === 'approved');
     leads[li].agentDeliverables = [...existing, ...toSave];
     leads[li].agentsRanAt = new Date().toISOString();
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     addLeadHistory(leads, req.params.id, { event: 'buildAllServices', label: `Agents bouwden ${toSave.length} leveringen automatisch` });
     addActivity('agent_build', `${lead.companyName}: ${toSave.length} leveringen gebouwd`);
 
@@ -8164,8 +8164,8 @@ ${bookingDel.html.substring(0, 8000)}`).catch(() => '');
 
 // Generate delivery email preview for manual deliverables
 app.post('/api/leads/:id/deliverables/:dIdx/preview-email', requireAdmin, async (req, res) => {
-  const leads = readJSON('leads.json') || [];
-  const settings = readJSON('settings.json') || {};
+  const leads = wsRead(req, 'leads.json', []);
+  const settings = wsRead(req, 'settings.json', {});
   const li = leads.findIndex(l => l.id === req.params.id);
   if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const dIdx = parseInt(req.params.dIdx);
@@ -8202,8 +8202,8 @@ Schrijf in het Nederlands, professioneel maar warm. Max 250 woorden. Geef ALLEEN
 });
 
 app.post('/api/leads/:id/deliverables/:dIdx/approve', requireAdmin, async (req, res) => {
-  const leads = readJSON('leads.json') || [];
-  const settings = readJSON('settings.json') || {};
+  const leads = wsRead(req, 'leads.json', []);
+  const settings = wsRead(req, 'settings.json', {});
   const li = leads.findIndex(l => l.id === req.params.id);
   if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const dIdx = parseInt(req.params.dIdx);
@@ -8218,7 +8218,7 @@ app.post('/api/leads/:id/deliverables/:dIdx/approve', requireAdmin, async (req, 
   if (isDemoContext(req, leads[li])) {
     console.log(`[DEMO] Skipped real deliverable approve email for ${leads[li].companyName}`);
     addLeadHistory(leads, req.params.id, { event: 'deliverableApproved', label: `Levering goedgekeurd: ${d.service} [demo]` });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     return res.json({ ok: true });
   }
 
@@ -8241,12 +8241,12 @@ app.post('/api/leads/:id/deliverables/:dIdx/approve', requireAdmin, async (req, 
 
   addLeadHistory(leads, req.params.id, { event: 'deliverableApproved', label: `Levering goedgekeurd: ${d.service}` });
   addNotification('run_complete', `Levering goedgekeurd: ${d.service}`, `${lead.companyName} — ${d.service}`, lead.id, `project:${lead.id}`, req.user?.workspaceId);
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 app.post('/api/leads/:id/deliverables/:dIdx/unapprove', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const li = leads.findIndex(l => l.id === req.params.id);
   if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const dIdx = parseInt(req.params.dIdx);
@@ -8258,14 +8258,14 @@ app.post('/api/leads/:id/deliverables/:dIdx/unapprove', requireAdmin, (req, res)
   delete leads[li].agentDeliverables[dIdx].approvedAt;
 
   addLeadHistory(leads, req.params.id, { event: 'deliverableUnapproved', label: `Levering teruggezet voor aanpassing: ${d.service}` });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 // Toggle deliverable clientVisible
 // MEGA TASK 2 — Revision request status update (Ingediend → In behandeling → Opgelost)
 app.patch('/api/leads/:id/revisions/:revId', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const li = leads.findIndex(l => l.id === req.params.id);
   if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const rev = (leads[li].revisionRequests || []).find(r => r.id === req.params.revId);
@@ -8275,37 +8275,37 @@ app.patch('/api/leads/:id/revisions/:revId', requireAdmin, (req, res) => {
   rev.status = status;
   if (status === 'Opgelost') rev.resolvedAt = new Date().toISOString();
   addLeadHistory(leads, req.params.id, { event: 'revision', label: `Revisie status → ${status}: ${rev.text.substring(0, 50)}` });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true, revision: rev });
 });
 
 app.patch('/api/leads/:id/deliverables/:dIdx/visibility', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const li = leads.findIndex(l => l.id === req.params.id);
   if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const dIdx = parseInt(req.params.dIdx);
   if (!leads[li].agentDeliverables?.[dIdx]) return res.status(404).json({ error: 'Levering niet gevonden' });
   leads[li].agentDeliverables[dIdx].clientVisible = !!req.body.clientVisible;
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 // Delete deliverable
 app.delete('/api/leads/:id/deliverables/:dIdx', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const li = leads.findIndex(l => l.id === req.params.id);
   if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const dIdx = parseInt(req.params.dIdx);
   if (!leads[li].agentDeliverables?.[dIdx]) return res.status(404).json({ error: 'Levering niet gevonden' });
   const removed = leads[li].agentDeliverables.splice(dIdx, 1)[0];
   addLeadHistory(leads, req.params.id, { event: 'deliverableDeleted', label: `Levering verwijderd: ${removed.service || 'onbekend'}` });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 // Manual combine deliverables
 app.post('/api/leads/:id/deliverables/combine', requireAdmin, async (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const li = leads.findIndex(l => l.id === req.params.id);
   if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
 
@@ -8445,7 +8445,7 @@ ${rawContent.substring(0, 6000)}`).catch(() => '');
     baseDel.combinedServices = injectedServices;
 
     addLeadHistory(leads, req.params.id, { event: 'deliverablesManualCombined', label: `Deliverables handmatig gecombineerd: ${injectedServices.join(' + ')}` });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
 
     res.json({ ok: true, deliverables: leads[li].agentDeliverables, combinedServices: injectedServices });
   } catch (err) {
@@ -8456,13 +8456,13 @@ ${rawContent.substring(0, 6000)}`).catch(() => '');
 
 // Reset portal token
 app.post('/api/leads/:id/portal/reset-token', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const li = leads.findIndex(l => l.id === req.params.id);
   if (li === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const newToken = Math.random().toString(36).substr(2, 8) + Math.random().toString(36).substr(2, 4);
   leads[li].portalToken = newToken;
   addLeadHistory(leads, req.params.id, { event: 'portalTokenReset', label: 'Portaalcode gereset door admin' });
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true, portalToken: newToken });
 });
 
@@ -8473,11 +8473,11 @@ app.get('/api/inbox', (req, res) => {
 });
 
 app.patch('/api/inbox/:id/approve', async (req, res) => {
-  const inbox = readJSON('inbox.json') || [];
+  const inbox = wsRead(req, 'inbox.json', []);
   const idx = inbox.findIndex(i => i.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Item niet gevonden' });
 
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   const item = inbox[idx];
   const version = (req.body?.version === 'B' && item.emailB) ? 'B' : 'A';
   const chosenEmail = version === 'B' ? item.emailB : (item.emailA || item.email);
@@ -8486,7 +8486,7 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
   inbox[idx].sentVersion = version;
 
   // Email duplicate check — warn if this email was already sent to
-  const allLeads = readJSON('leads.json') || [];
+  const allLeads = wsRead(req, 'leads.json', []);
   const emailToCheck = (item.contactEmail || '').toLowerCase().trim();
   const emailDup = emailToCheck
     ? allLeads.find(l =>
@@ -8504,15 +8504,15 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
     console.log(`[DEMO] Skipped real approve/send for inbox item ${item.id} (${item.companyName})`);
     inbox[idx].status  = 'sent';
     inbox[idx].sentAt  = new Date().toISOString();
-    writeJSON('inbox.json', inbox);
-    const leads = readJSON('leads.json') || [];
+    wsWrite(req, 'inbox.json', inbox);
+    const leads = wsRead(req, 'leads.json', []);
     const leadIdx = leads.findIndex(l => l.id === item.leadId);
     if (leadIdx !== -1) {
       leads[leadIdx].status  = 'sent';
       leads[leadIdx].sentAt  = inbox[idx].sentAt;
       leads[leadIdx].sentVersion = version;
       addLeadHistory(leads, item.leadId, { event: 'sent', label: `Email verstuurd (versie ${version}) [demo]` });
-      writeJSON('leads.json', leads);
+      wsWrite(req, 'leads.json', leads);
     }
     addActivity('email', 'Email verstuurd naar ' + (item.companyName || 'Onbekend') + ' [demo]', { meta: { companyName: item.companyName, leadId: item.leadId } });
     return res.json(inbox[idx]);
@@ -8521,7 +8521,7 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
   // AI reply items: send our response email back to the business
   if (item.type === 'ai_reply') {
     const draft   = req.body?.aiDraft || item.aiDraft || '';
-    const replyLead = (readJSON('leads.json') || []).find(l => l.id === item.leadId);
+    const replyLead = (wsRead(req, 'leads.json', [])).find(l => l.id === item.leadId);
     const origSubj = item.subject || (replyLead ? (replyLead.email?.subject || replyLead.emailA?.subject || (Array.isArray(replyLead.subjectOptions) ? replyLead.subjectOptions[0] : null) || replyLead.emailSubject) : null) || item.companyName;
     const subject = origSubj.startsWith('Re:') ? origSubj : `Re: ${origSubj}`;
     try {
@@ -8529,17 +8529,17 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
       inbox[idx].status       = 'sent';
       inbox[idx].sentAt       = new Date().toISOString();
       inbox[idx].aiDraftFinal = draft;
-      writeJSON('inbox.json', inbox);
+      wsWrite(req, 'inbox.json', inbox);
 
-      const leads2 = readJSON('leads.json') || [];
+      const leads2 = wsRead(req, 'leads.json', []);
       addLeadHistory(leads2, item.leadId, { event: 'aiReplySent', label: `AI antwoord verstuurd naar ${item.contactEmail}` });
-      writeJSON('leads.json', leads2);
+      wsWrite(req, 'leads.json', leads2);
       addActivity('email', `AI antwoord verstuurd → ${item.companyName}`, { meta: { leadId: item.leadId } });
       return res.json(inbox[idx]);
     } catch (err) {
       console.error('[AiReply] Verzenden mislukt:', err.message);
       inbox[idx].status = 'approved';
-      writeJSON('inbox.json', inbox);
+      wsWrite(req, 'inbox.json', inbox);
       return res.status(500).json({ error: 'Email verzenden mislukt: ' + err.message });
     }
   }
@@ -8548,13 +8548,13 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
   if (item.type === 'linkedinDm') {
     inbox[idx].status = 'sent';
     inbox[idx].sentAt = new Date().toISOString();
-    writeJSON('inbox.json', inbox);
-    const leads = readJSON('leads.json') || [];
+    wsWrite(req, 'inbox.json', inbox);
+    const leads = wsRead(req, 'leads.json', []);
     const leadIdx = leads.findIndex(l => l.id === item.leadId);
     if (leadIdx !== -1) {
       leads[leadIdx].linkedinDmSentAt = inbox[idx].sentAt;
       addLeadHistory(leads, item.leadId, { event: 'linkedinDmSent', label: 'LinkedIn DM gekopieerd & verstuurd' });
-      writeJSON('leads.json', leads);
+      wsWrite(req, 'leads.json', leads);
     }
     return res.json(inbox[idx]);
   }
@@ -8563,15 +8563,15 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
   if (req.body?.scheduled && item.sendOptimalTime) {
     inbox[idx].status    = 'scheduled';
     inbox[idx].scheduledAt = item.sendOptimalTime;
-    writeJSON('inbox.json', inbox);
-    const leads = readJSON('leads.json') || [];
+    wsWrite(req, 'inbox.json', inbox);
+    const leads = wsRead(req, 'leads.json', []);
     const leadIdx = leads.findIndex(l => l.id === item.leadId);
     if (leadIdx !== -1) {
       leads[leadIdx].status = 'scheduled';
       leads[leadIdx].scheduledAt = item.sendOptimalTime;
       leads[leadIdx].sentVersion = version;
       addLeadHistory(leads, item.leadId, { event: 'scheduled', label: `Ingepland voor ${NL_DAYS[new Date(item.sendOptimalTime).getDay()]} om ${String(new Date(item.sendOptimalTime).getHours()).padStart(2,'0')}:00` });
-      writeJSON('leads.json', leads);
+      wsWrite(req, 'leads.json', leads);
     }
     return res.json(inbox[idx]);
   }
@@ -8584,21 +8584,21 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
       const manualEmail    = req.body?.manualEmail?.trim() || null;
       if (manualEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(manualEmail)) {
         inbox[idx].status = 'approved';
-        writeJSON('inbox.json', inbox);
+        wsWrite(req, 'inbox.json', inbox);
         return res.status(400).json({ error: `Ongeldig emailadres: "${manualEmail}"` });
       }
       if (manualEmail) {
         inbox[idx].contactEmail = manualEmail;
         inbox[idx].emailSource  = 'handmatig';
         // Also save to lead
-        const allLeads2 = readJSON('leads.json') || [];
+        const allLeads2 = wsRead(req, 'leads.json', []);
         const li2 = allLeads2.findIndex(l => l.id === item.leadId);
-        if (li2 !== -1) { allLeads2[li2].contactEmail = manualEmail; allLeads2[li2].emailSource = 'handmatig'; writeJSON('leads.json', allLeads2); }
+        if (li2 !== -1) { allLeads2[li2].contactEmail = manualEmail; allLeads2[li2].emailSource = 'handmatig'; wsWrite(req, 'leads.json', allLeads2); }
       }
       const recipientEmail = inbox[idx].contactEmail;
       if (!recipientEmail) {
         inbox[idx].status = 'approved';
-        writeJSON('inbox.json', inbox);
+        wsWrite(req, 'inbox.json', inbox);
         return res.status(400).json({ error: 'Geen emailadres beschikbaar — voeg handmatig een emailadres toe' });
       }
       await sendEmail({
@@ -8623,17 +8623,17 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
     } catch (err) {
       console.error('[Email] Fout:', err.message);
       inbox[idx].status = 'approved'; // approved but not sent
-      writeJSON('inbox.json', inbox);
+      wsWrite(req, 'inbox.json', inbox);
       return res.status(500).json({ error: 'Email verzenden mislukt: ' + err.message });
     }
   } else {
     inbox[idx].status = 'approved'; // approved, Resend not configured
   }
 
-  writeJSON('inbox.json', inbox);
+  wsWrite(req, 'inbox.json', inbox);
 
   // Sync status to leads.json
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const leadIdx = leads.findIndex(l => l.id === item.leadId);
   if (leadIdx !== -1) {
     // Referral items: don't change lead status (they remain 'client')
@@ -8658,11 +8658,11 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
       updateMemory(leads[leadIdx].niche, leads[leadIdx].country, 'sent');
       updateMemoryVersion(leads[leadIdx].niche, leads[leadIdx].country, version, 'sent');
     }
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
   }
 
   if (inbox[idx].status === 'sent' && item.type !== 'referral' && item.type !== 'linkedinDm') {
-    const lead = (readJSON('leads.json') || []).find(l => l.id === item.leadId);
+    const lead = (wsRead(req, 'leads.json', [])).find(l => l.id === item.leadId);
     fireWebhooks('lead.approved', { leadId: item.leadId, companyName: item.companyName, niche: item.niche, score: item.score, emailSubject: chosenEmail?.subject, sentAt: inbox[idx].sentAt, lead: lead ? { id: lead.id, status: lead.status, location: lead.location, estimatedValue: lead.estimatedValue } : null });
   }
 
@@ -8670,54 +8670,54 @@ app.patch('/api/inbox/:id/approve', async (req, res) => {
 });
 
 app.patch('/api/inbox/:id/disapprove', (req, res) => {
-  const inbox = readJSON('inbox.json') || [];
+  const inbox = wsRead(req, 'inbox.json', []);
   const idx = inbox.findIndex(i => i.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Item niet gevonden' });
   inbox[idx].status = 'disapproved';
   inbox[idx].disapprovedAt = new Date().toISOString();
-  writeJSON('inbox.json', inbox);
+  wsWrite(req, 'inbox.json', inbox);
 
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const leadIdx = leads.findIndex(l => l.id === inbox[idx].leadId);
   if (leadIdx !== -1) {
     leads[leadIdx].status = 'disapproved';
     addLeadHistory(leads, inbox[idx].leadId, { event: 'disapproved', label: 'Afgewezen' });
     updateMemoryConversion(leads[leadIdx].niche, leads[leadIdx].country, 'lost', leads[leadIdx].estimatedFollowers, leads[leadIdx].website?.speedScore);
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
   }
 
   res.json(inbox[idx]);
 });
 
 app.patch('/api/inbox/:id/restore', (req, res) => {
-  const inbox = readJSON('inbox.json') || [];
+  const inbox = wsRead(req, 'inbox.json', []);
   const idx = inbox.findIndex(i => i.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Item niet gevonden' });
   inbox[idx].status = 'pending';
   delete inbox[idx].disapprovedAt;
-  writeJSON('inbox.json', inbox);
+  wsWrite(req, 'inbox.json', inbox);
 
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const leadIdx = leads.findIndex(l => l.id === inbox[idx].leadId);
   if (leadIdx !== -1) {
     leads[leadIdx].status = 'new';
     addLeadHistory(leads, inbox[idx].leadId, { event: 'restored', label: 'Hersteld uit prullenbak' });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
   }
 
   res.json(inbox[idx]);
 });
 
 app.delete('/api/inbox/:id', (req, res) => {
-  const inbox = readJSON('inbox.json') || [];
+  const inbox = wsRead(req, 'inbox.json', []);
   const item = inbox.find(i => i.id === req.params.id);
   if (!item) return res.status(404).json({ error: 'Item niet gevonden' });
   const filtered = inbox.filter(i => i.id !== req.params.id);
-  writeJSON('inbox.json', filtered);
+  wsWrite(req, 'inbox.json', filtered);
 
   if (req.query.deleteLead === 'true' && item.leadId) {
-    const leads = readJSON('leads.json') || [];
-    writeJSON('leads.json', leads.filter(l => l.id !== item.leadId));
+    const leads = wsRead(req, 'leads.json', []);
+    wsWrite(req, 'leads.json', leads.filter(l => l.id !== item.leadId));
   }
 
   res.json({ ok: true });
@@ -8756,7 +8756,7 @@ app.get('/api/settings', (req, res) => {
 
     // ── Agency AI: full global settings (no isolation needed) ───────────────
     if (isAgencyAI) {
-      const s = readJSON('settings.json') || {};
+      const s = wsRead(req, 'settings.json', {});
       const safe = { ...s };
       delete safe.password; delete safe.gmailPassword; delete safe.gmailPasswordEncrypted;
       delete safe.claudeApiKeyEncrypted; delete safe.resendApiKey;
@@ -8943,12 +8943,12 @@ app.patch('/api/settings/account', requireAdmin, async (req, res) => {
 // ── Agency Profiles ──────────────────────────────────────────────────────────
 
 app.get('/api/agency-profiles', authMiddleware, (req, res) => {
-  const settings = readJSON('settings.json') || {};
+  const settings = wsRead(req, 'settings.json', {});
   res.json(settings.agencyProfiles || []);
 });
 
 app.post('/api/agency-profiles', requireAdmin, (req, res) => {
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   if (!settings.agencyProfiles) settings.agencyProfiles = [];
   const { agencyName, myName, myTitle, agencyAddress, brandColor } = req.body;
   if (!agencyName) return res.status(400).json({ error: 'Agency naam verplicht' });
@@ -8958,12 +8958,12 @@ app.post('/api/agency-profiles', requireAdmin, (req, res) => {
     createdAt: new Date().toISOString()
   };
   settings.agencyProfiles.push(profile);
-  writeJSON('settings.json', settings);
+  wsWrite(req, 'settings.json', settings);
   res.json(profile);
 });
 
 app.patch('/api/agency-profiles/:id', requireAdmin, (req, res) => {
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   const profs = settings.agencyProfiles || [];
   const idx = profs.findIndex(p => p.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Profiel niet gevonden' });
@@ -8974,19 +8974,19 @@ app.patch('/api/agency-profiles/:id', requireAdmin, (req, res) => {
   if (agencyAddress !== undefined) profs[idx].agencyAddress = agencyAddress;
   if (brandColor)      profs[idx].brandColor    = brandColor;
   settings.agencyProfiles = profs;
-  writeJSON('settings.json', settings);
+  wsWrite(req, 'settings.json', settings);
   res.json(profs[idx]);
 });
 
 app.delete('/api/agency-profiles/:id', requireAdmin, (req, res) => {
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   settings.agencyProfiles = (settings.agencyProfiles || []).filter(p => p.id !== req.params.id);
-  writeJSON('settings.json', settings);
+  wsWrite(req, 'settings.json', settings);
   res.json({ ok: true });
 });
 
 app.post('/api/agency-profiles/:id/activate', requireAdmin, (req, res) => {
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   const prof = (settings.agencyProfiles || []).find(p => p.id === req.params.id);
   if (!prof) return res.status(404).json({ error: 'Profiel niet gevonden' });
   settings.agencyName     = prof.agencyName;
@@ -8995,7 +8995,7 @@ app.post('/api/agency-profiles/:id/activate', requireAdmin, (req, res) => {
   settings.agencyAddress  = prof.agencyAddress  || settings.agencyAddress || '';
   settings.brandColor     = prof.brandColor     || '#2563eb';
   settings.activeProfileId = prof.id;
-  writeJSON('settings.json', settings);
+  wsWrite(req, 'settings.json', settings);
   res.json({ ok: true, settings: { agencyName: settings.agencyName, myName: settings.myName, myTitle: settings.myTitle, brandColor: settings.brandColor } });
 });
 
@@ -9016,9 +9016,9 @@ app.patch('/api/settings/gmail', requireAdmin, (req, res) => {
 
 app.patch('/api/settings/services', requireAdmin, (req, res) => {
   if (!Array.isArray(req.body.services)) return res.status(400).json({ error: 'Services moet een array zijn' });
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   settings.services = req.body.services;
-  writeJSON('settings.json', settings);
+  wsWrite(req, 'settings.json', settings);
   res.json({ ok: true });
 });
 
@@ -9027,9 +9027,9 @@ app.patch('/api/settings/claude-key', requireAdmin, (req, res) => {
   if (!claudeApiKey || !claudeApiKey.trim()) {
     return res.status(400).json({ error: 'API sleutel is verplicht' });
   }
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   settings.claudeApiKeyEncrypted = encryptApiKey(claudeApiKey.trim());
-  writeJSON('settings.json', settings);
+  wsWrite(req, 'settings.json', settings);
   res.json({ ok: true });
 });
 
@@ -9091,7 +9091,7 @@ app.patch('/api/settings/automation', requireAdmin, (req, res) => {
 
 app.post('/api/settings/test-email', requireAdmin, async (req, res) => {
   console.log('[TestMail] Starting...');
-  const s = readJSON('settings.json') || {};
+  const s = wsRead(req, 'settings.json', {});
   const resendKey   = s.resendApiKey || process.env.RESEND_API_KEY;
   const fromAddress = s.resendFromAddress || process.env.RESEND_FROM_ADDRESS || 'noreply@agencyai.info';
   const testRecipient = s.adminEmail || s.gmailAddress || 'info@agencyai.info';
@@ -9153,7 +9153,7 @@ app.post('/api/settings/test-email', requireAdmin, async (req, res) => {
 
 app.post('/api/settings/test-imap', requireAdmin, async (req, res) => {
   console.log('[TestIMAP] Starting...');
-  const s    = readJSON('settings.json') || {};
+  const s    = wsRead(req, 'settings.json', {});
   const user = s.gmailAddress || process.env.GMAIL_USER || process.env.GMAIL_ADDRESS;
   const pass = getGmailPassword(s);
 
@@ -9188,7 +9188,7 @@ app.post('/api/settings/test-imap', requireAdmin, async (req, res) => {
 });
 
 app.patch('/api/settings/stripe', requireAdmin, (req, res) => {
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   const { stripeSecretKey, mollieApiKey, paypalMe, preferredPaymentMethod, bankTransferIban, bankTransferName, bankTransferBic, paymentTermDays } = req.body;
   if (stripeSecretKey !== undefined) settings.stripeSecretKey = stripeSecretKey;
   if (mollieApiKey !== undefined) settings.mollieApiKey = mollieApiKey;
@@ -9198,7 +9198,7 @@ app.patch('/api/settings/stripe', requireAdmin, (req, res) => {
   if (bankTransferName !== undefined) settings.bankTransferName = bankTransferName;
   if (bankTransferBic  !== undefined) settings.bankTransferBic  = bankTransferBic;
   if (paymentTermDays  !== undefined) settings.paymentTermDays  = parseInt(paymentTermDays) || 14;
-  writeJSON('settings.json', settings);
+  wsWrite(req, 'settings.json', settings);
   res.json({ ok: true });
 });
 
@@ -9208,7 +9208,7 @@ app.post('/api/stripe/invoice', requireAdmin, async (req, res) => {
     console.log('[DEMO] Skipped real Stripe invoice for demo user');
     return res.json({ url: 'https://demo.agencyai.nl/stripe/demo-' + Date.now().toString(36) });
   }
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   if (!settings.stripeSecretKey) {
     return res.status(400).json({ error: 'Stripe sleutel niet ingesteld — voeg toe in Instellingen' });
   }
@@ -9245,7 +9245,7 @@ app.post('/api/mollie/invoice', requireAdmin, async (req, res) => {
     console.log('[DEMO] Skipped real Mollie invoice for demo user');
     return res.json({ url: 'https://demo.agencyai.nl/mollie/demo-' + Date.now().toString(36) });
   }
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   if (!settings.mollieApiKey) {
     return res.status(400).json({ error: 'Mollie API sleutel niet ingesteld — voeg toe in Instellingen' });
   }
@@ -9285,7 +9285,7 @@ app.post('/api/paypal/invoice', requireAdmin, (req, res) => {
     console.log('[DEMO] Skipped real PayPal invoice for demo user');
     return res.json({ url: 'https://demo.agencyai.nl/paypal/demo-' + Date.now().toString(36) });
   }
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   if (!settings.paypalMe) {
     return res.status(400).json({ error: 'PayPal.me naam niet ingesteld — voeg toe in Instellingen' });
   }
@@ -9369,15 +9369,15 @@ app.get('/api/payments/overview', authMiddleware, (req, res) => {
 });
 
 app.get('/api/leads/:id/payments', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
   res.json(lead.payments || []);
 });
 
 app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
-  const leads = readJSON('leads.json') || [];
-  const settings = readJSON('settings.json') || {};
+  const leads = wsRead(req, 'leads.json', []);
+  const settings = wsRead(req, 'settings.json', {});
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
 
@@ -9400,7 +9400,7 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
     if (!leads[idx].payments) leads[idx].payments = [];
     leads[idx].payments.push(fakePayment);
     addLeadHistory(leads, leads[idx].id, { event: 'paymentCreated', label: `Betaling aangemaakt: €${fakePayment.amount} [demo]` });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     return res.json({ payments: leads[idx].payments });
   }
 
@@ -9451,7 +9451,7 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
     leads[idx].payments.push(...newPayments);
     addLeadHistory(leads, leads[idx].id, { event: 'paymentCreated', label: `${newPayments.length > 1 ? `Gesplitste betaling (${splitParts} delen)` : type || 'Betaallink'}: €${amount}` });
     trackFunnelEvent(leads[idx].id, 'invoice_sent', { amount });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
 
     // Auto-send professional invoice email with PDF to client
     const lead = leads[idx];
@@ -9461,7 +9461,7 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
       try {
         const { nr: invoiceNr, nextNum: _invNum } = generateInvoiceNumber(settings);
         settings.lastInvoiceNumber = _invNum;
-        writeJSON('settings.json', settings);
+        wsWrite(req, 'settings.json', settings);
         const invoiceDate = new Date().toISOString();
         const termDays   = settings.paymentTermDays || 14;
         const dueDateISO = new Date(Date.now() + termDays * 86400000).toISOString();
@@ -9518,7 +9518,7 @@ app.post('/api/leads/:id/payments', requireAdmin, async (req, res) => {
 });
 
 app.patch('/api/leads/:id/payments/:payId', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const pIdx = (leads[idx].payments || []).findIndex(p => p.id === req.params.payId);
@@ -9533,22 +9533,22 @@ app.patch('/api/leads/:id/payments/:payId', requireAdmin, (req, res) => {
       `€${(pay.amount || 0).toLocaleString('nl-NL')}${pay.description ? ' — ' + pay.description : ''}`,
       leads[idx].id, `project:${leads[idx].id}`, req.user?.workspaceId);
   }
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json(leads[idx].payments[pIdx]);
 });
 
 app.delete('/api/leads/:id/payments/:payId', requireAdmin, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   leads[idx].payments = (leads[idx].payments || []).filter(p => p.id !== req.params.payId);
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 app.post('/api/leads/:id/payments/:payId/remind', requireAdmin, async (req, res) => {
-  const leads = readJSON('leads.json') || [];
-  const settings = readJSON('settings.json') || {};
+  const leads = wsRead(req, 'leads.json', []);
+  const settings = wsRead(req, 'settings.json', {});
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
@@ -9562,7 +9562,7 @@ app.post('/api/leads/:id/payments/:payId/remind', requireAdmin, async (req, res)
       if (pIdx !== -1) { leads[idx].payments[pIdx].lastReminderAt = new Date().toISOString(); leads[idx].payments[pIdx].reminderCount = (leads[idx].payments[pIdx].reminderCount || 0) + 1; }
     }
     addLeadHistory(leads, lead.id, { event: 'paymentReminder', label: 'Betalingsherinnering verstuurd [demo]' });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     return res.json({ ok: true, subject: 'Betalingsherinnering [demo]' });
   }
 
@@ -9587,7 +9587,7 @@ Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`);
     const pIdx = leads[idx].payments.findIndex(p => p.id === req.params.payId);
     if (pIdx !== -1) { leads[idx].payments[pIdx].lastReminderAt = new Date().toISOString(); leads[idx].payments[pIdx].reminderCount = (leads[idx].payments[pIdx].reminderCount || 0) + 1; }
     addLeadHistory(leads, lead.id, { event: 'paymentReminder', label: `Betalingsherinnering verstuurd: €${pay.amount}` });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     res.json({ ok: true, subject: reminderEmail.subject });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -9595,8 +9595,8 @@ Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`);
 });
 
 app.delete('/api/settings/leads', requireAdmin, (req, res) => {
-  writeJSON('leads.json', []);
-  writeJSON('inbox.json', []);
+  wsWrite(req, 'leads.json', []);
+  wsWrite(req, 'inbox.json', []);
   res.json({ ok: true });
 });
 
@@ -9634,7 +9634,7 @@ app.get('/api/referrals', authMiddleware, (req, res) => {
 });
 
 app.post('/api/leads/:id/set-referrer', authMiddleware, (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const idx = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const { referrerId } = req.body;
@@ -9647,7 +9647,7 @@ app.post('/api/leads/:id/set-referrer', authMiddleware, (req, res) => {
   } else if (!referrerId && prev) {
     addLeadHistory(leads, req.params.id, { event: 'referralUnlinked', label: 'Referral-koppeling verwijderd' });
   }
-  writeJSON('leads.json', leads);
+  wsWrite(req, 'leads.json', leads);
   res.json(leads[idx]);
 });
 
@@ -9657,7 +9657,7 @@ app.post('/api/upsell/:leadId/email', async (req, res) => {
     console.log('[DEMO] Skipped real upsell email generation for demo user');
     return res.json({ email: { subject: 'Upsell voorstel [demo]', body: 'Demo upsell email — geen echt AI-bericht gegenereerd.' }, opp: { companyName: 'Demo', upsellService: 'Demo dienst' } });
   }
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   const stats    = readJSON('stats.json') || {};
   const opps     = stats.upsellOpportunities || [];
   const opp      = opps.find(o => o.leadId === req.params.leadId);
@@ -9684,11 +9684,11 @@ app.post('/api/upsell/:leadId/send', async (req, res) => {
     console.log('[DEMO] Skipped real upsell send for demo user');
     return res.json({ ok: true });
   }
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   if (!isResendReady(settings)) return res.status(400).json({ error: 'Email niet ingesteld' });
   const { subject, body } = req.body;
   if (!subject || !body) return res.status(400).json({ error: 'Subject en body vereist' });
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead = leads.find(l => l.id === req.params.leadId);
   if (!lead || !lead.contactEmail) return res.status(400).json({ error: 'Klant heeft geen emailadres' });
   try {
@@ -12682,7 +12682,7 @@ app.get('/api/stats/costs', (req, res) => {
 // ─── Extended stats ───────────────────────────────────────────────────────────
 app.get('/api/stats/extended', authMiddleware, (req, res) => {
   try {
-    const leads = readJSON('leads.json') || [];
+    const leads = wsRead(req, 'leads.json', []);
     const totalSent = leads.filter(l => l.sentAt).length;
     const totalReplied = leads.filter(l => l.repliedAt).length;
     const replyRate = totalSent > 0 ? Math.round(totalReplied / totalSent * 100) : 0;
@@ -12821,7 +12821,7 @@ app.get('/api/stats/pnl', authMiddleware, (req, res) => {
 });
 
 app.get('/api/ai/rate-status', authMiddleware, (req, res) => {
-  const settings   = readJSON('settings.json') || {};
+  const settings   = wsRead(req, 'settings.json', {});
   const lim        = settings.aiRateLimits || {};
   const now        = Date.now();
   while (_aiCallLog.length && _aiCallLog[0].ts < now - 86400000) _aiCallLog.shift();
@@ -12845,8 +12845,8 @@ app.get('/api/ai/rate-status', authMiddleware, (req, res) => {
 // ─── Chrome Extension compact data ───────────────────────────────────────────
 
 app.get('/api/extension/data', authMiddleware, (req, res) => {
-  const inbox  = readJSON('inbox.json') || [];
-  const leads  = readJSON('leads.json') || [];
+  const inbox  = wsRead(req, 'inbox.json', []);
+  const leads  = wsRead(req, 'leads.json', []);
   const stats  = readJSON('stats.json') || {};
   const pending = inbox.filter(i => !i.sentAt && !i.disapprovedAt).slice(0, 20).map(i => ({
     id: i.id, companyName: i.companyName, niche: i.niche, score: i.score,
@@ -13125,7 +13125,7 @@ app.delete('/api/blacklist/:id', requireAdmin, (req, res) => {
 });
 
 app.post('/api/leads/:id/blacklist', (req, res) => {
-  const leads = readJSON('leads.json') || [];
+  const leads = wsRead(req, 'leads.json', []);
   const lead  = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead niet gevonden' });
   const list = readJSON('blacklist.json') || [];
@@ -13507,8 +13507,8 @@ async function runWeeklyUpdates() {
 
 // Manual trigger: send weekly update to a single client
 app.post('/api/leads/:id/send-weekly-update', requireAdmin, async (req, res) => {
-  const leads    = readJSON('leads.json') || [];
-  const settings = readJSON('settings.json') || {};
+  const leads    = wsRead(req, 'leads.json', []);
+  const settings = wsRead(req, 'settings.json', {});
   const idx      = leads.findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Lead niet gevonden' });
   const lead = leads[idx];
@@ -13520,7 +13520,7 @@ app.post('/api/leads/:id/send-weekly-update', requireAdmin, async (req, res) => 
     if (!leads[idx].clientEmailLog) leads[idx].clientEmailLog = [];
     leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'weeklyUpdate', subject: email.subject, body: email.body, to: lead.contactEmail, sentAt: new Date().toISOString(), sentBy: 'admin' });
     addLeadHistory(leads, lead.id, { event: 'weeklyUpdateSent', label: `Weekupdate handmatig verstuurd: ${email.subject}` });
-    writeJSON('leads.json', leads);
+    wsWrite(req, 'leads.json', leads);
     res.json({ ok: true, subject: email.subject });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -13530,7 +13530,7 @@ app.post('/api/leads/:id/send-weekly-update', requireAdmin, async (req, res) => 
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 
 async function runDailyBackup(manual = false) {
-  const settings = readJSON('settings.json');
+  const settings = wsRead(req, 'settings.json', {});
   if (!manual && settings.backupEnabled === false) return;
 
   if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
@@ -13540,7 +13540,7 @@ async function runDailyBackup(manual = false) {
   const filepath = path.join(BACKUP_DIR, filename);
 
   // Build sanitized bundle (strip credentials)
-  const settingsRaw = readJSON('settings.json') || {};
+  const settingsRaw = wsRead(req, 'settings.json', {});
   const safeSettings = { ...settingsRaw };
   delete safeSettings.password;
   delete safeSettings.gmailPassword;
@@ -13549,8 +13549,8 @@ async function runDailyBackup(manual = false) {
 
   const bundle = {
     exportedAt:   new Date().toISOString(),
-    leads:  readJSON('leads.json')  || [],
-    inbox:  readJSON('inbox.json')  || [],
+    leads:  wsRead(req, 'leads.json', [])  || [],
+    inbox:  wsRead(req, 'inbox.json', [])  || [],
     runs:   readJSON('runs.json')   || [],
     stats:  readJSON('stats.json')  || {},
     memory: readJSON('memory.json') || {},
