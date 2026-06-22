@@ -80,11 +80,33 @@ Each function/route checked for: input validation, error handling, N+1 patterns,
 - `server.js` (13,250 lines) — fixed 2 field injection routes + added asyncHandler + global error handler
 - Stub files (agents.js, email.js, payments.js, projects.js) — empty routers, pending extraction
 
+## Part 3-6 Additions (same session)
+
+### Part 3 — Test Coverage
+- 30 new tests across 5 files: portal, stats, superadmin, inbox, regression
+- Regression suite covers: field injection, setup token gating, JWT enforcement, workspace isolation, error shape consistency
+- **Total: 45 tests / 9 suites — all passing**
+
+### Part 4 — Feature Audit
+- Notification preferences: type-level enable/disable with whitelist validation
+- Dedup: Levenshtein fuzzy + domain↔email cross-check added to isDuplicate()
+- Webhooks: retry (3x with backoff) + deliveryLog (50 entries) + admin endpoint
+- Exports: all 4 exports (leads CSV, stats CSV, PDF, settings) verified complete
+
+### Part 5 — Operational
+- lib/logger.js: structured logging (timestamp/severity/tag/context)
+- /health: +workspaceCount, +cronStale flag
+- ENV.md: 19 env vars documented from codebase grep
+- Graceful shutdown: SIGTERM/SIGINT → close HTTP/WS/SQLite (10s force timeout)
+
 ## Summary
 
 - **Critical bugs fixed**: 4 (wrong require paths, missing factory deps)
 - **Security fixes**: 6 (field injection prevention across 6 routes)
 - **Error handling fixes**: 4 (status codes, async handler, empty catch, debug gating)
 - **Input validation additions**: 4 (portal text limits, stats days bound)
+- **Feature additions**: 4 (notification prefs, dedup improvement, webhook retry, delivery log)
+- **Operational additions**: 4 (structured logger, health enhancements, ENV docs, graceful shutdown)
 - **Total issues found**: 18 fixed + 7 noted for future sessions
-- **Test suite**: 15/15 passing after all changes
+- **Test suite**: 45/45 passing (from 15/15 at session start)
+- **server.js reduction**: 14,796 → 13,367 lines (1,429 lines extracted)

@@ -98,13 +98,75 @@ See AUDIT.md for detailed findings table.
 Tests: 15/15 passing after all changes.
 
 ## Part 3 — Test Coverage
-Status: PENDING
+Status: COMPLETE
+
+Created 30 new tests (5 test files):
+- tests/portal.test.js (5) — invalid token, feedback validation, message validation
+- tests/stats.test.js (6) — main stats, detailed leadsPerDay, days clamping, costs, funnel, auth
+- tests/superadmin.test.js (5) — auth rejection (401/403), workspace listing
+- tests/inbox.test.js (5) — list, auth, approve/disapprove/delete 404s
+- tests/regression.test.js (9) — field injection (POST/PATCH), setup token gating (3 routes), JWT enforcement, workspace preservation, error response shape
+
+**Total: 45 tests / 9 suites — all passing.**
 
 ## Part 4 — Feature Work
-Status: PENDING
+Status: COMPLETE
+
+### 4.1 Notification Preferences
+- `addNotification()` checks `settings.notificationPreferences[type]` — skips if `false`
+- Push notifications respect per-type `_push` toggle
+- PATCH /api/settings/automation accepts `notificationPreferences` object
+- Validates against whitelist of 10 known notification types
+
+### 4.2 Lead Deduplication
+- `isDuplicate()` now has fuzzy name matching (Levenshtein distance <= 2 for names 5+ chars)
+- Cross-checks website domain ↔ email domain
+- `normalizeDomain()` helper (strips protocol, www, port, trailing path)
+- Fuzzy-duplicates endpoint checks domain + email domain + excludes generic providers
+
+### 4.3 Bulk Actions Audit
+- Leads: approve/decline/delete/archive — all functional (frontend + backend)
+- Inbox: approve/decline — sequential PATCH with progress UI
+- Contacts/runs: no bulk actions needed (low-volume pages)
+
+### 4.4 Webhook Reliability
+- `fireWebhooks()` retries up to 3 times with backoff (0s, 2s, 5s)
+- Each webhook stores `deliveryLog[]` (last 50 entries)
+- `GET /api/webhooks/:id/delivery-log` for admin visibility
+
+### 4.5 Export Completeness
+- Leads CSV: 15 fields + BOM for Excel — complete
+- Stats CSV: 10 fields including revenue — complete
+- PDF export: company, services, payments — complete
+- Settings export: strips all secrets — complete
 
 ## Part 5 — Operational Readiness
-Status: PENDING
+Status: COMPLETE
+
+### 5.1 Structured Logging
+- Created `lib/logger.js` (timestamp + severity + tag + context)
+- Global Express error handler uses structured logger
+- Debug logs gated behind `DEBUG` env var
+
+### 5.2 Health Check
+- Added `workspaceCount` to /health response
+- Added `cronStale` flag (true if last run >48h)
+- All existing checks preserved
+
+### 5.3 Environment Documentation
+- Created `ENV.md` with all 19 `process.env` variables
+- Categorized: Required, Auth, AI, Email, Application, Debug
+
+### 5.4 Graceful Shutdown
+- SIGTERM/SIGINT handlers: close HTTP, WebSocket, SQLite
+- 10s force-kill timeout
+- Railway zero-downtime deploy compatible
 
 ## Part 6 — Final Verification
-Status: PENDING
+Status: COMPLETE
+
+### 6.1 Test Suite
+45/45 tests passing, 9/9 suites — clean from scratch.
+
+### 6.5 Line Count Diff
+server.js: 14,796 (main) → 13,367 (branch) = **1,429 lines extracted**
