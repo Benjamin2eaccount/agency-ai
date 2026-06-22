@@ -3294,7 +3294,7 @@ app.patch('/api/superadmin/workspaces/:id', requireSuperAdmin, (req, res) => {
   try {
     const db = getDb();
     const { generateSlug } = require('./lib/workspace');
-    const allowed = ['status','plan','billing_amount','next_billing_date','notes','branding_name','branding_logo','branding_color','branding_email_sender','owner_email','owner_name'];
+    const allowed = ['name','status','plan','billing_amount','next_billing_date','notes','branding_name','branding_logo','branding_color','branding_email_sender','owner_email','owner_name'];
     const fields  = Object.keys(req.body).filter(k => allowed.includes(k));
     if (!fields.length) return res.status(400).json({ error: 'Geen geldige velden' });
     const setClauses = fields.map(f => `${f} = ?`).join(', ');
