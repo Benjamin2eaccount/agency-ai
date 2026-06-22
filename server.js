@@ -2259,9 +2259,10 @@ app.get('/api/intake/:leadId/:token', async (req, res) => {
   const leads = readJSON('leads.json') || [];
   const lead = leads.find(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
   if (!lead) return res.status(404).json({ error: 'Intake link ongeldig of verlopen' });
+  const _ws = lead.workspaceId || null;
 
   if (lead.intakeSubmittedAt) {
-    return res.json({ submitted: true, companyName: lead.companyName, agencyName: (readJSON('settings.json') || {}).agencyName || 'Agency AI' });
+    return res.json({ submitted: true, companyName: lead.companyName, agencyName: (wsReadWs(_ws, 'settings.json') || {}).agencyName || 'Agency AI' });
   }
 
   // Generate questions with AI if not yet cached
@@ -2346,10 +2347,10 @@ Return ONLY valid JSON (no markdown):
     );
     const idx = leads.findIndex(l => l.id === lead.id);
     leads[idx] = lead;
-    writeJSON('leads.json', leads);
+    wsWriteWs(_ws, 'leads.json', leads);
   }
 
-  const settings = readJSON('settings.json') || {};
+  const settings = wsReadWs(_ws, 'settings.json') || {};
   res.json({
     submitted: false,
     companyName: lead.companyName,
@@ -2363,6 +2364,7 @@ Return ONLY valid JSON (no markdown):
 app.post('/api/intake/:leadId/:token', async (req, res) => {
   const leads = readJSON('leads.json') || [];
   const idx = leads.findIndex(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
+  const _ws = idx !== -1 ? (leads[idx].workspaceId || null) : null;
   if (idx === -1) return res.status(404).json({ error: 'Intake link ongeldig' });
   if (leads[idx].intakeSubmittedAt) return res.status(409).json({ error: 'Intake al ingediend' });
 
@@ -2373,16 +2375,16 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
   if ((leads[idx].currentPhase || 1) < 2) leads[idx].currentPhase = 2;
   addLeadHistory(leads, leads[idx].id, { event: 'intakeSubmitted', label: 'Intake ingevuld door klant' });
   addNotification('intake_submitted', `Intake ingevuld: ${leads[idx].companyName}`, `De intake is ingevuld door ${leads[idx].contactName || leads[idx].companyName}`, leads[idx].id, `project:${leads[idx].id}`, leads[idx].workspaceId || null);
-  fireWebhooks('intake.submitted', { leadId: leads[idx].id, companyName: leads[idx].companyName, niche: leads[idx].niche, contactEmail: leads[idx].contactEmail, submittedAt: leads[idx].intakeSubmittedAt }, req.user?.workspaceId);
-  writeJSON('leads.json', leads);
+  fireWebhooks('intake.submitted', { leadId: leads[idx].id, companyName: leads[idx].companyName, niche: leads[idx].niche, contactEmail: leads[idx].contactEmail, submittedAt: leads[idx].intakeSubmittedAt }, _ws);
+  wsWriteWs(_ws, 'leads.json', leads);
 
-  const settings = readJSON('settings.json') || {};
+  const settings = wsReadWs(_ws, 'settings.json') || {};
 
   // Notify team
   if (isResendReady(settings)) {
     try {
       const answersText = Object.entries(req.body.answers || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
-      await sendEmail({ to: settings.gmailAddress, subject: `[Intake ingevuld] ${leads[idx].companyName}`, body: `De intake van ${leads[idx].companyName} is ingevuld.\n\nAntwoorden:\n${answersText}`, settings, workspaceId: req.user?.workspaceId});
+      await sendEmail({ to: settings.gmailAddress, subject: `[Intake ingevuld] ${leads[idx].companyName}`, body: `De intake van ${leads[idx].companyName} is ingevuld.\n\nAntwoorden:\n${answersText}`, settings, workspaceId: _ws});
     } catch { /* optional */ }
   }
 
@@ -2392,10 +2394,10 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
   if (settings.autoClientEmails?.intakeReceived !== false && intakeConfirmTo && isResendReady(settings)) {
     try {
       const email = await generateClientEmail(lead, 'intakeReceived', settings);
-      await sendEmail({ to: intakeConfirmTo, subject: email.subject, body: email.body, settings, workspaceId: req.user?.workspaceId});
+      await sendEmail({ to: intakeConfirmTo, subject: email.subject, body: email.body, settings, workspaceId: _ws});
       if (!leads[idx].clientEmailLog) leads[idx].clientEmailLog = [];
       leads[idx].clientEmailLog.push({ id: Date.now().toString(36), trigger: 'intakeReceived', subject: email.subject, body: email.body, to: intakeConfirmTo, sentAt: new Date().toISOString(), sentBy: 'systeem' });
-      writeJSON('leads.json', leads);
+      wsWriteWs(_ws, 'leads.json', leads);
     } catch { /* optional */ }
   }
 
@@ -2406,8 +2408,8 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
   if (hasWebsiteService && !lead.generatedSite) {
     setImmediate(async () => {
       try {
-        const freshLeads = readJSON('leads.json') || [];
-        const freshSettings = readJSON('settings.json') || {};
+        const freshLeads = wsReadWs(_ws, 'leads.json') || [];
+        const freshSettings = wsReadWs(_ws, 'settings.json') || {};
         const freshIdx = freshLeads.findIndex(l => l.id === lead.id);
         if (freshIdx === -1 || freshLeads[freshIdx].generatedSite) return;
         const freshLead = freshLeads[freshIdx];
@@ -2450,12 +2452,12 @@ Use ${colors.primary} as accent color. Scroll-triggered animations. Mobile respo
         const baseUrl = BASE_URL;
         const siteUrl = `${baseUrl}/sites/${siteSlug}`;
 
-        const updatedLeads = readJSON('leads.json') || [];
+        const updatedLeads = wsReadWs(_ws, 'leads.json') || [];
         const updIdx = updatedLeads.findIndex(l => l.id === freshLead.id);
         if (updIdx !== -1) {
           updatedLeads[updIdx].generatedSite = { siteSlug, siteUrl, generatedAt: new Date().toISOString(), content, status: 'preview', feedback: [], html: siteHtml };
           addLeadHistory(updatedLeads, freshLead.id, { event: 'siteGenerated', label: `Website auto-gegenereerd na intake: ${siteUrl}` });
-          writeJSON('leads.json', updatedLeads);
+          wsWriteWs(_ws, 'leads.json', updatedLeads);
         }
         console.log(`[Website] Auto-generated for ${freshLead.companyName}: ${siteUrl}`);
       } catch (e) { console.error('[Website] Auto-generate failed:', e.message); }
@@ -2480,6 +2482,7 @@ app.get('/track/open/:token', (req, res) => {
       const leads = readJSON('leads.json') || [];
       const idx = leads.findIndex(l => l.trackingToken === token);
       if (idx === -1) return;
+      const _ws = leads[idx].workspaceId || null;
       const now = new Date().toISOString();
       if (!leads[idx].openedAt) {
         leads[idx].openedAt = now;
@@ -2491,14 +2494,14 @@ app.get('/track/open/:token', (req, res) => {
       }
       leads[idx].openCount = (leads[idx].openCount || 0) + 1;
       leads[idx].lastOpenedAt = now;
-      writeJSON('leads.json', leads);
+      wsWriteWs(_ws, 'leads.json', leads);
 
-      const inbox = readJSON('inbox.json') || [];
+      const inbox = wsReadWs(_ws, 'inbox.json') || [];
       const iIdx = inbox.findIndex(i => i.trackingToken === token);
       if (iIdx !== -1) {
         if (!inbox[iIdx].openedAt) inbox[iIdx].openedAt = now;
         inbox[iIdx].openCount = (inbox[iIdx].openCount || 0) + 1;
-        writeJSON('inbox.json', inbox);
+        wsWriteWs(_ws, 'inbox.json', inbox);
       }
     } catch { /* silent */ }
   });
@@ -3166,7 +3169,6 @@ app.post('/api/sites/:siteSlug/contact', async (req, res) => {
 
   const siteSlug = req.params.siteSlug;
   const leads = readJSON('leads.json') || [];
-  const settings = readJSON('settings.json') || {};
 
   // Find lead whose generated site matches this slug
   const lead = leads.find(l => {
@@ -3182,18 +3184,21 @@ app.post('/api/sites/:siteSlug/contact', async (req, res) => {
     siteSlug, submittedAt: new Date().toISOString()
   };
 
+  const _ws = lead ? (lead.workspaceId || null) : null;
+  const settings = wsReadWs(_ws, 'settings.json') || {};
+
   if (lead) {
     if (!lead.contactSubmissions) lead.contactSubmissions = [];
     lead.contactSubmissions.unshift(submission);
     addLeadHistory(leads, lead.id, { event: 'contactFormSubmission', label: `Contactformulier ingevuld door ${name} via gebouwde website` });
-    writeJSON('leads.json', leads);
+    wsWriteWs(_ws, 'leads.json', leads);
 
     // Notify lead's contact email
     if (lead.contactEmail && isResendReady(settings)) {
       const bodyText = `Hallo,\n\nEr is een nieuw bericht via uw website:\n\nNaam: ${name}\nEmail: ${email}${phone ? `\nTelefoon: ${phone}` : ''}${service ? `\nDienst: ${service}` : ''}\n\nBericht:\n${message || '(geen bericht)'}\n\nU kunt reageren via uw portaal.\n\nMet vriendelijke groet,\n${settings.agencyName || 'Agency AI'}`;
-      sendEmail({ to: lead.contactEmail, subject: `Nieuw contactbericht via uw website — ${name}`, body: bodyText, settings, noCalendly: true, workspaceId: req.user?.workspaceId}).catch(e => console.error('[Site contact email]', e.message));
+      sendEmail({ to: lead.contactEmail, subject: `Nieuw contactbericht via uw website — ${name}`, body: bodyText, settings, noCalendly: true, workspaceId: _ws}).catch(e => console.error('[Site contact email]', e.message));
     }
-    addNotification('client_question', `Contactformulier: ${lead.companyName}`, `${name}: ${(message || service || '').substring(0, 80)}`, lead.id, `project:${lead.id}`, lead.workspaceId || null);
+    addNotification('client_question', `Contactformulier: ${lead.companyName}`, `${name}: ${(message || service || '').substring(0, 80)}`, lead.id, `project:${lead.id}`, _ws);
   } else {
     // Save as generic contact if lead not found
     const contacts = readJSON('contacts.json') || [];
@@ -3208,6 +3213,7 @@ app.post('/api/sites/:siteSlug/contact', async (req, res) => {
 app.post('/api/portal/:token/hosting-request', requirePortalAuth, express.json(), async (req, res) => {
   const leads = readJSON('leads.json') || [];
   const lead  = leads.find(l => l.portalToken === req.params.token);
+  const _ws = lead ? (lead.workspaceId || null) : null;
   if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
   if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd' });
 
@@ -3231,10 +3237,10 @@ app.post('/api/portal/:token/hosting-request', requirePortalAuth, express.json()
       ? `${lead.companyName} heeft hosting inloggegevens gedeeld`
       : `${lead.companyName} wil hosting via Agency AI`,
     type === 'own' ? `Provider: ${provider || '?'}` : 'Hosting aanvraag via portaal',
-    lead.id, `project:${lead.id}`, lead.workspaceId || null
+    lead.id, `project:${lead.id}`, _ws
   );
 
-  const settings = readJSON('settings.json') || {};
+  const settings = wsReadWs(_ws, 'settings.json') || {};
   if (isResendReady(settings)) {
     const subject = type === 'own'
       ? `Hosting inloggegevens — ${lead.companyName}`
@@ -3247,7 +3253,7 @@ app.post('/api/portal/:token/hosting-request', requirePortalAuth, express.json()
       : [`Klant ${lead.companyName} wil hosting via Agency AI voor hun project.`,
          `Regel een hosting account aan en mail de inloggegevens naar: ${lead.contactEmail}`,
          `Notities: ${notes || '—'}`];
-    sendEmail({ to: settings.gmailAddress, subject, body: bodyLines.join('\n\n'), settings, workspaceId: req.user?.workspaceId}).catch(() => {});
+    sendEmail({ to: settings.gmailAddress, subject, body: bodyLines.join('\n\n'), settings, workspaceId: _ws}).catch(() => {});
   }
 
   res.json({ ok: true, id: row.lastInsertRowid });
