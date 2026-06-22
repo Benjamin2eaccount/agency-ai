@@ -1804,6 +1804,17 @@ function isClaudeReady(s) {
   return !!(getClaudeApiKey(s));
 }
 
+// API key rate limiter: 120 requests per minute per key
+const _apiKeyRateLimit = {};
+function checkApiKeyRateLimit(keyHash) {
+  const now = Date.now();
+  if (!_apiKeyRateLimit[keyHash]) _apiKeyRateLimit[keyHash] = [];
+  _apiKeyRateLimit[keyHash] = _apiKeyRateLimit[keyHash].filter(t => now - t < 60000);
+  if (_apiKeyRateLimit[keyHash].length >= 120) return false;
+  _apiKeyRateLimit[keyHash].push(now);
+  return true;
+}
+
 function authMiddleware(req, res, next) {
   const header = req.headers['authorization'];
   if (!header || !header.startsWith('Bearer ')) {
@@ -1817,6 +1828,9 @@ function authMiddleware(req, res, next) {
     const keys = readJSON('api-keys.json') || [];
     const found = keys.find(k => k.keyHash === h);
     if (!found) return res.status(401).json({ error: 'API sleutel ongeldig' });
+    if (!checkApiKeyRateLimit(h)) {
+      return res.status(429).json({ error: 'API rate limit bereikt (120 verzoeken per minuut). Probeer het later opnieuw.' });
+    }
     found.lastUsed = new Date().toISOString();
     writeJSON('api-keys.json', keys);
     req.user = { id: found.userId, username: found.username, role: found.role, name: found.keyLabel, workspaceId: found.workspaceId || null };
@@ -3931,6 +3945,34 @@ app.delete('/api/auth/api-keys/:id', (req, res) => {
   }
   writeJSON('api-keys.json', keys.filter(k => k.id !== req.params.id));
   res.json({ ok: true });
+});
+
+// Rotate: revoke old key, create new one atomically
+app.post('/api/auth/api-keys/:id/rotate', (req, res) => {
+  const keys = readJSON('api-keys.json') || [];
+  const oldKey = keys.find(k => k.id === req.params.id);
+  if (!oldKey) return res.status(404).json({ error: 'Sleutel niet gevonden' });
+  if (oldKey.userId !== req.user.id && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Geen toegang' });
+  }
+  const rawKey = 'sk-agency-' + crypto.randomBytes(24).toString('hex');
+  const newEntry = {
+    id: Date.now().toString(),
+    userId: req.user.id,
+    username: req.user.username,
+    role: req.user.role,
+    workspaceId: req.user.workspaceId || null,
+    keyLabel: oldKey.keyLabel,
+    keyPrefix: rawKey.slice(0, 18) + '...',
+    keyHash: hashApiKey(rawKey),
+    keyEncrypted: encryptApiKey(rawKey),
+    createdAt: new Date().toISOString(),
+    lastUsed: null,
+  };
+  const updated = keys.filter(k => k.id !== req.params.id);
+  updated.push(newEntry);
+  writeJSON('api-keys.json', updated);
+  res.json({ ok: true, id: newEntry.id, key: rawKey, keyPrefix: newEntry.keyPrefix, revokedId: oldKey.id });
 });
 
 // ─── Claude API proxy â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
