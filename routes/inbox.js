@@ -254,6 +254,29 @@ router.patch('/:id/restore', (req, res) => {
   res.json(inbox[idx]);
 });
 
+router.post('/bulk-disapprove', (req, res) => {
+  const { ids } = req.body || {};
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids verplicht' });
+  const inbox = wsRead(req, 'inbox.json', []);
+  const leads = wsRead(req, 'leads.json', []);
+  let count = 0;
+  for (const id of ids) {
+    const idx = inbox.findIndex(i => i.id === id);
+    if (idx === -1) continue;
+    inbox[idx].status = 'disapproved';
+    inbox[idx].disapprovedAt = new Date().toISOString();
+    const leadIdx = leads.findIndex(l => l.id === inbox[idx].leadId);
+    if (leadIdx !== -1) {
+      leads[leadIdx].status = 'disapproved';
+      addLeadHistory(leads, inbox[idx].leadId, { event: 'disapproved', label: 'Afgewezen (bulk)' });
+    }
+    count++;
+  }
+  wsWrite(req, 'inbox.json', inbox);
+  wsWrite(req, 'leads.json', leads);
+  res.json({ ok: true, disapproved: count });
+});
+
 router.delete('/:id', (req, res) => {
   const inbox = wsRead(req, 'inbox.json', []);
   const item = inbox.find(i => i.id === req.params.id);

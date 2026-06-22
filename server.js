@@ -1004,6 +1004,11 @@ function addActivity(type, label, opts) {
 }
 
 function addNotification(type, title, body, leadId, link, workspaceId) {
+  // Check notification preferences — skip if user disabled this type
+  const settings = wsReadWs(workspaceId, 'settings.json', {});
+  const prefs = settings.notificationPreferences || {};
+  if (prefs[type] === false) return;
+
   const notifications = wsReadWs(workspaceId, 'notifications.json', []);
   const resolvedLink = link || (leadId ? `project:${leadId}` : null);
   notifications.unshift({
@@ -1115,17 +1120,16 @@ class JobQueue {
 
 const jobQueue = new JobQueue();
 
-async function fireWebhooks(event, payload, workspaceId) {
-  const wId = workspaceId || null;
-  // ── DEMO GUARD: skip real webhook firing for demo data ──
-  if (payload && (payload.isDemo || (payload.leadId && ((wsReadWs(wId, 'leads.json', [])).find(l => l.id === payload.leadId) || {}).isDemo))) {
-    console.log(`[DEMO] Skipped fireWebhooks(${event}) for demo data`);
-    return;
-  }
-  const hooks = (wsReadWs(wId, 'webhooks.json', [])).filter(h => h.active !== false && (h.events || []).includes(event));
-  if (!hooks.length) return;
-  const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload });
-  for (const hook of hooks) {
+function _addWebhookLog(wId, entry) {
+  const log = wsReadWs(wId, 'webhook-delivery-log.json', []);
+  log.unshift(entry);
+  if (log.length > 200) log.splice(200);
+  wsWriteWs(wId, 'webhook-delivery-log.json', log);
+}
+
+async function _sendWebhookWithRetry(hook, body, wId, event, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const started = Date.now();
     try {
       const r = await fetch(hook.url, {
         method: 'POST',
@@ -1133,19 +1137,36 @@ async function fireWebhooks(event, payload, workspaceId) {
         body,
         signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
       });
+      const status = r.ok ? 'ok' : `${r.status}`;
+      _addWebhookLog(wId, { id: Date.now().toString(36), webhookId: hook.id, event, url: hook.url, status, attempt, durationMs: Date.now() - started, createdAt: new Date().toISOString() });
       const all = wsReadWs(wId, 'webhooks.json', []);
       const idx = all.findIndex(h => h.id === hook.id);
-      if (idx !== -1) {
-        all[idx].lastTriggeredAt = new Date().toISOString();
-        all[idx].lastStatus = r.ok ? 'ok' : `${r.status}`;
-        wsWriteWs(wId, 'webhooks.json', all);
-      }
+      if (idx !== -1) { all[idx].lastTriggeredAt = new Date().toISOString(); all[idx].lastStatus = status; wsWriteWs(wId, 'webhooks.json', all); }
+      return;
     } catch (e) {
-      console.warn(`[Webhook] ${hook.url} fout:`, e.message);
-      const all = wsReadWs(wId, 'webhooks.json', []);
-      const idx = all.findIndex(h => h.id === hook.id);
-      if (idx !== -1) { all[idx].lastStatus = 'error'; wsWriteWs(wId, 'webhooks.json', all); }
+      _addWebhookLog(wId, { id: Date.now().toString(36), webhookId: hook.id, event, url: hook.url, status: 'error', error: e.message, attempt, durationMs: Date.now() - started, createdAt: new Date().toISOString() });
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, attempt * 2000));
+      } else {
+        console.warn(`[Webhook] ${hook.url} failed after ${maxRetries} attempts:`, e.message);
+        const all = wsReadWs(wId, 'webhooks.json', []);
+        const idx = all.findIndex(h => h.id === hook.id);
+        if (idx !== -1) { all[idx].lastStatus = 'error'; wsWriteWs(wId, 'webhooks.json', all); }
+      }
     }
+  }
+}
+
+async function fireWebhooks(event, payload, workspaceId) {
+  const wId = workspaceId || null;
+  if (payload && (payload.isDemo || (payload.leadId && ((wsReadWs(wId, 'leads.json', [])).find(l => l.id === payload.leadId) || {}).isDemo))) {
+    return;
+  }
+  const hooks = (wsReadWs(wId, 'webhooks.json', [])).filter(h => h.active !== false && (h.events || []).includes(event));
+  if (!hooks.length) return;
+  const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload });
+  for (const hook of hooks) {
+    _sendWebhookWithRetry(hook, body, wId, event).catch(() => {});
   }
 }
 
@@ -8727,20 +8748,36 @@ async function checkWebsite(url) {
 // â"€â"€â"€ 6-agent pipeline â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 // â"€â"€ Per-lead processing helper (agents 2-6 + build item) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+function normalizeDomain(url) {
+  if (!url) return '';
+  return url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].replace(/:\d+$/, '').toLowerCase().trim();
+}
+
+function isFuzzyNameMatch(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.length < 3 || b.length < 3) return false;
+  if (Math.abs(a.length - b.length) > 3) return false;
+  const dist = levenshtein(a, b);
+  const maxLen = Math.max(a.length, b.length);
+  return dist <= 2 || (maxLen >= 8 && dist / maxLen <= 0.25);
+}
+
 function isDuplicate(lead, workspaceId) {
   const wId = workspaceId || null;
   const existing = wsReadWs(wId, 'leads.json') || [];
   if (!existing.length) return null;
   const nameLower  = (lead.companyName  || '').toLowerCase().trim();
-  const domainRaw  = (lead.websiteUrl   || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
+  const domain     = normalizeDomain(lead.websiteUrl);
   const emailLower = (lead.contactEmail || lead.email || '').toLowerCase().trim();
   for (const e of existing) {
     const eName   = (e.companyName  || '').toLowerCase().trim();
-    const eDomain = (e.websiteUrl   || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
+    const eDomain = normalizeDomain(e.websiteUrl);
     const eEmail  = (e.contactEmail || e.email || '').toLowerCase().trim();
     if (nameLower  && eName   && nameLower  === eName)   return e;
-    if (domainRaw  && eDomain && domainRaw  === eDomain) return e;
+    if (domain     && eDomain && domain     === eDomain) return e;
     if (emailLower && eEmail  && emailLower === eEmail && e.id !== lead.id)  return e;
+    if (nameLower  && eName   && isFuzzyNameMatch(nameLower, eName)) return e;
   }
   return null;
 }
@@ -12733,6 +12770,31 @@ app.patch('/api/notifications/:id/read', authMiddleware, (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── Notification preferences ─────────────────────────────────────────────────
+const NOTIFICATION_TYPES = ['reply_received', 'intake_submitted', 'high_score_lead', 'payment_overdue', 'payment_received', 'run_complete', 'calendly_booking', 'client_question', 'contact_form', 'system'];
+
+app.get('/api/notifications/preferences', authMiddleware, (req, res) => {
+  const settings = wsRead(req, 'settings.json', {});
+  const prefs = settings.notificationPreferences || {};
+  const result = {};
+  NOTIFICATION_TYPES.forEach(t => { result[t] = prefs[t] !== false; });
+  res.json(result);
+});
+
+app.patch('/api/notifications/preferences', requireAdmin, (req, res) => {
+  const settings = wsRead(req, 'settings.json', {});
+  const prefs = settings.notificationPreferences || {};
+  const updates = req.body || {};
+  for (const [key, val] of Object.entries(updates)) {
+    if (NOTIFICATION_TYPES.includes(key) && typeof val === 'boolean') {
+      prefs[key] = val;
+    }
+  }
+  settings.notificationPreferences = prefs;
+  wsWrite(req, 'settings.json', settings);
+  res.json(prefs);
+});
+
 // ─── Calendly webhook (public) ───────────────────────────────────────────────
 app.post('/api/webhooks/calendly', (req, res) => {
   try {
@@ -12797,6 +12859,10 @@ app.delete('/api/webhooks/:id', requireAdmin, (req, res) => {
   const hooks = (wsRead(req, 'webhooks.json') || []).filter(h => h.id !== req.params.id);
   wsWrite(req, 'webhooks.json', hooks);
   res.json({ ok: true });
+});
+
+app.get('/api/webhooks/delivery-log', requireAdmin, (req, res) => {
+  res.json(wsRead(req, 'webhook-delivery-log.json', []));
 });
 
 app.post('/api/webhooks/:id/test', requireAdmin, async (req, res) => {

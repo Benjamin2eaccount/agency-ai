@@ -85,15 +85,29 @@ router.get('/check-duplicate', (req, res) => {
   if (!name && !domain && !email) return res.json({ duplicate: false });
   const leads = wsRead(req, 'leads.json', []);
   const nameLower  = (name   || '').toLowerCase().trim();
-  const domLower   = (domain || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase().trim();
+  const normDom = (domain || '').replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].replace(/:\d+$/,'').toLowerCase().trim();
   const emailLower = (email  || '').toLowerCase().trim();
+
+  function levenshtein(a, b) {
+    const m = a.length, n = b.length;
+    const dp = Array.from({length:m+1}, (_,i) => Array.from({length:n+1}, (_,j) => i===0?j:j===0?i:0));
+    for (let i=1;i<=m;i++) for (let j=1;j<=n;j++)
+      dp[i][j] = a[i-1]===b[j-1] ? dp[i-1][j-1] : 1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+    return dp[m][n];
+  }
+
   const found = leads.find(l => {
     const ln = (l.companyName  || '').toLowerCase().trim();
-    const ld = (l.websiteUrl   || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase().trim();
+    const ld = (l.websiteUrl   || '').replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].replace(/:\d+$/,'').toLowerCase().trim();
     const le = (l.contactEmail || l.email || '').toLowerCase().trim();
     if (nameLower  && ln && nameLower  === ln) return true;
-    if (domLower   && ld && domLower   === ld) return true;
+    if (normDom    && ld && normDom    === ld) return true;
     if (emailLower && le && emailLower === le) return true;
+    // Fuzzy name match
+    if (nameLower && ln && nameLower.length >= 3 && ln.length >= 3 && Math.abs(nameLower.length - ln.length) <= 3) {
+      const dist = levenshtein(nameLower, ln);
+      if (dist <= 2 || (Math.max(nameLower.length, ln.length) >= 8 && dist / Math.max(nameLower.length, ln.length) <= 0.25)) return true;
+    }
     return false;
   });
   res.json(found ? { duplicate: true, id: found.id, companyName: found.companyName, status: found.status, score: found.score } : { duplicate: false });
