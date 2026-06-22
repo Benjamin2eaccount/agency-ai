@@ -11632,7 +11632,11 @@ function daysSince(isoDate) {
   return (Date.now() - new Date(isoDate).getTime()) / 86400000;
 }
 
+let _followUpRunning = false;
 async function runFollowUpJob() {
+  if (_followUpRunning) { console.log('[FollowUp] Already running — skipped'); return; }
+  _followUpRunning = true;
+  try {
   const settings  = readJSON('settings.json');
   if (settings.automationPaused) return;
 
@@ -11996,6 +12000,7 @@ Rules:
 
   console.log(`[Follow-up] Klaar: ${added} follow-ups aangemaakt, ${markedDead} leads dead`);
   return { added, markedDead };
+  } finally { _followUpRunning = false; }
 }
 
 // Manual trigger endpoint for follow-up job
@@ -12214,7 +12219,11 @@ Rules:
   }
 }
 
+let _repliesRunning = false;
 async function checkReplies() {
+  if (_repliesRunning) { console.log('[IMAP] Already running — skipped'); return { count: 0, names: [] }; }
+  _repliesRunning = true;
+  try {
   const settings = readJSON('settings.json');
   if (!isGmailReady(settings)) {
     console.log('[IMAP] Overgeslagen — Gmail niet geconfigureerd');
@@ -12522,6 +12531,7 @@ async function checkReplies() {
     if (connection) try { connection.end(); } catch {}
     return { count: 0, names: [] };
   }
+  } finally { _repliesRunning = false; }
 }
 
 app.post('/api/check-replies', async (req, res) => {
@@ -13900,15 +13910,26 @@ cron.schedule('0 */2 * * *', () => {
   jobQueue.add('check_replies', () => checkReplies(), {}).catch(err => console.error('[Cron Reply] Fout:', err.message));
 });
 
-// Scheduled send cron: every minute
+// Scheduled send cron: every minute (with lock to prevent duplicate sends)
+let _scheduledSendRunning = false;
 cron.schedule('* * * * *', async () => {
+  if (_scheduledSendRunning) { console.log('[Scheduled] Vorige run nog actief — overgeslagen'); return; }
+  _scheduledSendRunning = true;
+  try {
   const inbox = readJSON('inbox.json') || [];
   const now = new Date();
   const due = inbox.filter(i => i.status === 'scheduled' && i.scheduledAt && new Date(i.scheduledAt) <= now);
-  if (!due.length) return;
+  if (!due.length) { _scheduledSendRunning = false; return; }
 
   const settings = readJSON('settings.json');
-  if (!isResendReady(settings)) return;
+  if (!isResendReady(settings)) { _scheduledSendRunning = false; return; }
+
+  // Mark items as 'sending' immediately to prevent duplicate sends on next tick
+  for (const item of due) {
+    const idx = inbox.findIndex(i => i.id === item.id);
+    if (idx !== -1) inbox[idx].status = 'sending';
+  }
+  writeJSON('inbox.json', inbox);
 
   const leads = readJSON('leads.json') || [];
   let changed = false;
@@ -13921,7 +13942,7 @@ cron.schedule('* * * * *', async () => {
       const scheduledToken = item.trackingToken || ('otk-' + item.leadId + '-' + Math.random().toString(36).substr(2, 8));
       if (!item.trackingToken) inbox[idx].trackingToken = scheduledToken;
       const scheduledTo = item.contactEmail || item.email?.to || '';
-      if (!scheduledTo) { console.warn(`[Scheduled] Geen contactEmail voor ${item.companyName} — overgeslagen`); continue; }
+      if (!scheduledTo) { console.warn(`[Scheduled] Geen contactEmail voor ${item.companyName} — overgeslagen`); inbox[idx].status = 'scheduled'; continue; }
       await sendEmail({
         to: scheduledTo,
         subject: chosenEmail?.subject || item.email?.subject || 'Outreach email',
@@ -13957,6 +13978,11 @@ cron.schedule('* * * * *', async () => {
   if (changed) {
     writeJSON('inbox.json', inbox);
     writeJSON('leads.json', leads);
+  }
+  } catch (err) {
+    console.error('[Scheduled] Cron error:', err.message);
+  } finally {
+    _scheduledSendRunning = false;
   }
 });
 
