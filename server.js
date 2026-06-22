@@ -286,7 +286,7 @@ function _rlOnLimitReached(req, _res, _options) {
     const { getDb } = require('./database');
     getDb().prepare('INSERT INTO audit_log (action, entity_type, entity_id, details) VALUES (?, ?, ?, ?)')
       .run('rate_limit_hit', 'ip', req.ip, JSON.stringify({ path: req.path, method: req.method }));
-  } catch {}
+  } catch (err) { console.error(`[DB]`, err.message);}
 }
 
 // Global — 200 req / 15 min per IP (all routes)
@@ -433,7 +433,7 @@ app.get('/superadmin/impersonate-relay', (req, res) => {
   const { token, slug, name } = req.query;
   if (!token) return res.status(400).send('Missing token');
   // Server-side JWT verification before serving the relay page (defence-in-depth)
-  try { jwt.verify(token, JWT_SECRET); } catch { return res.status(401).send('Invalid token'); }
+  try { jwt.verify(token, JWT_SECRET); } catch { /* token expired or invalid */ return res.status(401).send('Invalid token'); }
   res.setHeader('Content-Type', 'text/html');
   res.send(`<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8">
 <title>Inloggen…</title>
@@ -959,9 +959,9 @@ app.get('/setup/cleanup-agencyai', requireSetupToken, async (req, res) => {
     results.deleted.push(`${usersDeleted.changes} workspace_users`);
 
     // 3. Remove billing / activity records
-    try { db.prepare('DELETE FROM workspace_billing WHERE workspace_id = ?').run(wId); } catch {}
-    try { db.prepare('DELETE FROM workspace_activity WHERE workspace_id = ?').run(wId); } catch {}
-    try { db.prepare('DELETE FROM system_messages WHERE workspace_id = ?').run(wId); } catch {}
+    try { db.prepare('DELETE FROM workspace_billing WHERE workspace_id = ?').run(wId); } catch { /* table may not exist */ }
+    try { db.prepare('DELETE FROM workspace_activity WHERE workspace_id = ?').run(wId); } catch { /* table may not exist */ }
+    try { db.prepare('DELETE FROM system_messages WHERE workspace_id = ?').run(wId); } catch { /* table may not exist */ }
 
     // 4. Remove the workspace row
     db.prepare('DELETE FROM workspaces WHERE id = ?').run(wId);
@@ -971,7 +971,7 @@ app.get('/setup/cleanup-agencyai', requireSetupToken, async (req, res) => {
     try {
       writeJSON('_workspaces.json',      db.prepare('SELECT * FROM workspaces').all());
       writeJSON('_workspace_users.json', db.prepare('SELECT * FROM workspace_users').all());
-    } catch {}
+    } catch (err) { console.error(`[DB]`, err.message);}
 
     console.log(`[setup/cleanup-agencyai] Workspace "${ws.name}" verwijderd. Items: ${results.deleted.join(', ')}`);
     res.json({ ok: true, cleaned: true, results });
@@ -1044,7 +1044,7 @@ class JobQueue {
         'INSERT INTO job_queue (job_type, status, priority, data) VALUES (?, ?, ?, ?)'
       );
       jobId = stmt.run(jobType, 'pending', priority, JSON.stringify(data)).lastInsertRowid;
-    } catch {}
+    } catch (err) { console.error(`[DB]`, err.message);}
 
     return new Promise((resolve, reject) => {
       const entry = { jobId, jobType, fn, attempts: 0, resolve, reject };
@@ -1096,7 +1096,7 @@ class JobQueue {
       if (fields.attempts !== undefined) { sets.push('attempts = ?'); vals.push(fields.attempts); }
       vals.push(jobId);
       getDb().prepare(`UPDATE job_queue SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
-    } catch {}
+    } catch (err) { console.error(`[DB]`, err.message);}
   }
 
   status() {
@@ -1107,7 +1107,7 @@ class JobQueue {
     try {
       const { getDb } = require('./database');
       return getDb().prepare('SELECT * FROM job_queue ORDER BY created_at DESC LIMIT ?').all(limit);
-    } catch { return []; }
+    } catch (err) { console.error(`[DB]`, err.message); return []; }
   }
 }
 
@@ -1275,7 +1275,7 @@ function getOptimalSendTime(niche, country, workspaceId) {
       targetHour = mem.bestReplyHour;
       why = `historische reply data (${mem.replies} replies rond ${mem.bestReplyHour}:00)`;
     }
-  } catch {}
+  } catch { /* workspace lookup non-fatal */ }
 
   const now = new Date();
   const result = new Date(now);
@@ -2087,7 +2087,7 @@ function decryptGmailPassword(enc)   { return decryptApiKey(enc); }
 // Priority: encrypted DB value → raw DB value (legacy) → env var
 function getGmailPassword(s) {
   if (s.gmailPasswordEncrypted) {
-    try { return decryptGmailPassword(s.gmailPasswordEncrypted); } catch {}
+    try { return decryptGmailPassword(s.gmailPasswordEncrypted); } catch { /* decryption failure returns null — caller uses plaintext fallback */ }
   }
   if (s.gmailPassword && s.gmailPassword !== '__encrypted__') return s.gmailPassword;
   return process.env.GMAIL_APP_PASSWORD || process.env.IMAP_PASSWORD || '';
@@ -2103,7 +2103,7 @@ function isResendReady(s) {
 // Always call with fresh settings object from readJSON
 function getClaudeApiKey(s) {
   if (s && s.claudeApiKeyEncrypted) {
-    try { return decryptApiKey(s.claudeApiKeyEncrypted); } catch {}
+    try { return decryptApiKey(s.claudeApiKeyEncrypted); } catch { /* decryption failure returns null — caller uses plaintext fallback */ }
   }
   return process.env.CLAUDE_API_KEY || '';
 }
@@ -2134,7 +2134,7 @@ function authMiddleware(req, res, next) {
   try {
     req.user = jwt.verify(token, JWT_SECRET);
     next();
-  } catch {
+  } catch { /* JWT expired or invalid — return 401 */
     return res.status(401).json({ error: 'Token ongeldig of verlopen' });
   }
 }
@@ -2181,7 +2181,7 @@ function getAllWorkspaceIds() {
     // Always include the default workspace for legacy/single-tenant mode
     if (!ids.includes('ws_agencyai')) ids.unshift('ws_agencyai');
     return ids;
-  } catch {
+  } catch (err) { console.error(`[DB]`, err.message);
     return ['ws_agencyai']; // fallback: single workspace
   }
 }
@@ -2307,7 +2307,8 @@ GOOD question: "Welke 3 diensten moeten er in het boekingssysteem staan, en wat 
 Return ONLY valid JSON (no markdown):
 { "questions": [{ "id": "q1", "label": "vraag tekst", "type": "text|textarea|select|url", "placeholder": "...", "options": ["optie1","optie2"] (only for type select, else null), "required": true }] }`);
       lead.intakeQuestions = questions?.questions || [];
-    } catch {
+    } catch (err) { /* AI question generation failed — use safe defaults */
+      console.warn('[Intake] AI question generation failed, using defaults:', err.message);
       lead.intakeQuestions = [
         { id: 'q1', label: lead.language !== 'nl' ? 'What is the URL of your website?' : 'Wat is de URL van jullie website?', type: 'url', placeholder: 'https://...', required: false },
         { id: 'q2', label: lead.language !== 'nl' ? 'Who is your target audience?' : 'Wie is jullie doelgroep?', type: 'textarea', placeholder: lead.language !== 'nl' ? 'Describe your ideal customer...' : 'Beschrijf je ideale klant...', required: true },
@@ -2419,7 +2420,7 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
         try {
           content = await aiJSON(`Genereer website content voor ${freshLead.companyName} (${freshLead.niche}, ${freshLead.location}). Diensten: ${serviceNames}.${intakeCtx}
 Antwoord ALLEEN als JSON: { "headline": "string", "subheadline": "string", "about": "string", "services": [{"icon":"emoji","title":"string","desc":"string"}], "ctaText": "string", "ctaSubtext": "string", "footerTagline": "string" }`);
-        } catch { content = { headline: `Welkom bij ${freshLead.companyName}`, subheadline: `Professionele ${freshLead.niche} diensten`, about: `${freshLead.companyName} biedt professionele diensten aan in ${freshLead.location}.`, services: [], ctaText: 'Neem contact op', ctaSubtext: 'We reageren binnen 24 uur', footerTagline: freshLead.companyName }; }
+        } catch (err) { console.warn(`[AI fallback]`, err.message); content = { headline: `Welkom bij ${freshLead.companyName}`, subheadline: `Professionele ${freshLead.niche} diensten`, about: `${freshLead.companyName} biedt professionele diensten aan in ${freshLead.location}.`, services: [], ctaText: 'Neem contact op', ctaSubtext: 'We reageren binnen 24 uur', footerTagline: freshLead.companyName }; }
 
         const servicesStr = (content.services || []).map(s => `${s.icon} ${s.title}: ${s.desc}`).join('\n');
         const siteHtml = await aiCallBuild(`${BUILD_HTML_RULES}Build a complete HTML website for ${freshLead.companyName} (${freshLead.niche}, ${freshLead.location}, req.user?.workspaceId).
@@ -2741,7 +2742,7 @@ function requirePortalAuth(req, res, next) {
     }
     req.portalUser = payload;
     next();
-  } catch {
+  } catch { /* JWT expired or invalid */
     return res.status(401).json({ error: 'Sessie verlopen — log opnieuw in', requiresLogin: true });
   }
 }
@@ -3270,7 +3271,7 @@ function isEmailTaken(email) {
   try {
     const row = db.prepare('SELECT id FROM workspace_users WHERE email = ?').get(email.toLowerCase().trim());
     return !!row;
-  } catch { return false; }
+  } catch (err) { console.error(`[DB]`, err.message); return false; }
 }
 
 function uniqueWorkspaceSlug(baseslug) {
@@ -3427,7 +3428,7 @@ app.post('/api/register/demo', async (req, res) => {
       .run(naam, bedrijf, email, tel || '', klanten || '', plan || 'starter', bericht || '');
 
     // Notification
-    try { addNotification('contact_form', `Demo aanvraag: ${naam} — ${bedrijf}`, email, null, 'contacts'); } catch {}
+    try { addNotification('contact_form', `Demo aanvraag: ${naam} — ${bedrijf}`, email, null, 'contacts'); } catch (err) { console.error(`[DB]`, err.message);}
 
     res.json({ ok: true, type: 'demo' });
 
@@ -3512,7 +3513,7 @@ app.post('/api/register/direct', async (req, res) => {
         `Plan: ${planKey} €${amount}/m · Ref: ${ref}`,
         null, 'contacts'
       );
-    } catch {}
+    } catch (err) { console.error(`[Notification]`, err.message);}
 
     res.json({ ok: true, type: 'direct', paymentReference: ref, iban: 'NL62RABO0301339430', amount });
 
@@ -3565,7 +3566,7 @@ app.get('/api/superadmin/stats', requireSuperAdmin, (req, res) => {
     const thisMonth    = db.prepare("SELECT COUNT(*) as c FROM workspaces WHERE created_at >= date('now','start of month')").get().c;
 
     let demoCount = 0;
-    try { demoCount = db.prepare('SELECT COUNT(*) as c FROM demo_requests WHERE status = ?').get('new').c; } catch {}
+    try { demoCount = db.prepare('SELECT COUNT(*) as c FROM demo_requests WHERE status = ?').get('new').c; } catch (err) { console.error(`[DB]`, err.message);}
 
     res.json({ total_workspaces: total, active, pending, paused, blocked, mrr, arr: mrr * 12, pending_payments: billPending, new_this_month: thisMonth, demo_requests: demoCount });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -3710,13 +3711,13 @@ app.delete('/api/superadmin/workspaces/:id', requireSuperAdmin, async (req, res)
     db.prepare('DELETE FROM workspace_users WHERE workspace_id = ?').run(wId);
 
     // 3. Delete workspace_billing
-    try { db.prepare('DELETE FROM workspace_billing WHERE workspace_id = ?').run(wId); } catch {}
+    try { db.prepare('DELETE FROM workspace_billing WHERE workspace_id = ?').run(wId); } catch { /* table may not exist */ }
 
     // 4. Delete workspace_activity
-    try { db.prepare('DELETE FROM workspace_activity WHERE workspace_id = ?').run(wId); } catch {}
+    try { db.prepare('DELETE FROM workspace_activity WHERE workspace_id = ?').run(wId); } catch { /* table may not exist */ }
 
     // 5. Delete system messages for this workspace
-    try { db.prepare('DELETE FROM system_messages WHERE workspace_id = ?').run(wId); } catch {}
+    try { db.prepare('DELETE FROM system_messages WHERE workspace_id = ?').run(wId); } catch { /* table may not exist */ }
 
     // 6. Delete workspace row itself
     db.prepare('DELETE FROM workspaces WHERE id = ?').run(wId);
@@ -3725,7 +3726,7 @@ app.delete('/api/superadmin/workspaces/:id', requireSuperAdmin, async (req, res)
     try {
       writeJSON('_workspaces.json',      db.prepare('SELECT * FROM workspaces').all());
       writeJSON('_workspace_users.json', db.prepare('SELECT * FROM workspace_users').all());
-    } catch {}
+    } catch (err) { console.error(`[DB]`, err.message);}
 
     console.log(`[SuperAdmin] Workspace "${ws.name}" (${wId}) hard-deleted by ${req.user?.email}`);
     res.json({ ok: true });
@@ -3988,7 +3989,7 @@ app.get('/api/system-messages', (req, res) => {
       try {
         const dismissed = JSON.parse(r.dismissed_by || '[]');
         return !dismissed.includes(userId);
-      } catch { return true; }
+      } catch { /* JSON parse fallback */ return true; }
     });
     res.json(visible);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -4001,7 +4002,7 @@ app.post('/api/system-messages/:id/dismiss', (req, res) => {
     const msg = db.prepare('SELECT * FROM system_messages WHERE id = ?').get(req.params.id);
     if (!msg) return res.status(404).json({ error: 'Bericht niet gevonden' });
     const userId    = req.user?.id || req.user?.userId || '';
-    const dismissed = (() => { try { return JSON.parse(msg.dismissed_by || '[]'); } catch { return []; } })();
+    const dismissed = (() => { try { return JSON.parse(msg.dismissed_by || '[]'); } catch { /* JSON parse fallback */ return []; } })();
     if (!dismissed.includes(userId)) dismissed.push(userId);
     db.prepare('UPDATE system_messages SET dismissed_by = ? WHERE id = ?').run(JSON.stringify(dismissed), msg.id);
     res.json({ ok: true });
@@ -4048,7 +4049,7 @@ app.get('/api/workspace/usage', (req, res) => {
     const wId  = req.user?.workspaceId;
     const plan = (() => {
       if (!wId || wId === 'ws_agencyai') return 'agency';
-      try { return getDb().prepare('SELECT plan FROM workspaces WHERE id = ?').get(wId)?.plan || 'starter'; } catch { return 'starter'; }
+      try { return getDb().prepare('SELECT plan FROM workspaces WHERE id = ?').get(wId)?.plan || 'starter'; } catch (err) { console.error(`[DB]`, err.message); return 'starter'; }
     })();
 
     const LIMITS = {
@@ -4077,7 +4078,7 @@ app.get('/api/workspace/usage', (req, res) => {
     // Team members
     let teamUsed = 1;
     if (wId && wId !== 'ws_agencyai') {
-      try { teamUsed = getDb().prepare('SELECT COUNT(*) as c FROM workspace_users WHERE workspace_id = ?').get(wId)?.c || 1; } catch {}
+      try { teamUsed = getDb().prepare('SELECT COUNT(*) as c FROM workspace_users WHERE workspace_id = ?').get(wId)?.c || 1; } catch (err) { console.error(`[DB]`, err.message);}
     } else {
       teamUsed = (readJSON('users.json') || []).length || 1;
     }
@@ -4225,7 +4226,7 @@ app.post('/api/claude', async (req, res) => {
     });
 
     let data;
-    try { data = await response.json(); } catch { data = {}; }
+    try { data = await response.json(); } catch { data = {}; /* response not JSON — use empty object */ }
 
     if (!response.ok) {
       const errMsg = data.error?.message || data.error || `Claude API HTTP ${response.status}`;
@@ -4244,10 +4245,10 @@ app.post('/api/claude', async (req, res) => {
       const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
       try {
         return res.json({ result: JSON.parse(clean) });
-      } catch {
+      } catch { /* JSON parse fallback */
         const m = clean.match(/\[[\s\S]*\]/) || clean.match(/\{[\s\S]*\}/);
         try { return res.json({ result: m ? JSON.parse(m[0]) : text }); }
-        catch { return res.json({ result: text }); }
+        catch { /* JSON parse fallback */ return res.json({ result: text }); }
       }
     }
     res.json({ result: text });
@@ -4339,7 +4340,7 @@ app.get('/health', (req, res) => {
 
   // DB ping
   let dbOk = false;
-  try { const { getDb } = require('./database'); getDb().prepare('SELECT 1').get(); dbOk = true; } catch {}
+  try { const { getDb } = require('./database'); getDb().prepare('SELECT 1').get(); dbOk = true; } catch (err) { console.error(`[DB]`, err.message);}
 
   const checks = { claude_api: apiKeyOk ? 'ok' : 'missing', resend: emailOk ? 'ok' : 'not_configured', gmail_imap: gmailOk ? 'configured' : 'not_configured', database: dbOk ? 'ok' : 'error', postgresql: pgOk ? 'configured' : 'sqlite_only' };
   const criticalOk = dbOk && apiKeyOk;
@@ -4596,7 +4597,7 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
 Maak een 4-weken projectplan voor ${lead.companyName} (${lead.niche}, ${lead.location}).
 Diensten: ${serviceNames}.
 Antwoord ALLEEN als JSON: { "title": "string", "overview": "string (2-3 zinnen)", "weeks": [{ "week": 1, "focus": "string", "deliverables": ["string"] }, ...4 items total] }`);
-    } catch { projectPlan = { title: `Project ${lead.companyName}`, overview: 'Automatisch projectplan wordt later aangevuld.', weeks: [{ week: 1, focus: 'Onboarding & intake', deliverables: ['Intake gesprek plannen', 'Strategie document opstellen'] }] }; }
+    } catch (err) { console.warn(`[AI fallback]`, err.message); projectPlan = { title: `Project ${lead.companyName}`, overview: 'Automatisch projectplan wordt later aangevuld.', weeks: [{ week: 1, focus: 'Onboarding & intake', deliverables: ['Intake gesprek plannen', 'Strategie document opstellen'] }] }; }
     send(4, 'Projectplan genereren (AI)', 'done');
 
     // Step 5 — AI onboarding video script
@@ -4610,7 +4611,7 @@ Diensten die wij leveren: ${serviceNames5}.
 Schrijfstijl: warm, professioneel, concreet. Gebruik "u" of "jullie" consequent.
 Structuur: (1) korte begroeting + felicitatie, (2) wat we samen gaan doen (diensten), (3) de 3 stappen voor vandaag (intake invullen, portaal bookmarken, afspraak inplannen), (4) slotwoord.
 Maximaal 150 woorden. Schrijf ALLEEN de gesproken tekst, geen regieaanwijzingen of timestamps.`, req.user?.workspaceId);
-    } catch { onboardingScript = null; }
+    } catch { /* workspace lookup non-fatal */ onboardingScript = null; }
     send(5, 'Video onboarding script genereren (AI)', onboardingScript ? 'done' : 'skipped');
 
     // Step 6 — AI content calendar
@@ -4619,7 +4620,7 @@ Maximaal 150 woorden. Schrijf ALLEEN de gesproken tekst, geen regieaanwijzingen 
     try {
       contentCalendar = await aiJSON(`Maak een content kalender voor maand 1 voor ${lead.companyName} (${lead.niche}).
 Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "platform": "Instagram/Facebook/LinkedIn", "type": "Reel/Post/Story", "topic": "string", "caption": "string (kort)" }, ...8 items total] }`);
-    } catch { contentCalendar = { items: [] }; }
+    } catch (err) { console.warn(`[AI fallback]`, err.message); contentCalendar = { items: [] }; }
     send(6, 'Content kalender genereren (AI)', 'done');
 
     // Step 7 — AI week-1 tasks
@@ -4628,7 +4629,7 @@ Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "platform": "Instagram/Facebo
     try {
       tasks = await aiJSON(`Maak een takenlijst voor week 1 van het project voor ${lead.companyName}.
 Antwoord ALLEEN als JSON: { "tasks": [{ "title": "string", "description": "string", "priority": "hoog/middel/laag", "day": "ma/di/wo/do/vr" }, ...6-8 items] }`);
-    } catch { tasks = { tasks: [] }; }
+    } catch (err) { console.warn(`[AI fallback]`, err.message); tasks = { tasks: [] }; }
     send(7, 'Week 1 takenlijst aanmaken (AI)', 'done');
 
     // Step 8 — Team briefing email (includes onboarding script)
@@ -5326,7 +5327,7 @@ app.post('/api/leads/:id/generate-delivery', requireAdmin, async (req, res) => {
 Diensten: ${serviceNames}.${intakeContext}
 Maak precies 20 posts verspreid over 4 weken.
 Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "day": "ma/di/wo/do/vr/za/zo", "platform": "Instagram/Facebook/LinkedIn/TikTok", "type": "Reel/Carousel/Post/Story/Video", "topic": "string", "caption": "string (volledige Nederlandse caption, 2-3 zinnen)", "hashtags": ["#tag1","#tag2","#tag3","#tag4","#tag5"], "bestTime": "HH:MM" }] }`);
-    } catch { fullCalendar = { items: (lead.contentCalendar?.items || []) }; }
+    } catch (err) { console.warn(`[AI fallback]`, err.message); fullCalendar = { items: (lead.contentCalendar?.items || []) }; }
     send(1, 'Content kalender genereren (maand 1)', 'done');
 
     // Step 2 — Chatbot FAQ flow
@@ -5337,7 +5338,7 @@ Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "day": "ma/di/wo/do/vr/za/zo"
 Dit zijn de meest gestelde vragen die bezoekers stellen op de website of via WhatsApp.
 Maak 12 relevante Q&A paren die direct nuttig zijn voor het bedrijf.
 Antwoord ALLEEN als JSON: { "faqs": [{ "question": "string", "answer": "string (2-3 zinnen, vriendelijk en professioneel)", "category": "Prijzen/Openingstijden/Diensten/Locatie/Afspraken/Overig" }] }`);
-    } catch { chatbotFlow = { faqs: [] }; }
+    } catch (err) { console.warn(`[AI fallback]`, err.message); chatbotFlow = { faqs: [] }; }
     send(2, 'Chatbot FAQ flow genereren', 'done');
 
     // Step 3 — Detailed project milestones
@@ -5347,7 +5348,7 @@ Antwoord ALLEEN als JSON: { "faqs": [{ "question": "string", "answer": "string (
       milestones = await aiJSON(`Maak een gedetailleerde mijlpalentijdlijn voor een 3-maanden project voor ${lead.companyName}.
 Diensten: ${serviceNames}.${intakeContext}
 Antwoord ALLEEN als JSON: { "milestones": [{ "week": 1, "title": "string", "description": "string", "deliverables": ["string","string","string"], "status": "upcoming" }] } — maak precies 12 weken.`);
-    } catch { milestones = { milestones: [] }; }
+    } catch (err) { console.warn(`[AI fallback]`, err.message); milestones = { milestones: [] }; }
     send(3, 'Projectmijlpalen uitwerken', 'done');
 
     // Step 4 — Service-specific deliveries
@@ -5454,8 +5455,8 @@ ${d.leadCapture?`<div style="border:1px solid #bbf7d0;border-radius:8px;padding:
           case 'Concurrentieanalyse rapport': {
             let rawText;
             try { rawText = await aiWebSearch(`Zoek info over de 3 grootste concurrenten van ${co} in ${lo} (${ni}, req.user?.workspaceId). Analyseer website, social media, sterke en zwakke punten. Geef ALLEEN JSON: {"concurrenten":[{"naam":"string","website":"string","sterkePunten":["string"],"zwakkePunten":["string"],"socialMedia":"string"}],"kansen":["string"],"actieplan":["string"]}`); }
-            catch { rawText = await aiCall(`Analyseer 3 concurrenten van ${co} (${ni}, ${lo}, req.user?.workspaceId).${intakeContext} Geef ALLEEN JSON: {"concurrenten":[{"naam":"string","website":"string","sterkePunten":["string"],"zwakkePunten":["string"],"socialMedia":"string"}],"kansen":["string"],"actieplan":["string"]}`); }
-            let d = {}; try { d = parseJsonFromText(rawText); } catch {}
+            catch (err) { console.warn(`[AI fallback]`, err.message); rawText = await aiCall(`Analyseer 3 concurrenten van ${co} (${ni}, ${lo}, req.user?.workspaceId).${intakeContext} Geef ALLEEN JSON: {"concurrenten":[{"naam":"string","website":"string","sterkePunten":["string"],"zwakkePunten":["string"],"socialMedia":"string"}],"kansen":["string"],"actieplan":["string"]}`); }
+            let d = {}; try { d = parseJsonFromText(rawText); } catch { /* JSON parse fallback */}
             const comps = (d.concurrenten||[]).slice(0,3);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Concurrentieanalyse — ${co}</h2><div style="display:flex;flex-direction:column;gap:14px">
 ${comps.map((c,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#${['374151','1e40af','7c2d12'][i]};padding:9px 16px"><b style="color:#fff">Concurrent ${i+1}: ${c.naam}</b></div><div style="padding:12px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><b style="font-size:10px;color:#16a34a;text-transform:uppercase">✓ Sterk</b><ul style="margin:4px 0 0;padding-left:15px">${(c.sterkePunten||[]).map(s=>`<li style="font-size:12px;margin-bottom:2px">${s}</li>`).join('')}</ul></div><div><b style="font-size:10px;color:#dc2626;text-transform:uppercase">✗ Zwak</b><ul style="margin:4px 0 0;padding-left:15px">${(c.zwakkePunten||[]).map(s=>`<li style="font-size:12px;margin-bottom:2px">${s}</li>`).join('')}</ul></div></div></div>`).join('')}
@@ -5872,7 +5873,8 @@ Antwoord ALLEEN als JSON:
   "ctaSubtext": "Ondertekst bij CTA (max 12 woorden)",
   "footerTagline": "Footer slogan (max 10 woorden)"
 }`);
-    } catch {
+    } catch (err) { /* AI JSON generation failed — use default content */
+      console.warn('[AI] Website content generation failed:', err.message);
       content = {
         headline: `Welkom bij ${lead.companyName}`,
         subheadline: `Professionele ${lead.niche} diensten in ${lead.location}`,
@@ -6055,7 +6057,7 @@ app.post('/api/leads/:id/site/seo', requireAdmin, (req, res) => {
   if (!site) return res.status(400).json({ error: 'Geen website gegenereerd' });
   const htmlPath = path.join(__dirname, 'public', 'sites', site.siteSlug, 'index.html');
   let html;
-  try { html = fs.readFileSync(htmlPath, 'utf8'); } catch { return res.status(500).json({ error: 'HTML bestand niet gevonden' }); }
+  try { html = fs.readFileSync(htmlPath, 'utf8'); } catch { /* file may not exist */ return res.status(500).json({ error: 'HTML bestand niet gevonden' }); }
 
   // Replace or inject <title>
   if (title) {
@@ -6095,7 +6097,7 @@ app.post('/api/leads/:id/site/revert/:versionIdx', requireAdmin, (req, res) => {
   const htmlPath = path.join(__dirname, 'public', 'sites', site.siteSlug, 'index.html');
   // Archive current before reverting
   let currentHtml = '';
-  try { currentHtml = fs.readFileSync(htmlPath, 'utf8'); } catch {}
+  try { currentHtml = fs.readFileSync(htmlPath, 'utf8'); } catch { /* file may not exist */ }
   if (currentHtml) { versions.unshift({ html: currentHtml, savedAt: site.generatedAt || new Date().toISOString(), template: site.template || 'modern' }); }
 
   const target = versions.splice(vIdx + (currentHtml ? 1 : 0), 1)[0];
@@ -7192,7 +7194,8 @@ async function extractWebsiteStyle(websiteUrl) {
       tone,
       description,
     };
-  } catch {
+  } catch (err) { /* website analysis failed — use defaults */
+    console.warn('[WebsiteStyle] Analysis failed:', err.message);
     return { color: '#6366f1', font: 'Plus Jakarta Sans', tone: 'informal', description: '' };
   }
 }
@@ -7290,7 +7293,7 @@ app.post('/api/leads/:id/build-all-services', requireAdmin, async (req, res) => 
     _buildJobId = getDb().prepare(
       'INSERT INTO job_queue (job_type, status, data, started_at) VALUES (?, ?, ?, ?)'
     ).run('html_build', 'running', JSON.stringify({ leadId: req.params.id }), new Date().toISOString()).lastInsertRowid;
-  } catch {}
+  } catch (err) { console.error(`[DB]`, err.message);}
 
   try {
     const leads    = wsRead(req, 'leads.json', []);
@@ -7695,9 +7698,9 @@ ${bookingDel.html.substring(0, 8000)}`, req.user?.workspaceId).catch(() => '');
     broadcastWS('build_complete', { leadId: req.params.id, count: toSave.length });
     if (toSave.length > 0) trackFunnelEvent(req.params.id, 'first_build', { count: toSave.length });
     // Mark build job complete
-    try { if (_buildJobId) { const { getDb } = require('./database'); getDb().prepare("UPDATE job_queue SET status='completed', completed_at=? WHERE id=?").run(new Date().toISOString(), _buildJobId); } } catch {}
+    try { if (_buildJobId) { const { getDb } = require('./database'); getDb().prepare("UPDATE job_queue SET status='completed', completed_at=? WHERE id=?").run(new Date().toISOString(), _buildJobId); } } catch (err) { console.error(`[DB]`, err.message);}
   } catch (err) {
-    try { if (_buildJobId) { const { getDb } = require('./database'); getDb().prepare("UPDATE job_queue SET status='failed', error=? WHERE id=?").run(err.message, _buildJobId); } } catch {}
+    try { if (_buildJobId) { const { getDb } = require('./database'); getDb().prepare("UPDATE job_queue SET status='failed', error=? WHERE id=?").run(err.message, _buildJobId); } } catch (err) { console.error(`[DB]`, err.message);}
     sse({ type: 'error', service: '', message: err.message });
   }
   res.end();
@@ -8085,7 +8088,7 @@ app.get('/api/settings', (req, res) => {
 
     // Live workspace info from DB (always fresh)
     let ws = null;
-    try { ws = getDb().prepare('SELECT * FROM workspaces WHERE id = ?').get(wId); } catch {}
+    try { ws = getDb().prepare('SELECT * FROM workspaces WHERE id = ?').get(wId); } catch (err) { console.error(`[DB]`, err.message);}
 
     // Build clean response — whitelist only, no env-var leakage
     const result = {
@@ -8465,7 +8468,7 @@ app.post('/api/settings/test-imap', requireAdmin, async (req, res) => {
     console.log('[TestIMAP] OK — inbox messages:', total);
     return res.json({ success: true, message: `IMAP verbinding geslaagd ✓ — ${total} berichten gevonden`, user });
   } catch (err) {
-    if (connection) try { connection.end(); } catch {}
+    if (connection) try { connection.end(); } catch { /* IMAP connection already closed */ }
     console.error('[TestIMAP] Fout:', err.message);
     const friendly = err.message.includes('Invalid credentials') || err.message.includes('AUTHENTICATIONFAILED')
       ? 'Ongeldige inloggegevens — controleer Gmail adres en app-wachtwoord'
@@ -9177,7 +9180,7 @@ function aiRateCheck(workspaceId) {
         const log = JSON.parse(fs.readFileSync(logFile, 'utf8').replace(/^﻿/, ''));
         todayCost = log.filter(e => e.timestamp?.startsWith(today)).reduce((s, e) => s + (e.costUsd || 0), 0);
       }
-    } catch {}
+    } catch {/* JSON parse fallback — expected for malformed input */ }
     if (todayCost >= maxCostDay) throw new Error(`AI daglimiet bereikt: $${todayCost.toFixed(3)} van $${maxCostDay}`);
   }
 }
@@ -9355,7 +9358,7 @@ async function aiJSON(prompt) {
     .trim();
 
   // Try direct parse on stripped text
-  try { return JSON.parse(clean); } catch {}
+  try { return JSON.parse(clean); } catch { /* JSON parse fallback */}
 
   // Fallback: extract first JSON array or object
   const arrMatch = clean.match(/\[[\s\S]*\]/);
@@ -9378,11 +9381,11 @@ async function aiJSON(prompt) {
 // Shared JSON-from-text parser
 function parseJsonFromText(text) {
   const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
-  try { return JSON.parse(clean); } catch {}
+  try { return JSON.parse(clean); } catch { /* JSON parse fallback */}
   const arrMatch = clean.match(/\[[\s\S]*\]/);
-  if (arrMatch) { try { return JSON.parse(arrMatch[0]); } catch {} }
+  if (arrMatch) { try { return JSON.parse(arrMatch[0]); } catch { /* JSON parse fallback */} }
   const objMatch = clean.match(/\{[\s\S]*\}/);
-  if (objMatch) { try { return JSON.parse(objMatch[0]); } catch {} }
+  if (objMatch) { try { return JSON.parse(objMatch[0]); } catch { /* JSON parse fallback */} }
   throw new Error('JSON parse mislukt: ' + clean.substring(0, 200));
 }
 
@@ -9448,18 +9451,18 @@ function extractJSON(text) {
     const clean = text
       .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
     return JSON.parse(clean);
-  } catch {}
+  } catch {/* JSON parse fallback — expected for malformed input */ }
 
   // 2. Find JSON array anywhere in the text
   const arrMatch = text.match(/\[[\s\S]*\]/);
   if (arrMatch) {
-    try { return JSON.parse(arrMatch[0]); } catch {}
+    try { return JSON.parse(arrMatch[0]); } catch { /* JSON parse fallback */}
   }
 
   // 3. Find single JSON object and wrap in array
   const objMatch = text.match(/\{[\s\S]*\}/);
   if (objMatch) {
-    try { return [JSON.parse(objMatch[0])]; } catch {}
+    try { return [JSON.parse(objMatch[0])]; } catch { /* JSON parse fallback */}
   }
 
   console.error('[JSON] Could not parse response:', text.substring(0, 300));
@@ -10290,7 +10293,7 @@ Return ONLY JSON: { "subjectOptions": ["option1", "option2", "option3"] }`;
   try {
     const subjectResult = await aiJSON(subjectPrompt);
     subjectOptions = Array.isArray(subjectResult?.subjectOptions) ? subjectResult.subjectOptions : [];
-  } catch {}
+  } catch (err) { console.warn(`[AI fallback]`, err.message);}
   if (subjectOptions.length < 3) {
     subjectOptions = language === 'nl'
       ? [emailA.subject, `Vraag over ${lead.companyName}`, `${lead.niche} in ${lead.location}`]
@@ -10368,7 +10371,7 @@ Rules:
     const [dmText, voiceText] = await Promise.all([aiCall(dmPrompt, wId), aiCall(voicePrompt)]);
     linkedinDm      = dmText.trim().substring(0, 280);
     voicenoteScript = voiceText.trim();
-  } catch {
+  } catch (err) { console.warn(`[AI fallback]`, err.message);
     linkedinDm = language === 'nl'
       ? `Hoi! Zag ${lead.companyName} online — jullie doen interessant werk in ${lead.niche}. Wij helpen vergelijkbare bedrijven groeien met AI-marketing. Gratis audit beschikbaar — even kennismaken?`
       : `Hi! Came across ${lead.companyName} — great work in the ${lead.niche} space. We help similar businesses grow with AI marketing. Free audit available — fancy a quick chat?`;
@@ -11324,7 +11327,7 @@ function extractReplyText(rawBody) {
   }
 
   function decodeB64(s) {
-    try { return Buffer.from(s.replace(/\s/g, ''), 'base64').toString('utf-8'); } catch { return s; }
+    try { return Buffer.from(s.replace(/\s/g, ''), 'base64').toString('utf-8'); } catch { return s; /* not base64 — return as-is */ }
   }
 
   function stripHtml(html) {
@@ -11825,7 +11828,7 @@ async function checkReplies() {
     return { count: repliesFound, names: newNames };
   } catch (err) {
     console.error('[IMAP] Fout tijdens reply check:', err.message);
-    if (connection) try { connection.end(); } catch {}
+    if (connection) try { connection.end(); } catch { /* IMAP connection already closed */ }
     return { count: 0, names: [] };
   }
   } finally { _repliesRunning = false; }
@@ -12677,7 +12680,7 @@ async function runMonthlyReports(workspaceId) {
         ? 'Schrijf een professioneel maar bondig maandrapport voor een klant. Klinkt realistisch en positief. Max 200 woorden in het Nederlands.\n\nKlant: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nDienst: ' + service + '\nActief: ' + monthsActive + ' maand(en)\nMaand: ' + monthName + '\n\nStructuur:\n- Samenvatting prestaties (realistische positieve getallen voor ' + service + ')\n- Uitgevoerde werkzaamheden\n- Aanbeveling voor volgende maand\n\nGeef alleen de rapporttekst.'
         : 'Write a professional but concise monthly report for a client. Sounds realistic and positive. Max 200 words in English.\n\nClient: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nService: ' + service + '\nActive: ' + monthsActive + ' month(s)\nMonth: ' + monthName + '\n\nStructure:\n- Performance summary (realistic positive numbers for ' + service + ')\n- Work completed\n- Recommendation for next month\n\nReturn only the report text.';
       reportContent = (await aiCall(prompt, wId)).trim();
-    } catch {
+    } catch (err) { console.warn(`[AI fallback]`, err.message);
       reportContent = lang === 'nl'
         ? 'Dit rapport is automatisch gegenereerd voor ' + monthName + '.\n\nDienst: ' + service + '\nStatus: Actief en op schema.\n\nVoor vragen kunt u contact opnemen via het portaal.'
         : 'This report was automatically generated for ' + monthName + '.\n\nService: ' + service + '\nStatus: Active and on track.\n\nFor questions, please use the portal contact form.';
@@ -12752,7 +12755,7 @@ async function runReferralCheck(workspaceId) {
         ? 'Schrijf een warme referral-verzoek email voor een tevreden klant. Klinkt persoonlijk, niet als een template. Geef JSON terug.\n\nKlant: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nDienst: ' + service + '\nActief: ' + daysSince + ' dagen\nAfzender: ' + myName + ' van ' + agencyName + '\nDatum vandaag: ' + new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) + '\n\nRegels:\n- Refereer positief aan hun samenwerking en resultaten\n- Vraag vriendelijk of ze iemand kennen die ook baat zou hebben\n- NIET pusherig of salesy\n- Max 100 woorden\n- Geen bullet points\n- Einde met zachte vraag\n- Afsluiting: "Groeten, ' + myName + '"\n\n{"subject": "onderwerp", "body": "emailtekst"}'
         : 'Write a warm referral request email for a happy client. Sounds personal, not like a template. Return JSON.\n\nClient: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nService: ' + service + '\nActive: ' + daysSince + ' days\nSender: ' + myName + ' from ' + agencyName + '\n\nRules:\n- Reference their positive collaboration and results\n- Warmly ask if they know anyone who could benefit\n- NOT pushy or salesy\n- Max 100 words\n- No bullet points\n- End with a soft question\n- Sign off: "Best, ' + myName + '"\n\n{"subject": "subject", "body": "email body"}';
       email = await aiJSON(prompt);
-    } catch {
+    } catch (err) { console.warn(`[AI fallback]`, err.message);
       email = lang === 'nl'
         ? { subject: 'Kort vraagje – ' + client.companyName, body: 'Beste ' + client.companyName + ',\n\nWe werken nu al ' + Math.floor(daysSince / 30) + ' maanden samen en ik hoop dat u tevreden bent met de behaalde resultaten.\n\nKent u iemand in uw netwerk die ook baat zou kunnen hebben bij onze aanpak? Een warme introductie wordt zeer gewaardeerd.\n\nMet vriendelijke groet,\n' + myName }
         : { subject: 'Quick question – ' + client.companyName, body: 'Dear ' + client.companyName + ',\n\nWe have been working together for ' + Math.floor(daysSince / 30) + ' months now and I hope you are satisfied with the results so far.\n\nDo you know anyone in your network who could benefit from what we do? A warm introduction would be greatly appreciated.\n\nKind regards,\n' + myName };
@@ -12882,7 +12885,7 @@ async function runDailyBackup(manual = false, workspaceId) {
   if (all.length > 30) {
     const toDelete = all.slice(0, all.length - 30);
     toDelete.forEach(f => {
-      try { fs.unlinkSync(path.join(BACKUP_DIR, f)); } catch {}
+      try { fs.unlinkSync(path.join(BACKUP_DIR, f)); } catch { /* file may not exist */ }
     });
     console.log('[Backup] Rotatie: ' + toDelete.length + ' oude backup(s) verwijderd');
   }
@@ -13120,7 +13123,7 @@ cron.schedule('30 10 * * *', async () => {
           const r = await fetch(domain, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(8000) });
           const newStatus = r.ok ? 'active' : 'error';
           if (lead.customDomainStatus !== newStatus) { lead.customDomainStatus = newStatus; changed = true; }
-        } catch {
+        } catch { /* domain unreachable — mark as error */
           if (lead.customDomainStatus !== 'pending') { lead.customDomainStatus = 'error'; changed = true; }
         }
       }
@@ -13489,7 +13492,7 @@ app.get('/api/admin/data-stats', requireAdmin, (req, res) => {
     const toCleanup = archived.filter(l => l.archivedAt && l.archivedAt < cutoff);
     const dbPath = path.join(__dirname, 'data', 'agency.db');
     let dbSize = '—';
-    try { const s = require('fs').statSync(dbPath); dbSize = (s.size / (1024*1024)).toFixed(1) + ' MB'; } catch {}
+    try { const s = require('fs').statSync(dbPath); dbSize = (s.size / (1024*1024)).toFixed(1) + ' MB'; } catch { /* file may not exist */ }
     res.json({ total_leads: leads.length, archived_leads: archived.length, leads_to_cleanup: toCleanup.length, database_size_estimate: dbSize });
   } catch(e) { res.json({ error: e.message }); }
 });
@@ -13740,7 +13743,7 @@ app.get('/api/demo-requests', requireAdmin, (req, res) => {
   try {
     const rows = db.prepare('SELECT * FROM demo_requests ORDER BY created_at DESC').all();
     res.json(rows);
-  } catch {
+  } catch (err) { console.error(`[DB]`, err.message);
     res.json([]);
   }
 });
@@ -13761,7 +13764,7 @@ app.patch('/api/demo-requests/:id', requireAdmin, (req, res) => {
 app.get('/extension-download', (req, res) => {
   const extDir = path.join(__dirname, 'public', 'extension');
   if (!fs.existsSync(extDir)) return res.status(404).json({ error: 'Extensie niet gevonden' });
-  const archiver = (() => { try { return require('archiver'); } catch { return null; } })();
+  const archiver = (() => { try { return require('archiver'); } catch { return null; /* archiver not installed — optional dep */ } })();
   if (!archiver) {
     // fallback: redirect to the extension folder so the user can download manually
     return res.redirect('/extension/manifest.json');
@@ -13847,7 +13850,7 @@ app.get('/api/subscriptions/:leadId', requireAdmin, (req, res) => {
     );
     sub = db.prepare('SELECT * FROM subscriptions WHERE project_id = ? LIMIT 1').get(req.params.leadId);
   }
-  if (sub && sub.services) try { sub.services = JSON.parse(sub.services); } catch { sub.services = []; }
+  if (sub && sub.services) try { sub.services = JSON.parse(sub.services); } catch { /* JSON parse fallback */ sub.services = []; }
   res.json(sub);
 });
 
@@ -14459,7 +14462,7 @@ function logCron(jobName, status = 'ok', details = '') {
   try {
     const { getDb } = require('./database');
     getDb().prepare('INSERT INTO cron_logs (job_name, status, details) VALUES (?,?,?)').run(jobName, status, details || null);
-  } catch {}
+  } catch (err) { console.error(`[DB]`, err.message);}
 }
 
 app.get('/api/cron-logs', requireAdmin, (req, res) => {
@@ -14467,7 +14470,7 @@ app.get('/api/cron-logs', requireAdmin, (req, res) => {
     const { getDb } = require('./database');
     const logs = getDb().prepare('SELECT * FROM cron_logs ORDER BY ran_at DESC LIMIT 200').all();
     res.json(logs);
-  } catch { res.json([]); }
+  } catch (err) { console.error(`[DB]`, err.message); res.json([]); }
 });
 
 // Task 41 — Extended health check (REMOVED: consolidated into primary /health route above)
@@ -14503,7 +14506,7 @@ function runNightlyBackup() {
     const stamp = new Date().toISOString().slice(0,10);
     const files = ['leads.json','inbox.json','settings.json','memory.json','blacklist.json','activity.json'];
     const bundle = {};
-    files.forEach(f => { try { bundle[f] = readJSON(f); } catch {} });
+    files.forEach(f => { try { bundle[f] = readJSON(f); } catch { /* file may not exist in this workspace */ } });
     fs.writeFileSync(path.join(DATA_BACKUP_DIR, `nightly-${stamp}.json`), JSON.stringify(bundle, null, 2));
     // Keep only 7 most recent nightly backups
     const nightlyFiles = fs.readdirSync(DATA_BACKUP_DIR).filter(f => f.startsWith('nightly-')).sort();
@@ -14663,7 +14666,7 @@ function broadcastWS(event, data = {}, workspaceId) {
     } else {
       if (client._workspaceId) continue;
     }
-    try { client.send(msg); } catch {}
+    try { client.send(msg); } catch { /* workspace lookup non-fatal */ }
   }
 }
 
@@ -14773,7 +14776,7 @@ if (require.main === module || process.env.NODE_ENV !== 'test') pgInitPromise.th
         // Tag the socket with its workspace so broadcastWS can filter correctly
         ws._workspaceId = decoded.workspaceId || null;
         authenticated = true;
-      } catch {}
+      } catch { /* workspace lookup non-fatal */ }
     }
     if (!authenticated) { ws.close(4001, 'Unauthorized'); return; }
     _wsClients.add(ws);

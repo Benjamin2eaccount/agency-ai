@@ -52,7 +52,7 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, wsReadWs, ws
       }
       req.portalUser = payload;
       next();
-    } catch {
+    } catch (err) { console.error(err.message);
       return res.status(401).json({ error: 'Sessie verlopen — log opnieuw in', requiresLogin: true });
     }
   }
@@ -61,7 +61,7 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, wsReadWs, ws
   function _findUpload(uploads, rawFilename) {
     if (!uploads || !rawFilename) return null;
     let decoded = rawFilename;
-    try { decoded = decodeURIComponent(rawFilename); } catch {}
+    try { decoded = decodeURIComponent(rawFilename); } catch { /* parse fallback */}
     const sanitized = decoded.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
     return uploads.find(u =>
       u.filename === rawFilename ||
