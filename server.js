@@ -2947,9 +2947,22 @@ app.post('/api/portal/:token/hosting-request', requirePortalAuth, express.json()
 const PLAN_PRICES = { starter: 197, pro: 497, agency: 997 };
 const DISPOSABLE_DOMAINS = ['mailinator.com','guerrillamail.com','10minutemail.com','throwam.com','yopmail.com','trashmail.com','fakeinbox.com','sharklasers.com','guerrillamailblock.com','spam4.me','grr.la','guerrillamail.info'];
 
+// HTML-escape for safe injection into email templates
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Sanitize registration input: trim, limit length, strip control chars
+function sanitizeRegInput(val, maxLen = 200) {
+  if (!val || typeof val !== 'string') return '';
+  return val.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').slice(0, maxLen);
+}
+
 function validateEmail(email) {
   if (!email || typeof email !== 'string') return false;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return false;
+  if (email.length > 254) return false;
   const domain = email.split('@')[1].toLowerCase();
   if (DISPOSABLE_DOMAINS.includes(domain)) return false;
   return true;
@@ -2958,7 +2971,8 @@ function validateEmail(email) {
 function isEmailTaken(email) {
   const db = getDb();
   try {
-    const row = db.prepare('SELECT id FROM workspace_users WHERE email = ?').get(email.toLowerCase().trim());
+    const normalized = email.toLowerCase().trim();
+    const row = db.prepare('SELECT id FROM workspace_users WHERE LOWER(email) = ?').get(normalized);
     return !!row;
   } catch (err) { console.error(`[DB]`, err.message); return false; }
 }
@@ -3000,7 +3014,7 @@ function buildRegEmail(type, data) {
     return {
       subject: 'Welkom bij Agency AI — betaalinstructies',
       html: wrap(`
-        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px;letter-spacing:-0.3px">Welkom, ${naam}! 👋</h2>
+        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px;letter-spacing:-0.3px">Welkom, ${escHtml(naam)}! 👋</h2>
         <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 20px">Je account is aangemaakt. Eén stap verwijderd van de start: maak de betaling over en we activeren je account binnen 2 uur.</p>
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8faff;border:1px solid #dbeafe;border-radius:10px;margin-bottom:24px">
         <tr><td style="padding:20px 24px">
@@ -3027,7 +3041,7 @@ function buildRegEmail(type, data) {
     return {
       subject: 'Demo aanvraag ontvangen — Agency AI',
       html: wrap(`
-        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Bedankt voor je interesse, ${naam}! 🙌</h2>
+        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Bedankt voor je interesse, ${escHtml(naam)}! 🙌</h2>
         <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">We hebben je demo aanvraag ontvangen en nemen <strong>binnen 24 uur</strong> contact met je op voor een persoonlijk gesprek.</p>
         <p style="font-size:14px;color:#6b7280;line-height:1.6;margin:0 0 24px">In de tussentijd kun je alvast kijken wat Agency AI voor jou kan betekenen.</p>
         <table cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="background:${accent};border-radius:8px">
@@ -3041,7 +3055,7 @@ function buildRegEmail(type, data) {
     return {
       subject: 'Je Agency AI account is actief! 🚀',
       html: wrap(`
-        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Gefeliciteerd, ${naam}! 🎉</h2>
+        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Gefeliciteerd, ${escHtml(naam)}! 🎉</h2>
         <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">Je betaling is ontvangen en je Agency AI account is nu <strong>actief</strong>. Je kunt direct aan de slag!</p>
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;margin-bottom:24px"><tr><td style="padding:16px 20px">
           <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#166534">Eerste stappen:</p>
@@ -3064,7 +3078,7 @@ function buildRegEmail(type, data) {
       subject: 'Je Agency AI account is gepauzeerd',
       html: wrap(`
         <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Account gepauzeerd</h2>
-        <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">Beste ${naam}, je Agency AI account is tijdelijk gepauzeerd omdat we nog geen betaling hebben ontvangen.</p>
+        <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">Beste ${escHtml(naam)}, je Agency AI account is tijdelijk gepauzeerd omdat we nog geen betaling hebben ontvangen.</p>
         <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:18px 20px;margin-bottom:20px">
           <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#9a3412">Maak de betaling over om direct te heractiveren:</p>
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -3082,7 +3096,7 @@ function buildRegEmail(type, data) {
       subject: 'Je Agency AI account is geblokkeerd',
       html: wrap(`
         <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Account geblokkeerd</h2>
-        <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">Beste ${data.naam}, je Agency AI account is geblokkeerd na een periode van geen betaling.</p>
+        <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">Beste ${escHtml(data.naam)}, je Agency AI account is geblokkeerd na een periode van geen betaling.</p>
         <p style="font-size:14px;color:#6b7280;line-height:1.6;margin:0 0 24px">Neem contact met ons op om je account te heractiveren.</p>
         <table cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="background:#111;border-radius:8px">
           <a href="mailto:info@agencyai.info?subject=Account heractiveren" style="display:inline-block;padding:13px 28px;font-size:14px;font-weight:600;color:#fff;text-decoration:none">Contact opnemen →</a>
@@ -3093,10 +3107,31 @@ function buildRegEmail(type, data) {
   return { subject: 'Agency AI', html: wrap('<p>Bericht van Agency AI.</p>') };
 }
 
+// Registration rate limiter — 5 attempts per IP per 15 min
+const _regRateLimit = {};
+function regRateLimiter(req, res, next) {
+  const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+  const now = Date.now();
+  if (!_regRateLimit[ip]) _regRateLimit[ip] = [];
+  _regRateLimit[ip] = _regRateLimit[ip].filter(t => now - t < 900000);
+  if (_regRateLimit[ip].length >= 5) {
+    return res.status(429).json({ error: 'Te veel registratiepogingen. Probeer het over 15 minuten opnieuw.' });
+  }
+  _regRateLimit[ip].push(now);
+  next();
+}
+
 // POST /api/register/demo — public
-app.post('/api/register/demo', async (req, res) => {
+app.post('/api/register/demo', regRateLimiter, async (req, res) => {
   try {
-    const { naam, bedrijf, email, tel, klanten, plan, bericht } = req.body || {};
+    const naam    = sanitizeRegInput(req.body?.naam, 100);
+    const bedrijf = sanitizeRegInput(req.body?.bedrijf, 100);
+    const email   = (req.body?.email || '').trim().toLowerCase().slice(0, 254);
+    const tel     = sanitizeRegInput(req.body?.tel, 30);
+    const klanten = sanitizeRegInput(req.body?.klanten, 20);
+    const plan    = sanitizeRegInput(req.body?.plan, 20);
+    const bericht = sanitizeRegInput(req.body?.bericht, 1000);
+
     if (!naam || !bedrijf || !email) {
       return res.status(400).json({ error: 'Naam, bedrijfsnaam en email zijn verplicht.' });
     }
@@ -3114,7 +3149,7 @@ app.post('/api/register/demo', async (req, res) => {
     )`);
     db.prepare(`INSERT INTO demo_requests (name, company, email, phone, clients, plan, message)
       VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .run(naam, bedrijf, email, tel || '', klanten || '', plan || 'starter', bericht || '');
+      .run(naam, bedrijf, email, tel, klanten, plan || 'starter', bericht);
 
     // Notification
     try { addNotification('contact_form', `Demo aanvraag: ${naam} — ${bedrijf}`, email, null, 'contacts'); } catch (err) { console.error(`[DB]`, err.message);}
@@ -3125,13 +3160,11 @@ app.post('/api/register/demo', async (req, res) => {
     const settings = readJSON('settings.json') || {};
     if (isResendReady(settings)) {
       const planLabel = { starter: 'Starter €197/m', pro: 'Pro €497/m', agency: 'Agency €997/m' }[plan] || plan;
-      // Email to admin
       sendEmail({
         to      : 'info@agencyai.info',
         subject : `Nieuwe demo aanvraag: ${naam} — ${bedrijf}`,
         body    : `Nieuwe demo aanvraag:\n\nNaam: ${naam}\nBedrijf: ${bedrijf}\nEmail: ${email}\nTel: ${tel||'—'}\nKlanten: ${klanten||'—'}\nPlan: ${planLabel}\n\nBericht:\n${bericht||'—'}`,
         settings, workspaceId: req.user?.workspaceId}).catch(() => {});
-      // Confirmation to applicant
       const conf = buildRegEmail('demo_confirm', { naam, plan });
       sendEmail({ to: email, subject: conf.subject, html: conf.html, settings, workspaceId: req.user?.workspaceId}).catch(() => {});
     }
@@ -3142,13 +3175,23 @@ app.post('/api/register/demo', async (req, res) => {
 });
 
 // POST /api/register/direct — public
-app.post('/api/register/direct', async (req, res) => {
+app.post('/api/register/direct', regRateLimiter, async (req, res) => {
   try {
-    const { naam, bedrijf, email, password, plan } = req.body || {};
+    const naam    = sanitizeRegInput(req.body?.naam, 100);
+    const bedrijf = sanitizeRegInput(req.body?.bedrijf, 100);
+    const email   = (req.body?.email || '').trim().toLowerCase().slice(0, 254);
+    const password = req.body?.password || '';
+    const plan    = sanitizeRegInput(req.body?.plan, 20);
 
     // Validate
     if (!naam || !bedrijf || !email || !password) {
       return res.status(400).json({ error: 'Vul alle verplichte velden in.' });
+    }
+    if (naam.length < 2) {
+      return res.status(400).json({ error: 'Naam moet minimaal 2 tekens bevatten.' });
+    }
+    if (bedrijf.length < 2) {
+      return res.status(400).json({ error: 'Bedrijfsnaam moet minimaal 2 tekens bevatten.' });
     }
     if (!validateEmail(email)) {
       return res.status(400).json({ error: 'Ongeldig emailadres.' });
