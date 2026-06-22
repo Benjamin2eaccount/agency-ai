@@ -665,7 +665,13 @@ async function triggerReplyCheck() {
   }
 }
 
+const _approveInFlight = new Set();
 async function approve(id, opts = {}) {
+  if (_approveInFlight.has(id)) return;
+  _approveInFlight.add(id);
+  try { await _doApprove(id, opts); } finally { _approveInFlight.delete(id); }
+}
+async function _doApprove(id, opts = {}) {
   if (!state.settings?.resendConfigured) {
     openModal(`
       <div style="text-align:center;padding:8px 0">
@@ -774,6 +780,8 @@ async function scheduleApprove(id) {
 }
 
 async function disapprove(id) {
+  if (_approveInFlight.has(id)) return;
+  _approveInFlight.add(id);
   const card = document.getElementById('card-' + id);
   card.style.transition = 'all 0.3s';
   card.style.background = '#fef2f2';

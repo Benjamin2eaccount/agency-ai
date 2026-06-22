@@ -2861,8 +2861,15 @@ app.get('/api/services', (req, res) => {
 // Contact form submissions from built client sites — public, no auth
 app.post('/api/sites/:siteSlug/contact', async (req, res) => {
   if (!/^[a-z0-9-]+$/.test(req.params.siteSlug)) return res.status(404).json({ error: 'Niet gevonden' });
-  const { name, email, phone, message, service } = req.body;
+  const rawName = String(req.body?.name || '').trim().slice(0, 200);
+  const rawEmail = String(req.body?.email || '').trim().slice(0, 254).toLowerCase();
+  const phone = String(req.body?.phone || '').trim().slice(0, 30);
+  const message = String(req.body?.message || '').trim().slice(0, 2000);
+  const service = String(req.body?.service || '').trim().slice(0, 200);
+  const name = rawName;
+  const email = rawEmail;
   if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Ongeldig emailadres' });
 
   const siteSlug = req.params.siteSlug;
   const leads = readJSON('leads.json') || [];
@@ -7909,14 +7916,16 @@ app.patch('/api/settings/account', requireAdmin, async (req, res) => {
   const settings = wsRead(req, 'settings.json', {});
   const { agencyName, myName, myTitle, username, newPassword, currentPassword, websiteTagline, websiteAbout, websiteContact, calendlyUrl, agencyLogo } = req.body;
 
-  if (agencyName) settings.agencyName = agencyName;
-  if (myName) settings.myName = myName;
-  if (myTitle) settings.myTitle = myTitle;
-  if (username) settings.username = username;
-  if (websiteTagline !== undefined) settings.websiteTagline = websiteTagline;
-  if (websiteAbout   !== undefined) settings.websiteAbout   = websiteAbout;
-  if (websiteContact !== undefined) settings.websiteContact = websiteContact;
-  if (calendlyUrl    !== undefined) settings.calendlyUrl    = calendlyUrl;
+  const trim200 = (v) => typeof v === 'string' ? v.trim().slice(0, 200) : v;
+  const trim1000 = (v) => typeof v === 'string' ? v.trim().slice(0, 1000) : v;
+  if (agencyName) settings.agencyName = trim200(agencyName);
+  if (myName) settings.myName = trim200(myName);
+  if (myTitle) settings.myTitle = trim200(myTitle);
+  if (username) settings.username = trim200(username);
+  if (websiteTagline !== undefined) settings.websiteTagline = trim200(websiteTagline);
+  if (websiteAbout   !== undefined) settings.websiteAbout   = trim1000(websiteAbout);
+  if (websiteContact !== undefined) settings.websiteContact = trim1000(websiteContact);
+  if (calendlyUrl    !== undefined) settings.calendlyUrl    = trim200(calendlyUrl);
   if (agencyLogo     !== undefined) {
     if (agencyLogo === '' || /^data:image\/(png|jpeg|jpg|gif|svg\+xml|webp);base64,/.test(agencyLogo)) {
       settings.agencyLogo = agencyLogo;
@@ -7928,6 +7937,9 @@ app.patch('/api/settings/account', requireAdmin, async (req, res) => {
 
   if (newPassword) {
     if (!currentPassword) return res.status(400).json({ error: 'Huidig wachtwoord verplicht' });
+    if (newPassword.length < 8 || !/\d/.test(newPassword)) {
+      return res.status(400).json({ error: 'Wachtwoord: min. 8 tekens en minstens 1 cijfer.' });
+    }
     const users = readJSON('users.json') || [];
     const uIdx  = users.findIndex(u => u.id === req.user.id);
     if (uIdx === -1) return res.status(404).json({ error: 'Gebruiker niet gevonden' });
@@ -8531,14 +8543,23 @@ async function aiCall(prompt, workspaceId) {
     })
   });
   const data = await res.json();
-  if (!data.content) throw new Error(data.error?.message || 'Claude API fout');
+  if (!data.content) {
+    const errMsg = data.error?.message || 'Claude API fout';
+    const errType = data.error?.type || '';
+    if (res.status === 429 || errType === 'rate_limit_error') {
+      throw new Error('Claude API rate limit bereikt. Wacht een moment en probeer opnieuw, of verhoog je API plan op console.anthropic.com.');
+    }
+    if (res.status === 402 || errMsg.includes('credit') || errMsg.includes('billing') || errType === 'invalid_request_error' && errMsg.includes('credit')) {
+      throw new Error('Claude API budget overschreden. Controleer je tegoed op console.anthropic.com en voeg credits toe.');
+    }
+    throw new Error(errMsg);
+  }
   const usage = data.usage || {};
   const tokIn  = usage.input_tokens  || 0;
   const tokOut = usage.output_tokens || 0;
   _sessionTokensIn  += tokIn;
   _sessionTokensOut += tokOut;
   _aiCallLog.push({ ts: Date.now() });
-  // Log every call so costs are tracked outside of run batches too
   const callCost = calcCostUsd(tokIn, tokOut);
   const promptLabel = prompt.slice(0, 60).replace(/\n/g, ' ');
   addActivity('ai_call', `Claude: ${promptLabel}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost, workspaceId: wId});
