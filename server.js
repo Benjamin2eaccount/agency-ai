@@ -28,6 +28,7 @@ const { createEmailService, sanitizeSubject: _sanitizeSubject, generateInvoiceNu
 const { createServiceContext } = require('./lib/cron');
 const dnsPromises = require('dns').promises;
 const PDFDocument = require('pdfkit');
+const { MODELS, getModel, getPricing, calcCost } = require('./lib/models');
 
 const app = express();
 app.set('trust proxy', 1); // Railway sits behind a proxy; needed for correct req.ip in rate limiters
@@ -1889,6 +1890,7 @@ const _emailService = createEmailService({
   addActivity,
   BASE_URL,
   aiJSON: (...args) => aiJSON(...args),
+  getModel,
 });
 
 // Cron service context deps — used by createServiceContext(wId, _cronDeps)
@@ -1991,7 +1993,7 @@ BAD question: "What are your goals?"
 GOOD question: "Welke 3 diensten moeten er in het boekingssysteem staan, en wat is de prijs en duur van elk?"
 
 Return ONLY valid JSON (no markdown):
-{ "questions": [{ "id": "q1", "label": "vraag tekst", "type": "text|textarea|select|url", "placeholder": "...", "options": ["optie1","optie2"] (only for type select, else null), "required": true }] }`);
+{ "questions": [{ "id": "q1", "label": "vraag tekst", "type": "text|textarea|select|url", "placeholder": "...", "options": ["optie1","optie2"] (only for type select, else null), "required": true }] }`, getModel('INTAKE_FORM'));
       lead.intakeQuestions = questions?.questions || [];
     } catch (err) { /* AI question generation failed — use safe defaults */
       console.warn('[Intake] AI question generation failed, using defaults:', err.message);
@@ -2106,7 +2108,7 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
         let content;
         try {
           content = await aiJSON(`Genereer website content voor ${freshLead.companyName} (${freshLead.niche}, ${freshLead.location}). Diensten: ${serviceNames}.${intakeCtx}
-Antwoord ALLEEN als JSON: { "headline": "string", "subheadline": "string", "about": "string", "services": [{"icon":"emoji","title":"string","desc":"string"}], "ctaText": "string", "ctaSubtext": "string", "footerTagline": "string" }`);
+Antwoord ALLEEN als JSON: { "headline": "string", "subheadline": "string", "about": "string", "services": [{"icon":"emoji","title":"string","desc":"string"}], "ctaText": "string", "ctaSubtext": "string", "footerTagline": "string" }`, getModel('WEBSITE_CONTENT'));
         } catch (err) { console.warn(`[AI fallback]`, err.message); content = { headline: `Welkom bij ${freshLead.companyName}`, subheadline: `Professionele ${freshLead.niche} diensten`, about: `${freshLead.companyName} biedt professionele diensten aan in ${freshLead.location}.`, services: [], ctaText: 'Neem contact op', ctaSubtext: 'We reageren binnen 24 uur', footerTagline: freshLead.companyName }; }
 
         const servicesStr = (content.services || []).map(s => `${s.icon} ${s.title}: ${s.desc}`).join('\n');
@@ -2127,7 +2129,7 @@ MUST include in <body>:
 4. Diensten section: service cards with icon, title, description
 5. Contact section with form posting to /api/sites/${(freshLead.companyName||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}/contact
 6. Footer with company name, location, copyright
-Use ${colors.primary} as accent color. Scroll-triggered animations. Mobile responsive.`);
+Use ${colors.primary} as accent color. Scroll-triggered animations. Mobile responsive.`, getModel('WEBSITE_BUILD'));
 
         const siteSlug = generateSiteSlug(freshLead.companyName);
         const sitesDir = path.join(__dirname, 'public', 'sites', siteSlug);
@@ -3978,7 +3980,7 @@ app.post('/api/analyze-company', requireAdmin, async (req, res) => {
         const domain = websiteUrl ? websiteUrl.replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0] : '';
         const searchQuery = `${companyName} ${domain} contact email`;
         console.log(`[Manual] Web search query: "${searchQuery}"`);
-        const searchText = await aiWebSearch(searchQuery, req.user?.workspaceId);
+        const searchText = await aiWebSearch(searchQuery, req.user?.workspaceId, getModel('ADMIN_SEARCH'));
         console.log(`[Manual] Web search resultaat (eerste 300 tekens): ${(searchText || '').substring(0, 300)}`);
         const allMatches = (searchText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g) || []);
         console.log(`[Manual] Gevonden email adressen: ${JSON.stringify(allMatches)}`);
@@ -4196,7 +4198,7 @@ app.get('/api/stats/detailed', (req, res) => {
 
 
 // ─── Lead CRUD routes — migrated to routes/leads.js ──────────────────────
-app.use('/api/leads', require('./routes/leads')({ readJSON, wsRead, wsWrite, requireAdmin, scopeToUser, addLeadHistory, isDemoContext, aiJSON, updateMemoryConversion, isResendReady, generateClientEmail, sendEmail }));
+app.use('/api/leads', require('./routes/leads')({ readJSON, wsRead, wsWrite, requireAdmin, scopeToUser, addLeadHistory, isDemoContext, aiJSON, updateMemoryConversion, isResendReady, generateClientEmail, sendEmail, getModel }));
 
 app.get('/api/tasks', (req, res) => {
   const leads = wsRead(req, 'leads.json', []);
@@ -4308,7 +4310,7 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
       projectPlan = await aiJSON(`Je bent een projectmanager bij een AI marketing bureau.
 Maak een 4-weken projectplan voor ${lead.companyName} (${lead.niche}, ${lead.location}).
 Diensten: ${serviceNames}.
-Antwoord ALLEEN als JSON: { "title": "string", "overview": "string (2-3 zinnen)", "weeks": [{ "week": 1, "focus": "string", "deliverables": ["string"] }, ...4 items total] }`);
+Antwoord ALLEEN als JSON: { "title": "string", "overview": "string (2-3 zinnen)", "weeks": [{ "week": 1, "focus": "string", "deliverables": ["string"] }, ...4 items total] }`, getModel('PROJECT_PLAN'));
     } catch (err) { console.warn(`[AI fallback]`, err.message); projectPlan = { title: `Project ${lead.companyName}`, overview: 'Automatisch projectplan wordt later aangevuld.', weeks: [{ week: 1, focus: 'Onboarding & intake', deliverables: ['Intake gesprek plannen', 'Strategie document opstellen'] }] }; }
     send(4, 'Projectplan genereren (AI)', 'done');
 
@@ -4322,7 +4324,7 @@ Schrijf een persoonlijk 60-seconden welkomstscript (gesproken tekst) voor een ko
 Diensten die wij leveren: ${serviceNames5}.
 Schrijfstijl: warm, professioneel, concreet. Gebruik "u" of "jullie" consequent.
 Structuur: (1) korte begroeting + felicitatie, (2) wat we samen gaan doen (diensten), (3) de 3 stappen voor vandaag (intake invullen, portaal bookmarken, afspraak inplannen), (4) slotwoord.
-Maximaal 150 woorden. Schrijf ALLEEN de gesproken tekst, geen regieaanwijzingen of timestamps.`, req.user?.workspaceId);
+Maximaal 150 woorden. Schrijf ALLEEN de gesproken tekst, geen regieaanwijzingen of timestamps.`, req.user?.workspaceId, getModel('ONBOARDING_SCRIPT'));
     } catch { /* workspace lookup non-fatal */ onboardingScript = null; }
     send(5, 'Video onboarding script genereren (AI)', onboardingScript ? 'done' : 'skipped');
 
@@ -4331,7 +4333,7 @@ Maximaal 150 woorden. Schrijf ALLEEN de gesproken tekst, geen regieaanwijzingen 
     let contentCalendar = null;
     try {
       contentCalendar = await aiJSON(`Maak een content kalender voor maand 1 voor ${lead.companyName} (${lead.niche}).
-Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "platform": "Instagram/Facebook/LinkedIn", "type": "Reel/Post/Story", "topic": "string", "caption": "string (kort)" }, ...8 items total] }`);
+Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "platform": "Instagram/Facebook/LinkedIn", "type": "Reel/Post/Story", "topic": "string", "caption": "string (kort)" }, ...8 items total] }`, getModel('CONTENT_CALENDAR_INT'));
     } catch (err) { console.warn(`[AI fallback]`, err.message); contentCalendar = { items: [] }; }
     send(6, 'Content kalender genereren (AI)', 'done');
 
@@ -4340,7 +4342,7 @@ Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "platform": "Instagram/Facebo
     let tasks = null;
     try {
       tasks = await aiJSON(`Maak een takenlijst voor week 1 van het project voor ${lead.companyName}.
-Antwoord ALLEEN als JSON: { "tasks": [{ "title": "string", "description": "string", "priority": "hoog/middel/laag", "day": "ma/di/wo/do/vr" }, ...6-8 items] }`);
+Antwoord ALLEEN als JSON: { "tasks": [{ "title": "string", "description": "string", "priority": "hoog/middel/laag", "day": "ma/di/wo/do/vr" }, ...6-8 items] }`, getModel('TASK_LIST'));
     } catch (err) { console.warn(`[AI fallback]`, err.message); tasks = { tasks: [] }; }
     send(7, 'Week 1 takenlijst aanmaken (AI)', 'done');
 
@@ -4802,7 +4804,7 @@ Structure (HTML with inline CSS, professional but readable):
 
 Use a professional colour scheme with blue (#2563eb) accent. Max 800 words. Return ONLY the HTML, no explanation.`;
 
-    const proposalHtml = await aiCall(proposalPrompt, req.user?.workspaceId);
+    const proposalHtml = await aiCall(proposalPrompt, req.user?.workspaceId, getModel('PROPOSAL'));
 
     // Step 3: save
     send({ step: 3, label: 'Opslaan & weergeven' });
@@ -4942,7 +4944,7 @@ Structure (HTML with inline CSS, professional, black/white with blue accents #25
 
 Use clean tables and white space. Return ONLY the HTML.`;
 
-    const contractHtml = await aiCall(prompt, req.user?.workspaceId);
+    const contractHtml = await aiCall(prompt, req.user?.workspaceId, getModel('CONTRACT'));
 
     send({ step: 3, label: 'Contract opslaan' });
     const idx = leads.findIndex(l => l.id === req.params.id);
@@ -5038,7 +5040,7 @@ app.post('/api/leads/:id/generate-delivery', requireAdmin, async (req, res) => {
       fullCalendar = await aiJSON(`Maak een gedetailleerde content kalender voor VOLLEDIGE MAAND 1 voor ${lead.companyName} (${lead.niche}, ${lead.location}).
 Diensten: ${serviceNames}.${intakeContext}
 Maak precies 20 posts verspreid over 4 weken.
-Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "day": "ma/di/wo/do/vr/za/zo", "platform": "Instagram/Facebook/LinkedIn/TikTok", "type": "Reel/Carousel/Post/Story/Video", "topic": "string", "caption": "string (volledige Nederlandse caption, 2-3 zinnen)", "hashtags": ["#tag1","#tag2","#tag3","#tag4","#tag5"], "bestTime": "HH:MM" }] }`);
+Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "day": "ma/di/wo/do/vr/za/zo", "platform": "Instagram/Facebook/LinkedIn/TikTok", "type": "Reel/Carousel/Post/Story/Video", "topic": "string", "caption": "string (volledige Nederlandse caption, 2-3 zinnen)", "hashtags": ["#tag1","#tag2","#tag3","#tag4","#tag5"], "bestTime": "HH:MM" }] }`, getModel('SERVICE_CONTENT'));
     } catch (err) { console.warn(`[AI fallback]`, err.message); fullCalendar = { items: (lead.contentCalendar?.items || []) }; }
     send(1, 'Content kalender genereren (maand 1)', 'done');
 
@@ -5049,7 +5051,7 @@ Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "day": "ma/di/wo/do/vr/za/zo"
       chatbotFlow = await aiJSON(`Maak een chatbot FAQ script voor ${lead.companyName} (${lead.niche}).${intakeContext}
 Dit zijn de meest gestelde vragen die bezoekers stellen op de website of via WhatsApp.
 Maak 12 relevante Q&A paren die direct nuttig zijn voor het bedrijf.
-Antwoord ALLEEN als JSON: { "faqs": [{ "question": "string", "answer": "string (2-3 zinnen, vriendelijk en professioneel)", "category": "Prijzen/Openingstijden/Diensten/Locatie/Afspraken/Overig" }] }`);
+Antwoord ALLEEN als JSON: { "faqs": [{ "question": "string", "answer": "string (2-3 zinnen, vriendelijk en professioneel)", "category": "Prijzen/Openingstijden/Diensten/Locatie/Afspraken/Overig" }] }`, getModel('SERVICE_CONTENT'));
     } catch (err) { console.warn(`[AI fallback]`, err.message); chatbotFlow = { faqs: [] }; }
     send(2, 'Chatbot FAQ flow genereren', 'done');
 
@@ -5059,7 +5061,7 @@ Antwoord ALLEEN als JSON: { "faqs": [{ "question": "string", "answer": "string (
     try {
       milestones = await aiJSON(`Maak een gedetailleerde mijlpalentijdlijn voor een 3-maanden project voor ${lead.companyName}.
 Diensten: ${serviceNames}.${intakeContext}
-Antwoord ALLEEN als JSON: { "milestones": [{ "week": 1, "title": "string", "description": "string", "deliverables": ["string","string","string"], "status": "upcoming" }] } — maak precies 12 weken.`);
+Antwoord ALLEEN als JSON: { "milestones": [{ "week": 1, "title": "string", "description": "string", "deliverables": ["string","string","string"], "status": "upcoming" }] } — maak precies 12 weken.`, getModel('MILESTONE_TIMELINE'));
     } catch (err) { console.warn(`[AI fallback]`, err.message); milestones = { milestones: [] }; }
     send(3, 'Projectmijlpalen uitwerken', 'done');
 
@@ -5089,7 +5091,7 @@ Antwoord ALLEEN als JSON: { "milestones": [{ "week": 1, "title": "string", "desc
           case 'Maandelijkse content kalender': {
             const d = await aiJSON(`Maak een content kalender voor ${co} (${ni}, ${lo}) voor een volledige maand.${intakeContext}
 Maak precies 20 Instagram posts, verspreid over 30 dagen.
-Geef ALLEEN JSON: { "month":"Maand 1","posts":[{"day":1,"date":"ma 2 juni","type":"foto/carousel/reel","topic":"string","caption":"volledig klaar om te posten (100-150 woorden, emoji, professioneel)","hashtags":["#tag1","#tag2","#tag3","#tag4","#tag5"],"visual":"korte visuele beschrijving"}] }`);
+Geef ALLEEN JSON: { "month":"Maand 1","posts":[{"day":1,"date":"ma 2 juni","type":"foto/carousel/reel","topic":"string","caption":"volledig klaar om te posten (100-150 woorden, emoji, professioneel)","hashtags":["#tag1","#tag2","#tag3","#tag4","#tag5"],"visual":"korte visuele beschrijving"}] }`, getModel('SERVICE_CONTENT'));
             const posts = (d.posts||d.items||[]).slice(0,20);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 12px">Content Kalender — ${d.month||'Maand 1'}</h2>
 <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f3f4f6"><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Dag</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Type</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Onderwerp</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Caption</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Hashtags</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Visual</th></tr></thead><tbody>
@@ -5100,7 +5102,7 @@ ${posts.map(p=>`<tr><td style="padding:7px;border:1px solid #e5e7eb;font-weight:
 
           case 'Instagram Reels scripts': {
             const d = await aiJSON(`Maak 8 Instagram Reels scripts voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"scripts":[{"nummer":1,"titel":"string","hook":"eerste 3 sec (max 15 woorden)","inhoud":["Stap 1","Stap 2","Stap 3"],"cta":"string","muziek":"aanbevolen stijl","duur":"15/30/60 sec"}]}`);
+Geef ALLEEN JSON: {"scripts":[{"nummer":1,"titel":"string","hook":"eerste 3 sec (max 15 woorden)","inhoud":["Stap 1","Stap 2","Stap 3"],"cta":"string","muziek":"aanbevolen stijl","duur":"15/30/60 sec"}]}`, getModel('SERVICE_CONTENT'));
             const scripts = (d.scripts||[]).slice(0,8);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Instagram Reels Scripts</h2><div style="display:flex;flex-direction:column;gap:14px">
 ${scripts.map(s=>`<div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><strong style="font-size:13px">Reel ${s.nummer}: ${s.titel}</strong><span style="background:#fefce8;color:#d97706;border-radius:4px;padding:2px 7px;font-size:11px">${s.duur}</span></div><div style="background:#fef2f2;border-left:3px solid #ef4444;padding:8px 11px;margin-bottom:8px;border-radius:0 6px 6px 0"><strong style="font-size:10px;color:#dc2626;text-transform:uppercase">Hook (eerste 3 sec)</strong><p style="margin:3px 0 0;font-size:13px;font-weight:700">"${s.hook}"</p></div><ul style="margin:0 0 8px;padding-left:18px">${(s.inhoud||[]).map(i=>`<li style="font-size:13px;color:#374151;margin-bottom:3px">${i}</li>`).join('')}</ul><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:#f0fdf4;border-radius:5px;padding:5px 9px;font-size:12px"><b>CTA:</b> ${s.cta}</span><span style="background:#f0f9ff;border-radius:5px;padding:5px 9px;font-size:12px"><b>Muziek:</b> ${s.muziek}</span></div></div>`).join('')}
@@ -5110,7 +5112,7 @@ ${scripts.map(s=>`<div style="border:1px solid #e5e7eb;border-radius:8px;padding
 
           case 'Blog artikelen schrijven': {
             const d = await aiJSON(`Schrijf 4 volledige blog artikelen voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"articles":[{"nummer":1,"seoTitle":"max 60 tekens","metaDescription":"max 155 tekens","keyword":"string","body":"volledig artikel in HTML met h2/h3/p (600-800 woorden)","internalLinks":["suggestie1","suggestie2"]}]}`);
+Geef ALLEEN JSON: {"articles":[{"nummer":1,"seoTitle":"max 60 tekens","metaDescription":"max 155 tekens","keyword":"string","body":"volledig artikel in HTML met h2/h3/p (600-800 woorden)","internalLinks":["suggestie1","suggestie2"]}]}`, getModel('SERVICE_CONTENT'));
             const articles = (d.articles||[]).slice(0,4);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Blog Artikelen (4 stuks)</h2><div style="display:flex;flex-direction:column;gap:20px">
 ${articles.map(a=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:12px 16px;border-bottom:1px solid #e5e7eb"><div style="font-size:14px;font-weight:700;margin-bottom:3px">${a.seoTitle}</div><div style="font-size:12px;color:#6b7280;margin-bottom:5px">${a.metaDescription}</div><span style="background:#eef2ff;color:#6366f1;border-radius:4px;padding:1px 6px;font-size:11px">Keyword: ${a.keyword}</span></div><div style="padding:16px;font-size:13px;line-height:1.7;color:#374151">${a.body||''}</div>${a.internalLinks?.length?`<div style="padding:8px 16px;background:#fffbeb;border-top:1px solid #fef3c7;font-size:12px"><b>Interne links:</b> ${(a.internalLinks||[]).join(', ')}</div>`:''}</div>`).join('')}
@@ -5120,7 +5122,7 @@ ${articles.map(a=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overfl
 
           case 'Email nieuwsbrief reeks': {
             const d = await aiJSON(`Schrijf 4 nieuwsbrieven voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"newsletters":[{"nummer":1,"subjectA":"string","subjectB":"A/B variant","preview":"max 90 tekens","body":"HTML nieuwsbrief (inline styles, email-safe)","cta":"knoptekst"}]}`);
+Geef ALLEEN JSON: {"newsletters":[{"nummer":1,"subjectA":"string","subjectB":"A/B variant","preview":"max 90 tekens","body":"HTML nieuwsbrief (inline styles, email-safe)","cta":"knoptekst"}]}`, getModel('SERVICE_CONTENT'));
             const nl = (d.newsletters||[]).slice(0,4);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Email Nieuwsbrief Reeks (4 stuks)</h2><div style="display:flex;flex-direction:column;gap:16px">
 ${nl.map(n=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:12px 16px;border-bottom:1px solid #e5e7eb"><b>Nieuwsbrief ${n.nummer}</b><br><span style="font-size:13px"><b>Subject A:</b> ${n.subjectA}</span><br><span style="font-size:13px"><b>Subject B:</b> ${n.subjectB}</span><br><span style="font-size:12px;color:#6b7280"><b>Preview:</b> ${n.preview}</span></div><div style="padding:16px;font-size:13px;line-height:1.7">${n.body||''}</div><div style="padding:8px 16px;background:#f0fdf4;border-top:1px solid #bbf7d0;font-size:13px"><b>CTA knop:</b> ${n.cta}</div></div>`).join('')}
@@ -5130,7 +5132,7 @@ ${nl.map(n=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hid
 
           case 'Website teksten schrijven': {
             const d = await aiJSON(`Schrijf volledige website teksten voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"homepage":{"hero":{"headline":"max 10 woorden","subheadline":"max 20 woorden","ctaButton":"string"},"about":"3-4 zinnen","services":[{"title":"string","description":"2-3 zinnen"}],"cta":{"headline":"string","subtext":"string","button":"string"}},"aboutPage":{"title":"string","intro":"2 alineas","values":[{"title":"string","text":"string"}]},"servicesPage":{"title":"string","intro":"string","services":[{"name":"string","description":"string"}]},"contactPage":{"title":"string","intro":"string","formLabels":{"name":"string","email":"string","message":"string","submit":"string"}}}`);
+Geef ALLEEN JSON: {"homepage":{"hero":{"headline":"max 10 woorden","subheadline":"max 20 woorden","ctaButton":"string"},"about":"3-4 zinnen","services":[{"title":"string","description":"2-3 zinnen"}],"cta":{"headline":"string","subtext":"string","button":"string"}},"aboutPage":{"title":"string","intro":"2 alineas","values":[{"title":"string","text":"string"}]},"servicesPage":{"title":"string","intro":"string","services":[{"name":"string","description":"string"}]},"contactPage":{"title":"string","intro":"string","formLabels":{"name":"string","email":"string","message":"string","submit":"string"}}}`, getModel('SERVICE_CONTENT'));
             const h=d.homepage||{},a=d.aboutPage||{},s=d.servicesPage||{},c=d.contactPage||{};
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 16px">Website Teksten — ${co}</h2><div style="display:flex;flex-direction:column;gap:16px">
 <section style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#6366f1;padding:9px 16px"><b style="color:#fff;font-size:12px">HOMEPAGE</b></div><div style="padding:16px"><div style="margin-bottom:10px"><b>Hero:</b> <span style="font-size:16px;font-weight:700">${h.hero?.headline||''}</span> <span style="color:#6b7280;font-size:13px">— ${h.hero?.subheadline||''}</span></div><div style="margin-bottom:10px"><b>Over ons:</b><p style="color:#374151;font-size:13px;margin:4px 0">${h.about||''}</p></div>${(h.services||[]).map(sv=>`<div style="margin-bottom:7px;padding:7px;background:#f9fafb;border-radius:5px"><b style="font-size:13px">${sv.title}</b><br><span style="font-size:12px;color:#374151">${sv.description}</span></div>`).join('')}</div></section>
@@ -5143,7 +5145,7 @@ Geef ALLEEN JSON: {"homepage":{"hero":{"headline":"max 10 woorden","subheadline"
 
           case 'SEO teksten optimaliseren': {
             const d = await aiJSON(`Optimaliseer SEO teksten voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"pages":[{"pagina":"Homepage","geoptimaliseerdeTitle":"50-60 tekens","metaDescription":"150-160 tekens","h1":"string","keywords":["kw1","kw2","kw3"],"verbeterpunten":["punt1","punt2"]}]}`);
+Geef ALLEEN JSON: {"pages":[{"pagina":"Homepage","geoptimaliseerdeTitle":"50-60 tekens","metaDescription":"150-160 tekens","h1":"string","keywords":["kw1","kw2","kw3"],"verbeterpunten":["punt1","punt2"]}]}`, getModel('SERVICE_CONTENT'));
             const pages = (d.pages||[]);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">SEO Optimalisatie — ${co}</h2><div style="display:flex;flex-direction:column;gap:12px">
 ${pages.map(p=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:10px 14px;border-bottom:1px solid #e5e7eb;font-weight:700;font-size:13px">${p.pagina}</div><div style="padding:12px 14px"><div style="margin-bottom:8px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">Title Tag (${(p.geoptimaliseerdeTitle||'').length}/60)</span><div style="font-size:13px;color:#1d4ed8;text-decoration:underline;margin-top:2px">${p.geoptimaliseerdeTitle}</div></div><div style="margin-bottom:8px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">Meta Description (${(p.metaDescription||'').length}/160)</span><div style="font-size:12px;color:#374151;margin-top:2px">${p.metaDescription}</div></div><div style="margin-bottom:8px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">H1</span><div style="font-size:13px;font-weight:700;margin-top:2px">${p.h1}</div></div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${(p.keywords||[]).map(k=>`<span style="background:#eef2ff;color:#6366f1;border-radius:3px;padding:2px 6px;font-size:11px">${k}</span>`).join('')}</div><ul style="margin:0;padding-left:16px">${(p.verbeterpunten||[]).map(v=>`<li style="font-size:12px;color:#374151;margin-bottom:2px">${v}</li>`).join('')}</ul></div></div>`).join('')}
@@ -5153,7 +5155,7 @@ ${pages.map(p=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:
 
           case 'Chatbot script voor website': {
             const d = await aiJSON(`Maak chatbot script voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"welkom":"string","buiten_openingstijden":"string","faqs":[{"vraag":"string","antwoord":"string","categorie":"string","followUp":"string optioneel"}],"leadCapture":{"triggerZin":"string","vragen":["Naam?","Email?","Vraag?"],"bevestiging":"string"}}`);
+Geef ALLEEN JSON: {"welkom":"string","buiten_openingstijden":"string","faqs":[{"vraag":"string","antwoord":"string","categorie":"string","followUp":"string optioneel"}],"leadCapture":{"triggerZin":"string","vragen":["Naam?","Email?","Vraag?"],"bevestiging":"string"}}`, getModel('SERVICE_CONTENT'));
             const faqs = (d.faqs||[]).slice(0,15);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Chatbot Script — ${co}</h2><div style="display:flex;flex-direction:column;gap:12px">
 <div style="border:2px solid #6366f1;border-radius:8px;padding:12px"><div style="font-size:10px;color:#6366f1;text-transform:uppercase;font-weight:700;margin-bottom:5px">Welkomstbericht</div><div style="font-size:13px">"${d.welkom||''}"</div></div>
@@ -5166,8 +5168,8 @@ ${d.leadCapture?`<div style="border:1px solid #bbf7d0;border-radius:8px;padding:
 
           case 'Concurrentieanalyse rapport': {
             let rawText;
-            try { rawText = await aiWebSearch(`Zoek info over de 3 grootste concurrenten van ${co} in ${lo} (${ni}, req.user?.workspaceId). Analyseer website, social media, sterke en zwakke punten. Geef ALLEEN JSON: {"concurrenten":[{"naam":"string","website":"string","sterkePunten":["string"],"zwakkePunten":["string"],"socialMedia":"string"}],"kansen":["string"],"actieplan":["string"]}`); }
-            catch (err) { console.warn(`[AI fallback]`, err.message); rawText = await aiCall(`Analyseer 3 concurrenten van ${co} (${ni}, ${lo}, req.user?.workspaceId).${intakeContext} Geef ALLEEN JSON: {"concurrenten":[{"naam":"string","website":"string","sterkePunten":["string"],"zwakkePunten":["string"],"socialMedia":"string"}],"kansen":["string"],"actieplan":["string"]}`); }
+            try { rawText = await aiWebSearch(`Zoek info over de 3 grootste concurrenten van ${co} in ${lo} (${ni}, req.user?.workspaceId). Analyseer website, social media, sterke en zwakke punten. Geef ALLEEN JSON: {"concurrenten":[{"naam":"string","website":"string","sterkePunten":["string"],"zwakkePunten":["string"],"socialMedia":"string"}],"kansen":["string"],"actieplan":["string"]}`, req.user?.workspaceId, getModel('COMPETITOR_ANALYSIS')); }
+            catch (err) { console.warn(`[AI fallback]`, err.message); rawText = await aiCall(`Analyseer 3 concurrenten van ${co} (${ni}, ${lo}, req.user?.workspaceId).${intakeContext} Geef ALLEEN JSON: {"concurrenten":[{"naam":"string","website":"string","sterkePunten":["string"],"zwakkePunten":["string"],"socialMedia":"string"}],"kansen":["string"],"actieplan":["string"]}`, req.user?.workspaceId, getModel('COMPETITOR_ANALYSIS')); }
             let d = {}; try { d = parseJsonFromText(rawText); } catch { /* JSON parse fallback */}
             const comps = (d.concurrenten||[]).slice(0,3);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Concurrentieanalyse — ${co}</h2><div style="display:flex;flex-direction:column;gap:14px">
@@ -5181,7 +5183,7 @@ ${d.actieplan?.length?`<div style="border:1px solid #bfdbfe;border-radius:8px;pa
           case 'Social media audit': {
             const handle = lead.instagramHandle || '@' + co.toLowerCase().replace(/\s+/g,'');
             const d = await aiJSON(`Social media audit voor ${co} (${ni}, ${lo}). Instagram: ${handle}, volgers: ${lead.estimatedFollowers||'onbekend'}.${intakeContext}
-Geef ALLEEN JSON: {"score":7,"huidigeStatus":{"volgers":"string","engagement":"string","postFrequentie":"string"},"sterkePunten":["string"],"verbeterpunten":["string"],"contentGaps":["string"],"actiepunten":[{"prioriteit":"hoog/middel/laag","actie":"string","impact":"string"}]}`);
+Geef ALLEEN JSON: {"score":7,"huidigeStatus":{"volgers":"string","engagement":"string","postFrequentie":"string"},"sterkePunten":["string"],"verbeterpunten":["string"],"contentGaps":["string"],"actiepunten":[{"prioriteit":"hoog/middel/laag","actie":"string","impact":"string"}]}`, getModel('SERVICE_CONTENT'));
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Social Media Audit — ${co}</h2>
 <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:8px"><div style="text-align:center"><div style="font-size:32px;font-weight:800;color:${(d.score||0)>=7?'#16a34a':(d.score||0)>=5?'#d97706':'#dc2626'}">${d.score||'?'}</div><div style="font-size:11px;color:#6b7280">Score /10</div></div><div style="flex:1;font-size:13px"><div><b>Volgers:</b> ${d.huidigeStatus?.volgers||handle}</div><div><b>Engagement:</b> ${d.huidigeStatus?.engagement||'?'}</div><div><b>Frequentie:</b> ${d.huidigeStatus?.postFrequentie||'?'}</div></div></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div style="border:1px solid #bbf7d0;border-radius:7px;padding:10px;background:#f0fdf4"><b style="font-size:10px;color:#16a34a;text-transform:uppercase">✓ Sterk</b><ul style="margin:5px 0 0;padding-left:15px">${(d.sterkePunten||[]).map(s=>`<li style="font-size:12px;margin-bottom:2px">${s}</li>`).join('')}</ul></div><div style="border:1px solid #fecaca;border-radius:7px;padding:10px;background:#fef2f2"><b style="font-size:10px;color:#dc2626;text-transform:uppercase">✗ Verbeter</b><ul style="margin:5px 0 0;padding-left:15px">${(d.verbeterpunten||[]).map(s=>`<li style="font-size:12px;margin-bottom:2px">${s}</li>`).join('')}</ul></div></div>
@@ -5191,7 +5193,7 @@ ${(d.actiepunten||[]).length?`<div style="border:1px solid #e5e7eb;border-radius
 
           case 'Google Ads teksten': {
             const d = await aiJSON(`Genereer 10 Google Ads varianten voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"campagneNaam":"string","targetKeywords":["kw1","kw2"],"ads":[{"nummer":1,"headlines":["H1 max 30 tekens","H2","H3"],"descriptions":["D1 max 90 tekens","D2"],"displayUrl":"example.nl/dienst","doelgroep":"string"}]}`);
+Geef ALLEEN JSON: {"campagneNaam":"string","targetKeywords":["kw1","kw2"],"ads":[{"nummer":1,"headlines":["H1 max 30 tekens","H2","H3"],"descriptions":["D1 max 90 tekens","D2"],"displayUrl":"example.nl/dienst","doelgroep":"string"}]}`, getModel('SERVICE_CONTENT'));
             const ads = (d.ads||[]).slice(0,10);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 6px">Google Ads Teksten (10 varianten)</h2><div style="font-size:12px;color:#6b7280;margin-bottom:14px">${d.campagneNaam||co} | Keywords: ${(d.targetKeywords||[]).join(', ')}</div><div style="display:flex;flex-direction:column;gap:10px">
 ${ads.map((ad,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:7px 12px;border-bottom:1px solid #e5e7eb;font-size:11px;font-weight:700;color:#6b7280">AD ${ad.nummer||i+1} — ${ad.doelgroep||''}</div><div style="padding:10px 12px"><div style="font-size:11px;color:#0369a1;margin-bottom:4px">● ${ad.displayUrl||''}</div>${(ad.headlines||[]).map(h=>`<div style="font-size:13px;color:#1d4ed8;font-weight:700">${h} <span style="font-size:10px;color:#9ca3af;font-weight:400">(${(h||'').length}/30)</span></div>`).join('')}<div style="height:4px"></div>${(ad.descriptions||[]).map(dd=>`<div style="font-size:12px;color:#374151;margin-bottom:3px">${dd} <span style="font-size:10px;color:#9ca3af">(${(dd||'').length}/90)</span></div>`).join('')}</div></div>`).join('')}
@@ -5201,7 +5203,7 @@ ${ads.map((ad,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overfl
 
           case 'Facebook Ad copy': {
             const d = await aiJSON(`Schrijf 5 Facebook/Instagram advertentie teksten voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"ads":[{"nummer":1,"doelgroep":"Koud/Warm","primaryText":"max 125 tekens","headline":"max 40 tekens","description":"max 30 tekens","cta":"SHOP_NOW/LEARN_MORE/CONTACT_US/BOOK_NOW","format":"Beeld/Video/Carrousel","tip":"creatieve tip"}]}`);
+Geef ALLEEN JSON: {"ads":[{"nummer":1,"doelgroep":"Koud/Warm","primaryText":"max 125 tekens","headline":"max 40 tekens","description":"max 30 tekens","cta":"SHOP_NOW/LEARN_MORE/CONTACT_US/BOOK_NOW","format":"Beeld/Video/Carrousel","tip":"creatieve tip"}]}`, getModel('SERVICE_CONTENT'));
             const ads = (d.ads||[]).slice(0,5);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Facebook Ad Copy (5 advertenties)</h2><div style="display:flex;flex-direction:column;gap:12px">
 ${ads.map(ad=>`<div style="border:2px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#1877f2;padding:8px 14px;display:flex;justify-content:space-between;align-items:center"><b style="color:#fff;font-size:12px">Ad ${ad.nummer} — ${ad.doelgroep}</b><span style="background:rgba(255,255,255,.2);color:#fff;border-radius:3px;padding:2px 6px;font-size:11px">${ad.format}</span></div><div style="padding:12px 14px"><div style="margin-bottom:8px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">Primaire tekst (${(ad.primaryText||'').length}/125)</span><div style="font-size:12px;color:#374151;margin-top:2px">${ad.primaryText}</div></div><div style="background:#f9fafb;border-radius:6px;padding:9px;margin-bottom:8px"><div style="font-size:13px;font-weight:700">${ad.headline} <span style="font-size:10px;color:#9ca3af;font-weight:400">(${(ad.headline||'').length}/40)</span></div><div style="font-size:12px;color:#6b7280">${ad.description} (${(ad.description||'').length}/30)</div><span style="display:inline-block;background:#1877f2;color:#fff;border-radius:3px;padding:3px 9px;font-size:11px;font-weight:700;margin-top:5px">${ad.cta}</span></div><div style="font-size:11px;color:#6b7280;font-style:italic">💡 ${ad.tip}</div></div></div>`).join('')}
@@ -5212,7 +5214,7 @@ ${ads.map(ad=>`<div style="border:2px solid #e5e7eb;border-radius:8px;overflow:h
           case 'Email autoresponder reeks': {
             const d = await aiJSON(`Schrijf 7-delige email autoresponder voor ${co} (${ni}, ${lo}).${intakeContext}
 Emails: Dag 1 (Welkom), Dag 2 (Beste tip), Dag 3 (Succesverhaal), Dag 5 (Spotlight), Dag 7 (FAQ), Dag 10 (Aanbieding), Dag 14 (Check-in).
-Geef ALLEEN JSON: {"reeks":[{"dag":1,"onderwerp":"string","preview":"string","doel":"string","body":"300-400 woorden, persoonlijk en nuttig"}]}`);
+Geef ALLEEN JSON: {"reeks":[{"dag":1,"onderwerp":"string","preview":"string","doel":"string","body":"300-400 woorden, persoonlijk en nuttig"}]}`, getModel('SERVICE_CONTENT'));
             const emails = (d.reeks||[]).slice(0,7);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Email Autoresponder (7 emails)</h2><div style="display:flex;flex-direction:column;gap:12px">
 ${emails.map((e,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#0f172a;padding:9px 14px;display:flex;justify-content:space-between;align-items:center"><b style="color:#fff;font-size:12px">Email ${i+1} — Dag ${e.dag}</b><span style="background:#334155;color:#94a3b8;border-radius:3px;padding:2px 6px;font-size:11px">${e.doel||''}</span></div><div style="padding:12px 14px"><div style="margin-bottom:5px"><b style="font-size:12px">Subject:</b> ${e.onderwerp}</div><div style="margin-bottom:9px;font-size:11px;color:#6b7280"><b>Preview:</b> ${e.preview}</div><div style="font-size:12px;line-height:1.7;color:#374151;border-left:3px solid #e5e7eb;padding-left:10px">${(e.body||'').replace(/\n/g,'<br>')}</div></div></div>`).join('')}
@@ -5222,7 +5224,7 @@ ${emails.map((e,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;over
 
           case 'Product beschrijvingen': {
             const d = await aiJSON(`Schrijf 20 SEO product beschrijvingen voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"categorie":"string","producten":[{"naam":"string","seoTitle":"max 60 tekens","korteBeschrijving":"50 woorden","langeBeschrijving":"150 woorden SEO","kenmerken":["kw1","kw2","kw3","kw4","kw5"],"metaDescription":"max 155 tekens","keyword":"string"}]}`);
+Geef ALLEEN JSON: {"categorie":"string","producten":[{"naam":"string","seoTitle":"max 60 tekens","korteBeschrijving":"50 woorden","langeBeschrijving":"150 woorden SEO","kenmerken":["kw1","kw2","kw3","kw4","kw5"],"metaDescription":"max 155 tekens","keyword":"string"}]}`, getModel('SERVICE_CONTENT'));
             const products = (d.producten||[]).slice(0,20);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 6px">Product Beschrijvingen (${products.length})</h2><div style="font-size:12px;color:#6b7280;margin-bottom:14px">Categorie: ${d.categorie||ni}</div><div style="display:flex;flex-direction:column;gap:10px">
 ${products.map((p,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:9px 12px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between"><b style="font-size:12px">${p.naam}</b><span style="background:#eef2ff;color:#6366f1;border-radius:3px;padding:1px 5px;font-size:11px">${p.keyword}</span></div><div style="padding:10px 12px"><div style="font-size:12px;font-weight:600;margin-bottom:5px">${p.seoTitle}</div><div style="font-size:12px;color:#374151;margin-bottom:5px;line-height:1.5">${p.korteBeschrijving}</div><div style="font-size:12px;color:#374151;margin-bottom:6px;line-height:1.6">${p.langeBeschrijving}</div><div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:5px">${(p.kenmerken||[]).map(k=>`<span style="background:#f3f4f6;border-radius:3px;padding:1px 6px;font-size:11px">✓ ${k}</span>`).join('')}</div><div style="font-size:11px;color:#6b7280;background:#f9fafb;padding:5px 7px;border-radius:4px">${p.metaDescription}</div></div></div>`).join('')}
@@ -5233,7 +5235,7 @@ ${products.map((p,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;ov
           case 'Pitch deck teksten': {
             const d = await aiJSON(`Schrijf pitch deck voor ${co} (${ni}, ${lo}).${intakeContext}
 10-12 slides: Dekblad, Probleem, Oplossing, Product, Markt, Businessmodel, Tractie, Team, Financiën, CTA.
-Geef ALLEEN JSON: {"slides":[{"nummer":1,"titel":"string","type":"string","hoofdtekst":"string","bullets":["string"],"noot":"sprekersnoot"}]}`);
+Geef ALLEEN JSON: {"slides":[{"nummer":1,"titel":"string","type":"string","hoofdtekst":"string","bullets":["string"],"noot":"sprekersnoot"}]}`, getModel('SERVICE_CONTENT'));
             const slides = (d.slides||[]).slice(0,12);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Pitch Deck — ${co}</h2><div style="display:flex;flex-direction:column;gap:10px">
 ${slides.map(s=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#0f172a;padding:9px 14px;display:flex;justify-content:space-between"><b style="color:#fff;font-size:12px">Slide ${s.nummer}: ${s.titel}</b><span style="background:#334155;color:#94a3b8;border-radius:3px;padding:2px 6px;font-size:11px">${s.type}</span></div><div style="padding:12px 14px"><div style="font-size:13px;margin-bottom:7px">${s.hoofdtekst||''}</div>${(s.bullets||[]).length?`<ul style="margin:0 0 7px;padding-left:16px">${(s.bullets||[]).map(b=>`<li style="font-size:12px;color:#374151;margin-bottom:3px">${b}</li>`).join('')}</ul>`:''} ${s.noot?`<div style="padding:7px;background:#f9fafb;border-radius:5px;font-size:11px;color:#6b7280;border-left:3px solid #6366f1;font-style:italic">🎤 ${s.noot}</div>`:''}</div></div>`).join('')}
@@ -5245,7 +5247,7 @@ ${slides.map(s=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow
             const lang = lead.language || 'nl';
             const d = await aiJSON(`Genereer GDPR-compliant juridische documenten voor ${co} (${lo}).${intakeContext}
 Taal: ${lang==='nl'?'Nederlands':'English'}. 6-8 artikelen per document.
-Geef ALLEEN JSON: {"privacyPolicy":{"titel":"string","artikelen":[{"nummer":1,"titel":"string","tekst":"string"}]},"algVoorwaarden":{"titel":"string","artikelen":[{"nummer":1,"titel":"string","tekst":"string"}]},"cookiePolicy":"volledige tekst"}`);
+Geef ALLEEN JSON: {"privacyPolicy":{"titel":"string","artikelen":[{"nummer":1,"titel":"string","tekst":"string"}]},"algVoorwaarden":{"titel":"string","artikelen":[{"nummer":1,"titel":"string","tekst":"string"}]},"cookiePolicy":"volledige tekst"}`, getModel('SERVICE_CONTENT'));
             const pp=d.privacyPolicy||{}, av=d.algVoorwaarden||{};
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Juridische Documenten — ${co}</h2><div style="display:flex;flex-direction:column;gap:16px">
 <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#1d4ed8;padding:10px 16px"><b style="color:#fff">Privacy Policy</b></div><div style="padding:16px;font-size:13px;line-height:1.7">${(pp.artikelen||[]).map(a=>`<div style="margin-bottom:14px"><h3 style="font-size:13px;font-weight:700;margin:0 0 4px">Art. ${a.nummer}: ${a.titel}</h3><p style="margin:0;color:#374151">${a.tekst}</p></div>`).join('')}</div></div>
@@ -5258,7 +5260,7 @@ ${d.cookiePolicy?`<div style="border:1px solid #e5e7eb;border-radius:8px;overflo
           case 'Google Bedrijfsprofiel content': {
             const d = await aiJSON(`Google Business Profile teksten voor ${co} (${ni}, ${lo}).${intakeContext}
 Geef ALLEEN JSON: {"bedrijfsBeschrijving":"max 750 tekens","diensten":[{"naam":"string","beschrijving":"max 300 tekens"}],"faq":[{"vraag":"string","antwoord":"string"}],"googlePosts":[{"type":"Nieuw/Aanbieding/Evenement","tekst":"max 1500 tekens"}]}
-5 diensten, 10 FAQs, 5 posts.`);
+5 diensten, 10 FAQs, 5 posts.`, getModel('SERVICE_CONTENT'));
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Google Bedrijfsprofiel — ${co}</h2><div style="display:flex;flex-direction:column;gap:14px">
 <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">Bedrijfsbeschrijving (${(d.bedrijfsBeschrijving||'').length}/750)</span><div style="font-size:13px;line-height:1.7;color:#374151;margin-top:6px">${d.bedrijfsBeschrijving||''}</div></div>
 <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:9px 14px;border-bottom:1px solid #e5e7eb;font-weight:700;font-size:12px">Diensten</div>${(d.diensten||[]).map(dd=>`<div style="padding:9px 14px;border-bottom:1px solid #f3f4f6"><div style="font-weight:600;font-size:12px">${dd.naam}</div><div style="font-size:12px;color:#6b7280;margin-top:2px">${dd.beschrijving}</div></div>`).join('')}</div>
@@ -5271,7 +5273,7 @@ Geef ALLEEN JSON: {"bedrijfsBeschrijving":"max 750 tekens","diensten":[{"naam":"
           case 'Verlaten winkelwagen emails': {
             const d = await aiJSON(`3-delige verlaten winkelwagen email reeks voor ${co} (${ni}, ${lo}).${intakeContext}
 Email 1: Vriendelijke herinnering (1 uur). Email 2: Voordeel aanbieden (24 uur). Email 3: Urgentie/schaarste (72 uur).
-Geef ALLEEN JSON: {"emails":[{"nummer":1,"timing":"1 uur na verlaten","onderwerp":"string","preview":"string","body":"150-200 woorden, HTML inline styles"}]}`);
+Geef ALLEEN JSON: {"emails":[{"nummer":1,"timing":"1 uur na verlaten","onderwerp":"string","preview":"string","body":"150-200 woorden, HTML inline styles"}]}`, getModel('SERVICE_CONTENT'));
             const emails = (d.emails||[]).slice(0,3);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Verlaten Winkelwagen Emails</h2><div style="display:flex;flex-direction:column;gap:12px">
 ${emails.map(e=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f59e0b;padding:9px 14px;display:flex;justify-content:space-between"><b style="color:#fff;font-size:12px">Email ${e.nummer}</b><span style="background:rgba(255,255,255,.2);color:#fff;font-size:11px;padding:2px 6px;border-radius:3px">${e.timing}</span></div><div style="padding:12px 14px"><div style="margin-bottom:5px;font-size:12px"><b>Subject:</b> ${e.onderwerp}</div><div style="margin-bottom:9px;font-size:11px;color:#6b7280"><b>Preview:</b> ${e.preview}</div><div style="font-size:12px;line-height:1.7;color:#374151;border-left:3px solid #f59e0b;padding-left:10px">${(e.body||'').replace(/\n/g,'<br>')}</div></div></div>`).join('')}
@@ -5281,7 +5283,7 @@ ${emails.map(e=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow
 
           case 'Over ons pagina schrijven': {
             const d = await aiJSON(`Schrijf "Over ons" pagina voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"hero":{"headline":"max 10 woorden","subheadline":"max 20 woorden"},"verhaal":"300-400 woorden (persoonlijk, vertrouwen)","missie":"2-3 zinnen","waarden":[{"icon":"emoji","titel":"string","beschrijving":"1-2 zinnen"}],"team":[{"naam":"string","rol":"string","bio":"2-3 zinnen"}]}`);
+Geef ALLEEN JSON: {"hero":{"headline":"max 10 woorden","subheadline":"max 20 woorden"},"verhaal":"300-400 woorden (persoonlijk, vertrouwen)","missie":"2-3 zinnen","waarden":[{"icon":"emoji","titel":"string","beschrijving":"1-2 zinnen"}],"team":[{"naam":"string","rol":"string","bio":"2-3 zinnen"}]}`, getModel('SERVICE_CONTENT'));
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Over Ons Pagina — ${co}</h2><div style="display:flex;flex-direction:column;gap:14px">
 <div style="text-align:center;padding:16px;background:#f9fafb;border-radius:8px"><div style="font-size:20px;font-weight:800">${d.hero?.headline||''}</div><div style="color:#6b7280;font-size:14px;margin-top:4px">${d.hero?.subheadline||''}</div></div>
 <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px"><div style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700;margin-bottom:7px">Ons Verhaal</div><div style="font-size:13px;line-height:1.7;color:#374151">${(d.verhaal||'').replace(/\n/g,'<br>')}</div></div>
@@ -5294,7 +5296,7 @@ ${(d.team||[]).length?`<div style="border:1px solid #e5e7eb;border-radius:8px;pa
 
           case 'FAQ pagina schrijven': {
             const d = await aiJSON(`Schrijf FAQ pagina voor ${co} (${ni}, ${lo}) — 20 vragen.${intakeContext}
-Geef ALLEEN JSON: {"intro":"2-3 zinnen","faqs":[{"nummer":1,"vraag":"string","antwoord":"80-120 woorden","categorie":"Prijzen/Diensten/Openingstijden/Contact/Algemeen"}]}`);
+Geef ALLEEN JSON: {"intro":"2-3 zinnen","faqs":[{"nummer":1,"vraag":"string","antwoord":"80-120 woorden","categorie":"Prijzen/Diensten/Openingstijden/Contact/Algemeen"}]}`, getModel('SERVICE_CONTENT'));
             const faqs = (d.faqs||[]).slice(0,20);
             const cats = [...new Set(faqs.map(f=>f.categorie||'Algemeen'))];
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 6px">FAQ Pagina — ${co}</h2><p style="font-size:12px;color:#6b7280;margin:0 0 14px">${d.intro||''}</p>
@@ -5304,7 +5306,7 @@ ${cats.map(cat=>`<div style="margin-bottom:14px"><div style="font-size:11px;font
 
           case 'Nieuwsbrief template ontwerpen': {
             const d = await aiJSON(`Ontwerp HTML email nieuwsbrief template voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"primaryColor":"#hexcode","sections":[{"type":"header/hero/featured/twoColumn/cta/footer","content":"beschrijving"}],"htmlTemplate":"volledig HTML email (max 3000 chars, inline styles, email-safe, responsive)"}`);
+Geef ALLEEN JSON: {"primaryColor":"#hexcode","sections":[{"type":"header/hero/featured/twoColumn/cta/footer","content":"beschrijving"}],"htmlTemplate":"volledig HTML email (max 3000 chars, inline styles, email-safe, responsive)"}`, getModel('SERVICE_CONTENT'));
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Nieuwsbrief Template — ${co}</h2>
 <div style="margin-bottom:12px;padding:10px;background:#f9fafb;border-radius:7px;font-size:12px"><b>Primaire kleur:</b> <span style="display:inline-block;width:12px;height:12px;background:${d.primaryColor||'#6366f1'};border-radius:2px;vertical-align:middle;margin-right:4px"></span>${d.primaryColor||'#6366f1'}</div>
 ${d.htmlTemplate?`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:9px 14px;border-bottom:1px solid #e5e7eb;font-weight:700;font-size:12px">Template Preview</div><div style="padding:14px">${d.htmlTemplate}</div></div>`:''}
@@ -5584,7 +5586,7 @@ Antwoord ALLEEN als JSON:
   "ctaText": "Call-to-action knoptekst (max 5 woorden)",
   "ctaSubtext": "Ondertekst bij CTA (max 12 woorden)",
   "footerTagline": "Footer slogan (max 10 woorden)"
-}`);
+}`, getModel('WEBSITE_CONTENT'));
     } catch (err) { /* AI JSON generation failed — use default content */
       console.warn('[AI] Website content generation failed:', err.message);
       content = {
@@ -5645,7 +5647,7 @@ TECHNISCHE VEREISTEN:
 - Schone, moderne typografie (system font stack)
 - Geen placeholder tekst
 
-Geef ALLEEN de volledige HTML terug. Geen uitleg, geen markdown, geen backticks.`);
+Geef ALLEEN de volledige HTML terug. Geen uitleg, geen markdown, geen backticks.`, getModel('WEBSITE_BUILD'));
     } catch (e) { send(0, 'HTML generatie mislukt: ' + e.message, 'error'); res.end(); return; }
 
     // Strip markdown code fences if Claude wrapped it
@@ -6199,7 +6201,7 @@ Use brand color ${chatStyle.color} as accent. Load font "${chatStyle.font}" from
       }
 
       // aiCallBuild(, req.user?.workspaceId) now handles markdown stripping + body validation internally
-      let html = await aiCallBuild(buildPrompt, req.user?.workspaceId);
+      let html = await aiCallBuild(buildPrompt, req.user?.workspaceId, getModel('SERVICE_BUILD'));
 
       // Append integration guide as HTML comment before </body>
       const _integGuide = buildIntegrationGuide(settings);
@@ -6268,7 +6270,7 @@ Geef een concreet actieplan in max 120 woorden. Sluit altijd af met:
 
 Schrijf in het Nederlands.`;
 
-    const response = await aiCall(chatPrompt, req.user?.workspaceId);
+    const response = await aiCall(chatPrompt, req.user?.workspaceId, getModel('CHAT_RESPONSE'));
     res.json({ built: false, response });
   } catch (err) {
     console.error('[AgentChat] Fout:', err.message);
@@ -6407,7 +6409,7 @@ RULES:
    - Section "What you can do now" with 3-5 concrete steps
    - Closing with contact info for ${myName}`;
   try {
-    const result = await aiJSON(prompt);
+    const result = await aiJSON(prompt, getModel('DELIVERY_EMAIL'));
     const subject = result.subject || `Uw project is klaar — ${lead.companyName}`;
     const body    = result.body || '';
     // Persist to lead so UI can show saved state
@@ -6564,7 +6566,7 @@ BELANGRIJKE LINKS
 
 Max 500 woorden. Geef direct de tekst terug, geen JSON.`;
   try {
-    const text = await aiCall(prompt, req.user?.workspaceId);
+    const text = await aiCall(prompt, req.user?.workspaceId, getModel('SERVICE_CONTENT'));
     res.json({ text: text.trim() });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -6706,7 +6708,7 @@ Style: white bg, indigo #6366f1 accent, Plus Jakarta Sans from Google Fonts, mob
 All CSS in <style> in <head>. All JS in <script> before </body>.`;
 
           // aiCallBuild(, req.user?.workspaceId) handles markdown stripping + body validation internally
-          const html = await aiCallBuild(prompt, req.user?.workspaceId);
+          const html = await aiCallBuild(prompt, req.user?.workspaceId, getModel('SERVICE_BUILD'));
 
           // Save file
           const sitesDir = path.join(__dirname, 'public', 'sites', companySlug);
@@ -6739,7 +6741,7 @@ Gebouwde pagina: ${svc.name} voor ${lead.companyName}.
 Live URL: ${url}
 Embed code: ${embedCode}
 
-Geef max 5 stappen in het Nederlands. Verwerk de embed code als letterlijk codeblok in de stappen waar relevant. Begin elke stap met een nummer. Geef ALLEEN de stappen, geen intro of uitleg eromheen.`, req.user?.workspaceId).catch(() => '');
+Geef max 5 stappen in het Nederlands. Verwerk de embed code als letterlijk codeblok in de stappen waar relevant. Begin elke stap met een nummer. Geef ALLEEN de stappen, geen intro of uitleg eromheen.`, req.user?.workspaceId, getModel('CLIENT_TODO')).catch(() => '');
 
           deliverables.push({
             id: Date.now().toString(36) + i,
@@ -6758,7 +6760,7 @@ Geef max 5 stappen in het Nederlands. Verwerk de embed code als letterlijk codeb
           const instructions = await aiCall(`Maak een gedetailleerde stap-voor-stap instructiegids voor de admin om de dienst "${svc.name}" uit te voeren voor de klant ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}, req.user?.workspaceId).${intakeContext}
 
 Schrijf de instructies voor de ADMIN (niet voor de klant). Max 400 woorden, in het Nederlands.
-Wees concreet: welke tools, welke stappen, welke instellingen.`);
+Wees concreet: welke tools, welke stappen, welke instellingen.`, getModel('ADMIN_INSTRUCTIONS'));
 
           deliverables.push({
             id: Date.now().toString(36) + i,
@@ -7137,7 +7139,7 @@ Use EXACTLY the brand color ${style.color} as accent color. Load font "${style.f
           }
 
           sse({ type: 'progress', service: serviceName, percent: 50 });
-          let html = await aiCallBuild(prompt, req.user?.workspaceId);
+          let html = await aiCallBuild(prompt, req.user?.workspaceId, getModel('SERVICE_BUILD'));
           sse({ type: 'progress', service: serviceName, percent: 80 });
           { const bm = html.match(/<body[^>]*>([\s\S]*)<\/body>/i); console.log(`[Build] Body length: ${(bm?.[1]?.trim()||'').length} | Success: true`); }
 
@@ -7168,7 +7170,7 @@ Use EXACTLY the brand color ${style.color} as accent color. Load font "${style.f
             } catch(e5) { console.log('[404] Error:', e5.message); }
           }
 
-          const todoText = await aiCall(`Schrijf max 5 concrete stappen voor de klant om "${serviceName}" te activeren op hun website. Live URL: ${url}. Embed code: <iframe src="${url}" width="100%" height="600" frameborder="0"></iframe>. Stap-voor-stap, in het Nederlands.`, req.user?.workspaceId).catch(() => '');
+          const todoText = await aiCall(`Schrijf max 5 concrete stappen voor de klant om "${serviceName}" te activeren op hun website. Live URL: ${url}. Embed code: <iframe src="${url}" width="100%" height="600" frameborder="0"></iframe>. Stap-voor-stap, in het Nederlands.`, req.user?.workspaceId, getModel('CLIENT_TODO')).catch(() => '');
 
           const id = Date.now().toString(36) + i;
           deliverable = { id, service: serviceName, type: 'code', status: 'wacht_op_goedkeuring', html, url, todoText, builtAt: new Date().toISOString() };
@@ -7190,7 +7192,7 @@ Structuur:
 5. KPI's en succesmetrics
 6. Aanbevolen volgende stap
 
-Schrijf in de toon en taal van het merk (zie boven). Maximaal 600 woorden. Concreet en specifiek voor niche/locatie.`);
+Schrijf in de toon en taal van het merk (zie boven). Maximaal 600 woorden. Concreet en specifiek voor niche/locatie.`, getModel('SERVICE_CONTENT'));
           sse({ type: 'progress', service: serviceName, percent: 80 });
 
           const id = Date.now().toString(36) + i;
@@ -7212,7 +7214,7 @@ Schrijf complete, direct bruikbare inhoud:
 - Schrijf ALS de copywriter van dit bedrijf, niet als externe partij
 - Minimum 300 woorden aan bruikbare content
 
-Dienst: ${svc.description || serviceName}`);
+Dienst: ${svc.description || serviceName}`, getModel('SERVICE_CONTENT'));
           sse({ type: 'progress', service: serviceName, percent: 80 });
 
           const id = Date.now().toString(36) + i;
@@ -7256,7 +7258,7 @@ The snippet must work when pasted before </body> in another HTML page.
 Return raw HTML/CSS/JS only — no markdown, no explanation.
 
 CHATBOT HTML:
-${chatbotDel.html.substring(0, 8000)}`, req.user?.workspaceId).catch(() => '');
+${chatbotDel.html.substring(0, 8000)}`, req.user?.workspaceId, getModel('CODE_EXTRACTION')).catch(() => '');
 
           if (widgetCode && widgetCode.trim().length > 50) {
             combinedHtml = combinedHtml.includes('<!-- CHATBOT_INJECT -->')
@@ -7278,7 +7280,7 @@ Do NOT include <!DOCTYPE>, <html>, <head>, <body> tags.
 Return raw HTML only — no markdown, no explanation.
 
 BOOKING HTML:
-${bookingDel.html.substring(0, 8000)}`, req.user?.workspaceId).catch(() => '');
+${bookingDel.html.substring(0, 8000)}`, req.user?.workspaceId, getModel('CODE_EXTRACTION')).catch(() => '');
 
           if (bookingSection && bookingSection.trim().length > 100) {
             const cleanSection = /^\s*<section/i.test(bookingSection.trim())
@@ -7375,7 +7377,7 @@ De email moet bevatten:
 5. Wat de volgende stap is
 6. Afsluiting met contactinfo
 
-Schrijf in het Nederlands, professioneel maar warm. Max 250 woorden. Geef ALLEEN de emailtekst, geen onderwerp.`, req.user?.workspaceId);
+Schrijf in het Nederlands, professioneel maar warm. Max 250 woorden. Geef ALLEEN de emailtekst, geen onderwerp.`, req.user?.workspaceId, getModel('DELIVERY_EMAIL'));
 
     const subject = `Uw ${d.service} is klaar! — ${agencyName}`;
     res.json({ subject, body: emailBody.trim() });
@@ -7527,7 +7529,7 @@ The snippet must work when pasted before </body> in another HTML page.
 Return raw HTML/CSS/JS only — no markdown, no explanation.
 
 CHATBOT HTML:
-${injectDel.html.substring(0, 8000)}`, req.user?.workspaceId).catch(() => '');
+${injectDel.html.substring(0, 8000)}`, req.user?.workspaceId, getModel('CODE_EXTRACTION')).catch(() => '');
 
         if (widgetCode && widgetCode.trim().length > 50) {
           combinedHtml = combinedHtml.includes('<!-- CHATBOT_INJECT -->')
@@ -7547,7 +7549,7 @@ Do NOT include <!DOCTYPE>, <html>, <head>, <body> tags.
 Return raw HTML only — no markdown, no explanation.
 
 BOOKING HTML:
-${injectDel.html.substring(0, 8000)}`, req.user?.workspaceId).catch(() => '');
+${injectDel.html.substring(0, 8000)}`, req.user?.workspaceId, getModel('CODE_EXTRACTION')).catch(() => '');
 
         if (bookingSection && bookingSection.trim().length > 100) {
           const cleanSection = /^\s*<section/i.test(bookingSection.trim())
@@ -7578,7 +7580,7 @@ Do NOT include <!DOCTYPE>, <html>, <head>, <body> tags.
 Return raw HTML only — no markdown, no explanation.
 
 HTML:
-${injectDel.html.substring(0, 8000)}`, req.user?.workspaceId).catch(() => '');
+${injectDel.html.substring(0, 8000)}`, req.user?.workspaceId, getModel('CODE_EXTRACTION')).catch(() => '');
 
         if (genericSection && genericSection.trim().length > 50) {
           combinedHtml = combinedHtml.replace('</body>', `\n${genericSection.trim()}\n</body>`);
@@ -7600,7 +7602,7 @@ Return raw HTML <section> only — no markdown, no explanation.
 
 DOCUMENT: ${injectDel.service}
 CONTENT:
-${rawContent.substring(0, 6000)}`, req.user?.workspaceId).catch(() => '');
+${rawContent.substring(0, 6000)}`, req.user?.workspaceId, getModel('CODE_EXTRACTION')).catch(() => '');
 
         if (docSection && docSection.trim().length > 100) {
           const cleanDoc = /^\s*<section/i.test(docSection.trim())
@@ -8135,7 +8137,7 @@ app.patch('/api/settings/stripe', requireAdmin, (req, res) => {
 });
 
 // ── Payments routes — migrated to routes/payments.js ──────────────────────
-app.use('/api', require('./routes/payments')({ wsRead, wsWrite, requireAdmin, isDemoUser, isDemoContext, sendEmail, addLeadHistory, addNotification, isResendReady, generateInvoiceNumber, buildInvoiceEmailHTML, generateInvoicePDF, aiJSON, trackFunnelEvent, authMiddleware }));
+app.use('/api', require('./routes/payments')({ wsRead, wsWrite, requireAdmin, isDemoUser, isDemoContext, sendEmail, addLeadHistory, addNotification, isResendReady, generateInvoiceNumber, buildInvoiceEmailHTML, generateInvoicePDF, aiJSON, trackFunnelEvent, authMiddleware, getModel }));
 
 
 app.delete('/api/settings/leads', requireAdmin, (req, res) => {
@@ -8215,7 +8217,7 @@ app.post('/api/upsell/:leadId/email', async (req, res) => {
       ? 'Schrijf een warme upsell email voor een bestaande klant. Klinkt persoonlijk, NIET als AI. Geef JSON terug.\n\nKlant: ' + opp.companyName + ' (' + opp.niche + ', ' + opp.location + ')\nHuidige dienst: ' + opp.currentService + '\nNieuwe dienst: ' + opp.upsellService + ' (\u20AC' + opp.upsellPrice + ')\nKlant al ' + opp.daysSince + ' dagen actief\nAfzender: ' + myName + ' van ' + agencyName + '\nDatum vandaag: ' + new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) + '\n\nRegels:\n- Refereer aan hun huidige resultaten positief\n- Introduceer de nieuwe dienst als logische volgende stap\n- Max 100 woorden\n- Geen bullet points\n- CTA: vraag of ze even willen bellen\n- Afsluiting: "Groeten, ' + myName + '"\n\n{"subject": "onderwerp", "body": "emailtekst"}'
       : 'Write a warm upsell email for an existing client. Sounds personal, NOT like AI. Return JSON.\n\nClient: ' + opp.companyName + ' (' + opp.niche + ', ' + opp.location + ')\nCurrent service: ' + opp.currentService + '\nNew service: ' + opp.upsellService + ' (\u20AC' + opp.upsellPrice + ')\nClient active for ' + opp.daysSince + ' days\nSender: ' + myName + ' from ' + agencyName + '\n\nRules:\n- Reference their current positive results\n- Introduce new service as natural next step\n- Max 100 words\n- No bullet points\n- CTA: ask for a quick call\n- Sign off: "Best, ' + myName + '"\n\n{"subject": "subject", "body": "email body"}';
 
-    const email = await aiJSON(prompt);
+    const email = await aiJSON(prompt, getModel('COLD_EMAIL'));
     res.json({ email, opp });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -8285,7 +8287,7 @@ CRITICAL RULES:
   for (const test of tests) {
     console.log(`[Build] Type: ${test.type}`);
     try {
-      const html = await aiCallBuild(test.prompt, req.user?.workspaceId);
+      const html = await aiCallBuild(test.prompt, req.user?.workspaceId, getModel('SUPERADMIN_PROXY'));
       const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
       const bodyContent = bodyMatch?.[1]?.trim() || '';
       console.log(`[Build] Body length: ${bodyContent.length}`);
@@ -8353,7 +8355,7 @@ MUST include in <body>: floating chat widget with open/close toggle, 15+ pre-pro
 
 MUST include in <body>: sticky navigation, full-viewport hero with headline + stats row + CTA buttons, 3+ richly styled content sections directly relevant to "${serviceName}", contact section with form, branded footer. Min 500 words of real content. Mobile responsive.`;
       }
-      const html = await aiCallBuild(prompt, req.user?.workspaceId);
+      const html = await aiCallBuild(prompt, req.user?.workspaceId, getModel('SERVICE_BUILD'));
       const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
       const bodyLength = (bodyMatch?.[1]?.trim() || '').length;
       const htmlLength = html.length;
@@ -8363,7 +8365,7 @@ MUST include in <body>: sticky navigation, full-viewport hero with headline + st
 
     } else if (STRAT_KW.test(serviceName)) {
       type = 'STRATEGY_DOCUMENT';
-      const content = await aiCall(`Schrijf een professioneel "${serviceName}" document voor ${companyName} (${niche}, ${location}, req.user?.workspaceId).${intakeCtx}\n\nStructuur:\n1. Managementsamenvatting\n2. Huidige situatie\n3. Verbeterpunten (min 5)\n4. Stappenplan Q1-Q4\n5. KPI's\n6. Volgende stap\n\nMin 400 woorden Nederlands.`);
+      const content = await aiCall(`Schrijf een professioneel "${serviceName}" document voor ${companyName} (${niche}, ${location}, req.user?.workspaceId).${intakeCtx}\n\nStructuur:\n1. Managementsamenvatting\n2. Huidige situatie\n3. Verbeterpunten (min 5)\n4. Stappenplan Q1-Q4\n5. KPI's\n6. Volgende stap\n\nMin 400 woorden Nederlands.`, req.user?.workspaceId, getModel('SERVICE_CONTENT'));
       const contentLength = content.length;
       const success = contentLength >= 200;
       console.log('[TestService] Done:', serviceName, success ? '✓' : '✗', `— ${contentLength} tekens`);
@@ -8371,7 +8373,7 @@ MUST include in <body>: sticky navigation, full-viewport hero with headline + st
 
     } else {
       type = 'TEXT_DOCUMENT';
-      const content = await aiCall(`Lever de dienst "${serviceName}" volledig op voor ${companyName} (${niche}, ${location}, req.user?.workspaceId).${intakeCtx}\n\nSchrijf direct bruikbare Nederlandse inhoud, minimaal 300 woorden, geen placeholders.`);
+      const content = await aiCall(`Lever de dienst "${serviceName}" volledig op voor ${companyName} (${niche}, ${location}, req.user?.workspaceId).${intakeCtx}\n\nSchrijf direct bruikbare Nederlandse inhoud, minimaal 300 woorden, geen placeholders.`, req.user?.workspaceId, getModel('SERVICE_CONTENT'));
       const contentLength = content.length;
       const success = contentLength >= 200;
       console.log('[TestService] Done:', serviceName, success ? '✓' : '✗', `— ${contentLength} tekens`);
@@ -8389,12 +8391,10 @@ MUST include in <body>: sticky navigation, full-viewport hero with headline + st
 let _sessionTokensIn = 0;
 let _sessionTokensOut = 0;
 
-// Claude Sonnet 4.x pricing (USD per million tokens)
-const PRICE_IN_PER_M  = 3.0;
-const PRICE_OUT_PER_M = 15.0;
-
-function calcCostUsd(tokIn, tokOut) {
-  return (tokIn / 1e6) * PRICE_IN_PER_M + (tokOut / 1e6) * PRICE_OUT_PER_M;
+// Model-aware cost calculation using lib/models.js pricing
+function calcCostUsd(tokIn, tokOut, modelId) {
+  const p = getPricing(modelId || MODELS.SONNET);
+  return (tokIn / 1e6) * p.input + (tokOut / 1e6) * p.output;
 }
 
 // ── AI Rate Limiter ──────────────────────────────────────────────────────────
@@ -8437,8 +8437,9 @@ function aiRateCheck(workspaceId) {
   }
 }
 
-async function aiCall(prompt, workspaceId) {
+async function aiCall(prompt, workspaceId, model) {
   const wId = workspaceId || null;
+  const modelId = model || MODELS.SONNET;
   aiRateCheck(wId);
   const s = wsReadWs(wId, 'settings.json') || {};
   const apiKey = getClaudeApiKey(s);
@@ -8454,7 +8455,7 @@ async function aiCall(prompt, workspaceId) {
       'anthropic-version': '2023-06-01'
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
+      model: modelId,
       max_tokens: 4000,
       messages: [{ role: 'user', content: prompt }]
     })
@@ -8467,24 +8468,22 @@ async function aiCall(prompt, workspaceId) {
   _sessionTokensIn  += tokIn;
   _sessionTokensOut += tokOut;
   _aiCallLog.push({ ts: Date.now() });
-  // Log every call so costs are tracked outside of run batches too
-  const callCost = calcCostUsd(tokIn, tokOut);
+  const callCost = calcCostUsd(tokIn, tokOut, modelId);
   const promptLabel = prompt.slice(0, 60).replace(/\n/g, ' ');
-  addActivity('ai_call', `Claude: ${promptLabel}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost, workspaceId: wId});
-  // Update running stats.json totals
+  addActivity('ai_call', `Claude: ${promptLabel}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost, model: modelId, workspaceId: wId});
   const statsNow = wsReadWs(wId, 'stats.json') || {};
   statsNow.totalApiTokensIn  = (statsNow.totalApiTokensIn  || 0) + tokIn;
   statsNow.totalApiTokensOut = (statsNow.totalApiTokensOut || 0) + tokOut;
   statsNow.totalApiCostUsd   = Math.round(((statsNow.totalApiCostUsd || 0) + callCost) * 10000) / 10000;
   wsWriteWs(wId, 'stats.json', statsNow);
-  // Join ALL text blocks — Claude may split long responses across multiple content blocks
   return data.content.filter(b => b.type === 'text').map(b => b.text).join('');
 }
 
-// Variant with 8000 max_tokens for HTML generation (pages get cut off at 4000)
+// Variant with 16000 max_tokens for HTML generation (pages get cut off at 4000)
 // Joins ALL content blocks — Claude sometimes splits a long response into multiple text blocks.
-async function aiCallBuild(prompt, workspaceId) {
+async function aiCallBuild(prompt, workspaceId, model) {
   const wId = workspaceId || null;
+  const modelId = model || MODELS.SONNET;
   console.log('[Build] Starting build...');
   console.log('[Build] Prompt length:', prompt.length);
   console.log('[Build] Prompt start:', prompt.substring(0, 200));
@@ -8504,7 +8503,7 @@ async function aiCallBuild(prompt, workspaceId) {
       'anthropic-version': '2023-06-01'
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
+      model: modelId,
       max_tokens: 16000,
       messages: [{ role: 'user', content: prompt }]
     })
@@ -8533,8 +8532,8 @@ async function aiCallBuild(prompt, workspaceId) {
   _sessionTokensIn  += tokIn;
   _sessionTokensOut += tokOut;
   _aiCallLog.push({ ts: Date.now() });
-  const callCost = calcCostUsd(tokIn, tokOut);
-  addActivity('ai_call', `Claude build: ${prompt.slice(0, 50).replace(/\n/g,' ')}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost });
+  const callCost = calcCostUsd(tokIn, tokOut, modelId);
+  addActivity('ai_call', `Claude build: ${prompt.slice(0, 50).replace(/\n/g,' ')}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost, model: modelId });
   const statsNow = wsReadWs(wId, 'stats.json') || {};
   statsNow.totalApiTokensIn  = (statsNow.totalApiTokensIn  || 0) + tokIn;
   statsNow.totalApiTokensOut = (statsNow.totalApiTokensOut || 0) + tokOut;
@@ -8600,8 +8599,8 @@ async function aiCallBuild(prompt, workspaceId) {
   return clean;
 }
 
-async function aiJSON(prompt) {
-  const text = await aiCall(prompt, null, wId);
+async function aiJSON(prompt, model) {
+  const text = await aiCall(prompt, null, model);
 
   // Strip ALL markdown code fences globally (Claude wraps JSON in ```json...```)
   const clean = text
@@ -8642,8 +8641,9 @@ function parseJsonFromText(text) {
 }
 
 // Claude API call with web_search tool — handles multi-turn tool loop
-async function aiWebSearch(prompt, workspaceId) {
+async function aiWebSearch(prompt, workspaceId, model) {
   const wId = workspaceId || null;
+  const modelId = model || MODELS.SONNET;
   aiRateCheck(wId);
   const s = wsReadWs(wId, 'settings.json') || {};
   const apiKey = getClaudeApiKey(s);
@@ -8663,7 +8663,7 @@ async function aiWebSearch(prompt, workspaceId) {
         'anthropic-beta': 'web-search-2025-03-05'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: modelId,
         max_tokens: 4000,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         messages
@@ -8721,8 +8721,8 @@ function extractJSON(text) {
   throw new Error('JSON parse mislukt');
 }
 
-async function aiWebSearchJSON(prompt) {
-  const text = await aiWebSearch(prompt, null, wId);
+async function aiWebSearchJSON(prompt, model) {
+  const text = await aiWebSearch(prompt, null, model);
   return extractJSON(text);
 }
 
@@ -9552,7 +9552,7 @@ Return ONLY JSON: { "subjectOptions": ["option1", "option2", "option3"] }`;
 
   let subjectOptions = [];
   try {
-    const subjectResult = await aiJSON(subjectPrompt);
+    const subjectResult = await aiJSON(subjectPrompt, getModel('SUBJECT_LINES'));
     subjectOptions = Array.isArray(subjectResult?.subjectOptions) ? subjectResult.subjectOptions : [];
   } catch (err) { console.warn(`[AI fallback]`, err.message);}
   if (subjectOptions.length < 3) {
@@ -9819,7 +9819,7 @@ Example format:
     let batch;
     try {
       console.log(`[Agent 1] Searching for ${randomNiche} businesses in ${randomCity}...`);
-      batch = await aiWebSearchJSON(searchPrompt);
+      batch = await aiWebSearchJSON(searchPrompt, getModel('LEAD_DISCOVERY'));
       if (!Array.isArray(batch)) batch = [batch];
       batch = batch.slice(0, batchSize);
     } catch (err) {
@@ -9888,7 +9888,7 @@ Return ONLY a JSON array:
 
 CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
         await new Promise(r => setTimeout(r, 7000));
-        const igRaw = await aiWebSearchJSON(igPrompt);
+        const igRaw = await aiWebSearchJSON(igPrompt, getModel('INSTAGRAM_DISCOVERY'));
         instaBatch = (Array.isArray(igRaw) ? igRaw : []).filter(b => b && b.companyName && b.instagramHandle).slice(0, batchSize);
         instaBatch = instaBatch.filter(b => {
           const key = b.companyName.toLowerCase().trim();
@@ -9944,7 +9944,7 @@ Return ONLY a JSON array:
 
 CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
         await new Promise(r => setTimeout(r, 7000));
-        const mapsRaw = await aiWebSearchJSON(mapsPrompt);
+        const mapsRaw = await aiWebSearchJSON(mapsPrompt, getModel('MAPS_DISCOVERY'));
         mapsBatch = (Array.isArray(mapsRaw) ? mapsRaw : []).filter(b => b && b.companyName && b.websiteUrl).slice(0, batchSize);
         mapsBatch = mapsBatch.filter(b => {
           const key = b.companyName.toLowerCase().trim();
@@ -10338,7 +10338,7 @@ Rules:
 
 {"subject": "Re: ${origSubj || lead.companyName}", "body": "full email text"}`;
 
-        const email = await aiJSON(fu1Prompt);
+        const email = await aiJSON(fu1Prompt, getModel('FOLLOWUP_EMAIL'));
         const item = {
           id: `fu1-${lead.id}-${Date.now()}`,
           leadId: lead.id,
@@ -10465,7 +10465,7 @@ Rules:
 
 {"subject": "Re: ${origSubj || lead.companyName}", "body": "full email text"}`;
 
-        const email = await aiJSON(fu2Prompt);
+        const email = await aiJSON(fu2Prompt, getModel('FOLLOWUP_EMAIL'));
         const item = {
           id: `fu2-${lead.id}-${Date.now()}`,
           leadId: lead.id,
@@ -10522,7 +10522,7 @@ Rules:
 - Sign off with your first name only
 - Hard limit: 280 characters`;
 
-        let dmText = (await aiCall(dmPrompt, null, wId)).trim().substring(0, 280);
+        let dmText = (await aiCall(dmPrompt, wId, getModel('LINKEDIN_DM'))).trim().substring(0, 280);
         if (!dmText) dmText = lang === 'nl'
           ? `Hoi! Zag ${lead.companyName} — jullie doen interessant werk in ${lead.location}. Wij helpen vergelijkbare bedrijven groeien met AI. Gratis audit beschikbaar. Even kennismaken? — ${myName}`
           : `Hi! Came across ${lead.companyName} — great work in the ${lead.location} area. We help similar businesses grow with AI. Free audit available. Worth a quick chat? — ${myName}`;
@@ -10735,7 +10735,7 @@ Rules:
 - Sounds human, no AI jargon, no buzzwords
 - Sign off with: ${myName}, ${agencyName}`;
 
-  const draft = (await aiCall(prompt, wId)).trim();
+  const draft = (await aiCall(prompt, wId, getModel('VOICENOTE_SCRIPT'))).trim();
   const subject = `Re: ${origSubject}`;
 
   // Auto-send if toggle is on AND score is high enough
@@ -11747,7 +11747,7 @@ async function sendDailyBriefing(workspaceId) {
 
   let motivationalLine = 'Blijf gefocust — elke email is een stap dichter bij de volgende klant.';
   try {
-    const raw = await aiCall('Genereer 1 motiverende zin in het Nederlands (max 20 woorden, geen cliches, wId) voor een sales agent met ' + pending.length + ' leads in inbox, ' + repliesSince + ' reacties totaal en pipeline waarde EUR ' + pipelineValue + '. Geef alleen de zin.');
+    const raw = await aiCall('Genereer 1 motiverende zin in het Nederlands (max 20 woorden, geen cliches, wId) voor een sales agent met ' + pending.length + ' leads in inbox, ' + repliesSince + ' reacties totaal en pipeline waarde EUR ' + pipelineValue + '. Geef alleen de zin.', wId, getModel('MOTIVATIONAL_LINE'));
     motivationalLine = raw.trim();
   } catch { /* keep default */ }
 
@@ -11941,7 +11941,7 @@ async function runMonthlyReports(workspaceId) {
       const prompt = lang === 'nl'
         ? 'Schrijf een professioneel maar bondig maandrapport voor een klant. Klinkt realistisch en positief. Max 200 woorden in het Nederlands.\n\nKlant: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nDienst: ' + service + '\nActief: ' + monthsActive + ' maand(en)\nMaand: ' + monthName + '\n\nStructuur:\n- Samenvatting prestaties (realistische positieve getallen voor ' + service + ')\n- Uitgevoerde werkzaamheden\n- Aanbeveling voor volgende maand\n\nGeef alleen de rapporttekst.'
         : 'Write a professional but concise monthly report for a client. Sounds realistic and positive. Max 200 words in English.\n\nClient: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nService: ' + service + '\nActive: ' + monthsActive + ' month(s)\nMonth: ' + monthName + '\n\nStructure:\n- Performance summary (realistic positive numbers for ' + service + ')\n- Work completed\n- Recommendation for next month\n\nReturn only the report text.';
-      reportContent = (await aiCall(prompt, wId)).trim();
+      reportContent = (await aiCall(prompt, wId, getModel('MONTHLY_REPORT'))).trim();
     } catch (err) { console.warn(`[AI fallback]`, err.message);
       reportContent = lang === 'nl'
         ? 'Dit rapport is automatisch gegenereerd voor ' + monthName + '.\n\nDienst: ' + service + '\nStatus: Actief en op schema.\n\nVoor vragen kunt u contact opnemen via het portaal.'
@@ -12016,7 +12016,7 @@ async function runReferralCheck(workspaceId) {
       const prompt = lang === 'nl'
         ? 'Schrijf een warme referral-verzoek email voor een tevreden klant. Klinkt persoonlijk, niet als een template. Geef JSON terug.\n\nKlant: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nDienst: ' + service + '\nActief: ' + daysSince + ' dagen\nAfzender: ' + myName + ' van ' + agencyName + '\nDatum vandaag: ' + new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) + '\n\nRegels:\n- Refereer positief aan hun samenwerking en resultaten\n- Vraag vriendelijk of ze iemand kennen die ook baat zou hebben\n- NIET pusherig of salesy\n- Max 100 woorden\n- Geen bullet points\n- Einde met zachte vraag\n- Afsluiting: "Groeten, ' + myName + '"\n\n{"subject": "onderwerp", "body": "emailtekst"}'
         : 'Write a warm referral request email for a happy client. Sounds personal, not like a template. Return JSON.\n\nClient: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nService: ' + service + '\nActive: ' + daysSince + ' days\nSender: ' + myName + ' from ' + agencyName + '\n\nRules:\n- Reference their positive collaboration and results\n- Warmly ask if they know anyone who could benefit\n- NOT pushy or salesy\n- Max 100 words\n- No bullet points\n- End with a soft question\n- Sign off: "Best, ' + myName + '"\n\n{"subject": "subject", "body": "email body"}';
-      email = await aiJSON(prompt);
+      email = await aiJSON(prompt, getModel('CLIENT_EMAIL'));
     } catch (err) { console.warn(`[AI fallback]`, err.message);
       email = lang === 'nl'
         ? { subject: 'Kort vraagje – ' + client.companyName, body: 'Beste ' + client.companyName + ',\n\nWe werken nu al ' + Math.floor(daysSince / 30) + ' maanden samen en ik hoop dat u tevreden bent met de behaalde resultaten.\n\nKent u iemand in uw netwerk die ook baat zou kunnen hebben bij onze aanpak? Een warme introductie wordt zeer gewaardeerd.\n\nMet vriendelijke groet,\n' + myName }
@@ -12679,7 +12679,7 @@ cron.schedule('0 9 * * *', async () => {
       if (!lead.contactEmail || !isResendReady(settings)) continue;
       try {
         const overdueLink = pay.paymentUrl ? `Betaallink: ${pay.paymentUrl}` : (pay.bankDetails ? `IBAN: ${pay.bankDetails.iban}` : '');
-        const reminderEmail = await aiJSON(`Schrijf een vriendelijke betalingsherinnering. Klant: ${lead.companyName}. Bedrag: €${pay.amount}. ${daysOverdue} dagen te laat. ${overdueLink} Max 100 woorden. JSON: { "subject": "...", "body": "..." }`);
+        const reminderEmail = await aiJSON(`Schrijf een vriendelijke betalingsherinnering. Klant: ${lead.companyName}. Bedrag: €${pay.amount}. ${daysOverdue} dagen te laat. ${overdueLink} Max 100 woorden. JSON: { "subject": "...", "body": "..." }`, getModel('PAYMENT_REMINDER'));
         await sendEmail({ to: lead.contactEmail, subject: reminderEmail.subject, body: reminderEmail.body, settings, workspaceId: wId});
         const lIdx = allLeads.findIndex(l => l.id === lead.id);
         const pIdx = (allLeads[lIdx]?.payments || []).findIndex(p => p.id === pay.id);
