@@ -1450,6 +1450,42 @@ function generateInvoiceNumber(settings) { return _generateInvoiceNumber(setting
 // sanitizeSubject — delegated to lib/email.js
 function sanitizeSubject(s) { return _sanitizeSubject(s); }
 
+// createPaymentLink — generates payment URLs for Stripe/Mollie/PayPal/bank transfer
+// Used by both routes/payments.js (route context) and the auto-invoice cron (no req context)
+async function createPaymentLink(method, { companyName, amount, description, billing, settings }) {
+  if (method === 'stripe') {
+    if (!settings.stripeSecretKey) throw new Error('Stripe niet geconfigureerd');
+    const stripe = Stripe(settings.stripeSecretKey);
+    const product = await stripe.products.create({ name: description || `AI-diensten — ${companyName}` });
+    const priceData = { product: product.id, unit_amount: Math.round(parseFloat(amount) * 100), currency: 'eur' };
+    if (billing !== 'eenmalig') priceData.recurring = { interval: 'month' };
+    const price = await stripe.prices.create(priceData);
+    const link = await stripe.paymentLinks.create({ line_items: [{ price: price.id, quantity: 1 }] });
+    return link.url;
+  }
+  if (method === 'mollie') {
+    if (!settings.mollieApiKey) throw new Error('Mollie niet geconfigureerd');
+    const fetch = (await import('node-fetch')).default;
+    const mollieRes = await fetch('https://api.mollie.com/v2/payment-links', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${settings.mollieApiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: description || `AI-diensten — ${companyName}`, amount: { currency: 'EUR', value: parseFloat(amount).toFixed(2) }, redirectUrl: settings.websiteContact || 'https://agencyai.nl' })
+    });
+    const d = await mollieRes.json();
+    if (!mollieRes.ok) throw new Error(d.detail || 'Mollie fout');
+    return d._links?.paymentLink?.href || d._links?.checkout?.href;
+  }
+  if (method === 'paypal') {
+    if (!settings.paypalMe) throw new Error('PayPal niet geconfigureerd');
+    const handle = settings.paypalMe.replace(/^.*paypal\.me\//i, '').replace(/\/$/, '');
+    return `https://www.paypal.me/${handle}/${Math.round(amount)}EUR`;
+  }
+  if (method === 'bank_transfer') {
+    return null;
+  }
+  throw new Error('Onbekende betaalmethode');
+}
+
 function buildIntegrationGuide(settings) {
   const s = settings || {};
   const agencyName = s.agencyName || 'Agency AI';
@@ -13375,13 +13411,15 @@ cron.schedule('0 9 * * *', async () => {
 // ─── Monthly auto-invoice + overdue reminder ──────────────────────────────────
 
 cron.schedule('0 9 * * *', async () => {
-  const settings = wsRead(req, 'settings.json') || {};
-  const leads = wsRead(req, 'leads.json') || [];
+  for (const wId of getAllWorkspaceIds()) {
+  try {
+  const settings = wsReadWs(wId, 'settings.json') || {};
+  const leads = wsReadWs(wId, 'leads.json') || [];
   const today = new Date();
 
   // Auto-invoice: run on configured day of month
   if (settings.autoInvoiceEnabled && today.getDate() === (settings.autoInvoiceDay || 1)) {
-    console.log('[Cron] Auto-factuur run gestart');
+    console.log(`[Cron] Auto-factuur run gestart (workspace: ${wId || 'default'})`);
     const clients = leads.filter(l => l.status === 'client' && (l.services || []).some(s => s.billing !== 'eenmalig'));
     for (const lead of clients) {
       try {
@@ -13391,19 +13429,19 @@ cron.schedule('0 9 * * *', async () => {
         const method = settings.preferredPaymentMethod || 'stripe';
         const desc = `${monthlyServices.map(s => s.name).join(', ')} — ${today.toLocaleDateString('nl-NL', {month:'long',year:'numeric'})}`;
         const url = await createPaymentLink(method, { companyName: lead.companyName, amount: total, description: desc, billing: 'eenmalig', settings });
-        const freshLeads = wsRead(req, 'leads.json') || [];
+        const freshLeads = wsReadWs(wId, 'leads.json') || [];
         const fIdx = freshLeads.findIndex(l => l.id === lead.id);
         if (fIdx !== -1) {
           if (!freshLeads[fIdx].payments) freshLeads[fIdx].payments = [];
           freshLeads[fIdx].payments.push({ id: Date.now().toString(36), type: 'subscription', amount: total, description: desc, billing: 'eenmalig', method, paymentUrl: url, status: 'sent', dueDate: new Date(today.getTime() + 14 * 86400000).toISOString(), createdAt: new Date().toISOString() });
           addLeadHistory(freshLeads, lead.id, { event: 'autoInvoice', label: `Automatische factuur aangemaakt: €${total}` });
-          wsWrite(req, 'leads.json', freshLeads);
+          wsWriteWs(wId, 'leads.json', freshLeads);
         }
         if (lead.contactEmail && isResendReady(settings)) {
           const termDays    = settings.paymentTermDays || 14;
           const { nr: invoiceNr, nextNum: _invNum2 } = generateInvoiceNumber(settings);
           settings.lastInvoiceNumber = _invNum2;
-          wsWrite(req, 'settings.json', settings);
+          wsWriteWs(wId, 'settings.json', settings);
           const dueDateISO  = new Date(today.getTime() + termDays * 86400000).toISOString();
           const svcsForInv  = monthlyServices.map(s => ({ name: s.name || 'Dienst', price: s.price || 0, billing: 'maandelijks' }));
           const invoiceHtml = buildInvoiceEmailHTML({ invoiceNr, invoiceDate: today.toISOString(), dueDate: dueDateISO, lead, services: svcsForInv, amount: total, settings });
@@ -13423,7 +13461,7 @@ cron.schedule('0 9 * * *', async () => {
 
   // Overdue reminders
   const reminderDays = settings.paymentReminderDays || 7;
-  const allLeads = wsRead(req, 'leads.json') || [];
+  const allLeads = wsReadWs(wId, 'leads.json') || [];
   for (const lead of allLeads) {
     for (const pay of (lead.payments || [])) {
       if (pay.status !== 'sent') continue;
@@ -13462,15 +13500,18 @@ Geef ALLEEN JSON: {"subject":"kort en duidelijk","body":"volledige email tekst"}
       } catch { /* optional */ }
     }
   }
-  wsWrite(req, 'leads.json', allLeads);
+  wsWriteWs(wId, 'leads.json', allLeads);
+  } catch (err) { console.error(`[Cron AutoInvoice] Workspace ${wId} fout:`, err.message); }
+  }
 });
 
 // Client health alerts — daily 09:30
 cron.schedule('30 9 * * *', async () => {
+  for (const wId of getAllWorkspaceIds()) {
   try {
-    const leads = wsRead(req, 'leads.json') || [];
-    const settings = wsRead(req, 'settings.json') || {};
-    if (!isResendReady(settings)) return;
+    const leads = wsReadWs(wId, 'leads.json') || [];
+    const settings = wsReadWs(wId, 'settings.json') || {};
+    if (!isResendReady(settings)) continue;
     const now = Date.now();
     const day = 86400000;
     const issues = [];
@@ -13485,7 +13526,7 @@ cron.schedule('30 9 * * *', async () => {
       if (waitingDeliverable) issues.push({ company: l.companyName, id: l.id, type: '⏳ Deliverable wacht', detail: `"${waitingDeliverable.service}" wacht >7 dagen op goedkeuring` });
     }
 
-    if (!issues.length) return;
+    if (!issues.length) continue;
 
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
     const issueRows = issues.map(i => `<tr><td style="padding:10px 14px;font-weight:600">${i.company}</td><td style="padding:10px 14px">${i.type}</td><td style="padding:10px 14px;color:#666">${i.detail}</td><td style="padding:10px 14px"><a href="${baseUrl}/app/dashboard" style="color:#6366f1">Open →</a></td></tr>`).join('');
@@ -13495,11 +13536,12 @@ cron.schedule('30 9 * * *', async () => {
       subject: `Agency AI — ${issues.length} klant${issues.length > 1 ? 'en vereisen' : ' vereist'} aandacht`,
       html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto"><h2 style="color:#111">Klant gezondheid — actie vereist</h2><p style="color:#555;margin-bottom:20px">${issues.length} issue${issues.length>1?'s':''} vereisen uw aandacht:</p><table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><thead><tr style="background:#f9fafb"><th style="padding:10px 14px;text-align:left;font-size:12px;color:#888;text-transform:uppercase">Klant</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:#888;text-transform:uppercase">Type</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:#888;text-transform:uppercase">Detail</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:#888;text-transform:uppercase">Actie</th></tr></thead><tbody>${issueRows}</tbody></table><p style="margin-top:20px;color:#888;font-size:13px">Agency AI — automatisch gegenereerde alert</p></div>`,
       settings,
-      noCalendly: true
-   , workspaceId: wId}).catch(e => console.log('[HealthAlert] Email error:', e.message));
+      noCalendly: true,
+      workspaceId: wId}).catch(e => console.log('[HealthAlert] Email error:', e.message));
 
     console.log(`[HealthAlert] Sent alert for ${issues.length} client issues`);
   } catch(e) { console.log('[HealthAlert] Cron error:', e.message); }
+  }
 });
 
 // ─── Admin data stats ────────────────────────────────────────────────────────
