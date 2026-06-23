@@ -13988,6 +13988,25 @@ function ensureWorkspaceSeed() {
   }
 }
 
+// 404 catch-all — must be after all other routes
+app.use((req, res) => {
+  if (req.accepts('html')) {
+    res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
+  } else {
+    res.status(404).json({ error: 'Niet gevonden' });
+  }
+});
+
+// Global error handler — serves 500 page
+app.use((err, req, res, _next) => {
+  console.error('[500]', req.method, req.url, err.message);
+  if (req.accepts('html')) {
+    res.status(500).sendFile(path.join(__dirname, 'public', '500.html'));
+  } else {
+    res.status(500).json({ error: 'Interne serverfout' });
+  }
+});
+
 if (require.main === module || process.env.NODE_ENV !== 'test') pgInitPromise.then(() => {
   ensureWorkspaceSeed(); // Run before server starts — safe on every deploy
   const server = app.listen(PORT, () => {
