@@ -681,6 +681,21 @@
         const data = await res.json();
 
         if (!res.ok) {
+          // Handle pending payment account
+          if (data.pending_payment) {
+            const notice = document.getElementById('pausedNotice');
+            const ref    = data.paymentReference || '—';
+            const amt    = data.amount != null ? `€${Number(data.amount).toLocaleString('nl-NL', {minimumFractionDigits:2})}` : '—';
+            notice.innerHTML = `<strong>Betaling nog niet ontvangen.</strong><br>
+              Maak <strong>${amt}</strong> over naar IBAN <code>NL62RABO0301339430</code> met referentie <code>${ref}</code> om je account te activeren.<br>
+              <a href="/register/betaling?ref=${encodeURIComponent(ref)}&amount=${data.amount || ''}" style="color:inherit;text-decoration:underline">Bekijk betaalinstructies →</a>
+              &nbsp; Vragen? <a href="mailto:info@agencyai.info" style="color:inherit">info@agencyai.info</a>`;
+            notice.classList.add('visible');
+            document.getElementById('blockedNotice').classList.remove('visible');
+            staffError.classList.remove('visible');
+            return;
+          }
+
           // Handle paused account
           if (data.paused) {
             const notice = document.getElementById('pausedNotice');

@@ -41,6 +41,48 @@ Caching is **highly applicable** for:
 
 ---
 
+## Production Readiness Audit (Session 2)
+
+### Registration & Onboarding
+- **FIXED**: Registration form input sanitization — XSS prevention, 100-char name/company limits, control char stripping
+- **FIXED**: Payment reference collision — increased from 4 hex to 6 hex chars with collision detection
+- **FIXED**: Registration rate limiting — 5 attempts per IP per 15 min
+- **FIXED**: Double-click protection on registration form submit
+- **FIXED**: Pending payment UX — login shows IBAN/reference/amount with link to betaling page
+- **FIXED**: First-login empty state — 3-step welcome banner for new workspaces
+
+### Settings Validation
+- **FIXED**: Settings text fields (agencyName, myName, etc.) had no server-side length limits — added 200/1000 char trim
+- **FIXED**: Password change via settings had no minimum length enforcement — added 8 chars + 1 digit check
+
+### Public Endpoints
+- **FIXED**: Contact form (/api/sites/:slug/contact) had no email format validation or input length limits — added
+
+### API Surface
+- **FIXED**: No API key rotation endpoint — added POST /api/auth/api-keys/:id/rotate (atomic revoke+create)
+- **FIXED**: No API key rate limiting — added 120 requests/minute per key with 429 response
+
+### Failure Modes
+- **FIXED**: Claude API errors returned generic message — now returns specific Dutch messages for rate limit (429) and budget exhaustion (402/credit)
+- **FIXED**: Inbox approve/disapprove had no double-click protection — added in-flight guard set
+
+### Desktop & Mobile
+- **FIXED**: Electron app showed blank screen on connection failure — added offline page with retry button
+- **NEW**: APPSTORE_READINESS.md checklist for iOS App Store submission
+- **NEW**: API.md documentation for customer-facing API
+
+## Summary
+- **Issues Fixed (Session 1)**: 12 (field injection x5, async error handling x3, dead code x5, path prefix x1)
+- **Issues Fixed (Session 2)**: 14 (registration x4, settings x2, public endpoint x1, API x2, failure modes x2, desktop x1, new artifacts x2)
+- **Total Issues Fixed**: 26
+- **Issues Deferred**: 0 critical, 8 notes for future consideration
+- **Dead Code Removed**: 5 functions (~40 lines)
+||||||| 714f544
+## Summary
+- **Issues Fixed**: 12 (field injection × 5, async error handling × 3, dead code × 5, path prefix × 1)
+- **Issues Deferred**: 0 critical, 8 notes for future consideration
+- **Dead Code Removed**: 5 functions (~40 lines)
+
 ### Call-by-Call Inventory
 
 | # | Location | Function | What It Does | Model | Output | Frequency | Customer-Visible |

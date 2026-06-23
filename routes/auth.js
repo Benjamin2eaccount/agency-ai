@@ -147,9 +147,19 @@ module.exports = function createAuthRouter({ readJSON, writeJSON, JWT_SECRET }) 
           error: 'Account geblokkeerd. Neem contact op via info@agencyai.info',
         });
       }
+      if (workspace.status === 'pending_payment') {
+        return res.status(403).json({
+          error            : 'Betaling nog niet ontvangen',
+          pending_payment  : true,
+          paymentReference : workspace.payment_reference,
+          iban             : 'NL62RABO0301339430',
+          amount           : workspace.billing_amount,
+          message          : 'Je account is aangemaakt maar je betaling is nog niet ontvangen. Maak de betaling over om je account te activeren.',
+        });
+      }
       if (workspace.status === 'paused') {
         return res.status(403).json({
-          error            : 'Account gepauzeerd',
+          error            : 'Account gepauzeerd — betaling niet ontvangen',
           paused           : true,
           paymentReference : workspace.payment_reference,
           iban             : 'NL62RABO0301339430',

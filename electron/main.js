@@ -148,6 +148,29 @@ function createMainWindow(url = 'https://www.agencyai.info/app/', accountId = 'd
 
   mainWindow.loadURL(url)
   mainWindow.on('closed', () => { mainWindow = null })
+
+  // Offline handling: show clear message when page fails to load
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    if (errorCode === -3) return // Aborted navigations (user clicked away fast)
+    const offlineHTML = `
+      <html><head><meta charset="UTF-8"><style>
+        body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;
+        background:#0a0a0f;color:#f1f5f9;font-family:-apple-system,system-ui,sans-serif;text-align:center}
+        .box{max-width:400px;padding:40px}
+        h2{font-size:22px;margin:0 0 12px;font-weight:700}
+        p{font-size:14px;color:#94a3b8;line-height:1.6;margin:0 0 24px}
+        button{background:#6366f1;color:#fff;border:none;border-radius:8px;padding:12px 28px;
+        font-size:14px;font-weight:600;cursor:pointer}
+        button:hover{background:#4f46e5}
+        .code{font-size:12px;color:#475569;margin-top:16px}
+      </style></head><body><div class="box">
+        <h2>Geen internetverbinding</h2>
+        <p>Agency AI heeft een internetverbinding nodig om te werken. Controleer je verbinding en probeer het opnieuw.</p>
+        <button onclick="location.href='${url.replace(/'/g, "\\'")}'"">Opnieuw proberen</button>
+        <div class="code">${errorDescription || 'ERR_INTERNET_DISCONNECTED'}</div>
+      </div></body></html>`
+    mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(offlineHTML))
+  })
 }
 
 // ── System tray ───────────────────────────────────────────────────────────────

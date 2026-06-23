@@ -711,6 +711,33 @@ async function renderDashboard() {
 
     ${buildDailyBriefingSection(leads, displayInbox, settings)}
 
+    ${leads.length === 0 && !settings?.isDemo ? `
+    <div style="background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid #334155;border-radius:14px;padding:28px 32px;margin-bottom:24px">
+      <h2 style="margin:0 0 8px;font-size:20px;color:#f1f5f9;font-weight:700">Welkom bij Agency AI! 🚀</h2>
+      <p style="margin:0 0 16px;font-size:14px;color:#94a3b8;line-height:1.6">Start in 3 stappen:</p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:180px;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:16px">
+          <div style="font-size:24px;margin-bottom:6px">1️⃣</div>
+          <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:4px">Instellingen configureren</div>
+          <div style="font-size:12px;color:#64748b">Stel je agencynaam, email en Claude API key in</div>
+          <button class="btn btn-outline" style="margin-top:10px;font-size:12px;padding:6px 14px" onclick="setView('settings')">Naar instellingen →</button>
+        </div>
+        <div style="flex:1;min-width:180px;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:16px">
+          <div style="font-size:24px;margin-bottom:6px">2️⃣</div>
+          <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:4px">Eerste run starten</div>
+          <div style="font-size:12px;color:#64748b">De AI vindt automatisch leads in jouw niche</div>
+          <button class="btn btn-primary" style="margin-top:10px;font-size:12px;padding:6px 14px" onclick="setView('runs')">Run starten →</button>
+        </div>
+        <div style="flex:1;min-width:180px;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:16px">
+          <div style="font-size:24px;margin-bottom:6px">3️⃣</div>
+          <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:4px">Leads beoordelen</div>
+          <div style="font-size:12px;color:#64748b">Keur leads goed in je inbox voor automatische outreach</div>
+        </div>
+      </div>
+      <p style="margin:16px 0 0;font-size:12px;color:#64748b">Hulp nodig? Mail <a href="mailto:info@agencyai.info" style="color:#60a5fa">info@agencyai.info</a></p>
+    </div>
+    ` : ''}
+
     <div class="db-header">
       <div>
         <div class="db-greeting">${greeting}, ${esc(adminName)} 👋</div>

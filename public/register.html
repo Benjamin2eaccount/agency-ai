@@ -483,22 +483,22 @@
           <div class="form-row">
             <div class="form-group">
               <label for="demoNaam">Naam *</label>
-              <input type="text" id="demoNaam" placeholder="Jan Janssen" autocomplete="name">
+              <input type="text" id="demoNaam" placeholder="Jan Janssen" autocomplete="name" maxlength="100">
             </div>
             <div class="form-group">
               <label for="demoBedrijf">Bedrijfsnaam *</label>
-              <input type="text" id="demoBedrijf" placeholder="Marketing Pro" autocomplete="organization">
+              <input type="text" id="demoBedrijf" placeholder="Marketing Pro" autocomplete="organization" maxlength="100">
             </div>
           </div>
 
           <div class="form-row">
             <div class="form-group">
               <label for="demoEmail">Email *</label>
-              <input type="email" id="demoEmail" placeholder="jan@bedrijf.nl" autocomplete="email">
+              <input type="email" id="demoEmail" placeholder="jan@bedrijf.nl" autocomplete="email" maxlength="254">
             </div>
             <div class="form-group">
               <label for="demoTel">Telefoonnummer</label>
-              <input type="tel" id="demoTel" placeholder="+31 6 12345678" autocomplete="tel">
+              <input type="tel" id="demoTel" placeholder="+31 6 12345678" autocomplete="tel" maxlength="30">
             </div>
           </div>
 
@@ -547,17 +547,17 @@
           <div class="form-row">
             <div class="form-group">
               <label for="dirNaam">Naam *</label>
-              <input type="text" id="dirNaam" placeholder="Jan Janssen" autocomplete="name">
+              <input type="text" id="dirNaam" placeholder="Jan Janssen" autocomplete="name" maxlength="100">
             </div>
             <div class="form-group">
               <label for="dirBedrijf">Bedrijfsnaam *</label>
-              <input type="text" id="dirBedrijf" placeholder="Marketing Pro" autocomplete="organization">
+              <input type="text" id="dirBedrijf" placeholder="Marketing Pro" autocomplete="organization" maxlength="100">
             </div>
           </div>
 
           <div class="form-group">
             <label for="dirEmail">Email *</label>
-            <input type="email" id="dirEmail" placeholder="jan@bedrijf.nl" autocomplete="email">
+            <input type="email" id="dirEmail" placeholder="jan@bedrijf.nl" autocomplete="email" maxlength="254">
           </div>
 
           <div class="form-group">
@@ -701,8 +701,13 @@
         pwd.length === 0 ? 'Min. 8 tekens en minstens 1 cijfer' : hints[score] || hints[0];
     }
 
+    // ── Double-click guard ──────────────────────────────────────────────────
+    let _submitting = false;
+
     // ── Demo submit ──────────────────────────────────────────────────────────
     async function submitDemo() {
+      if (_submitting) return;
+      _submitting = true;
       const naam    = document.getElementById('demoNaam').value.trim();
       const bedrijf = document.getElementById('demoBedrijf').value.trim();
       const email   = document.getElementById('demoEmail').value.trim();
@@ -716,7 +721,15 @@
 
       if (!naam || !bedrijf || !email) {
         showError('demoError', 'Naam, bedrijfsnaam en email zijn verplicht.');
-        return;
+        _submitting = false; return;
+      }
+      if (naam.length > 100 || bedrijf.length > 100) {
+        showError('demoError', 'Naam en bedrijfsnaam mogen maximaal 100 tekens zijn.');
+        _submitting = false; return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        showError('demoError', 'Voer een geldig emailadres in.');
+        _submitting = false; return;
       }
 
       setLoading('demoBtn', true);
@@ -735,11 +748,14 @@
         showError('demoError', 'Verbindingsfout. Probeer het opnieuw.');
       } finally {
         setLoading('demoBtn', false);
+        _submitting = false;
       }
     }
 
     // ── Direct submit ────────────────────────────────────────────────────────
     async function submitDirect() {
+      if (_submitting) return;
+      _submitting = true;
       const naam    = document.getElementById('dirNaam').value.trim();
       const bedrijf = document.getElementById('dirBedrijf').value.trim();
       const email   = document.getElementById('dirEmail').value.trim();
@@ -752,19 +768,27 @@
 
       if (!naam || !bedrijf || !email || !pwd) {
         showError('directError', 'Vul alle verplichte velden in.');
-        return;
+        _submitting = false; return;
+      }
+      if (naam.length < 2 || naam.length > 100) {
+        showError('directError', 'Naam moet tussen 2 en 100 tekens zijn.');
+        _submitting = false; return;
+      }
+      if (bedrijf.length < 2 || bedrijf.length > 100) {
+        showError('directError', 'Bedrijfsnaam moet tussen 2 en 100 tekens zijn.');
+        _submitting = false; return;
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         showError('directError', 'Voer een geldig emailadres in.');
-        return;
+        _submitting = false; return;
       }
       if (pwd.length < 8 || !/\d/.test(pwd)) {
         showError('directError', 'Wachtwoord: min. 8 tekens en minstens 1 cijfer.');
-        return;
+        _submitting = false; return;
       }
       if (pwd !== confirm) {
         showError('directError', 'Wachtwoorden komen niet overeen.');
-        return;
+        _submitting = false; return;
       }
 
       setLoading('dirBtn', true);
@@ -785,6 +809,7 @@
         showError('directError', 'Verbindingsfout. Probeer het opnieuw.');
       } finally {
         setLoading('dirBtn', false);
+        _submitting = false;
       }
     }
 

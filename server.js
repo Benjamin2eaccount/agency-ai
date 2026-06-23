@@ -1807,6 +1807,17 @@ function isClaudeReady(s) {
   return !!(getClaudeApiKey(s));
 }
 
+// API key rate limiter: 120 requests per minute per key
+const _apiKeyRateLimit = {};
+function checkApiKeyRateLimit(keyHash) {
+  const now = Date.now();
+  if (!_apiKeyRateLimit[keyHash]) _apiKeyRateLimit[keyHash] = [];
+  _apiKeyRateLimit[keyHash] = _apiKeyRateLimit[keyHash].filter(t => now - t < 60000);
+  if (_apiKeyRateLimit[keyHash].length >= 120) return false;
+  _apiKeyRateLimit[keyHash].push(now);
+  return true;
+}
+
 function authMiddleware(req, res, next) {
   const header = req.headers['authorization'];
   if (!header || !header.startsWith('Bearer ')) {
@@ -1820,6 +1831,9 @@ function authMiddleware(req, res, next) {
     const keys = readJSON('api-keys.json') || [];
     const found = keys.find(k => k.keyHash === h);
     if (!found) return res.status(401).json({ error: 'API sleutel ongeldig' });
+    if (!checkApiKeyRateLimit(h)) {
+      return res.status(429).json({ error: 'API rate limit bereikt (120 verzoeken per minuut). Probeer het later opnieuw.' });
+    }
     found.lastUsed = new Date().toISOString();
     writeJSON('api-keys.json', keys);
     req.user = { id: found.userId, username: found.username, role: found.role, name: found.keyLabel, workspaceId: found.workspaceId || null };
@@ -2863,8 +2877,15 @@ app.get('/api/services', (req, res) => {
 // Contact form submissions from built client sites — public, no auth
 app.post('/api/sites/:siteSlug/contact', async (req, res) => {
   if (!/^[a-z0-9-]+$/.test(req.params.siteSlug)) return res.status(404).json({ error: 'Niet gevonden' });
-  const { name, email, phone, message, service } = req.body;
+  const rawName = String(req.body?.name || '').trim().slice(0, 200);
+  const rawEmail = String(req.body?.email || '').trim().slice(0, 254).toLowerCase();
+  const phone = String(req.body?.phone || '').trim().slice(0, 30);
+  const message = String(req.body?.message || '').trim().slice(0, 2000);
+  const service = String(req.body?.service || '').trim().slice(0, 200);
+  const name = rawName;
+  const email = rawEmail;
   if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Ongeldig emailadres' });
 
   const siteSlug = req.params.siteSlug;
   const leads = readJSON('leads.json') || [];
@@ -2963,9 +2984,22 @@ app.post('/api/portal/:token/hosting-request', requirePortalAuth, express.json()
 const PLAN_PRICES = { starter: 197, pro: 497, agency: 997 };
 const DISPOSABLE_DOMAINS = ['mailinator.com','guerrillamail.com','10minutemail.com','throwam.com','yopmail.com','trashmail.com','fakeinbox.com','sharklasers.com','guerrillamailblock.com','spam4.me','grr.la','guerrillamail.info'];
 
+// HTML-escape for safe injection into email templates
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Sanitize registration input: trim, limit length, strip control chars
+function sanitizeRegInput(val, maxLen = 200) {
+  if (!val || typeof val !== 'string') return '';
+  return val.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').slice(0, maxLen);
+}
+
 function validateEmail(email) {
   if (!email || typeof email !== 'string') return false;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return false;
+  if (email.length > 254) return false;
   const domain = email.split('@')[1].toLowerCase();
   if (DISPOSABLE_DOMAINS.includes(domain)) return false;
   return true;
@@ -2974,7 +3008,8 @@ function validateEmail(email) {
 function isEmailTaken(email) {
   const db = getDb();
   try {
-    const row = db.prepare('SELECT id FROM workspace_users WHERE email = ?').get(email.toLowerCase().trim());
+    const normalized = email.toLowerCase().trim();
+    const row = db.prepare('SELECT id FROM workspace_users WHERE LOWER(email) = ?').get(normalized);
     return !!row;
   } catch (err) { console.error(`[DB]`, err.message); return false; }
 }
@@ -3016,7 +3051,7 @@ function buildRegEmail(type, data) {
     return {
       subject: 'Welkom bij Agency AI — betaalinstructies',
       html: wrap(`
-        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px;letter-spacing:-0.3px">Welkom, ${naam}! 👋</h2>
+        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px;letter-spacing:-0.3px">Welkom, ${escHtml(naam)}! 👋</h2>
         <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 20px">Je account is aangemaakt. Eén stap verwijderd van de start: maak de betaling over en we activeren je account binnen 2 uur.</p>
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8faff;border:1px solid #dbeafe;border-radius:10px;margin-bottom:24px">
         <tr><td style="padding:20px 24px">
@@ -3043,7 +3078,7 @@ function buildRegEmail(type, data) {
     return {
       subject: 'Demo aanvraag ontvangen — Agency AI',
       html: wrap(`
-        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Bedankt voor je interesse, ${naam}! 🙌</h2>
+        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Bedankt voor je interesse, ${escHtml(naam)}! 🙌</h2>
         <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">We hebben je demo aanvraag ontvangen en nemen <strong>binnen 24 uur</strong> contact met je op voor een persoonlijk gesprek.</p>
         <p style="font-size:14px;color:#6b7280;line-height:1.6;margin:0 0 24px">In de tussentijd kun je alvast kijken wat Agency AI voor jou kan betekenen.</p>
         <table cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="background:${accent};border-radius:8px">
@@ -3057,7 +3092,7 @@ function buildRegEmail(type, data) {
     return {
       subject: 'Je Agency AI account is actief! 🚀',
       html: wrap(`
-        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Gefeliciteerd, ${naam}! 🎉</h2>
+        <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Gefeliciteerd, ${escHtml(naam)}! 🎉</h2>
         <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">Je betaling is ontvangen en je Agency AI account is nu <strong>actief</strong>. Je kunt direct aan de slag!</p>
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;margin-bottom:24px"><tr><td style="padding:16px 20px">
           <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#166534">Eerste stappen:</p>
@@ -3080,7 +3115,7 @@ function buildRegEmail(type, data) {
       subject: 'Je Agency AI account is gepauzeerd',
       html: wrap(`
         <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Account gepauzeerd</h2>
-        <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">Beste ${naam}, je Agency AI account is tijdelijk gepauzeerd omdat we nog geen betaling hebben ontvangen.</p>
+        <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">Beste ${escHtml(naam)}, je Agency AI account is tijdelijk gepauzeerd omdat we nog geen betaling hebben ontvangen.</p>
         <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:18px 20px;margin-bottom:20px">
           <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#9a3412">Maak de betaling over om direct te heractiveren:</p>
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -3098,7 +3133,7 @@ function buildRegEmail(type, data) {
       subject: 'Je Agency AI account is geblokkeerd',
       html: wrap(`
         <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Account geblokkeerd</h2>
-        <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">Beste ${data.naam}, je Agency AI account is geblokkeerd na een periode van geen betaling.</p>
+        <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px">Beste ${escHtml(data.naam)}, je Agency AI account is geblokkeerd na een periode van geen betaling.</p>
         <p style="font-size:14px;color:#6b7280;line-height:1.6;margin:0 0 24px">Neem contact met ons op om je account te heractiveren.</p>
         <table cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="background:#111;border-radius:8px">
           <a href="mailto:info@agencyai.info?subject=Account heractiveren" style="display:inline-block;padding:13px 28px;font-size:14px;font-weight:600;color:#fff;text-decoration:none">Contact opnemen →</a>
@@ -3109,10 +3144,31 @@ function buildRegEmail(type, data) {
   return { subject: 'Agency AI', html: wrap('<p>Bericht van Agency AI.</p>') };
 }
 
+// Registration rate limiter — 5 attempts per IP per 15 min
+const _regRateLimit = {};
+function regRateLimiter(req, res, next) {
+  const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+  const now = Date.now();
+  if (!_regRateLimit[ip]) _regRateLimit[ip] = [];
+  _regRateLimit[ip] = _regRateLimit[ip].filter(t => now - t < 900000);
+  if (_regRateLimit[ip].length >= 5) {
+    return res.status(429).json({ error: 'Te veel registratiepogingen. Probeer het over 15 minuten opnieuw.' });
+  }
+  _regRateLimit[ip].push(now);
+  next();
+}
+
 // POST /api/register/demo — public
-app.post('/api/register/demo', async (req, res) => {
+app.post('/api/register/demo', regRateLimiter, async (req, res) => {
   try {
-    const { naam, bedrijf, email, tel, klanten, plan, bericht } = req.body || {};
+    const naam    = sanitizeRegInput(req.body?.naam, 100);
+    const bedrijf = sanitizeRegInput(req.body?.bedrijf, 100);
+    const email   = (req.body?.email || '').trim().toLowerCase().slice(0, 254);
+    const tel     = sanitizeRegInput(req.body?.tel, 30);
+    const klanten = sanitizeRegInput(req.body?.klanten, 20);
+    const plan    = sanitizeRegInput(req.body?.plan, 20);
+    const bericht = sanitizeRegInput(req.body?.bericht, 1000);
+
     if (!naam || !bedrijf || !email) {
       return res.status(400).json({ error: 'Naam, bedrijfsnaam en email zijn verplicht.' });
     }
@@ -3130,7 +3186,7 @@ app.post('/api/register/demo', async (req, res) => {
     )`);
     db.prepare(`INSERT INTO demo_requests (name, company, email, phone, clients, plan, message)
       VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .run(naam, bedrijf, email, tel || '', klanten || '', plan || 'starter', bericht || '');
+      .run(naam, bedrijf, email, tel, klanten, plan || 'starter', bericht);
 
     // Notification
     try { addNotification('contact_form', `Demo aanvraag: ${naam} — ${bedrijf}`, email, null, 'contacts'); } catch (err) { console.error(`[DB]`, err.message);}
@@ -3141,13 +3197,11 @@ app.post('/api/register/demo', async (req, res) => {
     const settings = readJSON('settings.json') || {};
     if (isResendReady(settings)) {
       const planLabel = { starter: 'Starter €197/m', pro: 'Pro €497/m', agency: 'Agency €997/m' }[plan] || plan;
-      // Email to admin
       sendEmail({
         to      : 'info@agencyai.info',
         subject : `Nieuwe demo aanvraag: ${naam} — ${bedrijf}`,
         body    : `Nieuwe demo aanvraag:\n\nNaam: ${naam}\nBedrijf: ${bedrijf}\nEmail: ${email}\nTel: ${tel||'—'}\nKlanten: ${klanten||'—'}\nPlan: ${planLabel}\n\nBericht:\n${bericht||'—'}`,
         settings, workspaceId: req.user?.workspaceId}).catch(() => {});
-      // Confirmation to applicant
       const conf = buildRegEmail('demo_confirm', { naam, plan });
       sendEmail({ to: email, subject: conf.subject, html: conf.html, settings, workspaceId: req.user?.workspaceId}).catch(() => {});
     }
@@ -3158,13 +3212,23 @@ app.post('/api/register/demo', async (req, res) => {
 });
 
 // POST /api/register/direct — public
-app.post('/api/register/direct', async (req, res) => {
+app.post('/api/register/direct', regRateLimiter, async (req, res) => {
   try {
-    const { naam, bedrijf, email, password, plan } = req.body || {};
+    const naam    = sanitizeRegInput(req.body?.naam, 100);
+    const bedrijf = sanitizeRegInput(req.body?.bedrijf, 100);
+    const email   = (req.body?.email || '').trim().toLowerCase().slice(0, 254);
+    const password = req.body?.password || '';
+    const plan    = sanitizeRegInput(req.body?.plan, 20);
 
     // Validate
     if (!naam || !bedrijf || !email || !password) {
       return res.status(400).json({ error: 'Vul alle verplichte velden in.' });
+    }
+    if (naam.length < 2) {
+      return res.status(400).json({ error: 'Naam moet minimaal 2 tekens bevatten.' });
+    }
+    if (bedrijf.length < 2) {
+      return res.status(400).json({ error: 'Bedrijfsnaam moet minimaal 2 tekens bevatten.' });
     }
     if (!validateEmail(email)) {
       return res.status(400).json({ error: 'Ongeldig emailadres.' });
@@ -3904,6 +3968,34 @@ app.delete('/api/auth/api-keys/:id', (req, res) => {
   }
   writeJSON('api-keys.json', keys.filter(k => k.id !== req.params.id));
   res.json({ ok: true });
+});
+
+// Rotate: revoke old key, create new one atomically
+app.post('/api/auth/api-keys/:id/rotate', (req, res) => {
+  const keys = readJSON('api-keys.json') || [];
+  const oldKey = keys.find(k => k.id === req.params.id);
+  if (!oldKey) return res.status(404).json({ error: 'Sleutel niet gevonden' });
+  if (oldKey.userId !== req.user.id && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Geen toegang' });
+  }
+  const rawKey = 'sk-agency-' + crypto.randomBytes(24).toString('hex');
+  const newEntry = {
+    id: Date.now().toString(),
+    userId: req.user.id,
+    username: req.user.username,
+    role: req.user.role,
+    workspaceId: req.user.workspaceId || null,
+    keyLabel: oldKey.keyLabel,
+    keyPrefix: rawKey.slice(0, 18) + '...',
+    keyHash: hashApiKey(rawKey),
+    keyEncrypted: encryptApiKey(rawKey),
+    createdAt: new Date().toISOString(),
+    lastUsed: null,
+  };
+  const updated = keys.filter(k => k.id !== req.params.id);
+  updated.push(newEntry);
+  writeJSON('api-keys.json', updated);
+  res.json({ ok: true, id: newEntry.id, key: rawKey, keyPrefix: newEntry.keyPrefix, revokedId: oldKey.id });
 });
 
 // ─── Claude API proxy â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -8229,14 +8321,16 @@ app.patch('/api/settings/account', requireAdmin, async (req, res) => {
   const settings = wsRead(req, 'settings.json', {});
   const { agencyName, myName, myTitle, username, newPassword, currentPassword, websiteTagline, websiteAbout, websiteContact, calendlyUrl, agencyLogo } = req.body;
 
-  if (agencyName) settings.agencyName = agencyName;
-  if (myName) settings.myName = myName;
-  if (myTitle) settings.myTitle = myTitle;
-  if (username) settings.username = username;
-  if (websiteTagline !== undefined) settings.websiteTagline = websiteTagline;
-  if (websiteAbout   !== undefined) settings.websiteAbout   = websiteAbout;
-  if (websiteContact !== undefined) settings.websiteContact = websiteContact;
-  if (calendlyUrl    !== undefined) settings.calendlyUrl    = calendlyUrl;
+  const trim200 = (v) => typeof v === 'string' ? v.trim().slice(0, 200) : v;
+  const trim1000 = (v) => typeof v === 'string' ? v.trim().slice(0, 1000) : v;
+  if (agencyName) settings.agencyName = trim200(agencyName);
+  if (myName) settings.myName = trim200(myName);
+  if (myTitle) settings.myTitle = trim200(myTitle);
+  if (username) settings.username = trim200(username);
+  if (websiteTagline !== undefined) settings.websiteTagline = trim200(websiteTagline);
+  if (websiteAbout   !== undefined) settings.websiteAbout   = trim1000(websiteAbout);
+  if (websiteContact !== undefined) settings.websiteContact = trim1000(websiteContact);
+  if (calendlyUrl    !== undefined) settings.calendlyUrl    = trim200(calendlyUrl);
   if (agencyLogo     !== undefined) {
     if (agencyLogo === '' || /^data:image\/(png|jpeg|jpg|gif|svg\+xml|webp);base64,/.test(agencyLogo)) {
       settings.agencyLogo = agencyLogo;
@@ -8248,6 +8342,9 @@ app.patch('/api/settings/account', requireAdmin, async (req, res) => {
 
   if (newPassword) {
     if (!currentPassword) return res.status(400).json({ error: 'Huidig wachtwoord verplicht' });
+    if (newPassword.length < 8 || !/\d/.test(newPassword)) {
+      return res.status(400).json({ error: 'Wachtwoord: min. 8 tekens en minstens 1 cijfer.' });
+    }
     const users = readJSON('users.json') || [];
     const uIdx  = users.findIndex(u => u.id === req.user.id);
     if (uIdx === -1) return res.status(404).json({ error: 'Gebruiker niet gevonden' });
@@ -8885,7 +8982,17 @@ async function aiCall(prompt, workspaceId, model, options = {}) {
     body: JSON.stringify(reqBody)
   });
   const data = await res.json();
-  if (!data.content) throw new Error(data.error?.message || 'Claude API fout');
+  if (!data.content) {
+    const errMsg = data.error?.message || 'Claude API fout';
+    const errType = data.error?.type || '';
+    if (res.status === 429 || errType === 'rate_limit_error') {
+      throw new Error('Claude API rate limit bereikt. Wacht een moment en probeer opnieuw, of verhoog je API plan op console.anthropic.com.');
+    }
+    if (res.status === 402 || errMsg.includes('credit') || errMsg.includes('billing') || errType === 'invalid_request_error' && errMsg.includes('credit')) {
+      throw new Error('Claude API budget overschreden. Controleer je tegoed op console.anthropic.com en voeg credits toe.');
+    }
+    throw new Error(errMsg);
+  }
   const usage = data.usage || {};
   const tokIn  = usage.input_tokens  || 0;
   const tokOut = usage.output_tokens || 0;
