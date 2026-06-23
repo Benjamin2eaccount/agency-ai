@@ -13914,10 +13914,14 @@ app.get('/sites/:slug/:filename', (req, res, next) => {
 
 // ─── SPA fallback ─────────────────────────────────────────────────────────────
 
-app.get('*', (req, res) => {
+app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Niet gevonden' });
   if (req.path.startsWith('/sites/')) return res.status(404).send('<h1>Pagina niet gevonden</h1>');
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  // Only serve SPA shell for /app paths — other unknown paths fall through to 404
+  if (req.path === '/app' || req.path.startsWith('/app/')) {
+    return res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  }
+  next();
 });
 
 // â"€â"€â"€ Start â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
