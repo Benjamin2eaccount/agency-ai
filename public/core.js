@@ -551,14 +551,15 @@ const NICHE_COLORS = {
 };
 
 const APP_SUB_NICHES = {
-  beauty:     ['kapsalon', 'nagelsalon', 'schoonheidssalon', 'tattoo studio', 'barbershop'],
-  food:       ['bakkerij', 'traiteur', 'foodtruck', 'ijssalon', 'slagerij'],
-  fitness:    ['personal trainer', 'yoga studio', 'crossfit box', 'sportschool', 'martial arts'],
-  retail:     ['kledingwinkel', 'schoenenwinkel', 'juwelier', 'boekenwinkel', 'cadeauwinkel'],
-  restaurant: ['Italiaans restaurant', 'sushi restaurant', 'café', 'eetcafé', 'steakhouse'],
-  horeca:     ['hotel', 'bed & breakfast', 'hostel', 'vakantiepark', 'camping'],
-  health:     ['tandarts', 'fysiotherapeut', 'chiropractor', 'opticien', 'apotheek'],
-  automotive: ['garagebedrijf', 'autoverkoop', 'wasstraat', 'bandendienst', 'schadeherstelbedrijf'],
+  beauty:           ['kapsalon', 'nagelsalon', 'schoonheidssalon', 'tattoo studio', 'barbershop'],
+  food:             ['bakkerij', 'traiteur', 'foodtruck', 'ijssalon', 'slagerij'],
+  fitness:          ['personal trainer', 'yoga studio', 'crossfit box', 'sportschool', 'martial arts'],
+  retail:           ['kledingwinkel', 'schoenenwinkel', 'juwelier', 'boekenwinkel', 'cadeauwinkel'],
+  restaurant:       ['Italiaans restaurant', 'sushi restaurant', 'café', 'eetcafé', 'steakhouse'],
+  horeca:           ['hotel', 'bed & breakfast', 'hostel', 'vakantiepark', 'camping'],
+  health:           ['tandarts', 'fysiotherapeut', 'chiropractor', 'opticien', 'apotheek'],
+  automotive:       ['garagebedrijf', 'autoverkoop', 'wasstraat', 'bandendienst', 'schadeherstelbedrijf'],
+  marketing_agency: ['marketingbureau', 'reclamebureau', 'social media bureau', 'SEO bureau', 'webdesign bureau', 'freelance marketeer', 'growth agency', 'branding bureau'],
 };
 
 function nicheBadge(niche) {

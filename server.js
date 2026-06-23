@@ -1254,14 +1254,15 @@ function addLeadHistory(leads, leadId, event) {
 const NL_DAYS = ['zondag','maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag'];
 
 const SUB_NICHES = {
-  beauty:     ['kapsalon', 'nagelsalon', 'schoonheidssalon', 'tattoo studio', 'barbershop'],
-  food:       ['bakkerij', 'traiteur', 'foodtruck', 'ijssalon', 'slagerij'],
-  fitness:    ['personal trainer', 'yoga studio', 'crossfit box', 'sportschool', 'martial arts'],
-  retail:     ['kledingwinkel', 'schoenenwinkel', 'juwelier', 'boekenwinkel', 'cadeauwinkel'],
-  restaurant: ['Italiaans restaurant', 'sushi restaurant', 'café', 'eetcafé', 'steakhouse'],
-  horeca:     ['hotel', 'bed & breakfast', 'hostel', 'vakantiepark', 'camping'],
-  health:     ['tandarts', 'fysiotherapeut', 'chiropractor', 'opticien', 'apotheek'],
-  automotive: ['garagebedrijf', 'autoverkoop', 'wasstraat', 'bandendienst', 'schadeherstelbedrijf'],
+  beauty:           ['kapsalon', 'nagelsalon', 'schoonheidssalon', 'tattoo studio', 'barbershop'],
+  food:             ['bakkerij', 'traiteur', 'foodtruck', 'ijssalon', 'slagerij'],
+  fitness:          ['personal trainer', 'yoga studio', 'crossfit box', 'sportschool', 'martial arts'],
+  retail:           ['kledingwinkel', 'schoenenwinkel', 'juwelier', 'boekenwinkel', 'cadeauwinkel'],
+  restaurant:       ['Italiaans restaurant', 'sushi restaurant', 'café', 'eetcafé', 'steakhouse'],
+  horeca:           ['hotel', 'bed & breakfast', 'hostel', 'vakantiepark', 'camping'],
+  health:           ['tandarts', 'fysiotherapeut', 'chiropractor', 'opticien', 'apotheek'],
+  automotive:       ['garagebedrijf', 'autoverkoop', 'wasstraat', 'bandendienst', 'schadeherstelbedrijf'],
+  marketing_agency: ['marketingbureau', 'reclamebureau', 'social media bureau', 'SEO bureau', 'webdesign bureau', 'freelance marketeer', 'growth agency', 'branding bureau'],
 };
 
 // ── Agent 6 — Send Time Optimizer ────────────────────────────────────────────
@@ -9944,21 +9945,97 @@ RULES:
   // ITEM 18: use winning A/B version when auto-pick is set for this niche
   const autoVersion = getAutoPickVersion(lead.niche, lead.country, null);
 
+  // ── Marketing Agency niche override: peer-to-peer, self-proving outreach ──
+  const isAgencyNiche = /marketing_agency|marketingbureau|reclamebureau|marketing agency/i.test(lead.niche || '');
+  let agencyEmailSystemPrompt, agencyPromptA, agencyPromptB;
+  if (isAgencyNiche) {
+    const agencyLang = language === 'nl' ? 'nl' : 'en';
+    const agencyGreeting = agencyLang === 'nl' ? `Beste ${lead.companyName},` : `Dear ${lead.companyName},`;
+    const agencyContext = agencyLang === 'nl'
+      ? `Bureau: ${lead.companyName} (${lead.subNiche || lead.niche}, ${lead.location})
+Website: ${lead.websiteUrl || 'onbekend'}
+Laadtijd: ${loadSec ? loadSec + ' sec' : 'onbekend'}
+Instagram: ${lead.estimatedFollowers ? lead.estimatedFollowers.toLocaleString() + ' volgers' : 'onbekend'}
+LinkedIn: ${social.linkedinCompanyFollowers ? social.linkedinCompanyFollowers.toLocaleString() + ' volgers' : 'onbekend'}
+Afzender: Benjamin van Agency AI`
+      : `Agency: ${lead.companyName} (${lead.subNiche || lead.niche}, ${lead.location})
+Website: ${lead.websiteUrl || 'unknown'}
+Load time: ${loadSec ? loadSec + ' sec' : 'unknown'}
+Instagram: ${lead.estimatedFollowers ? lead.estimatedFollowers.toLocaleString() + ' followers' : 'unknown'}
+LinkedIn: ${social.linkedinCompanyFollowers ? social.linkedinCompanyFollowers.toLocaleString() + ' followers' : 'unknown'}
+Sender: Benjamin from Agency AI`;
+
+    agencyEmailSystemPrompt = agencyLang === 'nl'
+      ? `Je schrijft een koude email van Agency AI (een AI-outreach SaaS) naar een ANDER marketingbureau. Dit is peer-to-peer communicatie tussen vakgenoten. Geef ALLEEN JSON: {"subject": "onderwerp", "body": "emailtekst"}
+
+KERNHOOK: Deze email is onderzocht en geschreven door Agency AI's AI-agents, en door Benjamin goedgekeurd en verstuurd — de outreach ZELF is het bewijs dat het product werkt: AI doet het research- en schrijfwerk, een mens houdt de regie. Maak dit expliciet en slim in de copy.
+
+PITCH: Bureaus kunnen hun volledige outreach, klantacquisitie en projectmanagement workflow op autopilot draaien met AI-agents die het werk doen dat een junior medewerker of de founder nu handmatig doet — met menselijke goedkeuring als laatste stap.
+
+REGELS:
+- Toon: collega-tot-collega, niet leverancier-naar-klant. Gelijkwaardig, direct, geen ontzag
+- Begin NOOIT met "Ik" als eerste woord
+- VERBODEN aanhef: Hoi, Hey, Hi — ALLEEN "Beste" toegestaan
+- Onderwerp: 4-6 woorden, prikkelend voor een marketeer — hint naar de AI-hook
+- 3 korte alinea's: (1) specifieke observatie over HUN bureau + onthulling dat AI-agents deze email hebben geschreven (en een mens goedkeurde), (2) wat Agency AI doet en waarom dat relevant is voor een bureau, (3) zachte uitnodiging
+- Max 130 woorden body
+- Refereer aan iets concreets van hun website/social (niche-focus, teamgrootte, diensten) — gebruik laadtijd NIET als kritiekpunt
+- Noem concreet wat Agency AI doet: 7 AI-agents, dagelijks 15 leads vinden, gepersonaliseerde outreach, inbox goedkeuring, follow-ups, projectmanagement — autonoom met menselijke controle
+- CTA: "Zou je het interessant vinden om te zien hoe dit werkt voor jouw bureau?"
+- Afsluiting: "Groeten,\\nBenjamin" (informeel, collega-niveau)
+- VERBODEN: innovatief, synergie, vrijblijvend, uniek, op maat, oplossing, traject, data-gedreven, next level
+- VERBODEN: claims dat er geen mens betrokken is, claims dat het 100% autonoom is zonder menselijke stap — wees eerlijk over het mens-in-de-loop model
+- Maak GEEN oncontroleerbare claims — baseer alles op echte features (7 agents, 15 leads/dag, 5 talen, PWA dashboard, inbox goedkeuring)`
+      : `You are writing a cold email from Agency AI (an AI outreach SaaS) to ANOTHER marketing agency. This is peer-to-peer communication between industry professionals. Return ONLY JSON: {"subject": "subject", "body": "email body"}
+
+CORE HOOK: This email was researched and drafted by Agency AI's AI agents, then approved and sent by Benjamin — the outreach IS the proof the product works: AI does the research and writing, a human stays in control. Make this explicit and clever in the copy.
+
+PITCH: Agencies can run their entire outreach, client acquisition, and project management workflow on autopilot with AI agents doing the work a junior employee or the founder currently does manually — with human approval as the final step.
+
+RULES:
+- Tone: colleague-to-colleague, not vendor-to-customer. Equal footing, direct, no deference
+- NEVER start the first sentence with "I"
+- FORBIDDEN greetings: Hey, Hi, Hello — ONLY "Dear" allowed
+- Subject: 4-6 words, intriguing for a marketer — hint at the AI hook
+- 3 short paragraphs: (1) specific observation about THEIR agency + reveal AI agents drafted this email (and a human approved it), (2) what Agency AI does and why it's relevant to an agency, (3) soft invitation
+- Max 130 words body
+- Reference something concrete from their website/social (niche focus, team size, services) — do NOT use load time as a criticism
+- Name concretely what Agency AI does: 7 AI agents, finds 15 leads daily, personalized outreach, inbox approval, follow-ups, project management — autonomous with human control
+- CTA: "Would you find it interesting to see how this works for your agency?"
+- Sign-off: "Cheers,\\nBenjamin" (informal, peer-level)
+- BANNED: innovative, synergy, leverage, no obligation, unique, tailored, solution, data-driven, next level, cutting-edge
+- BANNED: claims that no human is involved, claims it's 100% autonomous without a human step — be honest about the human-in-the-loop model
+- Make NO unverifiable claims — base everything on real features (7 agents, 15 leads/day, 5 languages, PWA dashboard, inbox approval)`;
+
+    agencyPromptA = agencyLang === 'nl'
+      ? `VERSIE A: ZELF-BEWIJS HOOK.\n\nAANHEF: "${agencyGreeting}"\n\nCONTEXT:\n${agencyContext}\n\nAANPAK: Open met een specifieke observatie over hun bureau (iets van hun website/diensten, NIET hun laadtijd bekritiseren). Onthul dan: "Deze email is geschreven door mijn AI-agents — ik heb hem gelezen, goedgekeurd en verstuurd." Het punt is: AI doet het research- en schrijfwerk, de mens houdt de regie. Leg uit wat Agency AI doet. Sluit af met een peer-level uitnodiging.`
+      : `VERSION A: SELF-PROOF HOOK.\n\nGREETING: "${agencyGreeting}"\n\nCONTEXT:\n${agencyContext}\n\nAPPROACH: Open with a specific observation about their agency (something from their website/services, do NOT criticize their load time). Then reveal: "This email was drafted by my AI agents — I read it, approved it, and hit send." The point is: AI does the research and writing, the human stays in control. Explain what Agency AI does. Close with a peer-level invitation.`;
+
+    agencyPromptB = agencyLang === 'nl'
+      ? `VERSIE B: AUTOMATISERING UITDAGING.\n\nAANHEF: "${agencyGreeting}"\n\nCONTEXT:\n${agencyContext}\n\nAANPAK: Open met een observatie over hoe druk bureaus het hebben met handmatige outreach en klantacquisitie. Stel de vraag: "Wat als het research- en schrijfwerk van je acquisitie door AI gedaan wordt — zoals bij deze email?" Leg uit hoe Agency AI werkt: AI doet het zware werk, jij keurt goed en verstuurt. Sluit af met nieuwsgierigheid-wekkende vraag. Bekritiseer NIET hun laadtijd.`
+      : `VERSION B: AUTOMATION CHALLENGE.\n\nGREETING: "${agencyGreeting}"\n\nCONTEXT:\n${agencyContext}\n\nAPPROACH: Open with an observation about how busy agencies are with manual outreach and client acquisition. Pose the question: "What if the research and writing for your acquisition was done by AI — like this email?" Explain how Agency AI works: AI does the heavy lifting, you approve and send. Close with a curiosity-sparking question. Do NOT criticize their load time.`;
+  }
+
+  const finalSystemPrompt = isAgencyNiche ? agencyEmailSystemPrompt : emailSystemPrompt;
+  const finalPromptA = isAgencyNiche ? agencyPromptA : promptA;
+  const finalPromptB = isAgencyNiche ? agencyPromptB : promptB;
+  const emailModel = getModel('COLD_EMAIL', { niche: lead.niche });
+
   broadcastWS('agent_progress', { agent: 'Agent 5 — Email schrijver', status: 'start', companyName: lead.companyName });
   const _t5 = Date.now();
   let emailA, emailB;
-  const emailOpts = { system: emailSystemPrompt };
+  const emailOpts = { system: finalSystemPrompt };
   try {
     if (autoVersion === 'A') {
-      emailA = await agentCore.withRetry('Agent 5 — Email schrijver', () => aiJSON(promptA, getModel('COLD_EMAIL'), emailOpts));
+      emailA = await agentCore.withRetry('Agent 5 — Email schrijver', () => aiJSON(finalPromptA, emailModel, emailOpts));
       emailB = emailA;
     } else if (autoVersion === 'B') {
-      emailB = await agentCore.withRetry('Agent 5 — Email schrijver', () => aiJSON(promptB, getModel('COLD_EMAIL'), emailOpts));
+      emailB = await agentCore.withRetry('Agent 5 — Email schrijver', () => aiJSON(finalPromptB, emailModel, emailOpts));
       emailA = emailB;
     } else {
       [emailA, emailB] = await Promise.all([
-        agentCore.withRetry('Agent 5 — Email A', () => aiJSON(promptA, getModel('COLD_EMAIL'), emailOpts)),
-        agentCore.withRetry('Agent 5 — Email B', () => aiJSON(promptB, getModel('COLD_EMAIL'), emailOpts)),
+        agentCore.withRetry('Agent 5 — Email A', () => aiJSON(finalPromptA, emailModel, emailOpts)),
+        agentCore.withRetry('Agent 5 — Email B', () => aiJSON(finalPromptB, emailModel, emailOpts)),
       ]);
     }
     agentCore.recordAgentRun('Agent 5 — Email schrijver', true, Date.now() - _t5);
@@ -10050,7 +10127,7 @@ Return ONLY JSON: { "subjectOptions": ["option1", "option2", "option3"] }`;
 
   let subjectOptions = [];
   try {
-    const subjectResult = await aiJSON(subjectPrompt, getModel('SUBJECT_LINES'));
+    const subjectResult = await aiJSON(subjectPrompt, getModel('SUBJECT_LINES', { niche: lead.niche }));
     subjectOptions = Array.isArray(subjectResult?.subjectOptions) ? subjectResult.subjectOptions : [];
   } catch (err) { console.warn(`[AI fallback]`, err.message);}
   if (subjectOptions.length < 3) {
@@ -10067,7 +10144,41 @@ Return ONLY JSON: { "subjectOptions": ["option1", "option2", "option3"] }`;
 
   _runState.currentAgent = 'Agent 5b — LinkedIn DM schrijver';
   console.log(`  [Agent 5b] LinkedIn DM + voicenote schrijven (${language})...`);
-  const dmPrompt = language === 'nl'
+  const dmPrompt = isAgencyNiche
+    ? (language === 'nl'
+      ? `Schrijf een LinkedIn DM van Agency AI naar een ander marketingbureau. Peer-to-peer, collega-toon. Max 280 tekens.
+
+Bureau: ${lead.companyName} (${lead.location})
+Website: ${lead.websiteUrl || 'onbekend'}
+
+Regels:
+- "Hey" + bedrijfsnaam als opening
+- Kernboodschap: "Dit bericht is opgesteld door mijn AI-agents — ik keur alles goed voor het verstuurd wordt. Dat is het product: AI doet het werk, jij houdt de regie."
+- Eindig met een korte, nieuwsgierigheid-wekkende vraag
+- Max 280 tekens — tel!
+- Klinkt als een DM van een collega-ondernemer, niet als pitch
+- VERBODEN: innovatief, synergie, vrijblijvend, gratis, samenwerking, uniek
+- VERBODEN: beweren dat geen mens erbij betrokken is
+- Noem 1 concreet detail over hun bureau als het past (niche, stad)
+
+Geef ALLEEN de DM-tekst.`
+      : `Write a LinkedIn DM from Agency AI to another marketing agency. Peer-to-peer, colleague tone. Max 280 chars.
+
+Agency: ${lead.companyName} (${lead.location})
+Website: ${lead.websiteUrl || 'unknown'}
+
+Rules:
+- "Hey" + company name as opener
+- Core message: "This message was drafted by my AI agents — I approve everything before it sends. That's the product: AI does the work, you stay in control."
+- End with a short curiosity-sparking question
+- Max 280 characters — count!
+- Sounds like a DM from a fellow founder, not a pitch
+- BANNED: innovative, synergy, no obligation, free, collaboration, unique
+- BANNED: claiming no human is involved
+- Mention 1 concrete detail about their agency if natural (niche, city)
+
+Return ONLY the DM text.`)
+    : language === 'nl'
     ? `Schrijf een LinkedIn DM als een direct, persoonlijk berichtje. Max 280 tekens. Geen hashtags.
 
 Bedrijf: ${lead.companyName} (${lead.niche}, ${lead.location})
@@ -10103,7 +10214,37 @@ Rules:
 
 Return ONLY the DM text, no explanation or quotes.`;
 
-  const voicePrompt = language === 'nl'
+  const voicePrompt = isAgencyNiche
+    ? (language === 'nl'
+      ? `Schrijf een voicenote van Benjamin (Agency AI) naar een ander marketingbureau. Max 75 woorden. Collega-tot-collega, alsof je een fellow founder inspreekt.
+
+Bureau: ${lead.companyName} (${lead.location})
+
+Regels:
+- Begin middenin een gedachte ("Hey, ik zat jullie site te bekijken en...")
+- Kernboodschap: je bouwt een tool die het research- en schrijfwerk van outreach automatiseert — AI doet het zware werk, jij keurt goed en verstuurt. Dit is het bewijs.
+- Noem 1 specifiek ding over hun bureau (locatie, niche-focus) — bekritiseer NIET hun site/laadtijd
+- Eindig met: "Zou je het willen zien?"
+- Spreektaal, geen formeel — alsof je een DM inspreekt naar een bekende ondernemer
+- VERBODEN: innovatief, synergie, vrijblijvend, oplossing
+- VERBODEN: beweren dat geen mens betrokken is
+
+Geef ALLEEN de spreektekst.`
+      : `Write a voicenote from Benjamin (Agency AI) to another marketing agency. Max 75 words. Colleague-to-colleague, like recording a message to a fellow founder.
+
+Agency: ${lead.companyName} (${lead.location})
+
+Rules:
+- Start mid-thought ("Hey, was just looking at your site and...")
+- Core message: you built a tool that automates the research and writing of outreach — AI does the heavy lifting, you approve and send. This is the proof.
+- Mention 1 specific thing about their agency (location, niche focus) — do NOT criticize their site/load time
+- End with: "Would you want to see it in action?"
+- Conversational, informal — like DMing a fellow entrepreneur
+- BANNED: innovative, synergy, no obligation, solution
+- BANNED: claiming no human is involved
+
+Return ONLY the spoken text.`)
+    : language === 'nl'
     ? `Schrijf een voicenote script voor WhatsApp of Instagram. Max 75 woorden (30 seconden uitgesproken). Klinkt als een spontaan persoonlijk berichtje dat iemand inspreekt terwijl ze lopen.
 
 Bedrijf: ${lead.companyName} (${lead.niche}, ${lead.location})
@@ -10139,7 +10280,7 @@ Return ONLY the spoken text, no quotes.`;
 
   let linkedinDm, voicenoteScript;
   try {
-    const [dmText, voiceText] = await Promise.all([aiCall(dmPrompt, wId), aiCall(voicePrompt)]);
+    const [dmText, voiceText] = await Promise.all([aiCall(dmPrompt, wId, getModel('LINKEDIN_DM', { niche: lead.niche })), aiCall(voicePrompt, wId, getModel('VOICENOTE', { niche: lead.niche }))]);
     linkedinDm      = dmText.trim().substring(0, 280);
     voicenoteScript = voiceText.trim();
   } catch (err) { console.warn(`[AI fallback]`, err.message);

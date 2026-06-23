@@ -39,6 +39,16 @@
 - [x] 6.4 Demo safety guards: isDemoContext, isDemoUser, fireWebhooks demo guard all intact
 - [x] 6.5 server.js: 14,796 → 14,099 lines (−697 lines extracted/removed)
 
+### PR #16: Marketing Agency Targeting ✅
+- [x] `marketing_agency` niche detection (8 Dutch sub-terms, case-insensitive regex)
+- [x] Peer-to-peer outreach prompts (email A/B, LinkedIn DM, voicenote) — Dutch + English
+- [x] Truthful self-proof hook: "AI drafts + human approves via inbox" (no false autonomy claims)
+- [x] FORBIDDEN rules in prompts: no "geen mens betrokken", no "100% autonoom", no load-speed criticism
+- [x] Sonnet forced for all agency-niche outreach via `getModel()` override
+- [x] "Marketingbureaus vinden" UI preset (admin-only, runs page)
+- [x] Example outreach for 5 real agencies in AGENCY_OUTREACH_EXAMPLES.md
+- [x] 98/98 tests passing
+
 ## Key Metrics
 | Metric | Before | After |
 |--------|--------|-------|
