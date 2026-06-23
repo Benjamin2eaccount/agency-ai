@@ -1480,7 +1480,7 @@ async function renderProjectPage() {
                 : ''}
             ${isAdmin()
               ? `<select class="status-pill status-${statusColor}" id="projectStatusSelect" onchange="changeLeadStatus('${lead.id}',this.value)" style="cursor:pointer;border:none;font-weight:600;font-size:12px;appearance:none;padding-right:18px;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 4px center">
-                  ${[['inbox','Inbox'],['approved','Goedgekeurd'],['sent','Verstuurd'],['replied','Gereageerd'],['meeting','Afspraak'],['client','Klant'],['dead','Dead']].map(([v,l]) => `<option value="${v}" ${lead.status===v?'selected':''}>${l}</option>`).join('')}
+                  ${[['inbox','Inbox'],['approved','Goedgekeurd'],['sent','Verstuurd'],['replied','Gereageerd'],['meeting','Afspraak'],['client','Klant'],['dead','Inactief']].map(([v,l]) => `<option value="${v}" ${lead.status===v?'selected':''}>${l}</option>`).join('')}
                 </select>`
               : `<span class="status-pill status-${statusColor}">${statusLabel}</span>`
             }

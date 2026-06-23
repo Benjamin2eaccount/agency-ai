@@ -144,7 +144,7 @@ module.exports = function createPortalRouter({ readJSON, writeJSON, wsReadWs, ws
       }
 
       if (!jwtValid) {
-        return res.json({
+        return res.status(401).json({
           requiresLogin: true,
           companyName:   lead.companyName,
           agencyName:    branding.name,
