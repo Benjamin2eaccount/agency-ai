@@ -8390,6 +8390,7 @@ MUST include in <body>: sticky navigation, full-viewport hero with headline + st
 // In-memory token accumulator — reset per run
 let _sessionTokensIn = 0;
 let _sessionTokensOut = 0;
+let _cacheStats = { cacheCreationTokens: 0, cacheReadTokens: 0, calls: 0, cacheHits: 0 };
 
 // Model-aware cost calculation using lib/models.js pricing
 function calcCostUsd(tokIn, tokOut, modelId) {
@@ -8437,7 +8438,7 @@ function aiRateCheck(workspaceId) {
   }
 }
 
-async function aiCall(prompt, workspaceId, model) {
+async function aiCall(prompt, workspaceId, model, options = {}) {
   const wId = workspaceId || null;
   const modelId = model || MODELS.SONNET;
   aiRateCheck(wId);
@@ -8447,6 +8448,21 @@ async function aiCall(prompt, workspaceId, model) {
     throw new Error('Claude API sleutel niet ingesteld. Voeg toe via Instellingen → API & integraties of stel CLAUDE_API_KEY in als Railway environment variable.');
   }
   const { default: fetch } = await import('node-fetch');
+
+  // Build request body — optionally with system prompt for caching
+  const reqBody = {
+    model: modelId,
+    max_tokens: options.maxTokens || 4000,
+    messages: [{ role: 'user', content: prompt }]
+  };
+  if (options.system) {
+    reqBody.system = [{
+      type: 'text',
+      text: options.system,
+      cache_control: { type: 'ephemeral' }
+    }];
+  }
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -8454,11 +8470,7 @@ async function aiCall(prompt, workspaceId, model) {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01'
     },
-    body: JSON.stringify({
-      model: modelId,
-      max_tokens: 4000,
-      messages: [{ role: 'user', content: prompt }]
-    })
+    body: JSON.stringify(reqBody)
   });
   const data = await res.json();
   if (!data.content) throw new Error(data.error?.message || 'Claude API fout');
@@ -8468,6 +8480,20 @@ async function aiCall(prompt, workspaceId, model) {
   _sessionTokensIn  += tokIn;
   _sessionTokensOut += tokOut;
   _aiCallLog.push({ ts: Date.now() });
+
+  // Track prompt caching statistics
+  if (usage.cache_creation_input_tokens || usage.cache_read_input_tokens) {
+    _cacheStats.calls++;
+    if (usage.cache_read_input_tokens) {
+      _cacheStats.cacheHits++;
+      _cacheStats.cacheReadTokens += usage.cache_read_input_tokens;
+    }
+    if (usage.cache_creation_input_tokens) {
+      _cacheStats.cacheCreationTokens += usage.cache_creation_input_tokens;
+    }
+    console.log(`[Cache] ${usage.cache_read_input_tokens ? 'HIT' : 'MISS'} — created: ${usage.cache_creation_input_tokens || 0}, read: ${usage.cache_read_input_tokens || 0} tokens`);
+  }
+
   const callCost = calcCostUsd(tokIn, tokOut, modelId);
   const promptLabel = prompt.slice(0, 60).replace(/\n/g, ' ');
   addActivity('ai_call', `Claude: ${promptLabel}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost, model: modelId, workspaceId: wId});
@@ -8481,7 +8507,7 @@ async function aiCall(prompt, workspaceId, model) {
 
 // Variant with 16000 max_tokens for HTML generation (pages get cut off at 4000)
 // Joins ALL content blocks — Claude sometimes splits a long response into multiple text blocks.
-async function aiCallBuild(prompt, workspaceId, model) {
+async function aiCallBuild(prompt, workspaceId, model, options = {}) {
   const wId = workspaceId || null;
   const modelId = model || MODELS.SONNET;
   console.log('[Build] Starting build...');
@@ -8495,6 +8521,21 @@ async function aiCallBuild(prompt, workspaceId, model) {
   if (!apiKey) throw new Error('Claude API sleutel niet ingesteld.');
 
   const { default: fetch } = await import('node-fetch');
+
+  // Build request body — optionally with system prompt for caching
+  const reqBody = {
+    model: modelId,
+    max_tokens: 16000,
+    messages: [{ role: 'user', content: prompt }]
+  };
+  if (options.system) {
+    reqBody.system = [{
+      type: 'text',
+      text: options.system,
+      cache_control: { type: 'ephemeral' }
+    }];
+  }
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -8502,11 +8543,7 @@ async function aiCallBuild(prompt, workspaceId, model) {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01'
     },
-    body: JSON.stringify({
-      model: modelId,
-      max_tokens: 16000,
-      messages: [{ role: 'user', content: prompt }]
-    })
+    body: JSON.stringify(reqBody)
   });
   const data = await res.json();
 
@@ -8532,6 +8569,20 @@ async function aiCallBuild(prompt, workspaceId, model) {
   _sessionTokensIn  += tokIn;
   _sessionTokensOut += tokOut;
   _aiCallLog.push({ ts: Date.now() });
+
+  // Track prompt caching statistics
+  if (usage.cache_creation_input_tokens || usage.cache_read_input_tokens) {
+    _cacheStats.calls++;
+    if (usage.cache_read_input_tokens) {
+      _cacheStats.cacheHits++;
+      _cacheStats.cacheReadTokens += usage.cache_read_input_tokens;
+    }
+    if (usage.cache_creation_input_tokens) {
+      _cacheStats.cacheCreationTokens += usage.cache_creation_input_tokens;
+    }
+    console.log(`[Cache] Build ${usage.cache_read_input_tokens ? 'HIT' : 'MISS'} — created: ${usage.cache_creation_input_tokens || 0}, read: ${usage.cache_read_input_tokens || 0} tokens`);
+  }
+
   const callCost = calcCostUsd(tokIn, tokOut, modelId);
   addActivity('ai_call', `Claude build: ${prompt.slice(0, 50).replace(/\n/g,' ')}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost, model: modelId });
   const statsNow = wsReadWs(wId, 'stats.json') || {};
@@ -8599,8 +8650,8 @@ async function aiCallBuild(prompt, workspaceId, model) {
   return clean;
 }
 
-async function aiJSON(prompt, model) {
-  const text = await aiCall(prompt, null, model);
+async function aiJSON(prompt, model, options = {}) {
+  const text = await aiCall(prompt, null, model, options);
 
   // Strip ALL markdown code fences globally (Claude wraps JSON in ```json...```)
   const clean = text
@@ -8641,7 +8692,7 @@ function parseJsonFromText(text) {
 }
 
 // Claude API call with web_search tool — handles multi-turn tool loop
-async function aiWebSearch(prompt, workspaceId, model) {
+async function aiWebSearch(prompt, workspaceId, model, options = {}) {
   const wId = workspaceId || null;
   const modelId = model || MODELS.SONNET;
   aiRateCheck(wId);
@@ -8654,6 +8705,20 @@ async function aiWebSearch(prompt, workspaceId, model) {
   let lastText = '';
 
   for (let turn = 0; turn < 10; turn++) {
+    const reqBody = {
+      model: modelId,
+      max_tokens: 4000,
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+      messages
+    };
+    if (options.system) {
+      reqBody.system = [{
+        type: 'text',
+        text: options.system,
+        cache_control: { type: 'ephemeral' }
+      }];
+    }
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -8662,12 +8727,7 @@ async function aiWebSearch(prompt, workspaceId, model) {
         'anthropic-version': '2023-06-01',
         'anthropic-beta': 'web-search-2025-03-05'
       },
-      body: JSON.stringify({
-        model: modelId,
-        max_tokens: 4000,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages
-      })
+      body: JSON.stringify(reqBody)
     });
     const data = await res.json();
     if (!data.content) throw new Error(data.error?.message || 'Claude web search API fout');
@@ -8721,8 +8781,8 @@ function extractJSON(text) {
   throw new Error('JSON parse mislukt');
 }
 
-async function aiWebSearchJSON(prompt, model) {
-  const text = await aiWebSearch(prompt, null, model);
+async function aiWebSearchJSON(prompt, model, options = {}) {
+  const text = await aiWebSearch(prompt, null, model, options);
   return extractJSON(text);
 }
 
@@ -9007,21 +9067,8 @@ Website problemen: ${website.problems?.join(', ') || 'geen'}
     .map(s => `- ${s.name} (${s.billing}): €${s.price} — ${s.description}`).join('\n');
 
   // Agent 3 — complete rewrite: score op 10 criteria (0-10 elk), gemiddelde = totaal
-  const waProblems = (websiteAnalysis?.problems || []).slice(0, 6).join('; ') || 'geen';
-  const rawScoring = await agentCore.runAgent('Agent 3 — Lead scoring', () =>
-    aiJSON(`Beoordeel dit bedrijf als potentiële klant voor een digitaal marketingbureau. Score elk criterium 0-10. Geef JSON terug.
-
-Bedrijf: ${lead.companyName} (${lead.niche}${lead.subNiche ? ' / ' + lead.subNiche : ''})
-Locatie: ${lead.location}
-Bedrijfsgrootte: ${companySize}
-Instagram: ${lead.estimatedFollowers || 0} volgers, engagement ${social.engagementRate}%, postfrequentie ${social.postFrequency}
-Website: ${website.reachable ? `bereikbaar in ${website.loadTimeMs}ms (HTTPS: ${website.hasHttps ? 'ja' : 'nee'}, mobiel: ${website.hasMobileOptimization ? 'ja' : 'nee'}, CTA: ${website.hasCTA ? 'ja' : 'nee'})` : 'NIET bereikbaar'}
-Website-analyse score: ${websiteAnalysis?.overallScore ?? 'onbekend'}/100
-Website problemen: ${waProblems}
-Google Maps: ${lead.mapsRating ? `${lead.mapsRating}★ (${lead.reviewCount || 0} reviews)` : 'onbekend'}
-Contact: email ${contactEmail ? 'ja' : 'nee'}, telefoon ${lead.phone ? 'ja' : 'nee'}
-Betaalde ads: ${social.runningAds ? 'ja' : 'nee'}
-Datum: ${new Date().toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' })}
+  // System prompt (cacheable): scoring rubric + output format — identical across all leads
+  const SCORING_SYSTEM_PROMPT = `Je bent een lead-scoring expert voor een digitaal marketingbureau. Beoordeel bedrijven als potentiële klanten. Score elk criterium 0-10. Geef ALLEEN JSON terug.
 
 Score deze 10 criteria (0-10 elk):
 1. website — Website kwaliteit: heeft website? mobile-friendly? snel? CTAs? HTTPS?
@@ -9035,17 +9082,14 @@ Score deze 10 criteria (0-10 elk):
 9. groei — Groei potentieel: groeisignalen? recent opgericht? actieve uitbreiding?
 10. timing — Timing: seizoen relevant voor deze niche? recent zichtbaar probleem?
 
-Beschikbare diensten (kies de 2-3 meest relevante):
-${servicesList}
-
 REGELS voor dienstaanbeveling:
 - Geen (bereikbare) website → ALTIJD eerst een website build aanbevelen.
 - Servicebedrijf zonder online boekingssysteem → boekingssysteem aanbevelen.
 - Geen chatbot op de website → AI chatbot aanbevelen.
-- STRIKT: gebruik ALLEEN exacte dienstnamen uit de lijst hierboven.
+- STRIKT: gebruik ALLEEN exacte dienstnamen uit de opgegeven lijst.
 - NOOIT aanbevelen: advertentiebeheer, webshops, reputatie management, WhatsApp automatisering.
 
-Geef JSON:
+Geef JSON in dit formaat:
 {
   "scores": { "website": X, "online": X, "concurrentie": X, "grootte": X, "urgentie": X, "budget": X, "bereikbaarheid": X, "nicheFit": X, "groei": X, "timing": X },
   "total": X.X (gemiddelde van alle 10, 1 decimaal),
@@ -9055,7 +9099,24 @@ Geef JSON:
   "suggestedServices": [{"name": "exacte dienstnaam uit lijst", "price": getal, "billing": "maandelijks of eenmalig"}],
   "estimatedValue": totaal maandelijks equivalent in euros,
   "urgency": "low" of "medium" of "high" of "critical"
-}`), {
+}`;
+
+  const waProblems = (websiteAnalysis?.problems || []).slice(0, 6).join('; ') || 'geen';
+  const rawScoring = await agentCore.runAgent('Agent 3 — Lead scoring', () =>
+    aiJSON(`Bedrijf: ${lead.companyName} (${lead.niche}${lead.subNiche ? ' / ' + lead.subNiche : ''})
+Locatie: ${lead.location}
+Bedrijfsgrootte: ${companySize}
+Instagram: ${lead.estimatedFollowers || 0} volgers, engagement ${social.engagementRate}%, postfrequentie ${social.postFrequency}
+Website: ${website.reachable ? `bereikbaar in ${website.loadTimeMs}ms (HTTPS: ${website.hasHttps ? 'ja' : 'nee'}, mobiel: ${website.hasMobileOptimization ? 'ja' : 'nee'}, CTA: ${website.hasCTA ? 'ja' : 'nee'})` : 'NIET bereikbaar'}
+Website-analyse score: ${websiteAnalysis?.overallScore ?? 'onbekend'}/100
+Website problemen: ${waProblems}
+Google Maps: ${lead.mapsRating ? `${lead.mapsRating}★ (${lead.reviewCount || 0} reviews)` : 'onbekend'}
+Contact: email ${contactEmail ? 'ja' : 'nee'}, telefoon ${lead.phone ? 'ja' : 'nee'}
+Betaalde ads: ${social.runningAds ? 'ja' : 'nee'}
+Datum: ${new Date().toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' })}
+
+Beschikbare diensten (kies de 2-3 meest relevante):
+${servicesList}`, getModel('LEAD_SCORING'), { system: SCORING_SYSTEM_PROMPT }), {
     attempts: 3,
     fallback: null,
   });
@@ -9328,8 +9389,11 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
   const greetingFR = `Bonjour ${lead.companyName},`;
   const greetingIT = `Gentile ${lead.companyName},`;
 
-  const sharedRules = language === 'nl'
-    ? `- Aanhef: gebruik altijd exact deze aanhef: "${greetingNL}"
+  // Email system prompt (cacheable): formatting rules + workspace settings — identical across all leads in a batch
+  const emailSystemPrompt = language === 'nl'
+    ? `Je bent een koude-emailschrijver voor een digitaal marketingbureau. Schrijf professionele koude emails die klinken als een echt persoon. Geef ALLEEN JSON terug: {"subject": "onderwerp", "body": "emailtekst"}
+
+REGELS:
 - VERBODEN aanhef: Hoi, Hey, Hi, Hallo, Goedemorgen, Beste mensen — ALLEEN "Beste" of "Geachte" is toegestaan
 - Toon: professioneel maar toegankelijk — schrijf als een senior consultant, niet als een chatbot of marketingbureau
 - Gebruik "u" bij grote bedrijven of niet-NL/BE, anders "je/jullie"
@@ -9344,9 +9408,13 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - Max 150 woorden in de body (exclusief aanhef en afsluiting)
 - Als er concurrentie context is: verweef maximaal 1 zin organisch
 - VERBODEN WOORDEN: oplossing, traject, optimaliseren, implementeren, synergie, innovatief, vrijblijvend, passie, data-gedreven, op maat, uniek aanbod, fantastisch, geweldig, absoluut, transformeren, naar een hoger niveau, concurrentievoordeel, bewezen, resultaatgericht
-- SEIZOEN: Het is nu ${seasonal.season}. Verweef optioneel 1 subtiele seizoensreferentie alleen als het écht past bij hun niche (bijv. ${seasonal.event}). Forceer dit NIET.`
+- SEIZOEN: Het is nu ${seasonal.season}. Verweef optioneel 1 subtiele seizoensreferentie alleen als het écht past bij hun niche (bijv. ${seasonal.event}). Forceer dit NIET.
+- NOOIT vermelden in de email: Meta advertenties, Facebook ads, Google Ads, betaalde advertenties, WhatsApp Business automatisering, CRM-systemen, heatmap analyse, A/B testing
+- FOCUS ALLEEN OP: website verbetering, online boekingssysteem, AI chatbot voor website, professionele content (blogs/social/emails), SEO teksten, landingspagina's, email reeksen`
     : language === 'de'
-    ? `- Anrede: immer genau diese Anrede verwenden: "${greetingDE}"
+    ? `Du bist ein Kalt-E-Mail-Autor für eine digitale Marketingagentur. Schreibe professionelle Kalt-E-Mails auf DEUTSCH, die wie eine echte Person klingen. Gib NUR JSON zurück: {"subject": "Betreff", "body": "E-Mail-Text"}
+
+REGELN:
 - Ton: professionell und sachlich — wie ein erfahrener Berater, kein Bot, kein Marketingtext
 - Siezen (formelles "Sie") immer verwenden
 - Den ersten Satz NIE mit "Ich" beginnen
@@ -9358,9 +9426,13 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - CTA Absatz 3: sanfte Einladung — z.B. "Wären Sie offen für ein kurzes Gespräch?" ${calendlyLink ? `Schließen Sie dann mit: "Buchen Sie direkt ein kostenloses 20-minütiges Gespräch: ${calendlyLink}"` : 'Abschlusssatz: "Antworten Sie auf diese E-Mail für mehr Informationen."'}
 - Abschluss: "Mit freundlichen Grüßen," neue Zeile, dann "${myName}"
 - Max. 150 Wörter im Haupttext (ohne Anrede und Abschluss)
-- VERBOTENE WÖRTER: Lösung, Synergie, innovativ, Optimierung, Implementierung, datengetrieben, einzigartig, transformieren, Mehrwert, maßgeschneidert`
+- VERBOTENE WÖRTER: Lösung, Synergie, innovativ, Optimierung, Implementierung, datengetrieben, einzigartig, transformieren, Mehrwert, maßgeschneidert
+- NIE in der E-Mail erwähnen: Meta-Anzeigen, Facebook Ads, Google Ads, bezahlte Werbung, WhatsApp-Automatisierung, CRM-Systeme, Heatmap-Analyse, A/B-Tests
+- NUR fokussieren auf: Website-Verbesserung, Online-Buchungssystem, KI-Chatbot, professionelle Inhalte (Blogs/Social/E-Mails), SEO-Texte, Landingpages, E-Mail-Sequenzen`
     : language === 'fr'
-    ? `- Formule d'appel: toujours exactement: "${greetingFR}"
+    ? `Tu es un rédacteur d'e-mails de prospection pour une agence de marketing digital. Écris des e-mails professionnels en FRANÇAIS qui sonnent comme une vraie personne. Retourne UNIQUEMENT du JSON: {"subject": "objet", "body": "corps de l'e-mail"}
+
+RÈGLES:
 - Ton: professionnel et accessible — comme un consultant senior, pas un robot marketing
 - Vouvoiement obligatoire ("vous")
 - Ne jamais commencer la première phrase par "Je"
@@ -9372,9 +9444,13 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - CTA paragraphe 3: invitation douce — ex. "Seriez-vous ouvert(e) à un bref échange?" ${calendlyLink ? `Puis conclure avec: "Réservez directement un rendez-vous de 20 minutes: ${calendlyLink}"` : 'Conclure avec: "Répondez à cet e-mail pour plus d\'informations."'}
 - Formule de clôture: "Cordialement," nouvelle ligne, puis "${myName}"
 - Max 150 mots dans le corps (hors formule d'appel et clôture)
-- MOTS INTERDITS: solution, synergie, innovant, optimiser, implémenter, data-driven, unique, transformer, valeur ajoutée, sur-mesure`
+- MOTS INTERDITS: solution, synergie, innovant, optimiser, implémenter, data-driven, unique, transformer, valeur ajoutée, sur-mesure
+- NE JAMAIS mentionner: publicités Meta, Facebook Ads, Google Ads, publicité payante, WhatsApp, CRM, heatmaps, A/B testing
+- SE CONCENTRER UNIQUEMENT SUR: amélioration du site web, réservation en ligne, chatbot IA, contenu (blogs/réseaux/emails), textes SEO, pages d'atterrissage, séquences email`
     : language === 'it'
-    ? `- Apertura: usare sempre esattamente: "${greetingIT}"
+    ? `Sei un autore di cold email per un'agenzia di marketing digitale. Scrivi email professionali in ITALIANO che suonano come una persona reale. Restituisci SOLO JSON: {"subject": "oggetto", "body": "corpo email"}
+
+REGOLE:
 - Tono: professionale e diretto — come un consulente senior, non un bot di marketing
 - Usare il "Lei" formale sempre
 - Non iniziare mai la prima frase con "Io"
@@ -9386,8 +9462,12 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - CTA paragrafo 3: invito gentile — es. "Sarebbe disponibile per una breve chiamata?" ${calendlyLink ? `Poi concludere con: "Prenoti direttamente una chiamata gratuita di 20 minuti: ${calendlyLink}"` : 'Concludere con: "Risponda a questa email per ulteriori informazioni."'}
 - Chiusura: "Cordiali saluti," nuova riga, poi "${myName}"
 - Max 150 parole nel corpo (esclusi apertura e chiusura)
-- PAROLE VIETATE: soluzione, sinergia, innovativo, ottimizzare, implementare, data-driven, unico, trasformare, valore aggiunto, su misura`
-    : `- Greeting: always use exactly this greeting: "${greetingEN}"
+- PAROLE VIETATE: soluzione, sinergia, innovativo, ottimizzare, implementare, data-driven, unico, trasformare, valore aggiunto, su misura
+- NON menzionare mai: Meta ads, Facebook Ads, Google Ads, pubblicità a pagamento, WhatsApp, CRM, heatmap, A/B testing
+- CONCENTRARSI SOLO SU: sito web, prenotazioni online, chatbot AI, contenuto (blog/social/email), SEO, landing page, sequenze email`
+    : `You are a cold email writer for a digital marketing agency. Write professional cold emails that read like a real person typed them. Return ONLY JSON: {"subject": "subject line", "body": "email body"}
+
+RULES:
 - FORBIDDEN greetings: Hey, Hi, Hello, What's up, Howdy — ONLY "Dear" is allowed
 - Tone: professional but approachable — write like a senior consultant who genuinely noticed something specific about their business
 - NEVER start the first sentence with "I"
@@ -9401,28 +9481,21 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - Max 150 words in the body (excluding greeting and sign-off)
 - If competitor context is provided: weave in max 1 sentence naturally
 - BANNED WORDS: solution, trajectory, optimize, implement, synergy, leverage, innovative, data-driven, tailored, unique offering, fantastic, absolutely, transform, take to the next level, proven, competitive advantage, seamlessly, cutting-edge, game-changer
-- SEASONAL: It is currently ${seasonal.season}. Optionally weave in 1 subtle seasonal reference only if it genuinely fits their niche (e.g. ${seasonal.event}). Do NOT force this.`;
+- SEASONAL: It is currently ${seasonal.season}. Optionally weave in 1 subtle seasonal reference only if it genuinely fits their niche (e.g. ${seasonal.event}). Do NOT force this.
+- NEVER mention in the email: Meta ads, Facebook ads, Google Ads, paid advertising, WhatsApp automation, CRM systems, heatmap analysis, A/B testing
+- FOCUS ONLY ON: website improvement, online booking systems, AI chatbot, professional content (blogs/social/emails), SEO content, landing pages, email sequences`;
 
-  // No-ads restriction appended to sharedRules for all languages
-  const noAdsLine = language === 'nl'
-    ? '\n- NOOIT vermelden in de email: Meta advertenties, Facebook ads, Google Ads, betaalde advertenties, WhatsApp Business automatisering, CRM-systemen, heatmap analyse, A/B testing\n- FOCUS ALLEEN OP: website verbetering, online boekingssysteem, AI chatbot voor website, professionele content (blogs/social/emails), SEO teksten, landingspagina\'s, email reeksen'
-    : language === 'de'
-    ? '\n- NIE in der E-Mail erwähnen: Meta-Anzeigen, Facebook Ads, Google Ads, bezahlte Werbung, WhatsApp-Automatisierung, CRM-Systeme, Heatmap-Analyse, A/B-Tests\n- NUR fokussieren auf: Website-Verbesserung, Online-Buchungssystem, KI-Chatbot, professionelle Inhalte (Blogs/Social/E-Mails), SEO-Texte, Landingpages, E-Mail-Sequenzen'
-    : language === 'fr'
-    ? "\n- NE JAMAIS mentionner: publicités Meta, Facebook Ads, Google Ads, publicité payante, WhatsApp, CRM, heatmaps, A/B testing\n- SE CONCENTRER UNIQUEMENT SUR: amélioration du site web, réservation en ligne, chatbot IA, contenu (blogs/réseaux/emails), textes SEO, pages d'atterrissage, séquences email"
-    : language === 'it'
-    ? '\n- NON menzionare mai: Meta ads, Facebook Ads, Google Ads, pubblicità a pagamento, WhatsApp, CRM, heatmap, A/B testing\n- CONCENTRARSI SOLO SU: sito web, prenotazioni online, chatbot AI, contenuto (blog/social/email), SEO, landing page, sequenze email'
-    : '\n- NEVER mention in the email: Meta ads, Facebook ads, Google Ads, paid advertising, WhatsApp automation, CRM systems, heatmap analysis, A/B testing\n- FOCUS ONLY ON: website improvement, online booking systems, AI chatbot, professional content (blogs/social/emails), SEO content, landing pages, email sequences';
+  const greeting = language === 'nl' ? greetingNL : language === 'de' ? greetingDE : language === 'fr' ? greetingFR : language === 'it' ? greetingIT : greetingEN;
 
   const promptA = language === 'nl'
-    ? `Schrijf een koude email — VERSIE A: PROBLEEM-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.\n\nCONTEXT:\n${sharedContext}\n\nOPENING ZIN (gebruik deze exact of pas licht aan):\n"${opener}"\n\nAANPAK VERSIE A: Begin met het probleem. Gebruik de opening zin hierboven. Noem het probleem concreet met een getal of vergelijking. Dan de dienst als logische oplossing.\n\nREGELS:\n${sharedRules}${noAdsLine}\n\n{"subject": "onderwerp", "body": "emailtekst"}`
+    ? `VERSIE A: PROBLEEM-GERICHT.\n\nAANHEF (gebruik exact): "${greeting}"\n\nCONTEXT:\n${sharedContext}\n\nOPENING ZIN (gebruik exact of pas licht aan):\n"${opener}"\n\nAANPAK: Begin met het probleem. Gebruik de opening zin hierboven. Noem het probleem concreet met een getal of vergelijking. Dan de dienst als logische oplossing.`
     : language === 'de'
-    ? `Schreibe eine Kalt-E-Mail — VERSION A: PROBLEM-ORIENTIERT. Klingt wie ein echter Mensch, NICHT wie KI. Schreibe auf DEUTSCH. JSON zurückgeben.\n\nKONTEXT:\n${sharedContext}\n\nERÖFFNUNGSSATZ (exakt verwenden oder leicht anpassen):\n"${opener}"\n\nANSATZ VERSION A: Mit dem Problem beginnen. Den Eröffnungssatz verwenden. Problem konkret mit Zahlen nennen. Dann Dienstleistung als logische Lösung.\n\nREGELN:\n${sharedRules}${noAdsLine}\n\n{"subject": "Betreff", "body": "E-Mail-Text"}`
+    ? `VERSION A: PROBLEM-ORIENTIERT.\n\nANREDE (exakt verwenden): "${greeting}"\n\nKONTEXT:\n${sharedContext}\n\nERÖFFNUNGSSATZ (exakt verwenden oder leicht anpassen):\n"${opener}"\n\nANSATZ: Mit dem Problem beginnen. Den Eröffnungssatz verwenden. Problem konkret mit Zahlen nennen. Dann Dienstleistung als logische Lösung.`
     : language === 'fr'
-    ? `Rédige un e-mail de prospection — VERSION A: CENTRÉ SUR LE PROBLÈME. Sonne comme une vraie personne, PAS comme une IA. Écrire en FRANÇAIS. Retourner JSON.\n\nCONTEXTE:\n${sharedContext}\n\nPHRASE D'OUVERTURE (utiliser exactement ou adapter légèrement):\n"${opener}"\n\nAPPROCHE VERSION A: Commencer par le problème. Utiliser la phrase d'ouverture. Mentionner le problème concrètement avec un chiffre. Puis le service comme solution logique.\n\nRÈGLES:\n${sharedRules}${noAdsLine}\n\n{"subject": "objet", "body": "corps de l'e-mail"}`
+    ? `VERSION A: CENTRÉ SUR LE PROBLÈME.\n\nFORMULE D'APPEL (utiliser exactement): "${greeting}"\n\nCONTEXTE:\n${sharedContext}\n\nPHRASE D'OUVERTURE (utiliser exactement ou adapter légèrement):\n"${opener}"\n\nAPPROCHE: Commencer par le problème. Utiliser la phrase d'ouverture. Mentionner le problème concrètement avec un chiffre. Puis le service comme solution logique.`
     : language === 'it'
-    ? `Scrivi una cold email — VERSIONE A: FOCALIZZATA SUL PROBLEMA. Suona come una persona reale, NON come un'IA. Scrivere in ITALIANO. Restituire JSON.\n\nCONTESTO:\n${sharedContext}\n\nFRASE D'APERTURA (usare esattamente o adattare leggermente):\n"${opener}"\n\nAPPROCCIO VERSIONE A: Iniziare con il problema. Usare la frase d'apertura. Menzionare il problema concretamente con un numero. Poi il servizio come soluzione logica.\n\nREGOLE:\n${sharedRules}${noAdsLine}\n\n{"subject": "oggetto", "body": "corpo email"}`
-    : `Write a cold email — VERSION A: PROBLEM-FOCUSED. Reads like a real person typed it, NOT like AI. Return JSON.\n\nCONTEXT:\n${sharedContext}\n\nOPENING LINE (use this exactly or adapt slightly):\n"${opener}"\n\nVERSION A APPROACH: Start with the problem. Use the opening line above. State the problem concretely with a number or comparison. Then offer the service as the logical next step.\n\nRULES:\n${sharedRules}${noAdsLine}\n\n{"subject": "subject line", "body": "email body"}`;
+    ? `VERSIONE A: FOCALIZZATA SUL PROBLEMA.\n\nAPERTURA (usare esattamente): "${greeting}"\n\nCONTESTO:\n${sharedContext}\n\nFRASE D'APERTURA (usare esattamente o adattare leggermente):\n"${opener}"\n\nAPPROCCIO: Iniziare con il problema. Usare la frase d'apertura. Menzionare il problema concretamente con un numero. Poi il servizio come soluzione logica.`
+    : `VERSION A: PROBLEM-FOCUSED.\n\nGREETING (use exactly): "${greeting}"\n\nCONTEXT:\n${sharedContext}\n\nOPENING LINE (use exactly or adapt slightly):\n"${opener}"\n\nAPPROACH: Start with the problem. Use the opening line above. State the problem concretely with a number or comparison. Then offer the service as the logical next step.`;
 
   const openerB = language === 'nl'
     ? `${lead.companyName} heeft echt potentieel in ${lead.location} — en ik denk dat ${topService.toLowerCase()} precies dat kan versnellen.`
@@ -9435,14 +9508,14 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
     : `${lead.companyName} has real potential to grow in ${lead.location} — and I think ${topService.toLowerCase()} could accelerate that.`;
 
   const promptB = language === 'nl'
-    ? `Schrijf een koude email — VERSIE B: GROEIKANSEN-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.\n\nCONTEXT:\n${sharedContext}\n\nOPENING ZIN VERSIE B (gebruik deze exact of pas licht aan):\n"${openerB}"\n\nAANPAK VERSIE B: Begin positief — met groeipotentieel, niet met problemen. Focus op wat ze KUNNEN bereiken met ${topService}. Enthousiaster toon.\n\nREGELS:\n${sharedRules}${noAdsLine}\n\n{"subject": "onderwerp", "body": "emailtekst"}`
+    ? `VERSIE B: GROEIKANSEN-GERICHT.\n\nAANHEF (gebruik exact): "${greeting}"\n\nCONTEXT:\n${sharedContext}\n\nOPENING ZIN (gebruik exact of pas licht aan):\n"${openerB}"\n\nAANPAK: Begin positief — met groeipotentieel, niet met problemen. Focus op wat ze KUNNEN bereiken met ${topService}. Enthousiaster toon.`
     : language === 'de'
-    ? `Schreibe eine Kalt-E-Mail — VERSION B: WACHSTUMSORIENTIERT. Klingt wie ein echter Mensch, NICHT wie KI. Schreibe auf DEUTSCH. JSON zurückgeben.\n\nKONTEXT:\n${sharedContext}\n\nERÖFFNUNGSSATZ VERSION B (exakt verwenden oder leicht anpassen):\n"${openerB}"\n\nANSATZ VERSION B: Positiv beginnen — Wachstumspotenzial betonen, nicht Probleme. Auf das fokussieren, was mit ${topService} erreicht werden kann.\n\nREGELN:\n${sharedRules}${noAdsLine}\n\n{"subject": "Betreff", "body": "E-Mail-Text"}`
+    ? `VERSION B: WACHSTUMSORIENTIERT.\n\nANREDE (exakt verwenden): "${greeting}"\n\nKONTEXT:\n${sharedContext}\n\nERÖFFNUNGSSATZ (exakt verwenden oder leicht anpassen):\n"${openerB}"\n\nANSATZ: Positiv beginnen — Wachstumspotenzial betonen, nicht Probleme. Auf das fokussieren, was mit ${topService} erreicht werden kann.`
     : language === 'fr'
-    ? `Rédige un e-mail de prospection — VERSION B: CENTRÉ SUR LA CROISSANCE. Sonne comme une vraie personne, PAS comme une IA. Écrire en FRANÇAIS. Retourner JSON.\n\nCONTEXTE:\n${sharedContext}\n\nPHRASE D'OUVERTURE VERSION B (utiliser exactement ou adapter légèrement):\n"${openerB}"\n\nAPPROCHE VERSION B: Commencer positivement — potentiel de croissance, pas les problèmes. Se concentrer sur ce qui peut être accompli avec ${topService}.\n\nRÈGLES:\n${sharedRules}${noAdsLine}\n\n{"subject": "objet", "body": "corps de l'e-mail"}`
+    ? `VERSION B: CENTRÉ SUR LA CROISSANCE.\n\nFORMULE D'APPEL (utiliser exactement): "${greeting}"\n\nCONTEXTE:\n${sharedContext}\n\nPHRASE D'OUVERTURE (utiliser exactement ou adapter légèrement):\n"${openerB}"\n\nAPPROCHE: Commencer positivement — potentiel de croissance, pas les problèmes. Se concentrer sur ce qui peut être accompli avec ${topService}.`
     : language === 'it'
-    ? `Scrivi una cold email — VERSIONE B: FOCALIZZATA SULLA CRESCITA. Suona come una persona reale, NON come un'IA. Scrivere in ITALIANO. Restituire JSON.\n\nCONTESTO:\n${sharedContext}\n\nFRASE D'APERTURA VERSIONE B (usare esattamente o adattare leggermente):\n"${openerB}"\n\nAPPROCCIO VERSIONE B: Iniziare positivamente — potenziale di crescita, non problemi. Concentrarsi su cosa si può raggiungere con ${topService}.\n\nREGOLE:\n${sharedRules}${noAdsLine}\n\n{"subject": "oggetto", "body": "corpo email"}`
-    : `Write a cold email — VERSION B: GROWTH/OPPORTUNITY-FOCUSED. Reads like a real person typed it, NOT like AI. Return JSON.\n\nCONTEXT:\n${sharedContext}\n\nOPENING LINE VERSION B (use this exactly or adapt slightly):\n"${openerB}"\n\nVERSION B APPROACH: Start positively — with growth potential, not problems. Focus on what they CAN achieve with ${topService}. More enthusiastic tone.\n\nRULES:\n${sharedRules}${noAdsLine}\n\n{"subject": "subject line", "body": "email body"}`;
+    ? `VERSIONE B: FOCALIZZATA SULLA CRESCITA.\n\nAPERTURA (usare esattamente): "${greeting}"\n\nCONTESTO:\n${sharedContext}\n\nFRASE D'APERTURA (usare esattamente o adattare leggermente):\n"${openerB}"\n\nAPPROCCIO: Iniziare positivamente — potenziale di crescita, non problemi. Concentrarsi su cosa si può raggiungere con ${topService}.`
+    : `VERSION B: GROWTH/OPPORTUNITY-FOCUSED.\n\nGREETING (use exactly): "${greeting}"\n\nCONTEXT:\n${sharedContext}\n\nOPENING LINE (use exactly or adapt slightly):\n"${openerB}"\n\nAPPROACH: Start positively — with growth potential, not problems. Focus on what they CAN achieve with ${topService}. More enthusiastic tone.`;
 
   // ITEM 18: use winning A/B version when auto-pick is set for this niche
   const autoVersion = getAutoPickVersion(lead.niche, lead.country, null);
@@ -9450,17 +9523,18 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
   broadcastWS('agent_progress', { agent: 'Agent 5 — Email schrijver', status: 'start', companyName: lead.companyName });
   const _t5 = Date.now();
   let emailA, emailB;
+  const emailOpts = { system: emailSystemPrompt };
   try {
     if (autoVersion === 'A') {
-      emailA = await agentCore.withRetry('Agent 5 — Email schrijver', () => aiJSON(promptA));
+      emailA = await agentCore.withRetry('Agent 5 — Email schrijver', () => aiJSON(promptA, getModel('COLD_EMAIL'), emailOpts));
       emailB = emailA;
     } else if (autoVersion === 'B') {
-      emailB = await agentCore.withRetry('Agent 5 — Email schrijver', () => aiJSON(promptB));
+      emailB = await agentCore.withRetry('Agent 5 — Email schrijver', () => aiJSON(promptB, getModel('COLD_EMAIL'), emailOpts));
       emailA = emailB;
     } else {
       [emailA, emailB] = await Promise.all([
-        agentCore.withRetry('Agent 5 — Email A', () => aiJSON(promptA)),
-        agentCore.withRetry('Agent 5 — Email B', () => aiJSON(promptB)),
+        agentCore.withRetry('Agent 5 — Email A', () => aiJSON(promptA, getModel('COLD_EMAIL'), emailOpts)),
+        agentCore.withRetry('Agent 5 — Email B', () => aiJSON(promptB, getModel('COLD_EMAIL'), emailOpts)),
       ]);
     }
     agentCore.recordAgentRun('Agent 5 — Email schrijver', true, Date.now() - _t5);
@@ -10054,8 +10128,16 @@ CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
   const runTokOut = _sessionTokensOut;
   _sessionTokensIn = 0; _sessionTokensOut = 0;
   const runCostUsd = calcCostUsd(runTokIn, runTokOut);
+
+  // Log cache stats for this run
+  if (_cacheStats.calls > 0) {
+    console.log(`[Cache Summary] Calls with cache: ${_cacheStats.calls}, Hits: ${_cacheStats.cacheHits}, Created: ${_cacheStats.cacheCreationTokens} tokens, Read: ${_cacheStats.cacheReadTokens} tokens`);
+  }
+  const runCacheStats = { ..._cacheStats };
+  _cacheStats = { cacheCreationTokens: 0, cacheReadTokens: 0, calls: 0, cacheHits: 0 };
+
   // Log run summary (costs already tracked per-call in aiCall(, wId); costUsd:0 here avoids double-counting in P&L)
-  addActivity('run', `Run klaar: ${inboxItems.length} leads gevonden (${skipped} overgeslagen zonder email)`, { tokensIn: runTokIn, tokensOut: runTokOut, costUsd: 0, meta: { leadsFound: inboxItems.length, skipped, attempts, totalValue, runCostUsd } });
+  addActivity('run', `Run klaar: ${inboxItems.length} leads gevonden (${skipped} overgeslagen zonder email)`, { tokensIn: runTokIn, tokensOut: runTokOut, costUsd: 0, meta: { leadsFound: inboxItems.length, skipped, attempts, totalValue, runCostUsd, cache: runCacheStats } });
 
   const pendingCount   = inboxItems.length;
   const highScoreCount = inboxItems.filter(i => i.score >= 8).length;
