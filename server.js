@@ -4235,6 +4235,16 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
     if (idx === -1) { send(0, 'Lead niet gevonden', 'error'); res.end(); return; }
     const lead = leads[idx];
 
+    // Idempotency guard: if project already started, return existing state without re-sending emails
+    if (lead.projectStartedAt) {
+      send(1, 'Portaaltoegang instellen', 'done', { portalUrl: `${BASE_URL}/portal/${lead.portalToken}` });
+      send(2, 'Intake link genereren', 'done');
+      send(3, 'Welkomstmail versturen', 'done', { skipped: true });
+      send(4, 'Klaar', 'complete');
+      res.end();
+      return;
+    }
+
     // ── DEMO GUARD: skip AI calls and real emails, just update status ──
     if (isDemoContext(req, lead)) {
       console.log(`[DEMO] Skipped real start-project for ${lead.companyName}`);

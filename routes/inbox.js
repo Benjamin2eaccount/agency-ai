@@ -23,6 +23,12 @@ router.patch('/:id/approve', async (req, res) => {
   const idx = inbox.findIndex(i => i.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Item niet gevonden' });
 
+  // Idempotency guard: reject if already approved/sent/scheduled (prevents double-send on concurrent clicks)
+  const currentStatus = inbox[idx].status;
+  if (currentStatus === 'approved' || currentStatus === 'sent' || currentStatus === 'scheduled') {
+    return res.json(inbox[idx]);
+  }
+
   const settings = wsRead(req, 'settings.json', {});
   const item = inbox[idx];
   const version = (req.body?.version === 'B' && item.emailB) ? 'B' : 'A';
