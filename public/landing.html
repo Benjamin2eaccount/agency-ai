@@ -64,6 +64,13 @@
     .d4 { transition-delay: .4s; }
     .d5 { transition-delay: .5s; }
 
+    /* ── Skip link (accessibility) ── */
+    .skip-link { position: absolute; top: -100px; left: 16px; background: #2563EB; color: #fff; padding: 8px 16px; border-radius: 4px; z-index: 10000; font-size: 14px; font-weight: 600; text-decoration: none; }
+    .skip-link:focus { top: 8px; }
+
+    /* ── Focus ring ── */
+    :focus-visible { outline: 2px solid #2563EB; outline-offset: 2px; }
+
     /* ── Announcement bar ── */
     .ann-bar {
       position: relative;
@@ -1057,6 +1064,9 @@
 </head>
 <body>
 
+<!-- ── SKIP LINK ──────────────────────────────────────────────────────────── -->
+<a href="#demo" class="skip-link">Ga naar inhoud</a>
+
 <!-- ── ANNOUNCEMENT BAR ───────────────────────────────────────────────────── -->
 <div class="ann-bar" id="annBar">
   <a href="#demo" class="ann-link">
@@ -1070,9 +1080,9 @@
   <div class="nav-inner">
     <a href="/" class="nav-logo">
       <div class="nav-logo-icon" id="navLogoIcon">
-        <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
       </div>
-      <img id="navLogoImg" alt="" style="display:none">
+      <img id="navLogoImg" alt="Agency AI logo" style="display:none">
       <span id="navLogoName">Agency AI</span>
     </a>
     <ul class="nav-links">
@@ -1353,26 +1363,26 @@
         <form class="demo-form" id="demoForm">
           <div class="f-row-2">
             <div class="f-row">
-              <label class="f-label">Naam *</label>
+              <label class="f-label" for="dName">Naam *</label>
               <input type="text" class="f-input" id="dName" name="name" placeholder="Jouw naam" required>
             </div>
             <div class="f-row">
-              <label class="f-label">Bedrijfsnaam *</label>
+              <label class="f-label" for="dCompany">Bedrijfsnaam *</label>
               <input type="text" class="f-input" id="dCompany" name="company" placeholder="Jouw bureau" required>
             </div>
           </div>
           <div class="f-row-2">
             <div class="f-row">
-              <label class="f-label">Email *</label>
+              <label class="f-label" for="dEmail">Email *</label>
               <input type="email" class="f-input" id="dEmail" name="email" placeholder="jij@bedrijf.nl" required>
             </div>
             <div class="f-row">
-              <label class="f-label">Telefoonnummer</label>
+              <label class="f-label" for="dPhone">Telefoonnummer</label>
               <input type="tel" class="f-input" id="dPhone" name="phone" placeholder="+31 6 12345678">
             </div>
           </div>
           <div class="f-row">
-            <label class="f-label">Huidig aantal klanten</label>
+            <label class="f-label" for="dClients">Huidig aantal klanten</label>
             <select class="f-select" id="dClients" name="clients">
               <option value="">— Selecteer —</option>
               <option value="0-5">0 – 5 klanten</option>
@@ -1382,7 +1392,7 @@
             </select>
           </div>
           <div class="f-row">
-            <label class="f-label">Bericht <span style="text-transform:none;font-weight:400;color:var(--text-3)">(optioneel)</span></label>
+            <label class="f-label" for="dMessage">Bericht <span style="text-transform:none;font-weight:400;color:var(--text-3)">(optioneel)</span></label>
             <textarea class="f-textarea" id="dMessage" name="message" placeholder="Vertel ons over je bureau…"></textarea>
           </div>
           <button type="submit" class="btn-demo" id="demoBtn">Demo aanvragen →</button>
