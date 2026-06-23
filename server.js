@@ -13601,10 +13601,10 @@ app.get('/api/stats/export.csv', requireAdmin, (req, res) => {
     rows.push([
       csvSafe(l.companyName),
       csvSafe(l.contactEmail),
-      l.status||'',
+      csvSafe(l.status),
       l.score||'',
       csvSafe(l.location),
-      l.niche||'',
+      csvSafe(l.niche),
       l.sentAt?.slice(0,10)||'',
       l.repliedAt?.slice(0,10)||'',
       l.projectStartedAt?.slice(0,10)||'',
