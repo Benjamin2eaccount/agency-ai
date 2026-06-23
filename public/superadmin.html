@@ -1162,7 +1162,7 @@
         </div>
         <div class="stat-card">
           <div class="stat-card-top">
-            <div class="stat-label">Pending betaling</div>
+            <div class="stat-label">Wacht op betaling</div>
             <div class="stat-icon orange"><i class="ti ti-clock"></i></div>
           </div>
           <div class="stat-val" id="stPending">—</div>
@@ -1454,7 +1454,7 @@
         </div>
         <div class="sys-card">
           <div class="sys-card-left">
-            <div class="sys-key">Memory gebruik</div>
+            <div class="sys-key">Geheugengebruik</div>
             <div class="sys-val" id="sysMem">—</div>
           </div>
           <i class="ti ti-cpu sys-card-icon"></i>
@@ -1468,7 +1468,7 @@
         </div>
         <div class="sys-card">
           <div class="sys-card-left">
-            <div class="sys-key">Railway environment</div>
+            <div class="sys-key">Railway omgeving</div>
             <div class="sys-val" id="sysRailway">—</div>
           </div>
           <i class="ti ti-server sys-card-icon"></i>
@@ -1518,7 +1518,7 @@
             <div style="font-size:13px;color:#f4f4f5;font-weight:600;margin-top:3px" id="claudeModel">—</div>
           </div>
           <div style="background:#09090b;border-radius:8px;padding:12px">
-            <div style="font-size:10px;color:#71717a;text-transform:uppercase;letter-spacing:.5px">Calls vandaag</div>
+            <div style="font-size:10px;color:#71717a;text-transform:uppercase;letter-spacing:.5px">Verzoeken vandaag</div>
             <div style="font-size:13px;color:#f4f4f5;font-weight:600;margin-top:3px" id="claudeCalls">—</div>
           </div>
           <div style="background:#09090b;border-radius:8px;padding:12px">
@@ -1678,9 +1678,9 @@ function statusBadge(s) {
     contacted: 'badge-info', rejected: 'badge-danger'
   };
   const label = {
-    active: 'Actief', pending: 'Pending', pending_payment: 'Wacht betaling',
+    active: 'Actief', pending: 'In behandeling', pending_payment: 'Wacht betaling',
     paused: 'Gepauzeerd', blocked: 'Geblokkeerd', deleted: 'Verwijderd',
-    paid: 'Betaald', new: 'Nieuw', contacted: 'Contacted', rejected: 'Afgewezen'
+    paid: 'Betaald', new: 'Nieuw', contacted: 'Benaderd', rejected: 'Afgewezen'
   };
   return `<span class="badge ${map[s]||'badge-ghost'}">${esc(label[s]||s)}</span>`;
 }

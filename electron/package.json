@@ -1,6 +1,6 @@
 {
   "name": "agency-ai-desktop",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Agency AI Desktop App",
   "main": "main.js",
   "author": "Benjamin van Hemert",
@@ -22,8 +22,9 @@
     "appId": "info.agencyai.app",
     "productName": "Agency AI",
     "publish": {
-      "provider": "generic",
-      "url": "https://www.agencyai.info/update/"
+      "provider": "github",
+      "owner": "Benjamin2eaccount",
+      "repo": "agency-ai"
     },
     "directories": {
       "output": "dist"

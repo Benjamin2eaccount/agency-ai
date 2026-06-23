@@ -4,23 +4,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Server fout — Agency AI</title>
-  <link rel="icon" href="/icon-192.png">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/images/agency_ai_logo_dark.png" type="image/png">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0f; color: #e5e7eb; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; margin: 0; }
-    .card { max-width: 440px; width: 100%; background: #1a1a2e; border: 1px solid #2d2d4e; border-radius: 20px; padding: 48px 36px; text-align: center; }
-    .code { font-size: 80px; font-weight: 900; color: #6366f1; line-height: 1; margin-bottom: 8px; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0F0F0F; color: #F5F5F5; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; margin: 0; }
+    .card { max-width: 440px; width: 100%; background: #1A1A1A; border: 1px solid #2A2A2A; border-radius: 16px; padding: 48px 36px; text-align: center; }
+    .code { font-size: 80px; font-weight: 900; color: #ef4444; line-height: 1; margin-bottom: 8px; }
     h1 { font-size: 22px; font-weight: 700; margin-bottom: 12px; }
-    p { color: #9ca3af; font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
-    .btn { display: inline-block; background: #6366f1; color: #fff; border: none; border-radius: 10px; padding: 12px 28px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; margin: 4px; }
-    .btn-ghost { background: transparent; border: 1px solid #2d2d4e; color: #9ca3af; }
+    p { color: #999; font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
+    .btn { display: inline-block; background: #2563EB; color: #fff; border: none; border-radius: 8px; padding: 12px 28px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; margin: 4px; }
+    .btn-ghost { background: transparent; border: 1px solid #2A2A2A; color: #999; }
+    .btn-ghost:hover { border-color: #444; color: #F5F5F5; }
+    .btn:hover { background: #1d4ed8; }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="code">500</div>
     <h1>Interne serverfout</h1>
-    <p>Er is iets misgegaan aan onze kant. Het team is automatisch op de hoogte gesteld.</p>
-    <a href="/app" class="btn">← Terug naar app</a>
+    <p>Er is iets misgegaan aan onze kant. Het team is automatisch op de hoogte gesteld. Probeer het over een paar minuten opnieuw.</p>
+    <a href="/" class="btn">← Naar homepage</a>
     <button onclick="window.location.reload()" class="btn btn-ghost">Probeer opnieuw</button>
   </div>
 </body>

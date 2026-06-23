@@ -861,7 +861,7 @@ async function renderDashboard() {
 
         <div class="db-card">
           <div class="db-card-hdr">
-            <div class="db-card-ttl">Today's Activity Timeline</div>
+            <div class="db-card-ttl">Activiteit vandaag</div>
             <span class="db-badge grey">Vandaag</span>
           </div>
           ${activity.length === 0 ? `

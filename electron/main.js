@@ -81,7 +81,7 @@ ipcMain.handle('delete-account', (e, id) => {
 })
 
 // ── Auto-updater ──────────────────────────────────────────────────────────────
-autoUpdater.setFeedURL({ provider: 'generic', url: 'https://www.agencyai.info/update/' })
+autoUpdater.setFeedURL({ provider: 'github', owner: 'Benjamin2eaccount', repo: 'agency-ai' })
 autoUpdater.autoDownload         = false  // user-controlled: "Download" button in launcher
 autoUpdater.autoInstallOnAppQuit = true
 

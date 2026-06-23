@@ -426,6 +426,8 @@ app.get('/app', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.h
 app.get('/status',       (_, res) => res.sendFile(path.join(__dirname, 'public', 'status.html')));
 app.get('/register',          (_, res) => res.sendFile(path.join(__dirname, 'public', 'register.html')));
 app.get('/register/betaling', (_, res) => res.sendFile(path.join(__dirname, 'public', 'betaling.html')));
+app.get('/privacy',           (_, res) => res.sendFile(path.join(__dirname, 'public', 'privacy.html')));
+app.get('/terms',             (_, res) => res.sendFile(path.join(__dirname, 'public', 'terms.html')));
 // Serve superadmin shell — JS inside verifies isSuperAdmin from JWT
 app.get('/superadmin', (_, res) => res.sendFile(path.join(__dirname, 'public', 'superadmin.html')));
 
@@ -2599,6 +2601,8 @@ app.post('/api/demo-request', async (req, res) => {
     console.log('[demo-request] body:', { name, company, email, clients });
 
     if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Ongeldig emailadres' });
+    if (name.length > 200 || (company && company.length > 200)) return res.status(400).json({ error: 'Naam of bedrijfsnaam te lang' });
 
     // Ensure table exists and insert — wrapped so a DB error still sends a response
     try {
@@ -3356,7 +3360,7 @@ app.patch('/api/superadmin/workspaces/:id', requireSuperAdmin, (req, res) => {
   try {
     const db = getDb();
     const { generateSlug } = require('./lib/workspace');
-    const allowed = ['status','plan','billing_amount','next_billing_date','notes','branding_name','branding_logo','branding_color','branding_email_sender','owner_email','owner_name'];
+    const allowed = ['name','status','plan','billing_amount','next_billing_date','notes','branding_name','branding_logo','branding_color','branding_email_sender','owner_email','owner_name'];
     const fields  = Object.keys(req.body).filter(k => allowed.includes(k));
     if (!fields.length) return res.status(400).json({ error: 'Geen geldige velden' });
     const setClauses = fields.map(f => `${f} = ?`).join(', ');
@@ -14016,10 +14020,14 @@ app.get('/sites/:slug/:filename', (req, res, next) => {
 
 // ─── SPA fallback ─────────────────────────────────────────────────────────────
 
-app.get('*', (req, res) => {
+app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Niet gevonden' });
   if (req.path.startsWith('/sites/')) return res.status(404).send('<h1>Pagina niet gevonden</h1>');
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  // Only serve SPA shell for /app paths — other unknown paths fall through to 404
+  if (req.path === '/app' || req.path.startsWith('/app/')) {
+    return res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  }
+  next();
 });
 
 // â"€â"€â"€ Start â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -14089,6 +14097,25 @@ function ensureWorkspaceSeed() {
     console.warn('[Seed] ensureWorkspaceSeed fout:', err.message);
   }
 }
+
+// 404 catch-all — must be after all other routes
+app.use((req, res) => {
+  if (req.accepts('html')) {
+    res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
+  } else {
+    res.status(404).json({ error: 'Niet gevonden' });
+  }
+});
+
+// Global error handler — serves 500 page
+app.use((err, req, res, _next) => {
+  console.error('[500]', req.method, req.url, err.message);
+  if (req.accepts('html')) {
+    res.status(500).sendFile(path.join(__dirname, 'public', '500.html'));
+  } else {
+    res.status(500).json({ error: 'Interne serverfout' });
+  }
+});
 
 if (require.main === module || process.env.NODE_ENV !== 'test') pgInitPromise.then(() => {
   ensureWorkspaceSeed(); // Run before server starts — safe on every deploy

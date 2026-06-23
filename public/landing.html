@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agency AI — Run een AI-marketingbureau op autopilot</title>
   <meta name="description" content="Agency AI automatiseert je outreach, bouwt websites voor klanten en levert resultaten — zonder dat jij er constant bij hoeft te zijn.">
+  <link rel="canonical" href="https://www.agencyai.info/">
   <link rel="icon" href="/images/agency_ai_logo_dark.png" type="image/png">
   <link rel="apple-touch-icon" href="/images/agency_ai_logo_dark.png">
   <meta property="og:title" content="Agency AI — Run een AI-marketingbureau op autopilot">
@@ -62,6 +63,13 @@
     .d3 { transition-delay: .3s; }
     .d4 { transition-delay: .4s; }
     .d5 { transition-delay: .5s; }
+
+    /* ── Skip link (accessibility) ── */
+    .skip-link { position: absolute; top: -100px; left: 16px; background: #2563EB; color: #fff; padding: 8px 16px; border-radius: 4px; z-index: 10000; font-size: 14px; font-weight: 600; text-decoration: none; }
+    .skip-link:focus { top: 8px; }
+
+    /* ── Focus ring ── */
+    :focus-visible { outline: 2px solid #2563EB; outline-offset: 2px; }
 
     /* ── Announcement bar ── */
     .ann-bar {
@@ -1056,6 +1064,9 @@
 </head>
 <body>
 
+<!-- ── SKIP LINK ──────────────────────────────────────────────────────────── -->
+<a href="#demo" class="skip-link">Ga naar inhoud</a>
+
 <!-- ── ANNOUNCEMENT BAR ───────────────────────────────────────────────────── -->
 <div class="ann-bar" id="annBar">
   <a href="#demo" class="ann-link">
@@ -1069,16 +1080,16 @@
   <div class="nav-inner">
     <a href="/" class="nav-logo">
       <div class="nav-logo-icon" id="navLogoIcon">
-        <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
       </div>
-      <img id="navLogoImg" src="" alt="">
+      <img id="navLogoImg" alt="Agency AI logo" style="display:none">
       <span id="navLogoName">Agency AI</span>
     </a>
     <ul class="nav-links">
       <li><a href="#product">Product</a></li>
       <li><a href="#pricing">Prijzen</a></li>
       <li><a href="#demo">Demo</a></li>
-      <li><a href="#demo">Over ons</a></li>
+      <li><a href="mailto:info@agencyai.info">Contact</a></li>
     </ul>
     <div class="nav-right">
       <a href="/login" class="btn-nav-ghost">Inloggen</a>
@@ -1352,26 +1363,26 @@
         <form class="demo-form" id="demoForm">
           <div class="f-row-2">
             <div class="f-row">
-              <label class="f-label">Naam *</label>
+              <label class="f-label" for="dName">Naam *</label>
               <input type="text" class="f-input" id="dName" name="name" placeholder="Jouw naam" required>
             </div>
             <div class="f-row">
-              <label class="f-label">Bedrijfsnaam *</label>
+              <label class="f-label" for="dCompany">Bedrijfsnaam *</label>
               <input type="text" class="f-input" id="dCompany" name="company" placeholder="Jouw bureau" required>
             </div>
           </div>
           <div class="f-row-2">
             <div class="f-row">
-              <label class="f-label">Email *</label>
+              <label class="f-label" for="dEmail">Email *</label>
               <input type="email" class="f-input" id="dEmail" name="email" placeholder="jij@bedrijf.nl" required>
             </div>
             <div class="f-row">
-              <label class="f-label">Telefoonnummer</label>
+              <label class="f-label" for="dPhone">Telefoonnummer</label>
               <input type="tel" class="f-input" id="dPhone" name="phone" placeholder="+31 6 12345678">
             </div>
           </div>
           <div class="f-row">
-            <label class="f-label">Huidig aantal klanten</label>
+            <label class="f-label" for="dClients">Huidig aantal klanten</label>
             <select class="f-select" id="dClients" name="clients">
               <option value="">— Selecteer —</option>
               <option value="0-5">0 – 5 klanten</option>
@@ -1381,7 +1392,7 @@
             </select>
           </div>
           <div class="f-row">
-            <label class="f-label">Bericht <span style="text-transform:none;font-weight:400;color:var(--text-3)">(optioneel)</span></label>
+            <label class="f-label" for="dMessage">Bericht <span style="text-transform:none;font-weight:400;color:var(--text-3)">(optioneel)</span></label>
             <textarea class="f-textarea" id="dMessage" name="message" placeholder="Vertel ons over je bureau…"></textarea>
           </div>
           <button type="submit" class="btn-demo" id="demoBtn">Demo aanvragen →</button>
@@ -1406,11 +1417,8 @@
         </div>
         <p class="footer-tagline">Het AI-platform voor moderne marketingbureaus.</p>
         <div class="footer-socials">
-          <a href="#" class="footer-social-link" aria-label="LinkedIn">
-            <svg viewBox="0 0 24 24"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
-          </a>
-          <a href="#" class="footer-social-link" aria-label="Instagram">
-            <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+          <a href="mailto:info@agencyai.info" class="footer-social-link" aria-label="Email">
+            <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
           </a>
         </div>
       </div>
@@ -1421,7 +1429,6 @@
           <a href="#product">Functies</a>
           <a href="#pricing">Prijzen</a>
           <a href="#demo">Demo</a>
-          <a href="#">Changelog</a>
           <a href="/status">Status</a>
         </div>
       </div>
@@ -1429,11 +1436,7 @@
       <div>
         <div class="footer-col-label">Bedrijf</div>
         <div class="footer-links">
-          <a href="#">Over ons</a>
-          <a href="#">Blog</a>
-          <a href="#">Careers</a>
-          <a href="#">Partners</a>
-          <a href="#">Contact</a>
+          <a href="mailto:info@agencyai.info">Contact</a>
         </div>
       </div>
 
@@ -1450,8 +1453,8 @@
     <div class="footer-bottom">
       <span class="footer-bottom-copy">© <span id="footerYear"></span> Agency AI</span>
       <div class="footer-bottom-links">
-        <a href="#">Privacy</a>
-        <a href="#">Voorwaarden</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Voorwaarden</a>
       </div>
     </div>
   </div>
@@ -1562,33 +1565,67 @@
         document.getElementById('navLogoIcon').style.display = 'none';
       }
       if (cfg.gaId && /^G-[A-Z0-9]+$/i.test(cfg.gaId)) {
-        const s = document.createElement('script');
-        s.src = 'https://www.googletagmanager.com/gtag/js?id=' + cfg.gaId;
-        s.async = true;
-        document.head.appendChild(s);
-        window.dataLayer = window.dataLayer || [];
-        window.gtag = function(){ dataLayer.push(arguments); };
-        gtag('js', new Date());
-        gtag('config', cfg.gaId, { anonymize_ip: true });
-        window._gaReady = true;
-        document.querySelectorAll('.btn-hero-primary, .btn-nav-blue, .btn-demo').forEach(b => {
-          b.addEventListener('click', () => gtag('event', 'cta_click', { event_label: b.textContent.trim() }));
-        });
-        document.querySelector('a[href="#product"]')?.addEventListener('click', () =>
-          gtag('event', 'bekijk_diensten', { event_category: 'engagement', event_label: 'hero_cta2' }));
-        let scrollMilestones = new Set();
-        window.addEventListener('scroll', () => {
-          const pct = Math.round((window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100);
-          [25, 50, 75, 90].forEach(m => {
-            if (pct >= m && !scrollMilestones.has(m)) {
-              scrollMilestones.add(m);
-              gtag('event', 'scroll_depth', { event_label: m + '%' });
-            }
-          });
-        }, { passive: true });
+        window._gaId = cfg.gaId;
+        if (localStorage.getItem('cookie-consent') === 'accepted') {
+          initGA(cfg.gaId);
+        } else if (!localStorage.getItem('cookie-consent')) {
+          showCookieBanner();
+        }
       }
     } catch {}
   })();
+
+  function initGA(gaId) {
+    const s = document.createElement('script');
+    s.src = 'https://www.googletagmanager.com/gtag/js?id=' + gaId;
+    s.async = true;
+    document.head.appendChild(s);
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = function(){ dataLayer.push(arguments); };
+    gtag('js', new Date());
+    gtag('config', gaId, { anonymize_ip: true });
+    window._gaReady = true;
+    document.querySelectorAll('.btn-hero-primary, .btn-nav-blue, .btn-demo').forEach(b => {
+      b.addEventListener('click', () => gtag('event', 'cta_click', { event_label: b.textContent.trim() }));
+    });
+    document.querySelector('a[href="#product"]')?.addEventListener('click', () =>
+      gtag('event', 'bekijk_diensten', { event_category: 'engagement', event_label: 'hero_cta2' }));
+    let scrollMilestones = new Set();
+    window.addEventListener('scroll', () => {
+      const pct = Math.round((window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100);
+      [25, 50, 75, 90].forEach(m => {
+        if (pct >= m && !scrollMilestones.has(m)) {
+          scrollMilestones.add(m);
+          gtag('event', 'scroll_depth', { event_label: m + '%' });
+        }
+      });
+    }, { passive: true });
+  }
+
+  function showCookieBanner() {
+    const banner = document.createElement('div');
+    banner.id = 'cookieBanner';
+    banner.innerHTML = `
+      <div style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#1A1A1A;border-top:1px solid #2A2A2A;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:14px;color:#999">
+        <span>Wij gebruiken cookies voor websitestatistieken (Google Analytics). <a href="/privacy" style="color:#2563EB">Meer info</a></span>
+        <span style="display:flex;gap:8px;flex-shrink:0">
+          <button onclick="acceptCookies()" style="padding:8px 16px;background:#2563EB;color:#fff;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer">Accepteren</button>
+          <button onclick="declineCookies()" style="padding:8px 16px;background:transparent;color:#999;border:1px solid #333;border-radius:4px;font-size:13px;cursor:pointer">Weigeren</button>
+        </span>
+      </div>`;
+    document.body.appendChild(banner);
+  }
+
+  function acceptCookies() {
+    localStorage.setItem('cookie-consent', 'accepted');
+    document.getElementById('cookieBanner')?.remove();
+    if (window._gaId) initGA(window._gaId);
+  }
+
+  function declineCookies() {
+    localStorage.setItem('cookie-consent', 'declined');
+    document.getElementById('cookieBanner')?.remove();
+  }
 </script>
 </body>
 </html>

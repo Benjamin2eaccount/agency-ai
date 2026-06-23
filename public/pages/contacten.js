@@ -57,9 +57,10 @@ async function renderContacts() {
   const cards = filtered.length === 0
     ? `<div class="empty-card"><i class="ti ti-address-book" style="font-size:2.5rem;color:var(--text-muted)"></i><h3>Geen contacten</h3><p>Nog geen aanvragen ontvangen.</p></div>`
     : filtered.map(c => {
-        const statusColor = STATUS_COLORS[c.status] || 'var(--text-muted)';
-        const statusLabel = STATUS_LABELS[c.status] || c.status;
-        const date = new Date(c.createdAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
+        const effectiveStatus = c.status || 'new';
+        const statusColor = STATUS_COLORS[effectiveStatus] || 'var(--text-muted)';
+        const statusLabel = STATUS_LABELS[effectiveStatus] || effectiveStatus;
+        const date = new Date(c.submittedAt || c.createdAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
         const isDemo = c.type === 'demo';
         return `
           <div class="contact-card" id="cc-${c.id}">
@@ -83,10 +84,10 @@ async function renderContacts() {
             </div>
             ${c.message ? `<div class="contact-card-message">${esc(c.message)}</div>` : ''}
             <div class="contact-card-actions">
-              ${c.status === 'new' ? `<button class="btn btn-sm btn-ghost" onclick="window._contactAction('${c.id}','read')"><i class="ti ti-check"></i> Gelezen</button>` : ''}
-              ${c.status !== 'contacted' && c.status !== 'converted' ? `<button class="btn btn-sm btn-ghost" onclick="window._contactAction('${c.id}','contacted')"><i class="ti ti-send"></i> Gecontacteerd</button>` : ''}
-              ${c.status !== 'rejected' ? `<button class="btn btn-sm btn-danger-ghost" onclick="window._contactAction('${c.id}','rejected')" title="Afwijzen"><i class="ti ti-x"></i> Afwijzen</button>` : '<span style="font-size:12px;color:var(--text-muted)"><i class="ti ti-x"></i> Afgewezen</span>'}
-              ${c.status !== 'converted' && !isDemo ? `<button class="btn btn-sm btn-primary" onclick="window._contactToLead('${c.id}')"><i class="ti ti-user-plus"></i> Lead aanmaken</button>` : c.status === 'converted' ? `<span class="contact-converted-note"><i class="ti ti-check"></i> Geconverteerd naar lead</span>` : ''}
+              ${effectiveStatus === 'new' ? `<button class="btn btn-sm btn-ghost" onclick="window._contactAction('${c.id}','read')"><i class="ti ti-check"></i> Gelezen</button>` : ''}
+              ${effectiveStatus !== 'contacted' && effectiveStatus !== 'converted' ? `<button class="btn btn-sm btn-ghost" onclick="window._contactAction('${c.id}','contacted')"><i class="ti ti-send"></i> Gecontacteerd</button>` : ''}
+              ${effectiveStatus !== 'rejected' ? `<button class="btn btn-sm btn-danger-ghost" onclick="window._contactAction('${c.id}','rejected')" title="Afwijzen"><i class="ti ti-x"></i> Afwijzen</button>` : '<span style="font-size:12px;color:var(--text-muted)"><i class="ti ti-x"></i> Afgewezen</span>'}
+              ${effectiveStatus !== 'converted' && !isDemo ? `<button class="btn btn-sm btn-primary" onclick="window._contactToLead('${c.id}')"><i class="ti ti-user-plus"></i> Lead aanmaken</button>` : effectiveStatus === 'converted' ? `<span class="contact-converted-note"><i class="ti ti-check"></i> Geconverteerd naar lead</span>` : ''}
               <button class="btn btn-sm btn-danger-ghost" onclick="window._contactDelete('${c.id}')"><i class="ti ti-trash"></i></button>
             </div>
           </div>`;
