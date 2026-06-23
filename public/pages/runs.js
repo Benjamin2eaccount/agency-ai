@@ -185,6 +185,30 @@ async function renderRuns() {
       </div>
     </div>
 
+    <!-- Agency Targeting Preset -->
+    ${isAdmin() ? `
+    <div class="rn-card rn-section" style="border:1px solid var(--accent,#2563EB);border-left:3px solid var(--accent,#2563EB)">
+      <div class="rn-card-head">
+        <span class="rn-card-title"><i class="ti ti-target-arrow" style="color:var(--accent,#2563EB)"></i> Marketingbureaus vinden</span>
+        <span style="font-size:11px;background:var(--accent,#2563EB);color:#fff;padding:2px 8px;border-radius:4px;font-weight:600">ACQUISITIE</span>
+      </div>
+      <p style="font-size:13px;color:var(--text-2,#999);margin-bottom:14px">Vind andere marketingbureaus als potentiële klanten voor Agency AI. AI schrijft peer-to-peer outreach met de zelf-bewijs hook: "deze email is zelf geschreven door AI-agents."</p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+        <div>
+          <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Aantal bureaus</label>
+          <input type="number" id="agencyRunCount" value="5" min="1" max="20" class="rn-input" style="width:80px">
+        </div>
+        <div style="flex:1;min-width:200px">
+          <label style="font-size:12px;color:var(--text-3,#666);display:block;margin-bottom:5px">Locatie <span style="opacity:.7">(optioneel)</span></label>
+          <input type="text" id="agencyRunLocation" placeholder="Amsterdam, Rotterdam, heel Nederland..." class="rn-input" style="width:100%">
+        </div>
+        <button class="btn btn-primary" onclick="startAgencyRun()">
+          <i class="ti ti-rocket"></i> Start agency run
+        </button>
+      </div>
+      <p style="font-size:11px;color:var(--text-3,#666);margin-top:10px;margin-bottom:0"><i class="ti ti-info-circle"></i> Gebruikt Sonnet (hoogste kwaliteit) voor alle outreach. Emails worden niet automatisch verstuurd — verschijnen in je inbox ter goedkeuring.</p>
+    </div>` : ''}
+
     <!-- Eigen bedrijf toevoegen -->
     <div class="rn-card rn-section">
       <div class="rn-card-head">
@@ -658,6 +682,29 @@ async function startCustomRun() {
     toast('Fout: ' + err.message, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> Start run'; }
+  }
+}
+
+async function startAgencyRun() {
+  const count = parseInt(document.getElementById('agencyRunCount')?.value) || 5;
+  const location = document.getElementById('agencyRunLocation')?.value?.trim() || '';
+  const btn = event?.target?.closest('button');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Bezig...'; }
+  try {
+    const body = { count, niches: ['marketing_agency'] };
+    if (location) body.location = location;
+    const res = await api('/api/find-leads', { method: 'POST', body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (res?.ok) {
+      toast(`Agency run klaar — ${data.found || 0} bureaus gevonden`, 'success');
+      renderRuns();
+    } else {
+      toast(data.error || 'Agency run mislukt', 'error');
+    }
+  } catch (err) {
+    toast('Fout: ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-rocket"></i> Start agency run'; }
   }
 }
 
