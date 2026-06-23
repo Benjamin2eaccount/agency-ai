@@ -10,7 +10,7 @@ module.exports = function createPaymentsRouter(deps) {
     wsRead, wsWrite, requireAdmin, isDemoUser, isDemoContext,
     sendEmail, addLeadHistory, addNotification, isResendReady,
     generateInvoiceNumber, buildInvoiceEmailHTML, generateInvoicePDF,
-    aiJSON, trackFunnelEvent, authMiddleware,
+    aiJSON, trackFunnelEvent, authMiddleware, getModel,
   } = deps;
 
   const router = express.Router();
@@ -393,7 +393,7 @@ router.post('/leads/:id/payments/:payId/remind', requireAdmin, async (req, res) 
 Klant: ${lead.companyName}. Bureau: ${settings.agencyName}, ${settings.myName}.
 Bedrag: €${pay.amount}. Omschrijving: ${pay.description}. ${payLinkLine}
 Tone: professioneel maar begripvol. Max 150 woorden.
-Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`);
+Antwoord ALLEEN als JSON: { "subject": "...", "body": "..." }`, getModel('PAYMENT_REMINDER'));
 
     await sendEmail({ to: remindTo, subject: reminderEmail.subject, body: reminderEmail.body, settings, workspaceId: req.user?.workspaceId});
     // Log reminder

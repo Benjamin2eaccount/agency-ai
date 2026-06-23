@@ -28,6 +28,7 @@ const { createEmailService, sanitizeSubject: _sanitizeSubject, generateInvoiceNu
 const { createServiceContext } = require('./lib/cron');
 const dnsPromises = require('dns').promises;
 const PDFDocument = require('pdfkit');
+const { MODELS, getModel, getPricing, calcCost } = require('./lib/models');
 
 const app = express();
 app.set('trust proxy', 1); // Railway sits behind a proxy; needed for correct req.ip in rate limiters
@@ -1903,6 +1904,7 @@ const _emailService = createEmailService({
   addActivity,
   BASE_URL,
   aiJSON: (...args) => aiJSON(...args),
+  getModel,
 });
 
 // Cron service context deps — used by createServiceContext(wId, _cronDeps)
@@ -2005,7 +2007,7 @@ BAD question: "What are your goals?"
 GOOD question: "Welke 3 diensten moeten er in het boekingssysteem staan, en wat is de prijs en duur van elk?"
 
 Return ONLY valid JSON (no markdown):
-{ "questions": [{ "id": "q1", "label": "vraag tekst", "type": "text|textarea|select|url", "placeholder": "...", "options": ["optie1","optie2"] (only for type select, else null), "required": true }] }`);
+{ "questions": [{ "id": "q1", "label": "vraag tekst", "type": "text|textarea|select|url", "placeholder": "...", "options": ["optie1","optie2"] (only for type select, else null), "required": true }] }`, getModel('INTAKE_FORM'));
       lead.intakeQuestions = questions?.questions || [];
     } catch (err) { /* AI question generation failed — use safe defaults */
       console.warn('[Intake] AI question generation failed, using defaults:', err.message);
@@ -2120,7 +2122,17 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
         let content;
         try {
           content = await aiJSON(`Genereer website content voor ${freshLead.companyName} (${freshLead.niche}, ${freshLead.location}). Diensten: ${serviceNames}.${intakeCtx}
-Antwoord ALLEEN als JSON: { "headline": "string", "subheadline": "string", "about": "string", "services": [{"icon":"emoji","title":"string","desc":"string"}], "ctaText": "string", "ctaSubtext": "string", "footerTagline": "string" }`);
+
+REGELS:
+- Headline: pakkend, max 8 woorden, specifiek voor dit bedrijf (niet generiek "welkom")
+- Subheadline: 1 zin, max 15 woorden, beschrijft concrete waarde voor de klant
+- About: 2-3 zinnen, persoonlijk, noem locatie en specialisatie
+- Services: max 5, elk met relevante emoji + titel (max 4 woorden) + beschrijving (1-2 zinnen)
+- CTA: actiegericht, max 5 woorden
+- VERBODEN: "welkom bij", "uw partner in", generieke zinnen die op elk bedrijf passen
+
+Antwoord ALLEEN als JSON:
+{ "headline": "string", "subheadline": "string", "about": "string", "services": [{"icon":"emoji","title":"string","desc":"string"}], "ctaText": "string", "ctaSubtext": "string", "footerTagline": "string" }`, getModel('WEBSITE_CONTENT'));
         } catch (err) { console.warn(`[AI fallback]`, err.message); content = { headline: `Welkom bij ${freshLead.companyName}`, subheadline: `Professionele ${freshLead.niche} diensten`, about: `${freshLead.companyName} biedt professionele diensten aan in ${freshLead.location}.`, services: [], ctaText: 'Neem contact op', ctaSubtext: 'We reageren binnen 24 uur', footerTagline: freshLead.companyName }; }
 
         const servicesStr = (content.services || []).map(s => `${s.icon} ${s.title}: ${s.desc}`).join('\n');
@@ -2141,7 +2153,7 @@ MUST include in <body>:
 4. Diensten section: service cards with icon, title, description
 5. Contact section with form posting to /api/sites/${(freshLead.companyName||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}/contact
 6. Footer with company name, location, copyright
-Use ${colors.primary} as accent color. Scroll-triggered animations. Mobile responsive.`);
+Use ${colors.primary} as accent color. Scroll-triggered animations. Mobile responsive.`, getModel('WEBSITE_BUILD'));
 
         const siteSlug = generateSiteSlug(freshLead.companyName);
         const sitesDir = path.join(__dirname, 'public', 'sites', siteSlug);
@@ -4070,7 +4082,7 @@ app.post('/api/analyze-company', requireAdmin, async (req, res) => {
         const domain = websiteUrl ? websiteUrl.replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0] : '';
         const searchQuery = `${companyName} ${domain} contact email`;
         console.log(`[Manual] Web search query: "${searchQuery}"`);
-        const searchText = await aiWebSearch(searchQuery, req.user?.workspaceId);
+        const searchText = await aiWebSearch(searchQuery, req.user?.workspaceId, getModel('ADMIN_SEARCH'));
         console.log(`[Manual] Web search resultaat (eerste 300 tekens): ${(searchText || '').substring(0, 300)}`);
         const allMatches = (searchText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g) || []);
         console.log(`[Manual] Gevonden email adressen: ${JSON.stringify(allMatches)}`);
@@ -4288,7 +4300,7 @@ app.get('/api/stats/detailed', (req, res) => {
 
 
 // ─── Lead CRUD routes — migrated to routes/leads.js ──────────────────────
-app.use('/api/leads', require('./routes/leads')({ readJSON, wsRead, wsWrite, requireAdmin, scopeToUser, addLeadHistory, isDemoContext, aiJSON, updateMemoryConversion, isResendReady, generateClientEmail, sendEmail }));
+app.use('/api/leads', require('./routes/leads')({ readJSON, wsRead, wsWrite, requireAdmin, scopeToUser, addLeadHistory, isDemoContext, aiJSON, updateMemoryConversion, isResendReady, generateClientEmail, sendEmail, getModel }));
 
 app.get('/api/tasks', (req, res) => {
   const leads = wsRead(req, 'leads.json', []);
@@ -4326,6 +4338,16 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
     const idx = leads.findIndex(l => l.id === req.params.id);
     if (idx === -1) { send(0, 'Lead niet gevonden', 'error'); res.end(); return; }
     const lead = leads[idx];
+
+    // Idempotency guard: if project already started, return existing state without re-sending emails
+    if (lead.projectStartedAt) {
+      send(1, 'Portaaltoegang instellen', 'done', { portalUrl: `${BASE_URL}/portal/${lead.portalToken}` });
+      send(2, 'Intake link genereren', 'done');
+      send(3, 'Welkomstmail versturen', 'done', { skipped: true });
+      send(4, 'Klaar', 'complete');
+      res.end();
+      return;
+    }
 
     // ── DEMO GUARD: skip AI calls and real emails, just update status ──
     if (isDemoContext(req, lead)) {
@@ -4387,10 +4409,18 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
     let projectPlan = null;
     try {
       const serviceNames = (lead.services || []).map(s => s.name).join(', ') || 'AI-marketingdiensten';
-      projectPlan = await aiJSON(`Je bent een projectmanager bij een AI marketing bureau.
-Maak een 4-weken projectplan voor ${lead.companyName} (${lead.niche}, ${lead.location}).
+      projectPlan = await aiJSON(`Maak een 4-weken projectplan voor ${lead.companyName} (${lead.niche}, ${lead.location}).
 Diensten: ${serviceNames}.
-Antwoord ALLEEN als JSON: { "title": "string", "overview": "string (2-3 zinnen)", "weeks": [{ "week": 1, "focus": "string", "deliverables": ["string"] }, ...4 items total] }`);
+
+REGELS:
+- Week 1: ALTIJD onboarding + intake + eerste oplevering (niet "kennismaken" of "strategie")
+- Week 2-3: concrete leveringen (noem specifieke deliverables per dienst)
+- Week 4: afronden, testen, live zetten, evaluatie
+- Overview: 2-3 zinnen die de klant enthousiast maken, niet corporate
+- Deliverables: concreet en telbaar ("5 Instagram posts" niet "content maken")
+- VERBODEN: "kennismakingsgesprek", "brainstorm", "afstemming", weken zonder concrete output
+
+Antwoord ALLEEN als JSON: {"title":"Project [bedrijfsnaam] — [kerndienst]","overview":"2-3 zinnen, concreet en enthousiast","weeks":[{"week":1,"focus":"string","deliverables":["concreet + telbaar"]},{"week":2,"focus":"string","deliverables":["concreet"]},{"week":3,"focus":"string","deliverables":["concreet"]},{"week":4,"focus":"string","deliverables":["concreet"]}]}`, getModel('PROJECT_PLAN'));
     } catch (err) { console.warn(`[AI fallback]`, err.message); projectPlan = { title: `Project ${lead.companyName}`, overview: 'Automatisch projectplan wordt later aangevuld.', weeks: [{ week: 1, focus: 'Onboarding & intake', deliverables: ['Intake gesprek plannen', 'Strategie document opstellen'] }] }; }
     send(4, 'Projectplan genereren (AI)', 'done');
 
@@ -4404,7 +4434,7 @@ Schrijf een persoonlijk 60-seconden welkomstscript (gesproken tekst) voor een ko
 Diensten die wij leveren: ${serviceNames5}.
 Schrijfstijl: warm, professioneel, concreet. Gebruik "u" of "jullie" consequent.
 Structuur: (1) korte begroeting + felicitatie, (2) wat we samen gaan doen (diensten), (3) de 3 stappen voor vandaag (intake invullen, portaal bookmarken, afspraak inplannen), (4) slotwoord.
-Maximaal 150 woorden. Schrijf ALLEEN de gesproken tekst, geen regieaanwijzingen of timestamps.`, req.user?.workspaceId);
+Maximaal 150 woorden. Schrijf ALLEEN de gesproken tekst, geen regieaanwijzingen of timestamps.`, req.user?.workspaceId, getModel('ONBOARDING_SCRIPT'));
     } catch { /* workspace lookup non-fatal */ onboardingScript = null; }
     send(5, 'Video onboarding script genereren (AI)', onboardingScript ? 'done' : 'skipped');
 
@@ -4412,8 +4442,17 @@ Maximaal 150 woorden. Schrijf ALLEEN de gesproken tekst, geen regieaanwijzingen 
     send(6, 'Content kalender genereren (AI)', 'running');
     let contentCalendar = null;
     try {
-      contentCalendar = await aiJSON(`Maak een content kalender voor maand 1 voor ${lead.companyName} (${lead.niche}).
-Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "platform": "Instagram/Facebook/LinkedIn", "type": "Reel/Post/Story", "topic": "string", "caption": "string (kort)" }, ...8 items total] }`);
+      contentCalendar = await aiJSON(`Maak een content kalender voor maand 1 voor ${lead.companyName} (${lead.niche}, ${lead.location}).
+
+REGELS:
+- 8 items totaal, verdeeld over 4 weken (2 per week)
+- Mix van platforms: minimaal 2 Instagram, 2 Facebook, 1 LinkedIn
+- Mix van types: minimaal 2 Reels, 2 Posts, 1 Story, 1 Carousel
+- Topics: specifiek voor ${lead.niche} — NIET generiek "achter de schermen" of "tip van de week"
+- Captions: 1-2 zinnen, direct bruikbaar (met emoji waar passend)
+- VERBODEN: herhalende topics, 3x hetzelfde platform achter elkaar
+
+Antwoord ALLEEN als JSON: {"items":[{"week":1,"platform":"Instagram","type":"Reel","topic":"specifiek topic voor ${lead.niche}","caption":"1-2 zinnen direct bruikbaar"}]}`, getModel('CONTENT_CALENDAR_INT'));
     } catch (err) { console.warn(`[AI fallback]`, err.message); contentCalendar = { items: [] }; }
     send(6, 'Content kalender genereren (AI)', 'done');
 
@@ -4421,8 +4460,19 @@ Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "platform": "Instagram/Facebo
     send(7, 'Week 1 takenlijst aanmaken (AI)', 'running');
     let tasks = null;
     try {
-      tasks = await aiJSON(`Maak een takenlijst voor week 1 van het project voor ${lead.companyName}.
-Antwoord ALLEEN als JSON: { "tasks": [{ "title": "string", "description": "string", "priority": "hoog/middel/laag", "day": "ma/di/wo/do/vr" }, ...6-8 items] }`);
+      tasks = await aiJSON(`Maak een takenlijst voor week 1 van het project voor ${lead.companyName} (${lead.niche}).
+Diensten: ${serviceNames}.
+
+REGELS:
+- 6-8 taken, verdeeld over ma-vr (max 2 per dag)
+- Elke taak heeft een concrete, afgeronde actie (niet "beginnen met" of "nadenken over")
+- Priority: max 2x "hoog", rest "middel" of "laag"
+- Description: 1 zin die exact zegt WAT gedaan moet worden
+- Dag 1 (ma): ALTIJD intake-gerelateerd (onboarding, formulier bekijken, eerste materiaal verzamelen)
+- Dag 5 (vr): ALTIJD iets afronden/opleveren (niet starten)
+- VERBODEN: taken zonder concrete output, "overleggen", "afstemmen"
+
+Antwoord ALLEEN als JSON: {"tasks":[{"title":"concrete actie","description":"1 zin wat precies","priority":"hoog/middel/laag","day":"ma/di/wo/do/vr"}]}`, getModel('TASK_LIST'));
     } catch (err) { console.warn(`[AI fallback]`, err.message); tasks = { tasks: [] }; }
     send(7, 'Week 1 takenlijst aanmaken (AI)', 'done');
 
@@ -4858,7 +4908,17 @@ Structuur (HTML met inline CSS, professioneel maar leesbaar):
 9. Volgende stap / CTA
 10. Ondertekening
 
-Gebruik een professioneel kleurenschema met blauw (#2563eb) accent. Max 800 woorden. Geef ALLEEN de HTML terug, geen uitleg.`
+REGELS:
+- Max 800 woorden
+- Toon: zelfverzekerd adviseur, geen verkoper — vermijd overdrijving
+- Situatieanalyse: noem SPECIFIEKE feiten over ${lead.niche} in ${lead.location}, niet generiek "uw branche"
+- Diensten-tabel: exacte prijzen, duidelijke omschrijving per dienst (1 zin wat klant krijgt)
+- Planning: concreet (bijv. "Week 1: website live, chatbot geïnstalleerd"), niet vaag ("implementatie")
+- CTA: één concrete volgende stap, geen druk of urgentie
+- Kleurenschema: professioneel met blauw (#2563eb) accent
+- VERBODEN: "innovatief", "uniek", "marktleider", "naar een hoger niveau", "synergie", "passie", superlatieven
+
+Geef ALLEEN de HTML terug, geen uitleg.`
       : `Write a professional business proposal in HTML for ${lead.companyName}.
 
 Details:
@@ -4882,9 +4942,19 @@ Structure (HTML with inline CSS, professional but readable):
 9. Next step / CTA
 10. Signature
 
-Use a professional colour scheme with blue (#2563eb) accent. Max 800 words. Return ONLY the HTML, no explanation.`;
+RULES:
+- Max 800 words
+- Tone: confident advisor, not salesperson — avoid exaggeration
+- Situation analysis: mention SPECIFIC facts about ${lead.niche} in ${lead.location}, not generic "your industry"
+- Services table: exact pricing, clear description per service (1 sentence what client gets)
+- Timeline: concrete (e.g. "Week 1: website live, chatbot installed"), not vague ("implementation")
+- CTA: one concrete next step, no pressure or artificial urgency
+- Colour scheme: professional with blue (#2563eb) accent
+- BANNED: "innovative", "unique", "market leader", "next level", "synergy", "passion", superlatives
 
-    const proposalHtml = await aiCall(proposalPrompt, req.user?.workspaceId);
+Return ONLY the HTML, no explanation.`;
+
+    const proposalHtml = await aiCall(proposalPrompt, req.user?.workspaceId, getModel('PROPOSAL'));
 
     // Step 3: save
     send({ step: 3, label: 'Opslaan & weergeven' });
@@ -4999,7 +5069,15 @@ Structuur (HTML met inline CSS, professioneel zakelijk, zwart-wit met blauwe acc
 10. Artikel 9 — Toepasselijk recht (Nederlands recht, rechtbank Amsterdam)
 11. Ondertekeningsblok (twee kolommen: opdrachtgever | opdrachtnemer, naam/functie/datum/handtekening-lijn)
 
-Gebruik nette tabellen en witruimte. Geef ALLEEN de HTML terug.`
+REGELS:
+- Juridisch correcte Nederlandse taal — helder en leesbaar, niet onnodig complex
+- Elk artikel max 5 zinnen — bondig en concreet
+- Verwijs naar exacte bedragen uit bovenstaande dienstenlijst
+- Ondertekeningsblok met datumveld en "Handtekening:" lijn
+- Nette tabellen en witruimte
+- VERBODEN: vage open bepalingen zonder limiet, onredelijke boeteclausules, eenzijdige voorwaarden
+
+Geef ALLEEN de HTML terug.`
       : `Write a professional service agreement in HTML with inline CSS for the following parties.
 
 Details:
@@ -5022,9 +5100,17 @@ Structure (HTML with inline CSS, professional, black/white with blue accents #25
 10. Article 9 — Governing law (Dutch law, Amsterdam court)
 11. Signature block (two columns: client | provider, name/title/date/signature line)
 
-Use clean tables and white space. Return ONLY the HTML.`;
+RULES:
+- Legally sound Dutch-law-compatible language — clear and readable, not unnecessarily complex
+- Each article max 5 sentences — concise and concrete
+- Reference exact amounts from the services listed above
+- Signature block with date field and "Signature:" line
+- Clean tables and white space
+- BANNED: vague open-ended clauses without limits, unreasonable penalty clauses, one-sided terms
 
-    const contractHtml = await aiCall(prompt, req.user?.workspaceId);
+Return ONLY the HTML.`;
+
+    const contractHtml = await aiCall(prompt, req.user?.workspaceId, getModel('CONTRACT'));
 
     send({ step: 3, label: 'Contract opslaan' });
     const idx = leads.findIndex(l => l.id === req.params.id);
@@ -5119,8 +5205,16 @@ app.post('/api/leads/:id/generate-delivery', requireAdmin, async (req, res) => {
     try {
       fullCalendar = await aiJSON(`Maak een gedetailleerde content kalender voor VOLLEDIGE MAAND 1 voor ${lead.companyName} (${lead.niche}, ${lead.location}).
 Diensten: ${serviceNames}.${intakeContext}
-Maak precies 20 posts verspreid over 4 weken.
-Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "day": "ma/di/wo/do/vr/za/zo", "platform": "Instagram/Facebook/LinkedIn/TikTok", "type": "Reel/Carousel/Post/Story/Video", "topic": "string", "caption": "string (volledige Nederlandse caption, 2-3 zinnen)", "hashtags": ["#tag1","#tag2","#tag3","#tag4","#tag5"], "bestTime": "HH:MM" }] }`);
+Maak precies 20 posts verspreid over 4 weken (5 per week, ma-vr).
+
+KWALITEITSEISEN:
+- Elke caption is direct klaar om te posten: persoonlijk, informeel, met 1-2 emoji, eindigend met een vraag of CTA
+- Topics zijn specifiek voor hun niche en locatie — GEEN generieke "tips" of "behind the scenes" zonder concreet onderwerp
+- Mix van formats: minimaal 4 Reels, 4 Carousels, rest Posts/Stories
+- Hashtags: 3 niche-specifiek + 2 lokaal (stad/regio)
+- bestTime gebaseerd op B2C piektijden (12:00, 17:00, 19:00, 20:00)
+
+Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "day": "ma/di/wo/do/vr", "platform": "Instagram/Facebook/LinkedIn/TikTok", "type": "Reel/Carousel/Post/Story", "topic": "concreet en specifiek onderwerp", "caption": "volledige caption klaar om te posten (80-120 woorden, Nederlands, persoonlijke toon)", "hashtags": ["#nicherelevant1","#nicherelevant2","#lokaal1","#lokaal2","#breed1"], "bestTime": "HH:MM" }] }`, getModel('SERVICE_CONTENT'));
     } catch (err) { console.warn(`[AI fallback]`, err.message); fullCalendar = { items: (lead.contentCalendar?.items || []) }; }
     send(1, 'Content kalender genereren (maand 1)', 'done');
 
@@ -5128,10 +5222,20 @@ Antwoord ALLEEN als JSON: { "items": [{ "week": 1, "day": "ma/di/wo/do/vr/za/zo"
     send(2, 'Chatbot FAQ flow genereren', 'running');
     let chatbotFlow = null;
     try {
-      chatbotFlow = await aiJSON(`Maak een chatbot FAQ script voor ${lead.companyName} (${lead.niche}).${intakeContext}
-Dit zijn de meest gestelde vragen die bezoekers stellen op de website of via WhatsApp.
-Maak 12 relevante Q&A paren die direct nuttig zijn voor het bedrijf.
-Antwoord ALLEEN als JSON: { "faqs": [{ "question": "string", "answer": "string (2-3 zinnen, vriendelijk en professioneel)", "category": "Prijzen/Openingstijden/Diensten/Locatie/Afspraken/Overig" }] }`);
+      chatbotFlow = await aiJSON(`Maak een chatbot FAQ script voor ${lead.companyName} (${lead.niche}, ${lead.location}).${intakeContext}
+
+Dit zijn vragen die echte bezoekers stellen op de website of via WhatsApp.
+Maak precies 12 Q&A paren verdeeld over minimaal 4 categorieën.
+
+KWALITEITSEISEN:
+- Vragen klinken als echte klanten (informeel Nederlands, "Hoe laat...", "Kan ik ook...", "Wat kost...")
+- Antwoorden: max 2 zinnen, direct en behulpzaam, nooit "Neem contact op" als enige antwoord
+- Gebruik concrete details uit de niche (bijv. voor een kapper: "Een knippen + föhnen duurt ongeveer 45 minuten")
+- Minimaal 2 vragen over prijzen/kosten (klanten willen dit ALTIJD weten)
+- Minimaal 1 vraag over bereikbaarheid/parkeren/locatie
+- Toon: vriendelijk, behulpzaam, alsof een medewerker antwoordt — NIET formeel of corporate
+
+Antwoord ALLEEN als JSON: { "faqs": [{ "question": "natuurlijke klantvraag", "answer": "direct en behulpzaam antwoord (max 2 zinnen)", "category": "Prijzen/Openingstijden/Diensten/Locatie/Afspraken/Overig" }] }`, getModel('SERVICE_CONTENT'));
     } catch (err) { console.warn(`[AI fallback]`, err.message); chatbotFlow = { faqs: [] }; }
     send(2, 'Chatbot FAQ flow genereren', 'done');
 
@@ -5139,9 +5243,20 @@ Antwoord ALLEEN als JSON: { "faqs": [{ "question": "string", "answer": "string (
     send(3, 'Projectmijlpalen uitwerken', 'running');
     let milestones = null;
     try {
-      milestones = await aiJSON(`Maak een gedetailleerde mijlpalentijdlijn voor een 3-maanden project voor ${lead.companyName}.
+      milestones = await aiJSON(`Maak een gedetailleerde mijlpalentijdlijn voor een 3-maanden project voor ${lead.companyName} (${lead.niche}, ${lead.location}).
 Diensten: ${serviceNames}.${intakeContext}
-Antwoord ALLEEN als JSON: { "milestones": [{ "week": 1, "title": "string", "description": "string", "deliverables": ["string","string","string"], "status": "upcoming" }] } — maak precies 12 weken.`);
+
+EISEN:
+- Precies 12 weken, realistisch tempo (niet alles in week 1-2)
+- Week 1-2: setup + intake + branding afstemming
+- Week 3-6: productie van eerste leveringen (content, website, chatbot)
+- Week 7-10: optimalisatie + tweede ronde leveringen
+- Week 11-12: evaluatie + overdracht + vervolgplan
+- Elke week heeft 2-3 concrete deliverables die de klant kan zien/goedkeuren
+- Titles zijn kort en actiegericht ("Website ontwerp afronden", niet "Fase 2")
+- Descriptions zijn 1 zin die uitlegt wat de klant merkt
+
+Antwoord ALLEEN als JSON: { "milestones": [{ "week": 1, "title": "actiegericht (max 5 woorden)", "description": "wat de klant merkt (1 zin)", "deliverables": ["concreet item 1","concreet item 2","concreet item 3"], "status": "upcoming" }] }`, getModel('MILESTONE_TIMELINE'));
     } catch (err) { console.warn(`[AI fallback]`, err.message); milestones = { milestones: [] }; }
     send(3, 'Projectmijlpalen uitwerken', 'done');
 
@@ -5170,8 +5285,15 @@ Antwoord ALLEEN als JSON: { "milestones": [{ "week": 1, "title": "string", "desc
 
           case 'Maandelijkse content kalender': {
             const d = await aiJSON(`Maak een content kalender voor ${co} (${ni}, ${lo}) voor een volledige maand.${intakeContext}
-Maak precies 20 Instagram posts, verspreid over 30 dagen.
-Geef ALLEEN JSON: { "month":"Maand 1","posts":[{"day":1,"date":"ma 2 juni","type":"foto/carousel/reel","topic":"string","caption":"volledig klaar om te posten (100-150 woorden, emoji, professioneel)","hashtags":["#tag1","#tag2","#tag3","#tag4","#tag5"],"visual":"korte visuele beschrijving"}] }`);
+Maak precies 20 Instagram posts, verspreid over 30 dagen (5 per week, ma-vr).
+
+KWALITEITSEISEN:
+- Captions zijn direct klaar om te posten: persoonlijk, informeel, met 1-2 emoji, eindigend met vraag of CTA
+- Topics specifiek voor niche+locatie — GEEN generieke "tips" zonder concreet onderwerp
+- Mix: minimaal 4 reels, 4 carousels, rest foto/stories
+- Hashtags: 3 niche-specifiek + 2 lokaal
+
+Geef ALLEEN JSON: { "month":"Maand 1","posts":[{"day":1,"date":"ma 2 juni","type":"foto/carousel/reel","topic":"concreet niche-specifiek onderwerp","caption":"klaar om te posten (80-120 woorden, persoonlijke toon, emoji)","hashtags":["#nicherelevant1","#nicherelevant2","#lokaal1","#lokaal2","#breed1"],"visual":"korte visuele beschrijving"}] }`, getModel('SERVICE_CONTENT'));
             const posts = (d.posts||d.items||[]).slice(0,20);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 12px">Content Kalender — ${d.month||'Maand 1'}</h2>
 <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f3f4f6"><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Dag</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Type</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Onderwerp</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Caption</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Hashtags</th><th style="padding:7px;text-align:left;border:1px solid #e5e7eb">Visual</th></tr></thead><tbody>
@@ -5182,7 +5304,15 @@ ${posts.map(p=>`<tr><td style="padding:7px;border:1px solid #e5e7eb;font-weight:
 
           case 'Instagram Reels scripts': {
             const d = await aiJSON(`Maak 8 Instagram Reels scripts voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"scripts":[{"nummer":1,"titel":"string","hook":"eerste 3 sec (max 15 woorden)","inhoud":["Stap 1","Stap 2","Stap 3"],"cta":"string","muziek":"aanbevolen stijl","duur":"15/30/60 sec"}]}`);
+
+KWALITEITSEISEN:
+- Hook (eerste 3 sec) moet direct aandacht pakken — NOOIT beginnen met "Wist je dat" of "In deze video"
+- Inhoud in 3-4 concrete stappen die visueel interessant zijn
+- CTA is specifiek en actiegericht ("Sla dit op", "Tag iemand", "Link in bio")
+- Mix van duur: 4x 15sec (snelle tips), 2x 30sec (tutorials), 2x 60sec (verhalen)
+- Topics direct relevant voor de doelgroep van ${ni}
+
+Geef ALLEEN JSON: {"scripts":[{"nummer":1,"titel":"pakkende titel (max 6 woorden)","hook":"eerste 3 sec — direct aandacht (max 15 woorden)","inhoud":["Visuele stap 1","Visuele stap 2","Visuele stap 3"],"cta":"specifieke actie","muziek":"trending stijl passend bij content","duur":"15/30/60 sec"}]}`, getModel('SERVICE_CONTENT'));
             const scripts = (d.scripts||[]).slice(0,8);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Instagram Reels Scripts</h2><div style="display:flex;flex-direction:column;gap:14px">
 ${scripts.map(s=>`<div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><strong style="font-size:13px">Reel ${s.nummer}: ${s.titel}</strong><span style="background:#fefce8;color:#d97706;border-radius:4px;padding:2px 7px;font-size:11px">${s.duur}</span></div><div style="background:#fef2f2;border-left:3px solid #ef4444;padding:8px 11px;margin-bottom:8px;border-radius:0 6px 6px 0"><strong style="font-size:10px;color:#dc2626;text-transform:uppercase">Hook (eerste 3 sec)</strong><p style="margin:3px 0 0;font-size:13px;font-weight:700">"${s.hook}"</p></div><ul style="margin:0 0 8px;padding-left:18px">${(s.inhoud||[]).map(i=>`<li style="font-size:13px;color:#374151;margin-bottom:3px">${i}</li>`).join('')}</ul><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:#f0fdf4;border-radius:5px;padding:5px 9px;font-size:12px"><b>CTA:</b> ${s.cta}</span><span style="background:#f0f9ff;border-radius:5px;padding:5px 9px;font-size:12px"><b>Muziek:</b> ${s.muziek}</span></div></div>`).join('')}
@@ -5192,7 +5322,16 @@ ${scripts.map(s=>`<div style="border:1px solid #e5e7eb;border-radius:8px;padding
 
           case 'Blog artikelen schrijven': {
             const d = await aiJSON(`Schrijf 4 volledige blog artikelen voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"articles":[{"nummer":1,"seoTitle":"max 60 tekens","metaDescription":"max 155 tekens","keyword":"string","body":"volledig artikel in HTML met h2/h3/p (600-800 woorden)","internalLinks":["suggestie1","suggestie2"]}]}`);
+
+KWALITEITSEISEN:
+- Elk artikel 600-800 woorden, geschreven voor de klanten van ${co} (niet voor het bedrijf zelf)
+- Toon: deskundig maar toegankelijk, alsof een expert uitlegt aan een leek
+- SEO: keyword in title, eerste alinea, 1 H2, en meta description
+- Structuur: inleiding (waarom dit relevant is) → 3-4 secties met H2/H3 → concrete conclusie/CTA
+- GEEN generieke "5 tips" lijstjes — elk artikel moet een specifiek probleem oplossen dat klanten van ${ni} bedrijven hebben
+- Interne links: suggereer 2 andere artikelen die logisch aansluiten
+
+Geef ALLEEN JSON: {"articles":[{"nummer":1,"seoTitle":"max 60 tekens, bevat keyword","metaDescription":"max 155 tekens, activeert klik","keyword":"long-tail zoekwoord relevant voor ${ni}","body":"volledig artikel in HTML met h2/h3/p (600-800 woorden)","internalLinks":["gerelateerd artikel 1","gerelateerd artikel 2"]}]}`, getModel('SERVICE_CONTENT'));
             const articles = (d.articles||[]).slice(0,4);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Blog Artikelen (4 stuks)</h2><div style="display:flex;flex-direction:column;gap:20px">
 ${articles.map(a=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:12px 16px;border-bottom:1px solid #e5e7eb"><div style="font-size:14px;font-weight:700;margin-bottom:3px">${a.seoTitle}</div><div style="font-size:12px;color:#6b7280;margin-bottom:5px">${a.metaDescription}</div><span style="background:#eef2ff;color:#6366f1;border-radius:4px;padding:1px 6px;font-size:11px">Keyword: ${a.keyword}</span></div><div style="padding:16px;font-size:13px;line-height:1.7;color:#374151">${a.body||''}</div>${a.internalLinks?.length?`<div style="padding:8px 16px;background:#fffbeb;border-top:1px solid #fef3c7;font-size:12px"><b>Interne links:</b> ${(a.internalLinks||[]).join(', ')}</div>`:''}</div>`).join('')}
@@ -5202,7 +5341,17 @@ ${articles.map(a=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overfl
 
           case 'Email nieuwsbrief reeks': {
             const d = await aiJSON(`Schrijf 4 nieuwsbrieven voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"newsletters":[{"nummer":1,"subjectA":"string","subjectB":"A/B variant","preview":"max 90 tekens","body":"HTML nieuwsbrief (inline styles, email-safe)","cta":"knoptekst"}]}`);
+
+KWALITEITSEISEN:
+- Subject lines: max 50 tekens, persoonlijk, wekken nieuwsgierigheid — GEEN "Nieuwsbrief #1" of "Update van..."
+- A/B variant test: zelfde inhoud, andere benadering in subject (bv. vraag vs statement)
+- Preview text: max 90 tekens, vult de subject aan (niet herhaalt)
+- Body: 200-300 woorden per nieuwsbrief, email-safe HTML (alleen inline styles, geen CSS classes)
+- Structuur per email: (1) persoonlijke opening, (2) waardeblok (tip/inzicht/nieuws), (3) CTA knop
+- Toon: alsof een expert een vriend mailt — informeel maar professioneel
+- VERBODEN: "Beste lezer", "In deze nieuwsbrief", "Klik hier", generieke openingszinnen
+
+Geef ALLEEN JSON: {"newsletters":[{"nummer":1,"subjectA":"persoonlijk en nieuwsgierig (max 50 tekens)","subjectB":"A/B variant andere invalshoek","preview":"vult subject aan (max 90 tekens)","body":"email-safe HTML met inline styles (200-300 woorden)","cta":"actieve knoptekst (max 4 woorden)"}]}`, getModel('SERVICE_CONTENT'));
             const nl = (d.newsletters||[]).slice(0,4);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Email Nieuwsbrief Reeks (4 stuks)</h2><div style="display:flex;flex-direction:column;gap:16px">
 ${nl.map(n=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:12px 16px;border-bottom:1px solid #e5e7eb"><b>Nieuwsbrief ${n.nummer}</b><br><span style="font-size:13px"><b>Subject A:</b> ${n.subjectA}</span><br><span style="font-size:13px"><b>Subject B:</b> ${n.subjectB}</span><br><span style="font-size:12px;color:#6b7280"><b>Preview:</b> ${n.preview}</span></div><div style="padding:16px;font-size:13px;line-height:1.7">${n.body||''}</div><div style="padding:8px 16px;background:#f0fdf4;border-top:1px solid #bbf7d0;font-size:13px"><b>CTA knop:</b> ${n.cta}</div></div>`).join('')}
@@ -5212,7 +5361,17 @@ ${nl.map(n=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hid
 
           case 'Website teksten schrijven': {
             const d = await aiJSON(`Schrijf volledige website teksten voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"homepage":{"hero":{"headline":"max 10 woorden","subheadline":"max 20 woorden","ctaButton":"string"},"about":"3-4 zinnen","services":[{"title":"string","description":"2-3 zinnen"}],"cta":{"headline":"string","subtext":"string","button":"string"}},"aboutPage":{"title":"string","intro":"2 alineas","values":[{"title":"string","text":"string"}]},"servicesPage":{"title":"string","intro":"string","services":[{"name":"string","description":"string"}]},"contactPage":{"title":"string","intro":"string","formLabels":{"name":"string","email":"string","message":"string","submit":"string"}}}`);
+
+KWALITEITSEISEN:
+- Headline: krachtig, max 10 woorden, bevat het belangrijkste voordeel voor de klant — NIET de bedrijfsnaam
+- Subheadline: verduidelijkt WAT het bedrijf doet en voor WIE, max 20 woorden
+- CTA buttons: actief en specifiek ("Maak een afspraak", "Bekijk diensten") — NIET "Klik hier" of "Meer info"
+- About sectie: persoonlijk en menselijk, noemt een concreet feit (jaar opgericht, specialist in X)
+- Diensten: focus op klantvoordeel, niet op feature-opsomming
+- Toon: professioneel maar warm, passend bij een ${ni} in ${lo}
+- VERBODEN: "innovatief", "uniek", "oplossingen op maat", "no-nonsense", "passie voor"
+
+Geef ALLEEN JSON: {"homepage":{"hero":{"headline":"max 10 woorden, klantvoordeel","subheadline":"max 20 woorden, wat+voor wie","ctaButton":"actieve tekst max 4 woorden"},"about":"3-4 zinnen, persoonlijk en concreet","services":[{"title":"string","description":"2-3 zinnen, klantvoordeel centraal"}],"cta":{"headline":"string","subtext":"string","button":"string"}},"aboutPage":{"title":"string","intro":"2 alineas","values":[{"title":"string","text":"string"}]},"servicesPage":{"title":"string","intro":"string","services":[{"name":"string","description":"string"}]},"contactPage":{"title":"string","intro":"string","formLabels":{"name":"string","email":"string","message":"string","submit":"string"}}}`, getModel('SERVICE_CONTENT'));
             const h=d.homepage||{},a=d.aboutPage||{},s=d.servicesPage||{},c=d.contactPage||{};
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 16px">Website Teksten — ${co}</h2><div style="display:flex;flex-direction:column;gap:16px">
 <section style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#6366f1;padding:9px 16px"><b style="color:#fff;font-size:12px">HOMEPAGE</b></div><div style="padding:16px"><div style="margin-bottom:10px"><b>Hero:</b> <span style="font-size:16px;font-weight:700">${h.hero?.headline||''}</span> <span style="color:#6b7280;font-size:13px">— ${h.hero?.subheadline||''}</span></div><div style="margin-bottom:10px"><b>Over ons:</b><p style="color:#374151;font-size:13px;margin:4px 0">${h.about||''}</p></div>${(h.services||[]).map(sv=>`<div style="margin-bottom:7px;padding:7px;background:#f9fafb;border-radius:5px"><b style="font-size:13px">${sv.title}</b><br><span style="font-size:12px;color:#374151">${sv.description}</span></div>`).join('')}</div></section>
@@ -5225,7 +5384,16 @@ Geef ALLEEN JSON: {"homepage":{"hero":{"headline":"max 10 woorden","subheadline"
 
           case 'SEO teksten optimaliseren': {
             const d = await aiJSON(`Optimaliseer SEO teksten voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"pages":[{"pagina":"Homepage","geoptimaliseerdeTitle":"50-60 tekens","metaDescription":"150-160 tekens","h1":"string","keywords":["kw1","kw2","kw3"],"verbeterpunten":["punt1","punt2"]}]}`);
+
+KWALITEITSEISEN:
+- Maak SEO-optimalisatie voor 5 pagina's: Homepage, Diensten, Over ons, Contact, Blog
+- Title tags: exact 50-60 tekens, bevat primair keyword + locatie waar relevant
+- Meta descriptions: exact 150-160 tekens, bevat CTA en locatie, wekt nieuwsgierigheid
+- H1: uniek per pagina, bevat primair keyword, leest natuurlijk
+- Keywords: mix van short-tail (1-2 woorden) en long-tail (3-5 woorden), relevant voor ${ni} in ${lo}
+- Verbeterpunten: concreet en actionable (bijv. "Voeg alt-tekst toe aan alle afbeeldingen"), NIET vaag ("verbeter SEO")
+
+Geef ALLEEN JSON: {"pages":[{"pagina":"Homepage","geoptimaliseerdeTitle":"exact 50-60 tekens met keyword","metaDescription":"exact 150-160 tekens met CTA","h1":"natuurlijke heading met keyword","keywords":["short-tail 1","short-tail 2","long-tail zoekterm"],"verbeterpunten":["concreet actie-item 1","concreet actie-item 2"]}]}`, getModel('SERVICE_CONTENT'));
             const pages = (d.pages||[]);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">SEO Optimalisatie — ${co}</h2><div style="display:flex;flex-direction:column;gap:12px">
 ${pages.map(p=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:10px 14px;border-bottom:1px solid #e5e7eb;font-weight:700;font-size:13px">${p.pagina}</div><div style="padding:12px 14px"><div style="margin-bottom:8px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">Title Tag (${(p.geoptimaliseerdeTitle||'').length}/60)</span><div style="font-size:13px;color:#1d4ed8;text-decoration:underline;margin-top:2px">${p.geoptimaliseerdeTitle}</div></div><div style="margin-bottom:8px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">Meta Description (${(p.metaDescription||'').length}/160)</span><div style="font-size:12px;color:#374151;margin-top:2px">${p.metaDescription}</div></div><div style="margin-bottom:8px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">H1</span><div style="font-size:13px;font-weight:700;margin-top:2px">${p.h1}</div></div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${(p.keywords||[]).map(k=>`<span style="background:#eef2ff;color:#6366f1;border-radius:3px;padding:2px 6px;font-size:11px">${k}</span>`).join('')}</div><ul style="margin:0;padding-left:16px">${(p.verbeterpunten||[]).map(v=>`<li style="font-size:12px;color:#374151;margin-bottom:2px">${v}</li>`).join('')}</ul></div></div>`).join('')}
@@ -5235,7 +5403,18 @@ ${pages.map(p=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:
 
           case 'Chatbot script voor website': {
             const d = await aiJSON(`Maak chatbot script voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"welkom":"string","buiten_openingstijden":"string","faqs":[{"vraag":"string","antwoord":"string","categorie":"string","followUp":"string optioneel"}],"leadCapture":{"triggerZin":"string","vragen":["Naam?","Email?","Vraag?"],"bevestiging":"string"}}`);
+
+KWALITEITSEISEN:
+- Welkomstbericht: max 2 zinnen, noem het bedrijf bij naam, stel een concrete vraag ("Waarmee kan ik u helpen?")
+- Buiten openingstijden: eerlijk dat niemand live is, geef alternatief (email/bel/formulier)
+- FAQs: minimaal 10, maximaal 15 — gebaseerd op wat echte klanten van een ${ni} vragen
+- Antwoorden: 1-3 zinnen, concreet en bruikbaar — NOOIT "neem contact op voor meer info" als antwoord op een directe vraag
+- Categorieën: max 5 (bijv. Prijzen, Openingstijden, Diensten, Locatie, Overig)
+- Follow-ups: alleen bij complexe vragen waar een vervolgvraag logisch is
+- Lead capture: trigger als de chatbot het antwoord niet weet of bij een duidelijke koopintentie
+- Toon: vriendelijk en kort, als een behulpzame receptionist — NIET als een AI-assistent
+
+Geef ALLEEN JSON: {"welkom":"max 2 zinnen met bedrijfsnaam","buiten_openingstijden":"eerlijk + alternatief","faqs":[{"vraag":"echte klantvraag","antwoord":"1-3 zinnen concreet","categorie":"max 5 categorieën","followUp":"optioneel"}],"leadCapture":{"triggerZin":"wanneer activeren","vragen":["Naam?","Email?","Hoe kan ik helpen?"],"bevestiging":"wat er dan gebeurt"}}`, getModel('SERVICE_CONTENT'));
             const faqs = (d.faqs||[]).slice(0,15);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Chatbot Script — ${co}</h2><div style="display:flex;flex-direction:column;gap:12px">
 <div style="border:2px solid #6366f1;border-radius:8px;padding:12px"><div style="font-size:10px;color:#6366f1;text-transform:uppercase;font-weight:700;margin-bottom:5px">Welkomstbericht</div><div style="font-size:13px">"${d.welkom||''}"</div></div>
@@ -5247,9 +5426,21 @@ ${d.leadCapture?`<div style="border:1px solid #bbf7d0;border-radius:8px;padding:
           }
 
           case 'Concurrentieanalyse rapport': {
+            const compPrompt = `Zoek de 3 grootste directe concurrenten van ${co} in ${lo} (${ni}).${intakeContext}
+
+KWALITEITSEISEN:
+- Concurrenten: ECHTE bedrijven in dezelfde ${ni} niche in/rond ${lo} — geen verzonnnen namen
+- Sterke punten: 3-4 per concurrent, concreet en observeerbaar (bijv. "300+ Google reviews met 4.8 gemiddeld")
+- Zwakke punten: 3-4 per concurrent, concreet (bijv. "Website niet mobiel-vriendelijk", "Geen Instagram aanwezig")
+- Social media: vermeld platform + volgers + posting frequentie
+- Kansen: 3-5 specifieke mogelijkheden waar ${co} beter kan zijn dan deze concurrenten
+- Actieplan: 5 concrete stappen, gerangschikt op impact, uitvoerbaar binnen 30 dagen
+- VERBODEN: vage analyses ("ze doen het goed"), aanbevelingen zonder onderbouwing
+
+Geef ALLEEN JSON: {"concurrenten":[{"naam":"echte bedrijfsnaam","website":"URL","sterkePunten":["concreet observeerbaar"],"zwakkePunten":["concreet observeerbaar"],"socialMedia":"platform + volgers + frequentie"}],"kansen":["specifieke mogelijkheid voor ${co}"],"actieplan":["concrete stap binnen 30 dagen"]}`;
             let rawText;
-            try { rawText = await aiWebSearch(`Zoek info over de 3 grootste concurrenten van ${co} in ${lo} (${ni}, req.user?.workspaceId). Analyseer website, social media, sterke en zwakke punten. Geef ALLEEN JSON: {"concurrenten":[{"naam":"string","website":"string","sterkePunten":["string"],"zwakkePunten":["string"],"socialMedia":"string"}],"kansen":["string"],"actieplan":["string"]}`); }
-            catch (err) { console.warn(`[AI fallback]`, err.message); rawText = await aiCall(`Analyseer 3 concurrenten van ${co} (${ni}, ${lo}, req.user?.workspaceId).${intakeContext} Geef ALLEEN JSON: {"concurrenten":[{"naam":"string","website":"string","sterkePunten":["string"],"zwakkePunten":["string"],"socialMedia":"string"}],"kansen":["string"],"actieplan":["string"]}`); }
+            try { rawText = await aiWebSearch(compPrompt, req.user?.workspaceId, getModel('COMPETITOR_ANALYSIS')); }
+            catch (err) { console.warn(`[AI fallback]`, err.message); rawText = await aiCall(compPrompt, req.user?.workspaceId, getModel('COMPETITOR_ANALYSIS')); }
             let d = {}; try { d = parseJsonFromText(rawText); } catch { /* JSON parse fallback */}
             const comps = (d.concurrenten||[]).slice(0,3);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Concurrentieanalyse — ${co}</h2><div style="display:flex;flex-direction:column;gap:14px">
@@ -5263,7 +5454,18 @@ ${d.actieplan?.length?`<div style="border:1px solid #bfdbfe;border-radius:8px;pa
           case 'Social media audit': {
             const handle = lead.instagramHandle || '@' + co.toLowerCase().replace(/\s+/g,'');
             const d = await aiJSON(`Social media audit voor ${co} (${ni}, ${lo}). Instagram: ${handle}, volgers: ${lead.estimatedFollowers||'onbekend'}.${intakeContext}
-Geef ALLEEN JSON: {"score":7,"huidigeStatus":{"volgers":"string","engagement":"string","postFrequentie":"string"},"sterkePunten":["string"],"verbeterpunten":["string"],"contentGaps":["string"],"actiepunten":[{"prioriteit":"hoog/middel/laag","actie":"string","impact":"string"}]}`);
+
+KWALITEITSEISEN:
+- Score: 0-10, onderbouwd door de bevindingen — niet willekeurig
+- Huidige status: baseer op beschikbare data (volgers, geschatte engagement voor ${ni} branche)
+- Sterke punten: 3-4 concreet en specifiek (bijv. "Consistent kleurgebruik in feed") — NIET "goede content"
+- Verbeterpunten: 3-4 concreet en actionable (bijv. "Stories mist — dagelijks 2-3 behind-the-scenes Stories posten")
+- Content gaps: 3-4 specifieke content types die ontbreken (bijv. "Geen klantreviews/testimonials in feed")
+- Actiepunten: 5-7 stuks, gerangschikt op prioriteit, elk met concrete impact-schatting
+- Acties moeten uitvoerbaar zijn door een ${ni} eigenaar zonder marketingkennis
+- VERBODEN: vage acties ("verbeter engagement"), aanbevelingen voor betaalde ads
+
+Geef ALLEEN JSON: {"score":0-10,"huidigeStatus":{"volgers":"aantal of schatting","engagement":"percentage of kwalificatie","postFrequentie":"X per week/maand"},"sterkePunten":["concreet punt"],"verbeterpunten":["concreet + actionable"],"contentGaps":["specifiek content type dat ontbreekt"],"actiepunten":[{"prioriteit":"hoog/middel/laag","actie":"concrete uitvoerbare actie","impact":"verwacht resultaat"}]}`, getModel('SERVICE_CONTENT'));
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Social Media Audit — ${co}</h2>
 <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:8px"><div style="text-align:center"><div style="font-size:32px;font-weight:800;color:${(d.score||0)>=7?'#16a34a':(d.score||0)>=5?'#d97706':'#dc2626'}">${d.score||'?'}</div><div style="font-size:11px;color:#6b7280">Score /10</div></div><div style="flex:1;font-size:13px"><div><b>Volgers:</b> ${d.huidigeStatus?.volgers||handle}</div><div><b>Engagement:</b> ${d.huidigeStatus?.engagement||'?'}</div><div><b>Frequentie:</b> ${d.huidigeStatus?.postFrequentie||'?'}</div></div></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div style="border:1px solid #bbf7d0;border-radius:7px;padding:10px;background:#f0fdf4"><b style="font-size:10px;color:#16a34a;text-transform:uppercase">✓ Sterk</b><ul style="margin:5px 0 0;padding-left:15px">${(d.sterkePunten||[]).map(s=>`<li style="font-size:12px;margin-bottom:2px">${s}</li>`).join('')}</ul></div><div style="border:1px solid #fecaca;border-radius:7px;padding:10px;background:#fef2f2"><b style="font-size:10px;color:#dc2626;text-transform:uppercase">✗ Verbeter</b><ul style="margin:5px 0 0;padding-left:15px">${(d.verbeterpunten||[]).map(s=>`<li style="font-size:12px;margin-bottom:2px">${s}</li>`).join('')}</ul></div></div>
@@ -5273,7 +5475,17 @@ ${(d.actiepunten||[]).length?`<div style="border:1px solid #e5e7eb;border-radius
 
           case 'Google Ads teksten': {
             const d = await aiJSON(`Genereer 10 Google Ads varianten voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"campagneNaam":"string","targetKeywords":["kw1","kw2"],"ads":[{"nummer":1,"headlines":["H1 max 30 tekens","H2","H3"],"descriptions":["D1 max 90 tekens","D2"],"displayUrl":"example.nl/dienst","doelgroep":"string"}]}`);
+
+KWALITEITSEISEN:
+- Headlines: STRIKT max 30 tekens elk (tel je tekens!), bevat keyword of locatie
+- Descriptions: STRIKT max 90 tekens elk, bevat CTA en onderscheidend voordeel
+- 5 ads voor koude doelgroep (zoekt naar dienst), 5 voor warme doelgroep (kent merk)
+- Elke ad richt zich op een ander zoekintentie (informational, navigational, transactional)
+- Display URL: realistisch pad dat de dienst beschrijft (bijv. bedrijf.nl/prijzen)
+- Target keywords: 5 long-tail keywords relevant voor ${ni} in ${lo}
+- VERBODEN in ads: "beste", "nummer 1", "#1", onbewezen claims
+
+Geef ALLEEN JSON: {"campagneNaam":"string","targetKeywords":["5 long-tail keywords"],"ads":[{"nummer":1,"headlines":["H1 max 30 tekens","H2 max 30 tekens","H3 max 30 tekens"],"descriptions":["D1 max 90 tekens met CTA","D2 max 90 tekens met voordeel"],"displayUrl":"bedrijf.nl/relevantpad","doelgroep":"koud/warm + zoekintentie"}]}`, getModel('SERVICE_CONTENT'));
             const ads = (d.ads||[]).slice(0,10);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 6px">Google Ads Teksten (10 varianten)</h2><div style="font-size:12px;color:#6b7280;margin-bottom:14px">${d.campagneNaam||co} | Keywords: ${(d.targetKeywords||[]).join(', ')}</div><div style="display:flex;flex-direction:column;gap:10px">
 ${ads.map((ad,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:7px 12px;border-bottom:1px solid #e5e7eb;font-size:11px;font-weight:700;color:#6b7280">AD ${ad.nummer||i+1} — ${ad.doelgroep||''}</div><div style="padding:10px 12px"><div style="font-size:11px;color:#0369a1;margin-bottom:4px">● ${ad.displayUrl||''}</div>${(ad.headlines||[]).map(h=>`<div style="font-size:13px;color:#1d4ed8;font-weight:700">${h} <span style="font-size:10px;color:#9ca3af;font-weight:400">(${(h||'').length}/30)</span></div>`).join('')}<div style="height:4px"></div>${(ad.descriptions||[]).map(dd=>`<div style="font-size:12px;color:#374151;margin-bottom:3px">${dd} <span style="font-size:10px;color:#9ca3af">(${(dd||'').length}/90)</span></div>`).join('')}</div></div>`).join('')}
@@ -5283,7 +5495,17 @@ ${ads.map((ad,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overfl
 
           case 'Facebook Ad copy': {
             const d = await aiJSON(`Schrijf 5 Facebook/Instagram advertentie teksten voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"ads":[{"nummer":1,"doelgroep":"Koud/Warm","primaryText":"max 125 tekens","headline":"max 40 tekens","description":"max 30 tekens","cta":"SHOP_NOW/LEARN_MORE/CONTACT_US/BOOK_NOW","format":"Beeld/Video/Carrousel","tip":"creatieve tip"}]}`);
+
+KWALITEITSEISEN:
+- Primary text: max 125 tekens, opent met hook die scrollstop veroorzaakt (vraag, pijnpunt, of verrassend feit)
+- Headline: max 40 tekens, concreet voordeel of resultaat
+- Description: max 30 tekens, ondersteunt headline
+- Mix: 2 koude (kent het bedrijf niet), 2 warme (heeft website bezocht), 1 retargeting
+- CTA keuze moet passen bij doelgroep (BOOK_NOW voor warm, LEARN_MORE voor koud)
+- Tips: concreet en uitvoerbaar (bijv. "Gebruik een before/after foto van een klant")
+- VERBODEN: "klik hier", "mis dit niet", overdreven urgentie bij koude doelgroep
+
+Geef ALLEEN JSON: {"ads":[{"nummer":1,"doelgroep":"Koud/Warm/Retargeting","primaryText":"max 125 tekens, start met hook","headline":"max 40 tekens, concreet voordeel","description":"max 30 tekens","cta":"SHOP_NOW/LEARN_MORE/CONTACT_US/BOOK_NOW","format":"Beeld/Video/Carrousel","tip":"concrete creatieve tip"}]}`, getModel('SERVICE_CONTENT'));
             const ads = (d.ads||[]).slice(0,5);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Facebook Ad Copy (5 advertenties)</h2><div style="display:flex;flex-direction:column;gap:12px">
 ${ads.map(ad=>`<div style="border:2px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#1877f2;padding:8px 14px;display:flex;justify-content:space-between;align-items:center"><b style="color:#fff;font-size:12px">Ad ${ad.nummer} — ${ad.doelgroep}</b><span style="background:rgba(255,255,255,.2);color:#fff;border-radius:3px;padding:2px 6px;font-size:11px">${ad.format}</span></div><div style="padding:12px 14px"><div style="margin-bottom:8px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">Primaire tekst (${(ad.primaryText||'').length}/125)</span><div style="font-size:12px;color:#374151;margin-top:2px">${ad.primaryText}</div></div><div style="background:#f9fafb;border-radius:6px;padding:9px;margin-bottom:8px"><div style="font-size:13px;font-weight:700">${ad.headline} <span style="font-size:10px;color:#9ca3af;font-weight:400">(${(ad.headline||'').length}/40)</span></div><div style="font-size:12px;color:#6b7280">${ad.description} (${(ad.description||'').length}/30)</div><span style="display:inline-block;background:#1877f2;color:#fff;border-radius:3px;padding:3px 9px;font-size:11px;font-weight:700;margin-top:5px">${ad.cta}</span></div><div style="font-size:11px;color:#6b7280;font-style:italic">💡 ${ad.tip}</div></div></div>`).join('')}
@@ -5293,8 +5515,25 @@ ${ads.map(ad=>`<div style="border:2px solid #e5e7eb;border-radius:8px;overflow:h
 
           case 'Email autoresponder reeks': {
             const d = await aiJSON(`Schrijf 7-delige email autoresponder voor ${co} (${ni}, ${lo}).${intakeContext}
-Emails: Dag 1 (Welkom), Dag 2 (Beste tip), Dag 3 (Succesverhaal), Dag 5 (Spotlight), Dag 7 (FAQ), Dag 10 (Aanbieding), Dag 14 (Check-in).
-Geef ALLEEN JSON: {"reeks":[{"dag":1,"onderwerp":"string","preview":"string","doel":"string","body":"300-400 woorden, persoonlijk en nuttig"}]}`);
+
+STRUCTUUR (volg exact deze volgorde):
+- Dag 1: Welkom + verwachtingen instellen
+- Dag 2: Beste tip uit de praktijk (direct toepasbaar)
+- Dag 3: Klantverhaal/succesverhaal (sociaal bewijs)
+- Dag 5: Spotlight op 1 specifieke dienst
+- Dag 7: Veelgestelde vragen beantwoorden
+- Dag 10: Zachte aanbieding (geen harde verkoop)
+- Dag 14: Check-in + persoonlijke afsluiting
+
+KWALITEITSEISEN:
+- Onderwerpen: max 50 tekens, persoonlijk en nieuwsgierig makend — NIET "Email 1" of "Welkom bij..."
+- Preview: max 90 tekens, vult subject aan (herhaalt niet)
+- Body: 250-350 woorden, geschreven als 1-op-1 email van een expert, NIET als nieuwsbrief
+- Elke email heeft 1 duidelijke CTA (antwoorden, link klikken, of afspraak maken)
+- Toon: steeds persoonlijker naarmate de reeks vordert
+- VERBODEN: "In deze email", "Zoals beloofd", generieke openingszinnen
+
+Geef ALLEEN JSON: {"reeks":[{"dag":1,"onderwerp":"max 50 tekens, persoonlijk","preview":"max 90 tekens","doel":"welkom/tip/bewijs/spotlight/faq/aanbieding/check-in","body":"250-350 woorden, 1-op-1 toon"}]}`, getModel('SERVICE_CONTENT'));
             const emails = (d.reeks||[]).slice(0,7);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Email Autoresponder (7 emails)</h2><div style="display:flex;flex-direction:column;gap:12px">
 ${emails.map((e,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#0f172a;padding:9px 14px;display:flex;justify-content:space-between;align-items:center"><b style="color:#fff;font-size:12px">Email ${i+1} — Dag ${e.dag}</b><span style="background:#334155;color:#94a3b8;border-radius:3px;padding:2px 6px;font-size:11px">${e.doel||''}</span></div><div style="padding:12px 14px"><div style="margin-bottom:5px"><b style="font-size:12px">Subject:</b> ${e.onderwerp}</div><div style="margin-bottom:9px;font-size:11px;color:#6b7280"><b>Preview:</b> ${e.preview}</div><div style="font-size:12px;line-height:1.7;color:#374151;border-left:3px solid #e5e7eb;padding-left:10px">${(e.body||'').replace(/\n/g,'<br>')}</div></div></div>`).join('')}
@@ -5304,7 +5543,18 @@ ${emails.map((e,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;over
 
           case 'Product beschrijvingen': {
             const d = await aiJSON(`Schrijf 20 SEO product beschrijvingen voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"categorie":"string","producten":[{"naam":"string","seoTitle":"max 60 tekens","korteBeschrijving":"50 woorden","langeBeschrijving":"150 woorden SEO","kenmerken":["kw1","kw2","kw3","kw4","kw5"],"metaDescription":"max 155 tekens","keyword":"string"}]}`);
+
+KWALITEITSEISEN:
+- Korte beschrijving: exact 50 woorden, beantwoordt "wat is het en voor wie?"
+- Lange beschrijving: exact 150 woorden, SEO-geoptimaliseerd met keyword in eerste zin + H2 context
+- SEO title: max 60 tekens, bevat productnaam + keyword + eventueel locatie
+- Meta description: max 155 tekens, bevat CTA en keyword, wekt koopintentie
+- Kenmerken: 5 per product, concreet en meetbaar waar mogelijk (bijv. "30 minuten behandeling" i.p.v. "snel")
+- Keyword: long-tail zoekterm die een koper zou gebruiken (bijv. "klassieke manicure ${lo}" niet "nagels")
+- Toon: informerend en wervend, als een goed product-pagina — NIET als een persbericht
+- Producten moeten realistisch zijn voor een ${ni} in ${lo}
+
+Geef ALLEEN JSON: {"categorie":"hoofdcategorie","producten":[{"naam":"productnaam","seoTitle":"max 60 tekens met keyword","korteBeschrijving":"exact 50 woorden","langeBeschrijving":"150 woorden SEO met keyword in eerste zin","kenmerken":["concreet kenmerk 1","kenmerk 2","kenmerk 3","kenmerk 4","kenmerk 5"],"metaDescription":"max 155 tekens met CTA","keyword":"long-tail zoekterm"}]}`, getModel('SERVICE_CONTENT'));
             const products = (d.producten||[]).slice(0,20);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 6px">Product Beschrijvingen (${products.length})</h2><div style="font-size:12px;color:#6b7280;margin-bottom:14px">Categorie: ${d.categorie||ni}</div><div style="display:flex;flex-direction:column;gap:10px">
 ${products.map((p,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:9px 12px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between"><b style="font-size:12px">${p.naam}</b><span style="background:#eef2ff;color:#6366f1;border-radius:3px;padding:1px 5px;font-size:11px">${p.keyword}</span></div><div style="padding:10px 12px"><div style="font-size:12px;font-weight:600;margin-bottom:5px">${p.seoTitle}</div><div style="font-size:12px;color:#374151;margin-bottom:5px;line-height:1.5">${p.korteBeschrijving}</div><div style="font-size:12px;color:#374151;margin-bottom:6px;line-height:1.6">${p.langeBeschrijving}</div><div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:5px">${(p.kenmerken||[]).map(k=>`<span style="background:#f3f4f6;border-radius:3px;padding:1px 6px;font-size:11px">✓ ${k}</span>`).join('')}</div><div style="font-size:11px;color:#6b7280;background:#f9fafb;padding:5px 7px;border-radius:4px">${p.metaDescription}</div></div></div>`).join('')}
@@ -5314,8 +5564,26 @@ ${products.map((p,i)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;ov
 
           case 'Pitch deck teksten': {
             const d = await aiJSON(`Schrijf pitch deck voor ${co} (${ni}, ${lo}).${intakeContext}
-10-12 slides: Dekblad, Probleem, Oplossing, Product, Markt, Businessmodel, Tractie, Team, Financiën, CTA.
-Geef ALLEEN JSON: {"slides":[{"nummer":1,"titel":"string","type":"string","hoofdtekst":"string","bullets":["string"],"noot":"sprekersnoot"}]}`);
+
+STRUCTUUR (10 slides, volg exact):
+1. Dekblad — bedrijfsnaam + tagline (max 8 woorden)
+2. Probleem — 1 duidelijk pijnpunt dat klanten van ${ni} ervaren
+3. Oplossing — hoe ${co} dit oplost (max 3 bullets)
+4. Product/Dienst — wat de klant concreet krijgt
+5. Markt — grootte en potentie van ${ni} in ${lo}
+6. Businessmodel — hoe het geld verdient (prijsmodel)
+7. Tractie — concrete cijfers (klanten, omzet, groei) — mag realistisch geschat
+8. Team — wie erachter zit (rollen, niet namen)
+9. Financiën — eenvoudige projectie (kosten vs omzet)
+10. CTA — concrete volgende stap voor de luisteraar
+
+KWALITEITSEISEN:
+- Max 5 bullets per slide, elk max 10 woorden
+- Sprekersnoten: 1-2 zinnen, WAT te zeggen (niet voorlezen van de slide)
+- Toon: zelfverzekerd maar eerlijk, geen overdreven beloftes
+- VERBODEN: "disruptief", "revolutionair", "uniek", percentages zonder bron
+
+Geef ALLEEN JSON: {"slides":[{"nummer":1,"titel":"kort en krachtig","type":"dekblad/probleem/oplossing/product/markt/model/tractie/team/financien/cta","hoofdtekst":"max 2 zinnen context","bullets":["max 10 woorden per bullet"],"noot":"wat te zeggen (1-2 zinnen)"}]}`, getModel('SERVICE_CONTENT'));
             const slides = (d.slides||[]).slice(0,12);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Pitch Deck — ${co}</h2><div style="display:flex;flex-direction:column;gap:10px">
 ${slides.map(s=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#0f172a;padding:9px 14px;display:flex;justify-content:space-between"><b style="color:#fff;font-size:12px">Slide ${s.nummer}: ${s.titel}</b><span style="background:#334155;color:#94a3b8;border-radius:3px;padding:2px 6px;font-size:11px">${s.type}</span></div><div style="padding:12px 14px"><div style="font-size:13px;margin-bottom:7px">${s.hoofdtekst||''}</div>${(s.bullets||[]).length?`<ul style="margin:0 0 7px;padding-left:16px">${(s.bullets||[]).map(b=>`<li style="font-size:12px;color:#374151;margin-bottom:3px">${b}</li>`).join('')}</ul>`:''} ${s.noot?`<div style="padding:7px;background:#f9fafb;border-radius:5px;font-size:11px;color:#6b7280;border-left:3px solid #6366f1;font-style:italic">🎤 ${s.noot}</div>`:''}</div></div>`).join('')}
@@ -5326,8 +5594,17 @@ ${slides.map(s=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow
           case 'Privacy policy + algemene voorwaarden': {
             const lang = lead.language || 'nl';
             const d = await aiJSON(`Genereer GDPR-compliant juridische documenten voor ${co} (${lo}).${intakeContext}
-Taal: ${lang==='nl'?'Nederlands':'English'}. 6-8 artikelen per document.
-Geef ALLEEN JSON: {"privacyPolicy":{"titel":"string","artikelen":[{"nummer":1,"titel":"string","tekst":"string"}]},"algVoorwaarden":{"titel":"string","artikelen":[{"nummer":1,"titel":"string","tekst":"string"}]},"cookiePolicy":"volledige tekst"}`);
+Taal: ${lang==='nl'?'Nederlands':'English'}.
+
+VEREISTEN:
+- Privacy Policy: 8 artikelen — (1) Wie zijn wij, (2) Welke gegevens, (3) Waarvoor + rechtsgrond AVG Art.6, (4) Derde partijen, (5) Bewaartermijnen, (6) Beveiliging, (7) Uw rechten, (8) Klachten
+- Algemene Voorwaarden: 8 artikelen — (1) Definities, (2) Toepasselijkheid, (3) Diensten + prijzen, (4) Betaling, (5) Looptijd + opzegging, (6) Aansprakelijkheid, (7) IP rechten, (8) Toepasselijk recht
+- Cookie Policy: kort, noem alleen cookies die ${ni}-websites typisch gebruiken (analytics, functioneel)
+- Gebruik echte wettelijke termen (AVG/GDPR) maar schrijf begrijpelijk voor een niet-jurist
+- Artikelen: 80-150 woorden elk, concreet en specifiek voor een ${ni} in ${lo}
+- VERBODEN: vage formuleringen zonder concreet beleid ("wij nemen uw privacy serieus" zonder uit te leggen hoe)
+
+Geef ALLEEN JSON: {"privacyPolicy":{"titel":"string","artikelen":[{"nummer":1,"titel":"string","tekst":"80-150 woorden concreet"}]},"algVoorwaarden":{"titel":"string","artikelen":[{"nummer":1,"titel":"string","tekst":"80-150 woorden concreet"}]},"cookiePolicy":"volledige tekst (200-300 woorden)"}`, getModel('SERVICE_CONTENT'));
             const pp=d.privacyPolicy||{}, av=d.algVoorwaarden||{};
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Juridische Documenten — ${co}</h2><div style="display:flex;flex-direction:column;gap:16px">
 <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#1d4ed8;padding:10px 16px"><b style="color:#fff">Privacy Policy</b></div><div style="padding:16px;font-size:13px;line-height:1.7">${(pp.artikelen||[]).map(a=>`<div style="margin-bottom:14px"><h3 style="font-size:13px;font-weight:700;margin:0 0 4px">Art. ${a.nummer}: ${a.titel}</h3><p style="margin:0;color:#374151">${a.tekst}</p></div>`).join('')}</div></div>
@@ -5339,8 +5616,18 @@ ${d.cookiePolicy?`<div style="border:1px solid #e5e7eb;border-radius:8px;overflo
 
           case 'Google Bedrijfsprofiel content': {
             const d = await aiJSON(`Google Business Profile teksten voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"bedrijfsBeschrijving":"max 750 tekens","diensten":[{"naam":"string","beschrijving":"max 300 tekens"}],"faq":[{"vraag":"string","antwoord":"string"}],"googlePosts":[{"type":"Nieuw/Aanbieding/Evenement","tekst":"max 1500 tekens"}]}
-5 diensten, 10 FAQs, 5 posts.`);
+
+KWALITEITSEISEN:
+- Bedrijfsbeschrijving: exact 700-750 tekens, eerste 2 zinnen bevatten niche + locatie + USP (Google toont alleen eerste 250 tekens in snippet)
+- Diensten: 5 stuks, elk max 300 tekens — focus op wat de klant krijgt, niet wat het bedrijf doet
+- FAQ: 10 vragen die mensen ECHT stellen over een ${ni} (prijzen, openingstijden, parkeren, boeken, wachttijd)
+- FAQ antwoorden: direct en nuttig, beëindig met actie ("Bel ons" of "Boek online via...")
+- Google Posts: 5 stuks, elk max 1500 tekens, mix van types (2x Nieuw, 2x Aanbieding, 1x Evenement)
+- Posts bevatten CTA knoptekst en zijn geschreven alsof ze vandaag geplaatst worden
+- Toon: lokaal en persoonlijk, als de eigenaar die schrijft — NIET als een marketingbureau
+- VERBODEN: "wij zijn de beste", "uniek", "innovatief", harde claims zonder bewijs
+
+Geef ALLEEN JSON: {"bedrijfsBeschrijving":"700-750 tekens, niche+locatie in eerste 2 zinnen","diensten":[{"naam":"dienstnaam","beschrijving":"max 300 tekens, klantvoordeel"}],"faq":[{"vraag":"echte klantvraag","antwoord":"direct antwoord + actie"}],"googlePosts":[{"type":"Nieuw/Aanbieding/Evenement","tekst":"max 1500 tekens met CTA"}]}`, getModel('SERVICE_CONTENT'));
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Google Bedrijfsprofiel — ${co}</h2><div style="display:flex;flex-direction:column;gap:14px">
 <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700">Bedrijfsbeschrijving (${(d.bedrijfsBeschrijving||'').length}/750)</span><div style="font-size:13px;line-height:1.7;color:#374151;margin-top:6px">${d.bedrijfsBeschrijving||''}</div></div>
 <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:9px 14px;border-bottom:1px solid #e5e7eb;font-weight:700;font-size:12px">Diensten</div>${(d.diensten||[]).map(dd=>`<div style="padding:9px 14px;border-bottom:1px solid #f3f4f6"><div style="font-weight:600;font-size:12px">${dd.naam}</div><div style="font-size:12px;color:#6b7280;margin-top:2px">${dd.beschrijving}</div></div>`).join('')}</div>
@@ -5352,8 +5639,21 @@ Geef ALLEEN JSON: {"bedrijfsBeschrijving":"max 750 tekens","diensten":[{"naam":"
 
           case 'Verlaten winkelwagen emails': {
             const d = await aiJSON(`3-delige verlaten winkelwagen email reeks voor ${co} (${ni}, ${lo}).${intakeContext}
-Email 1: Vriendelijke herinnering (1 uur). Email 2: Voordeel aanbieden (24 uur). Email 3: Urgentie/schaarste (72 uur).
-Geef ALLEEN JSON: {"emails":[{"nummer":1,"timing":"1 uur na verlaten","onderwerp":"string","preview":"string","body":"150-200 woorden, HTML inline styles"}]}`);
+
+STRUCTUUR (exact deze volgorde en timing):
+- Email 1 (1 uur): Vriendelijke herinnering — "Ben je iets vergeten?" — GEEN korting, alleen behulpzaam
+- Email 2 (24 uur): Sociaal bewijs + klein voordeel — review/testimonial + gratis verzending of 5% korting
+- Email 3 (72 uur): Urgentie — "Je mandje verloopt binnenkort" + laatste aanbieding (10% of gratis cadeau)
+
+KWALITEITSEISEN:
+- Onderwerpen: max 40 tekens, persoonlijk (gebruik "je"), nieuwsgierig makend — NIET "Je hebt iets achtergelaten"
+- Preview: max 80 tekens, complementeert subject
+- Body: 120-180 woorden per email, email-safe HTML met inline styles
+- Elke email heeft exact 1 CTA-knop met actieve tekst ("Rond je bestelling af", "Bekijk je mandje")
+- Toon: behulpzaam (email 1), sociaal (email 2), urgent maar eerlijk (email 3) — nooit pushy
+- VERBODEN: "Beste klant", "Beste [naam]" zonder personalisatieveld, nepschaarste
+
+Geef ALLEEN JSON: {"emails":[{"nummer":1,"timing":"1 uur na verlaten","onderwerp":"max 40 tekens, persoonlijk","preview":"max 80 tekens","body":"120-180 woorden, HTML inline styles, 1 CTA-knop"}]}`, getModel('SERVICE_CONTENT'));
             const emails = (d.emails||[]).slice(0,3);
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Verlaten Winkelwagen Emails</h2><div style="display:flex;flex-direction:column;gap:12px">
 ${emails.map(e=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f59e0b;padding:9px 14px;display:flex;justify-content:space-between"><b style="color:#fff;font-size:12px">Email ${e.nummer}</b><span style="background:rgba(255,255,255,.2);color:#fff;font-size:11px;padding:2px 6px;border-radius:3px">${e.timing}</span></div><div style="padding:12px 14px"><div style="margin-bottom:5px;font-size:12px"><b>Subject:</b> ${e.onderwerp}</div><div style="margin-bottom:9px;font-size:11px;color:#6b7280"><b>Preview:</b> ${e.preview}</div><div style="font-size:12px;line-height:1.7;color:#374151;border-left:3px solid #f59e0b;padding-left:10px">${(e.body||'').replace(/\n/g,'<br>')}</div></div></div>`).join('')}
@@ -5363,7 +5663,18 @@ ${emails.map(e=>`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow
 
           case 'Over ons pagina schrijven': {
             const d = await aiJSON(`Schrijf "Over ons" pagina voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"hero":{"headline":"max 10 woorden","subheadline":"max 20 woorden"},"verhaal":"300-400 woorden (persoonlijk, vertrouwen)","missie":"2-3 zinnen","waarden":[{"icon":"emoji","titel":"string","beschrijving":"1-2 zinnen"}],"team":[{"naam":"string","rol":"string","bio":"2-3 zinnen"}]}`);
+
+KWALITEITSEISEN:
+- Verhaal: 300-400 woorden, geschreven in eerste persoon ("Ik"/"Wij"), als de eigenaar die vertelt waarom ze dit bedrijf startten
+- Bevat: een concreet begin (wanneer/waarom gestart), een specifiek moment dat ze trots maakt, en wat ze anders doen dan concurrenten
+- Missie: 2-3 zinnen, concreet — WAT ze willen bereiken voor hun klanten, niet vaag ("de beste service")
+- Waarden: 4 stuks, elk 1-2 zinnen — met een concreet voorbeeld hoe die waarde in de praktijk zichtbaar is
+- Team: placeholder structuur (3 rollen typisch voor een ${ni}) — namen en bio's als suggesties
+- Hero headline: emotioneel en persoonlijk, max 10 woorden — NIET "Over ons" of de bedrijfsnaam
+- Toon: warm, eerlijk, trots maar bescheiden — als een ondernemer die je uitlegt waarom ze elke dag met plezier naar hun werk gaan
+- VERBODEN: "passie", "gedreven", "uniek", "klant staat centraal", clichés zonder concreet bewijs
+
+Geef ALLEEN JSON: {"hero":{"headline":"emotioneel, max 10 woorden","subheadline":"max 20 woorden, wie ze zijn"},"verhaal":"300-400 woorden eerste persoon","missie":"2-3 zinnen concreet","waarden":[{"icon":"relevant emoji","titel":"waarde","beschrijving":"1-2 zinnen met concreet voorbeeld"}],"team":[{"naam":"placeholder naam","rol":"functie","bio":"2-3 zinnen"}]}`, getModel('SERVICE_CONTENT'));
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Over Ons Pagina — ${co}</h2><div style="display:flex;flex-direction:column;gap:14px">
 <div style="text-align:center;padding:16px;background:#f9fafb;border-radius:8px"><div style="font-size:20px;font-weight:800">${d.hero?.headline||''}</div><div style="color:#6b7280;font-size:14px;margin-top:4px">${d.hero?.subheadline||''}</div></div>
 <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px"><div style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:700;margin-bottom:7px">Ons Verhaal</div><div style="font-size:13px;line-height:1.7;color:#374151">${(d.verhaal||'').replace(/\n/g,'<br>')}</div></div>
@@ -5376,7 +5687,18 @@ ${(d.team||[]).length?`<div style="border:1px solid #e5e7eb;border-radius:8px;pa
 
           case 'FAQ pagina schrijven': {
             const d = await aiJSON(`Schrijf FAQ pagina voor ${co} (${ni}, ${lo}) — 20 vragen.${intakeContext}
-Geef ALLEEN JSON: {"intro":"2-3 zinnen","faqs":[{"nummer":1,"vraag":"string","antwoord":"80-120 woorden","categorie":"Prijzen/Diensten/Openingstijden/Contact/Algemeen"}]}`);
+
+KWALITEITSEISEN:
+- Vragen: geschreven vanuit het perspectief van de KLANT ("Hoeveel kost...?" niet "Wat zijn onze prijzen?")
+- Mix: 5 over prijzen, 4 over diensten, 4 over praktische zaken (parkeren/bereikbaarheid/openingstijden), 4 over het proces, 3 over contact/garantie
+- Antwoorden: 60-100 woorden, direct en bruikbaar — begin met het antwoord, daarna toelichting
+- Elk antwoord eindigt met een volgende stap ("Bel ons voor een offerte" of "Boek online via...")
+- Intro: 2-3 zinnen die de bezoeker geruststellen dat ze hier antwoord vinden
+- Toon: behulpzaam en transparant, als een geduldige medewerker die graag uitlegt
+- VERBODEN: "Neem contact op voor meer informatie" als volledig antwoord (altijd eerst inhoudelijk antwoorden)
+- Vragen moeten realistisch zijn voor een ${ni} in ${lo}
+
+Geef ALLEEN JSON: {"intro":"2-3 zinnen geruststellend","faqs":[{"nummer":1,"vraag":"vanuit klantperspectief","antwoord":"60-100 woorden, direct + volgende stap","categorie":"Prijzen/Diensten/Openingstijden/Proces/Contact"}]}`, getModel('SERVICE_CONTENT'));
             const faqs = (d.faqs||[]).slice(0,20);
             const cats = [...new Set(faqs.map(f=>f.categorie||'Algemeen'))];
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 6px">FAQ Pagina — ${co}</h2><p style="font-size:12px;color:#6b7280;margin:0 0 14px">${d.intro||''}</p>
@@ -5386,7 +5708,18 @@ ${cats.map(cat=>`<div style="margin-bottom:14px"><div style="font-size:11px;font
 
           case 'Nieuwsbrief template ontwerpen': {
             const d = await aiJSON(`Ontwerp HTML email nieuwsbrief template voor ${co} (${ni}, ${lo}).${intakeContext}
-Geef ALLEEN JSON: {"primaryColor":"#hexcode","sections":[{"type":"header/hero/featured/twoColumn/cta/footer","content":"beschrijving"}],"htmlTemplate":"volledig HTML email (max 3000 chars, inline styles, email-safe, responsive)"}`);
+
+KWALITEITSEISEN:
+- Template moet email-safe zijn: ALLEEN inline styles, geen CSS classes, geen external stylesheets
+- Responsive: max-width 600px met 100% width fallback, werkt in Outlook/Gmail/Apple Mail
+- Secties: header (logo placeholder + bedrijfsnaam), hero afbeelding placeholder, hoofdcontent, CTA knop, footer
+- Primaire kleur: passend bij de ${ni} branche (warm voor horeca, professioneel blauw voor zakelijk, groen voor wellness)
+- CTA knop: 44px hoog minimum, contrasterende kleur, ronde hoeken, tabel-gebaseerd voor Outlook
+- Footer: afmeldlink, adresregel, social media iconen als tekst-links
+- HTML max 3000 tekens — houd het simpel en schoon
+- VERBODEN: JavaScript, form elements, CSS hover states, background images (niet ondersteund in email)
+
+Geef ALLEEN JSON: {"primaryColor":"#hexcode passend bij ${ni}","sections":[{"type":"header/hero/featured/twoColumn/cta/footer","content":"wat deze sectie bevat"}],"htmlTemplate":"volledig email-safe HTML (max 3000 tekens, inline styles, responsive)"}`, getModel('SERVICE_CONTENT'));
             html = `<h2 style="font-size:17px;font-weight:700;margin:0 0 14px">Nieuwsbrief Template — ${co}</h2>
 <div style="margin-bottom:12px;padding:10px;background:#f9fafb;border-radius:7px;font-size:12px"><b>Primaire kleur:</b> <span style="display:inline-block;width:12px;height:12px;background:${d.primaryColor||'#6366f1'};border-radius:2px;vertical-align:middle;margin-right:4px"></span>${d.primaryColor||'#6366f1'}</div>
 ${d.htmlTemplate?`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden"><div style="background:#f9fafb;padding:9px 14px;border-bottom:1px solid #e5e7eb;font-weight:700;font-size:12px">Template Preview</div><div style="padding:14px">${d.htmlTemplate}</div></div>`:''}
@@ -5666,7 +5999,7 @@ Antwoord ALLEEN als JSON:
   "ctaText": "Call-to-action knoptekst (max 5 woorden)",
   "ctaSubtext": "Ondertekst bij CTA (max 12 woorden)",
   "footerTagline": "Footer slogan (max 10 woorden)"
-}`);
+}`, getModel('WEBSITE_CONTENT'));
     } catch (err) { /* AI JSON generation failed — use default content */
       console.warn('[AI] Website content generation failed:', err.message);
       content = {
@@ -5727,7 +6060,7 @@ TECHNISCHE VEREISTEN:
 - Schone, moderne typografie (system font stack)
 - Geen placeholder tekst
 
-Geef ALLEEN de volledige HTML terug. Geen uitleg, geen markdown, geen backticks.`);
+Geef ALLEEN de volledige HTML terug. Geen uitleg, geen markdown, geen backticks.`, getModel('WEBSITE_BUILD'));
     } catch (e) { send(0, 'HTML generatie mislukt: ' + e.message, 'error'); res.end(); return; }
 
     // Strip markdown code fences if Claude wrapped it
@@ -6281,7 +6614,7 @@ Use brand color ${chatStyle.color} as accent. Load font "${chatStyle.font}" from
       }
 
       // aiCallBuild(, req.user?.workspaceId) now handles markdown stripping + body validation internally
-      let html = await aiCallBuild(buildPrompt, req.user?.workspaceId);
+      let html = await aiCallBuild(buildPrompt, req.user?.workspaceId, getModel('SERVICE_BUILD'));
 
       // Append integration guide as HTML comment before </body>
       const _integGuide = buildIntegrationGuide(settings);
@@ -6341,16 +6674,20 @@ Use brand color ${chatStyle.color} as accent. Load font "${chatStyle.font}" from
 
 Klant: ${lead.companyName} (${lead.niche || 'onbekend'}, ${lead.location || ''})
 Website: ${lead.websiteUrl || 'geen'}
-Probleem: ${problemType || 'onbekend'}
+Probleem type: ${problemType || 'onbekend'}
 
-De gebruiker zegt: "${message}"
+De admin zegt: "${message}"
 
-Geef een concreet actieplan in max 120 woorden. Sluit altijd af met:
-"Wil je dat ik dit nu maak? Typ 'ja bouwen' om te bevestigen."
+REGELS:
+- Geef een concreet actieplan in max 100 woorden
+- Gebruik genummerde stappen (max 4)
+- Elke stap is een concrete actie met output (niet "analyseren" of "bekijken")
+- Noem specifiek wat je gaat bouwen (bijv. "chatbot met 10 FAQ's", "booking pagina met diensten")
+- Sluit ALTIJD af met: "Wil je dat ik dit nu maak? Typ 'ja bouwen' om te bevestigen."
+- Schrijf in het Nederlands
+- VERBODEN: "Ik zal eerst onderzoek doen", "Laat me even kijken", vage stappen zonder output`;
 
-Schrijf in het Nederlands.`;
-
-    const response = await aiCall(chatPrompt, req.user?.workspaceId);
+    const response = await aiCall(chatPrompt, req.user?.workspaceId, getModel('CHAT_RESPONSE'));
     res.json({ built: false, response });
   } catch (err) {
     console.error('[AgentChat] Fout:', err.message);
@@ -6489,7 +6826,7 @@ RULES:
    - Section "What you can do now" with 3-5 concrete steps
    - Closing with contact info for ${myName}`;
   try {
-    const result = await aiJSON(prompt);
+    const result = await aiJSON(prompt, getModel('DELIVERY_EMAIL'));
     const subject = result.subject || `Uw project is klaar — ${lead.companyName}`;
     const body    = result.body || '';
     // Persist to lead so UI can show saved state
@@ -6644,9 +6981,17 @@ WAT KLANT NOG MOET DOEN
 WAT JIJ NOG MOET DOEN
 BELANGRIJKE LINKS
 
-Max 500 woorden. Geef direct de tekst terug, geen JSON.`;
+REGELS:
+- Max 500 woorden
+- Elke sectie: max 3-4 korte zinnen of bullets
+- Noem per deliverable de STATUS (live/in review/wacht op content)
+- "WAT KLANT NOG MOET DOEN" = concrete acties ("intake invullen", "logo uploaden"), geen vaagheden
+- "WAT JIJ NOG MOET DOEN" = genummerde stappen met deadline-indicatie
+- VERBODEN: markdown headers, vage omschrijvingen ("diverse werkzaamheden"), herhaling van info die al in de links staat
+
+Geef direct de tekst terug, geen JSON.`;
   try {
-    const text = await aiCall(prompt, req.user?.workspaceId);
+    const text = await aiCall(prompt, req.user?.workspaceId, getModel('SERVICE_CONTENT'));
     res.json({ text: text.trim() });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -6782,13 +7127,20 @@ app.post('/api/leads/:id/run-agents', requireAdmin, async (req, res) => {
             return nameL.replace(/[^a-z]/g, '').substring(0, 20) || 'deliverable';
           })();
           const prompt = `Build a complete HTML page for ${lead.companyName}: ${svc.name}.
-Return ONLY raw HTML starting with <!DOCTYPE html>. No markdown, no backticks, no explanation.
-Includes all features for: ${svc.name}.${intakeContext}
-Style: white bg, indigo #6366f1 accent, Plus Jakarta Sans from Google Fonts, mobile responsive.
-All CSS in <style> in <head>. All JS in <script> before </body>.`;
+Return ONLY raw HTML starting with <!DOCTYPE html>. No markdown, no backticks, no explanation.${intakeContext}
+
+REQUIREMENTS:
+- Full single-file HTML with all CSS in <style> in <head>, all JS in <script> before </body>
+- Style: white bg, indigo #6366f1 accent, Plus Jakarta Sans from Google Fonts
+- MUST be fully mobile responsive (flexbox/grid, no fixed widths)
+- MUST include: sticky nav, hero section with CTA, 3+ content sections relevant to "${svc.name}", contact form, footer
+- Min 500 words of real content specific to ${lead.niche} in ${lead.location}
+- All text in Dutch unless intake specifies otherwise
+- Include <!-- CHATBOT_INJECT --> and <!-- BOOKING_INJECT --> comment placeholders before </body>
+- BANNED: placeholder text, Lorem ipsum, "[vul in]", broken links, inline styles on elements`;
 
           // aiCallBuild(, req.user?.workspaceId) handles markdown stripping + body validation internally
-          const html = await aiCallBuild(prompt, req.user?.workspaceId);
+          const html = await aiCallBuild(prompt, req.user?.workspaceId, getModel('SERVICE_BUILD'));
 
           // Save file
           const sitesDir = path.join(__dirname, 'public', 'sites', companySlug);
@@ -6816,12 +7168,20 @@ All CSS in <style> in <head>. All JS in <script> before </body>.`;
 
           // Auto-generate todo list for client
           const embedCode = `<iframe src="${url}" width="100%" height="600" frameborder="0" allowfullscreen></iframe>`;
-          const todoText = await aiCall(`Voor het volgende project, maak een stap-voor-stap lijst voor de klant wat ze zelf moeten doen om dit te activeren op hun website.
-Gebouwde pagina: ${svc.name} voor ${lead.companyName}.
+          const todoText = await aiCall(`Schrijf max 5 installatie-stappen voor een klant die "${svc.name}" wil activeren op hun website.
+
 Live URL: ${url}
 Embed code: ${embedCode}
 
-Geef max 5 stappen in het Nederlands. Verwerk de embed code als letterlijk codeblok in de stappen waar relevant. Begin elke stap met een nummer. Geef ALLEEN de stappen, geen intro of uitleg eromheen.`, req.user?.workspaceId).catch(() => '');
+REGELS:
+- Elke stap begint met een nummer (1. 2. 3. etc.)
+- Stap 1: ALTIJD "Bekijk de live preview via de link hierboven"
+- Stap 2-4: platform-specifiek (WordPress plugin/Webflow embed/Shopify theme editor)
+- Laatste stap: ALTIJD "Test op mobiel en desktop"
+- Neem de embed code letterlijk op als codeblok in de relevante stap
+- Max 2 zinnen per stap — geen uitleg, alleen actie
+- Geef ALLEEN de stappen, geen intro, geen "Succes!" eromheen
+- Schrijf in het Nederlands`, req.user?.workspaceId, getModel('CLIENT_TODO')).catch(() => '');
 
           deliverables.push({
             id: Date.now().toString(36) + i,
@@ -6837,10 +7197,25 @@ Geef max 5 stappen in het Nederlands. Verwerk de embed code als letterlijk codeb
           send(i, svc.name, 'done', { total: services.length, type: 'code', url });
         } else {
           // Manual work — generate instructions
-          const instructions = await aiCall(`Maak een gedetailleerde stap-voor-stap instructiegids voor de admin om de dienst "${svc.name}" uit te voeren voor de klant ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}, req.user?.workspaceId).${intakeContext}
+          const instructions = await aiCall(`Maak een stap-voor-stap instructiegids voor de admin om "${svc.name}" handmatig uit te voeren voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).${intakeContext}
 
-Schrijf de instructies voor de ADMIN (niet voor de klant). Max 400 woorden, in het Nederlands.
-Wees concreet: welke tools, welke stappen, welke instellingen.`);
+DOELGROEP: De admin/medewerker die deze dienst uitvoert — NIET de klant.
+
+STRUCTUUR:
+1. Benodigdheden (tools, accounts, toegang die nodig zijn)
+2. Voorbereiding (wat controleren/opzetten vóór je begint)
+3. Uitvoering (genummerde stappen, max 8, elk 1-2 zinnen)
+4. Kwaliteitscheck (3 punten om af te vinken voor oplevering)
+5. Oplevering (hoe resultaat delen met klant via portaal)
+
+REGELS:
+- Max 350 woorden totaal
+- Elke stap begint met een werkwoord ("Open...", "Maak...", "Stel in...")
+- Noem specifieke tools bij naam (Canva, WordPress, Mailchimp, Google Ads, etc.)
+- Noem concrete instellingen/waarden waar mogelijk (bijv. "stel budget in op €5/dag")
+- Pas de instructies aan op ${lead.niche || 'de branche'} in ${lead.location || 'de regio'}
+- VERBODEN: vage stappen ("doe research", "optimaliseer"), stappen zonder concreet resultaat
+- Schrijf in het Nederlands`, getModel('ADMIN_INSTRUCTIONS'));
 
           deliverables.push({
             id: Date.now().toString(36) + i,
@@ -7219,7 +7594,7 @@ Use EXACTLY the brand color ${style.color} as accent color. Load font "${style.f
           }
 
           sse({ type: 'progress', service: serviceName, percent: 50 });
-          let html = await aiCallBuild(prompt, req.user?.workspaceId);
+          let html = await aiCallBuild(prompt, req.user?.workspaceId, getModel('SERVICE_BUILD'));
           sse({ type: 'progress', service: serviceName, percent: 80 });
           { const bm = html.match(/<body[^>]*>([\s\S]*)<\/body>/i); console.log(`[Build] Body length: ${(bm?.[1]?.trim()||'').length} | Success: true`); }
 
@@ -7250,7 +7625,20 @@ Use EXACTLY the brand color ${style.color} as accent color. Load font "${style.f
             } catch(e5) { console.log('[404] Error:', e5.message); }
           }
 
-          const todoText = await aiCall(`Schrijf max 5 concrete stappen voor de klant om "${serviceName}" te activeren op hun website. Live URL: ${url}. Embed code: <iframe src="${url}" width="100%" height="600" frameborder="0"></iframe>. Stap-voor-stap, in het Nederlands.`, req.user?.workspaceId).catch(() => '');
+          const todoText = await aiCall(`Schrijf max 5 installatie-stappen voor een klant die "${serviceName}" wil activeren op hun website.
+
+Live URL: ${url}
+Embed code: <iframe src="${url}" width="100%" height="600" frameborder="0"></iframe>
+
+REGELS:
+- Elke stap begint met een nummer (1. 2. 3. etc.)
+- Stap 1: ALTIJD "Bekijk de live preview via de link hierboven"
+- Stap 2-4: platform-specifiek (WordPress/Webflow/Shopify/Wix)
+- Laatste stap: ALTIJD "Test op mobiel en desktop"
+- Neem de embed code letterlijk op als codeblok in de relevante stap
+- Max 2 zinnen per stap — geen uitleg, alleen actie
+- Geef ALLEEN de stappen, geen intro of afsluiting
+- Schrijf in het Nederlands`, req.user?.workspaceId, getModel('CLIENT_TODO')).catch(() => '');
 
           const id = Date.now().toString(36) + i;
           deliverable = { id, service: serviceName, type: 'code', status: 'wacht_op_goedkeuring', html, url, todoText, builtAt: new Date().toISOString() };
@@ -7260,19 +7648,23 @@ Use EXACTLY the brand color ${style.color} as accent color. Load font "${style.f
           // ── Strategy / report document ────────────────────────────────────
           console.log(`[Build] Type: STRATEGY_DOCUMENT | Service: ${serviceName}`);
           sse({ type: 'progress', service: serviceName, percent: 30 });
-          const content = await aiCall(`Schrijf een professioneel "${serviceName}" rapport voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}, req.user?.workspaceId).
+          const content = await aiCall(`Schrijf een professioneel "${serviceName}" rapport voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).
 
 ${brandContext}
 
-Structuur:
-1. Managementsamenvatting (3-5 bevindingen)
-2. Huidige situatie analyse
-3. Verbeterpunten (genummerd, concreet)
-4. Stappenplan per kwartaal
-5. KPI's en succesmetrics
-6. Aanbevolen volgende stap
+STRUCTUUR:
+1. Managementsamenvatting (3-5 concrete bevindingen met cijfers)
+2. Huidige situatie (specifiek voor ${lead.niche} in ${lead.location}, niet generiek)
+3. Verbeterpunten (min 5, genummerd, elk met verwachte impact: laag/middel/hoog)
+4. Stappenplan per kwartaal (Q1-Q4, meetbare doelen per kwartaal)
+5. KPI's (5 stuks met realistische doelwaarden voor een ${lead.niche})
+6. Aanbevolen volgende stap (1 concrete actie die morgen kan starten)
 
-Schrijf in de toon en taal van het merk (zie boven). Maximaal 600 woorden. Concreet en specifiek voor niche/locatie.`);
+REGELS:
+- Max 600 woorden, schrijf in de toon van het merk (zie brandContext)
+- Cijfers en percentages waar mogelijk
+- Specifiek voor ${lead.niche} in ${lead.location} — geen generiek advies
+- VERBODEN: "innovatief", "synergie", "naar een hoger niveau tillen", vage KPI's zonder getal`, getModel('SERVICE_CONTENT'));
           sse({ type: 'progress', service: serviceName, percent: 80 });
 
           const id = Date.now().toString(36) + i;
@@ -7283,18 +7675,21 @@ Schrijf in de toon en taal van het merk (zie boven). Maximaal 600 woorden. Concr
           // ── Text document (content, copy, scripts) ────────────────────────
           console.log(`[Build] Type: TEXT_DOCUMENT | Service: ${serviceName}`);
           sse({ type: 'progress', service: serviceName, percent: 30 });
-          const content = await aiCall(`Lever de dienst "${serviceName}" voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}, req.user?.workspaceId).
+          const content = await aiCall(`Lever de dienst "${serviceName}" voor ${lead.companyName} (${lead.niche || ''}, ${lead.location || ''}).
 
 ${brandContext}
 
-Schrijf complete, direct bruikbare inhoud:
-- Gebruik de exacte toon en taal van het merk (zie boven — formeel/informeel)
-- Specifiek voor hun niche, locatie en de problemen die we oplossen
-- Klaar om te gebruiken (geen placeholders zoals [naam] of [bedrijf])
-- Schrijf ALS de copywriter van dit bedrijf, niet als externe partij
-- Minimum 300 woorden aan bruikbare content
+REGELS:
+- Schrijf ALS de copywriter van ${lead.companyName}, niet als externe partij
+- Gebruik exact de toon van het merk (formeel/informeel — zie brandContext)
+- Specifiek voor ${lead.niche} in ${lead.location}
+- Min 300 woorden direct bruikbare content
+- GEEN placeholders ([naam], [bedrijf], [vul in]) — schrijf de ECHTE tekst
+- Structureer met duidelijke koppen en alinea's
+- Als het om social media/website/email teksten gaat: schrijf kant-en-klare tekst die direct gepost/gebruikt kan worden
+- VERBODEN: "Wij van [bedrijf] vinden...", meta-beschrijvingen van wat er zou moeten staan, generieke marketing clichés
 
-Dienst: ${svc.description || serviceName}`);
+Dienst: ${svc.description || serviceName}`, getModel('SERVICE_CONTENT'));
           sse({ type: 'progress', service: serviceName, percent: 80 });
 
           const id = Date.now().toString(36) + i;
@@ -7338,7 +7733,7 @@ The snippet must work when pasted before </body> in another HTML page.
 Return raw HTML/CSS/JS only — no markdown, no explanation.
 
 CHATBOT HTML:
-${chatbotDel.html.substring(0, 8000)}`, req.user?.workspaceId).catch(() => '');
+${chatbotDel.html.substring(0, 8000)}`, req.user?.workspaceId, getModel('CODE_EXTRACTION')).catch(() => '');
 
           if (widgetCode && widgetCode.trim().length > 50) {
             combinedHtml = combinedHtml.includes('<!-- CHATBOT_INJECT -->')
@@ -7360,7 +7755,7 @@ Do NOT include <!DOCTYPE>, <html>, <head>, <body> tags.
 Return raw HTML only — no markdown, no explanation.
 
 BOOKING HTML:
-${bookingDel.html.substring(0, 8000)}`, req.user?.workspaceId).catch(() => '');
+${bookingDel.html.substring(0, 8000)}`, req.user?.workspaceId, getModel('CODE_EXTRACTION')).catch(() => '');
 
           if (bookingSection && bookingSection.trim().length > 100) {
             const cleanSection = /^\s*<section/i.test(bookingSection.trim())
@@ -7443,21 +7838,27 @@ app.post('/api/leads/:id/deliverables/:dIdx/preview-email', requireAdmin, async 
   const myTitle = settings.myTitle || '';
 
   try {
-    const emailBody = await aiCall(`Schrijf een professionele leveringsemail voor een klant.
+    const emailBody = await aiCall(`Schrijf een leveringsemail voor een klant.
+
 Dienst: ${d.service}
 Klant: ${lead.companyName} (${lead.location || ''})
-Wat gedaan (instructies samenvatting): ${(d.content || d.instructions || (d.url ? `Live URL: ${d.url}` : '') || d.todoText || '').substring(0, 600)}
-Agency: ${agencyName} — ${myName}${myTitle ? `, ${myTitle}` : ''}
+Wat opgeleverd: ${(d.content || d.instructions || (d.url ? `Live URL: ${d.url}` : '') || d.todoText || '').substring(0, 600)}
+Afzender: ${myName}${myTitle ? `, ${myTitle}` : ''} — ${agencyName}
 
-De email moet bevatten:
-1. Begroeting met bedrijfsnaam
-2. "Uw [dienst] is nu live / klaar!"
-3. Korte samenvatting van wat gedaan is (2-3 zinnen)
-4. Hoe de klant het gebruikt / waar te vinden (praktisch)
-5. Wat de volgende stap is
-6. Afsluiting met contactinfo
+STRUCTUUR (volg exact):
+1. "Beste ${lead.companyName}," — ALTIJD
+2. Eén zin: wat is klaar + of het live staat (als er een URL is, noem die)
+3. 2-3 zinnen: wat precies gedaan is (concreet, niet "we hebben hard gewerkt")
+4. Praktische instructie: hoe ze het gebruiken/vinden/testen
+5. Één duidelijke volgende stap (bijv. "Bekijk het in uw portaal" of "Laat me weten of u wijzigingen wilt")
+6. Korte afsluiting: "Met vriendelijke groet, ${myName}"
 
-Schrijf in het Nederlands, professioneel maar warm. Max 250 woorden. Geef ALLEEN de emailtekst, geen onderwerp.`, req.user?.workspaceId);
+REGELS:
+- Max 150 woorden (klanten lezen geen lange emails)
+- Toon: professioneel maar menselijk — alsof een collega die goed werk aflevert
+- Gebruik "uw" consequent (niet wisselen tussen je/u)
+- VERBODEN: "Wij zijn trots om...", "Met veel plezier...", "Mocht u vragen hebben, aarzel niet"
+- Geef ALLEEN de emailtekst, geen onderwerp.`, req.user?.workspaceId, getModel('DELIVERY_EMAIL'));
 
     const subject = `Uw ${d.service} is klaar! — ${agencyName}`;
     res.json({ subject, body: emailBody.trim() });
@@ -7609,7 +8010,7 @@ The snippet must work when pasted before </body> in another HTML page.
 Return raw HTML/CSS/JS only — no markdown, no explanation.
 
 CHATBOT HTML:
-${injectDel.html.substring(0, 8000)}`, req.user?.workspaceId).catch(() => '');
+${injectDel.html.substring(0, 8000)}`, req.user?.workspaceId, getModel('CODE_EXTRACTION')).catch(() => '');
 
         if (widgetCode && widgetCode.trim().length > 50) {
           combinedHtml = combinedHtml.includes('<!-- CHATBOT_INJECT -->')
@@ -7629,7 +8030,7 @@ Do NOT include <!DOCTYPE>, <html>, <head>, <body> tags.
 Return raw HTML only — no markdown, no explanation.
 
 BOOKING HTML:
-${injectDel.html.substring(0, 8000)}`, req.user?.workspaceId).catch(() => '');
+${injectDel.html.substring(0, 8000)}`, req.user?.workspaceId, getModel('CODE_EXTRACTION')).catch(() => '');
 
         if (bookingSection && bookingSection.trim().length > 100) {
           const cleanSection = /^\s*<section/i.test(bookingSection.trim())
@@ -7660,7 +8061,7 @@ Do NOT include <!DOCTYPE>, <html>, <head>, <body> tags.
 Return raw HTML only — no markdown, no explanation.
 
 HTML:
-${injectDel.html.substring(0, 8000)}`, req.user?.workspaceId).catch(() => '');
+${injectDel.html.substring(0, 8000)}`, req.user?.workspaceId, getModel('CODE_EXTRACTION')).catch(() => '');
 
         if (genericSection && genericSection.trim().length > 50) {
           combinedHtml = combinedHtml.replace('</body>', `\n${genericSection.trim()}\n</body>`);
@@ -7682,7 +8083,7 @@ Return raw HTML <section> only — no markdown, no explanation.
 
 DOCUMENT: ${injectDel.service}
 CONTENT:
-${rawContent.substring(0, 6000)}`, req.user?.workspaceId).catch(() => '');
+${rawContent.substring(0, 6000)}`, req.user?.workspaceId, getModel('CODE_EXTRACTION')).catch(() => '');
 
         if (docSection && docSection.trim().length > 100) {
           const cleanDoc = /^\s*<section/i.test(docSection.trim())
@@ -8222,7 +8623,7 @@ app.patch('/api/settings/stripe', requireAdmin, (req, res) => {
 });
 
 // ── Payments routes — migrated to routes/payments.js ──────────────────────
-app.use('/api', require('./routes/payments')({ wsRead, wsWrite, requireAdmin, isDemoUser, isDemoContext, sendEmail, addLeadHistory, addNotification, isResendReady, generateInvoiceNumber, buildInvoiceEmailHTML, generateInvoicePDF, aiJSON, trackFunnelEvent, authMiddleware }));
+app.use('/api', require('./routes/payments')({ wsRead, wsWrite, requireAdmin, isDemoUser, isDemoContext, sendEmail, addLeadHistory, addNotification, isResendReady, generateInvoiceNumber, buildInvoiceEmailHTML, generateInvoicePDF, aiJSON, trackFunnelEvent, authMiddleware, getModel }));
 
 
 app.delete('/api/settings/leads', requireAdmin, (req, res) => {
@@ -8299,10 +8700,10 @@ app.post('/api/upsell/:leadId/email', async (req, res) => {
 
   try {
     const prompt = opp.language === 'nl'
-      ? 'Schrijf een warme upsell email voor een bestaande klant. Klinkt persoonlijk, NIET als AI. Geef JSON terug.\n\nKlant: ' + opp.companyName + ' (' + opp.niche + ', ' + opp.location + ')\nHuidige dienst: ' + opp.currentService + '\nNieuwe dienst: ' + opp.upsellService + ' (\u20AC' + opp.upsellPrice + ')\nKlant al ' + opp.daysSince + ' dagen actief\nAfzender: ' + myName + ' van ' + agencyName + '\nDatum vandaag: ' + new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) + '\n\nRegels:\n- Refereer aan hun huidige resultaten positief\n- Introduceer de nieuwe dienst als logische volgende stap\n- Max 100 woorden\n- Geen bullet points\n- CTA: vraag of ze even willen bellen\n- Afsluiting: "Groeten, ' + myName + '"\n\n{"subject": "onderwerp", "body": "emailtekst"}'
-      : 'Write a warm upsell email for an existing client. Sounds personal, NOT like AI. Return JSON.\n\nClient: ' + opp.companyName + ' (' + opp.niche + ', ' + opp.location + ')\nCurrent service: ' + opp.currentService + '\nNew service: ' + opp.upsellService + ' (\u20AC' + opp.upsellPrice + ')\nClient active for ' + opp.daysSince + ' days\nSender: ' + myName + ' from ' + agencyName + '\n\nRules:\n- Reference their current positive results\n- Introduce new service as natural next step\n- Max 100 words\n- No bullet points\n- CTA: ask for a quick call\n- Sign off: "Best, ' + myName + '"\n\n{"subject": "subject", "body": "email body"}';
+      ? 'Schrijf een warme upsell email voor een bestaande klant. Klinkt als een echt persoon, NIET als AI of marketing. Geef ALLEEN JSON terug: {"subject": "onderwerp", "body": "emailtekst"}\n\nKlant: ' + opp.companyName + ' (' + opp.niche + ', ' + opp.location + ')\nHuidige dienst: ' + opp.currentService + '\nNieuwe dienst: ' + opp.upsellService + ' (\u20AC' + opp.upsellPrice + '/mnd)\nKlant al ' + opp.daysSince + ' dagen actief\nAfzender: ' + myName + ' van ' + agencyName + '\n\nREGELS:\n- Eerste zin: concreet positief resultaat van huidige dienst (bijv. "Jullie Instagram groeit lekker") — NIET "Ik wilde even contact opnemen"\n- Tweede alinea: natuurlijke brug naar nieuwe dienst — waarom het NU logisch is\n- Toon: professioneel maar warm, gebruik "je/jullie"\n- Max 80 woorden totaal\n- Geen bullet points, geen opsommingen\n- CTA: zachte vraag ("Zal ik even bellen om het uit te leggen?")\n- Afsluiting: "Groeten, ' + myName + '"\n- VERBODEN: "innovatief", "synergie", "vrijblijvend", "naar een hoger niveau", "next level"\n- Begin NOOIT een zin met "Ik"'
+      : 'Write a warm upsell email for an existing client. Sounds like a real person, NOT AI or marketing. Return ONLY JSON: {"subject": "subject", "body": "email body"}\n\nClient: ' + opp.companyName + ' (' + opp.niche + ', ' + opp.location + ')\nCurrent service: ' + opp.currentService + '\nNew service: ' + opp.upsellService + ' (\u20AC' + opp.upsellPrice + '/mo)\nClient active for ' + opp.daysSince + ' days\nSender: ' + myName + ' from ' + agencyName + '\n\nRULES:\n- First sentence: concrete positive result from current service (e.g. "Your website traffic doubled") — NOT "I wanted to reach out"\n- Second paragraph: natural bridge to new service — why NOW makes sense\n- Tone: professional but warm, casual "you"\n- Max 80 words total\n- No bullet points, no lists\n- CTA: soft ask ("Want me to call and walk you through it?")\n- Sign off: "Best, ' + myName + '"\n- BANNED: "innovative", "synergy", "no obligation", "next level", "untapped potential"\n- NEVER start a sentence with "I"';
 
-    const email = await aiJSON(prompt);
+    const email = await aiJSON(prompt, getModel('COLD_EMAIL'));
     res.json({ email, opp });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -8372,7 +8773,7 @@ CRITICAL RULES:
   for (const test of tests) {
     console.log(`[Build] Type: ${test.type}`);
     try {
-      const html = await aiCallBuild(test.prompt, req.user?.workspaceId);
+      const html = await aiCallBuild(test.prompt, req.user?.workspaceId, getModel('SUPERADMIN_PROXY'));
       const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
       const bodyContent = bodyMatch?.[1]?.trim() || '';
       console.log(`[Build] Body length: ${bodyContent.length}`);
@@ -8440,7 +8841,7 @@ MUST include in <body>: floating chat widget with open/close toggle, 15+ pre-pro
 
 MUST include in <body>: sticky navigation, full-viewport hero with headline + stats row + CTA buttons, 3+ richly styled content sections directly relevant to "${serviceName}", contact section with form, branded footer. Min 500 words of real content. Mobile responsive.`;
       }
-      const html = await aiCallBuild(prompt, req.user?.workspaceId);
+      const html = await aiCallBuild(prompt, req.user?.workspaceId, getModel('SERVICE_BUILD'));
       const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
       const bodyLength = (bodyMatch?.[1]?.trim() || '').length;
       const htmlLength = html.length;
@@ -8450,7 +8851,21 @@ MUST include in <body>: sticky navigation, full-viewport hero with headline + st
 
     } else if (STRAT_KW.test(serviceName)) {
       type = 'STRATEGY_DOCUMENT';
-      const content = await aiCall(`Schrijf een professioneel "${serviceName}" document voor ${companyName} (${niche}, ${location}, req.user?.workspaceId).${intakeCtx}\n\nStructuur:\n1. Managementsamenvatting\n2. Huidige situatie\n3. Verbeterpunten (min 5)\n4. Stappenplan Q1-Q4\n5. KPI's\n6. Volgende stap\n\nMin 400 woorden Nederlands.`);
+      const content = await aiCall(`Schrijf een professioneel "${serviceName}" document voor ${companyName} (${niche}, ${location}).${intakeCtx}
+
+Structuur:
+1. Managementsamenvatting (3-5 concrete bevindingen, geen vaagheden)
+2. Huidige situatie (specifiek voor ${niche} in ${location})
+3. Verbeterpunten (min 5, elk met verwachte impact: laag/middel/hoog)
+4. Stappenplan per kwartaal (Q1-Q4, concreet en meetbaar)
+5. KPI's (5 stuks met huidige waarde en doelwaarde)
+6. Aanbevolen volgende stap (1 concrete actie)
+
+REGELS:
+- Min 400 woorden, in het Nederlands
+- Cijfers en percentages waar mogelijk (bijv. "verwachte stijging van 15-20%")
+- Specifiek voor ${niche} — geen generiek marketingadvies
+- VERBODEN: "innovatief", "synergie", "naar een hoger niveau", "optimaliseren" zonder uitleg WAT`, req.user?.workspaceId, getModel('SERVICE_CONTENT'));
       const contentLength = content.length;
       const success = contentLength >= 200;
       console.log('[TestService] Done:', serviceName, success ? '✓' : '✗', `— ${contentLength} tekens`);
@@ -8458,7 +8873,16 @@ MUST include in <body>: sticky navigation, full-viewport hero with headline + st
 
     } else {
       type = 'TEXT_DOCUMENT';
-      const content = await aiCall(`Lever de dienst "${serviceName}" volledig op voor ${companyName} (${niche}, ${location}, req.user?.workspaceId).${intakeCtx}\n\nSchrijf direct bruikbare Nederlandse inhoud, minimaal 300 woorden, geen placeholders.`);
+      const content = await aiCall(`Lever de dienst "${serviceName}" volledig op voor ${companyName} (${niche}, ${location}).${intakeCtx}
+
+REGELS:
+- Schrijf direct bruikbare Nederlandse inhoud die de klant meteen kan gebruiken
+- Min 300 woorden
+- Specifiek voor ${niche} — gebruik brancheterminologie waar passend
+- Concreet: geen "Lorem ipsum" of "[vul hier in]" of andere placeholders
+- Structureer met duidelijke koppen en alinea's
+- Als het om teksten gaat (website, social media, email): schrijf de ECHTE tekst, niet een beschrijving van wat er zou moeten staan
+- VERBODEN: placeholders, generieke voorbeelden, "dit kunt u aanpassen naar wens"`, req.user?.workspaceId, getModel('SERVICE_CONTENT'));
       const contentLength = content.length;
       const success = contentLength >= 200;
       console.log('[TestService] Done:', serviceName, success ? '✓' : '✗', `— ${contentLength} tekens`);
@@ -8475,13 +8899,12 @@ MUST include in <body>: sticky navigation, full-viewport hero with headline + st
 // In-memory token accumulator — reset per run
 let _sessionTokensIn = 0;
 let _sessionTokensOut = 0;
+let _cacheStats = { cacheCreationTokens: 0, cacheReadTokens: 0, calls: 0, cacheHits: 0 };
 
-// Claude Sonnet 4.x pricing (USD per million tokens)
-const PRICE_IN_PER_M  = 3.0;
-const PRICE_OUT_PER_M = 15.0;
-
-function calcCostUsd(tokIn, tokOut) {
-  return (tokIn / 1e6) * PRICE_IN_PER_M + (tokOut / 1e6) * PRICE_OUT_PER_M;
+// Model-aware cost calculation using lib/models.js pricing
+function calcCostUsd(tokIn, tokOut, modelId) {
+  const p = getPricing(modelId || MODELS.SONNET);
+  return (tokIn / 1e6) * p.input + (tokOut / 1e6) * p.output;
 }
 
 // ── AI Rate Limiter ──────────────────────────────────────────────────────────
@@ -8524,8 +8947,9 @@ function aiRateCheck(workspaceId) {
   }
 }
 
-async function aiCall(prompt, workspaceId) {
+async function aiCall(prompt, workspaceId, model, options = {}) {
   const wId = workspaceId || null;
+  const modelId = model || MODELS.SONNET;
   aiRateCheck(wId);
   const s = wsReadWs(wId, 'settings.json') || {};
   const apiKey = getClaudeApiKey(s);
@@ -8533,6 +8957,21 @@ async function aiCall(prompt, workspaceId) {
     throw new Error('Claude API sleutel niet ingesteld. Voeg toe via Instellingen → API & integraties of stel CLAUDE_API_KEY in als Railway environment variable.');
   }
   const { default: fetch } = await import('node-fetch');
+
+  // Build request body — optionally with system prompt for caching
+  const reqBody = {
+    model: modelId,
+    max_tokens: options.maxTokens || 4000,
+    messages: [{ role: 'user', content: prompt }]
+  };
+  if (options.system) {
+    reqBody.system = [{
+      type: 'text',
+      text: options.system,
+      cache_control: { type: 'ephemeral' }
+    }];
+  }
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -8540,11 +8979,7 @@ async function aiCall(prompt, workspaceId) {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01'
     },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4000,
-      messages: [{ role: 'user', content: prompt }]
-    })
+    body: JSON.stringify(reqBody)
   });
   const data = await res.json();
   if (!data.content) {
@@ -8564,23 +8999,36 @@ async function aiCall(prompt, workspaceId) {
   _sessionTokensIn  += tokIn;
   _sessionTokensOut += tokOut;
   _aiCallLog.push({ ts: Date.now() });
-  const callCost = calcCostUsd(tokIn, tokOut);
+
+  // Track prompt caching statistics
+  if (usage.cache_creation_input_tokens || usage.cache_read_input_tokens) {
+    _cacheStats.calls++;
+    if (usage.cache_read_input_tokens) {
+      _cacheStats.cacheHits++;
+      _cacheStats.cacheReadTokens += usage.cache_read_input_tokens;
+    }
+    if (usage.cache_creation_input_tokens) {
+      _cacheStats.cacheCreationTokens += usage.cache_creation_input_tokens;
+    }
+    console.log(`[Cache] ${usage.cache_read_input_tokens ? 'HIT' : 'MISS'} — created: ${usage.cache_creation_input_tokens || 0}, read: ${usage.cache_read_input_tokens || 0} tokens`);
+  }
+
+  const callCost = calcCostUsd(tokIn, tokOut, modelId);
   const promptLabel = prompt.slice(0, 60).replace(/\n/g, ' ');
-  addActivity('ai_call', `Claude: ${promptLabel}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost, workspaceId: wId});
-  // Update running stats.json totals
+  addActivity('ai_call', `Claude: ${promptLabel}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost, model: modelId, workspaceId: wId});
   const statsNow = wsReadWs(wId, 'stats.json') || {};
   statsNow.totalApiTokensIn  = (statsNow.totalApiTokensIn  || 0) + tokIn;
   statsNow.totalApiTokensOut = (statsNow.totalApiTokensOut || 0) + tokOut;
   statsNow.totalApiCostUsd   = Math.round(((statsNow.totalApiCostUsd || 0) + callCost) * 10000) / 10000;
   wsWriteWs(wId, 'stats.json', statsNow);
-  // Join ALL text blocks — Claude may split long responses across multiple content blocks
   return data.content.filter(b => b.type === 'text').map(b => b.text).join('');
 }
 
-// Variant with 8000 max_tokens for HTML generation (pages get cut off at 4000)
+// Variant with 16000 max_tokens for HTML generation (pages get cut off at 4000)
 // Joins ALL content blocks — Claude sometimes splits a long response into multiple text blocks.
-async function aiCallBuild(prompt, workspaceId) {
+async function aiCallBuild(prompt, workspaceId, model, options = {}) {
   const wId = workspaceId || null;
+  const modelId = model || MODELS.SONNET;
   console.log('[Build] Starting build...');
   console.log('[Build] Prompt length:', prompt.length);
   console.log('[Build] Prompt start:', prompt.substring(0, 200));
@@ -8592,6 +9040,21 @@ async function aiCallBuild(prompt, workspaceId) {
   if (!apiKey) throw new Error('Claude API sleutel niet ingesteld.');
 
   const { default: fetch } = await import('node-fetch');
+
+  // Build request body — optionally with system prompt for caching
+  const reqBody = {
+    model: modelId,
+    max_tokens: 16000,
+    messages: [{ role: 'user', content: prompt }]
+  };
+  if (options.system) {
+    reqBody.system = [{
+      type: 'text',
+      text: options.system,
+      cache_control: { type: 'ephemeral' }
+    }];
+  }
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -8599,11 +9062,7 @@ async function aiCallBuild(prompt, workspaceId) {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01'
     },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 16000,
-      messages: [{ role: 'user', content: prompt }]
-    })
+    body: JSON.stringify(reqBody)
   });
   const data = await res.json();
 
@@ -8629,8 +9088,22 @@ async function aiCallBuild(prompt, workspaceId) {
   _sessionTokensIn  += tokIn;
   _sessionTokensOut += tokOut;
   _aiCallLog.push({ ts: Date.now() });
-  const callCost = calcCostUsd(tokIn, tokOut);
-  addActivity('ai_call', `Claude build: ${prompt.slice(0, 50).replace(/\n/g,' ')}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost });
+
+  // Track prompt caching statistics
+  if (usage.cache_creation_input_tokens || usage.cache_read_input_tokens) {
+    _cacheStats.calls++;
+    if (usage.cache_read_input_tokens) {
+      _cacheStats.cacheHits++;
+      _cacheStats.cacheReadTokens += usage.cache_read_input_tokens;
+    }
+    if (usage.cache_creation_input_tokens) {
+      _cacheStats.cacheCreationTokens += usage.cache_creation_input_tokens;
+    }
+    console.log(`[Cache] Build ${usage.cache_read_input_tokens ? 'HIT' : 'MISS'} — created: ${usage.cache_creation_input_tokens || 0}, read: ${usage.cache_read_input_tokens || 0} tokens`);
+  }
+
+  const callCost = calcCostUsd(tokIn, tokOut, modelId);
+  addActivity('ai_call', `Claude build: ${prompt.slice(0, 50).replace(/\n/g,' ')}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost, model: modelId });
   const statsNow = wsReadWs(wId, 'stats.json') || {};
   statsNow.totalApiTokensIn  = (statsNow.totalApiTokensIn  || 0) + tokIn;
   statsNow.totalApiTokensOut = (statsNow.totalApiTokensOut || 0) + tokOut;
@@ -8696,8 +9169,8 @@ async function aiCallBuild(prompt, workspaceId) {
   return clean;
 }
 
-async function aiJSON(prompt) {
-  const text = await aiCall(prompt, null, wId);
+async function aiJSON(prompt, model, options = {}) {
+  const text = await aiCall(prompt, null, model, options);
 
   // Strip ALL markdown code fences globally (Claude wraps JSON in ```json...```)
   const clean = text
@@ -8738,8 +9211,9 @@ function parseJsonFromText(text) {
 }
 
 // Claude API call with web_search tool — handles multi-turn tool loop
-async function aiWebSearch(prompt, workspaceId) {
+async function aiWebSearch(prompt, workspaceId, model, options = {}) {
   const wId = workspaceId || null;
+  const modelId = model || MODELS.SONNET;
   aiRateCheck(wId);
   const s = wsReadWs(wId, 'settings.json') || {};
   const apiKey = getClaudeApiKey(s);
@@ -8750,6 +9224,20 @@ async function aiWebSearch(prompt, workspaceId) {
   let lastText = '';
 
   for (let turn = 0; turn < 10; turn++) {
+    const reqBody = {
+      model: modelId,
+      max_tokens: 4000,
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+      messages
+    };
+    if (options.system) {
+      reqBody.system = [{
+        type: 'text',
+        text: options.system,
+        cache_control: { type: 'ephemeral' }
+      }];
+    }
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -8758,12 +9246,7 @@ async function aiWebSearch(prompt, workspaceId) {
         'anthropic-version': '2023-06-01',
         'anthropic-beta': 'web-search-2025-03-05'
       },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4000,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages
-      })
+      body: JSON.stringify(reqBody)
     });
     const data = await res.json();
     if (!data.content) throw new Error(data.error?.message || 'Claude web search API fout');
@@ -8817,8 +9300,8 @@ function extractJSON(text) {
   throw new Error('JSON parse mislukt');
 }
 
-async function aiWebSearchJSON(prompt) {
-  const text = await aiWebSearch(prompt, null, wId);
+async function aiWebSearchJSON(prompt, model, options = {}) {
+  const text = await aiWebSearch(prompt, null, model, options);
   return extractJSON(text);
 }
 
@@ -9103,11 +9586,49 @@ Website problemen: ${website.problems?.join(', ') || 'geen'}
     .map(s => `- ${s.name} (${s.billing}): €${s.price} — ${s.description}`).join('\n');
 
   // Agent 3 — complete rewrite: score op 10 criteria (0-10 elk), gemiddelde = totaal
+  // System prompt (cacheable): scoring rubric + output format — identical across all leads
+  const SCORING_SYSTEM_PROMPT = `Je bent een lead-scoring expert voor een digitaal marketingbureau. Beoordeel bedrijven als potentiële klanten. Score elk criterium 0-10. Geef ALLEEN JSON terug.
+
+Score deze 10 criteria (0-10 elk):
+1. website — Website kwaliteit: 0=geen website, 3=verouderd/niet-mobiel, 5=basis OK, 8=goed maar mist CTA/chatbot, 10=professioneel en compleet
+2. online — Online aanwezigheid: 0=nergens vindbaar, 3=alleen website, 5=GMB+social maar inactief, 8=actief op 2+ kanalen, 10=sterk merk overal
+3. concurrentie — Concurrentie druk: 0=markt oversaturated, 5=gemiddeld, 10=weinig lokale concurrenten in deze niche
+4. grootte — Bedrijfsgrootte: 0=grote keten, 3=franchise, 7=klein team (2-10 man), 10=eigenaar-gedreven 1-5 personen
+5. urgentie — Urgentie signalen: 0=alles prima, 3=kleine tekorten, 6=duidelijke gaten (geen boekingssysteem, trage site), 9=urgent (website down, negatieve reviews, concurrent wint zichtbaar), 10=kritiek
+6. budget — Budget vermogen: 0=kan niks betalen, 4=hobby/startup, 6=gevestigd klein, 8=premium locatie/hoge prijzen, 10=duidelijk winstgevend en bereid te investeren
+7. bereikbaarheid — Bereikbaarheid: 0=niks gevonden, 5=alleen formulier, 8=email beschikbaar, 10=email+telefoon+social
+8. nicheFit — Niche fit: 0=industrieel/B2B-overheid, 5=zou baat hebben maar niet ideaal, 8=duidelijke B2C dienstverlener, 10=perfecte fit (kapper/restaurant/tandarts/gym/salon)
+9. groei — Groei potentieel: 0=sluit binnenkort, 5=stabiel, 8=actief groeiend (nieuw filiaal/meer reviews), 10=explosiefe groei
+10. timing — Timing: 0=off-season + geen probleem, 5=neutraal, 8=seizoensgebonden piek nadert, 10=net probleem geïdentificeerd + seizoen start
+
+REGELS voor dienstaanbeveling:
+- Geen (bereikbare) website → ALTIJD eerst een website build aanbevelen
+- Servicebedrijf zonder online boekingssysteem → boekingssysteem aanbevelen
+- Geen chatbot op de website → AI chatbot aanbevelen
+- Bied max 3 diensten aan, in volgorde van relevantie
+- STRIKT: gebruik ALLEEN exacte dienstnamen uit de opgegeven lijst
+- NOOIT aanbevelen: advertentiebeheer, webshops, reputatie management, WhatsApp automatisering
+
+Drempelwaarden:
+- total >= 7.0 → "HOOG" (actief benaderen)
+- total 5.0-6.9 → "GEMIDDELD" (benaderen bij capaciteit)
+- total < 5.0 → "LAAG" (overslaan tenzij urgentie hoog)
+
+Geef JSON in dit exacte formaat:
+{
+  "scores": { "website": 0-10, "online": 0-10, "concurrentie": 0-10, "grootte": 0-10, "urgentie": 0-10, "budget": 0-10, "bereikbaarheid": 0-10, "nicheFit": 0-10, "groei": 0-10, "timing": 0-10 },
+  "total": X.X (gemiddelde van alle 10, 1 decimaal),
+  "recommendation": "HOOG" of "GEMIDDELD" of "LAAG",
+  "reasoning": "1 concrete zin met specifieke data uit de input (bijv. 'Website laadt in 4200ms zonder HTTPS, 0 social media, urgente verbetering nodig')",
+  "topProblemen": ["concreet probleem 1 met data", "concreet probleem 2", "concreet probleem 3"],
+  "suggestedServices": [{"name": "exacte dienstnaam uit lijst", "price": getal, "billing": "maandelijks of eenmalig"}],
+  "estimatedValue": totaal maandelijks equivalent in euros,
+  "urgency": "low" of "medium" of "high" of "critical"
+}`;
+
   const waProblems = (websiteAnalysis?.problems || []).slice(0, 6).join('; ') || 'geen';
   const rawScoring = await agentCore.runAgent('Agent 3 — Lead scoring', () =>
-    aiJSON(`Beoordeel dit bedrijf als potentiële klant voor een digitaal marketingbureau. Score elk criterium 0-10. Geef JSON terug.
-
-Bedrijf: ${lead.companyName} (${lead.niche}${lead.subNiche ? ' / ' + lead.subNiche : ''})
+    aiJSON(`Bedrijf: ${lead.companyName} (${lead.niche}${lead.subNiche ? ' / ' + lead.subNiche : ''})
 Locatie: ${lead.location}
 Bedrijfsgrootte: ${companySize}
 Instagram: ${lead.estimatedFollowers || 0} volgers, engagement ${social.engagementRate}%, postfrequentie ${social.postFrequency}
@@ -9119,39 +9640,8 @@ Contact: email ${contactEmail ? 'ja' : 'nee'}, telefoon ${lead.phone ? 'ja' : 'n
 Betaalde ads: ${social.runningAds ? 'ja' : 'nee'}
 Datum: ${new Date().toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' })}
 
-Score deze 10 criteria (0-10 elk):
-1. website — Website kwaliteit: heeft website? mobile-friendly? snel? CTAs? HTTPS?
-2. online — Online aanwezigheid: Google My Business? reviews? social media actief?
-3. concurrentie — Concurrentie in niche: weinig lokale concurrenten = hogere score
-4. grootte — Bedrijfsgrootte: klein onafhankelijk bedrijf = betere klant = hogere score
-5. urgentie — Urgentie signalen: verouderde website? geen social? recente negatieve reviews?
-6. budget — Budget vermogen: premium locatie? prijsniveau diensten? kan €300-1000/mnd betalen?
-7. bereikbaarheid — Bereikbaarheid: email + telefoon beschikbaar?
-8. nicheFit — Niche fit: past dit bedrijf bij website/chatbot/booking/content diensten?
-9. groei — Groei potentieel: groeisignalen? recent opgericht? actieve uitbreiding?
-10. timing — Timing: seizoen relevant voor deze niche? recent zichtbaar probleem?
-
 Beschikbare diensten (kies de 2-3 meest relevante):
-${servicesList}
-
-REGELS voor dienstaanbeveling:
-- Geen (bereikbare) website → ALTIJD eerst een website build aanbevelen.
-- Servicebedrijf zonder online boekingssysteem → boekingssysteem aanbevelen.
-- Geen chatbot op de website → AI chatbot aanbevelen.
-- STRIKT: gebruik ALLEEN exacte dienstnamen uit de lijst hierboven.
-- NOOIT aanbevelen: advertentiebeheer, webshops, reputatie management, WhatsApp automatisering.
-
-Geef JSON:
-{
-  "scores": { "website": X, "online": X, "concurrentie": X, "grootte": X, "urgentie": X, "budget": X, "bereikbaarheid": X, "nicheFit": X, "groei": X, "timing": X },
-  "total": X.X (gemiddelde van alle 10, 1 decimaal),
-  "recommendation": "HOOG" of "GEMIDDELD" of "LAAG",
-  "reasoning": "kort en specifiek, 1 zin, noem concrete data",
-  "topProblemen": ["probleem 1 met specifieke data", "probleem 2", "probleem 3"],
-  "suggestedServices": [{"name": "exacte dienstnaam uit lijst", "price": getal, "billing": "maandelijks of eenmalig"}],
-  "estimatedValue": totaal maandelijks equivalent in euros,
-  "urgency": "low" of "medium" of "high" of "critical"
-}`), {
+${servicesList}`, getModel('LEAD_SCORING'), { system: SCORING_SYSTEM_PROMPT }), {
     attempts: 3,
     fallback: null,
   });
@@ -9245,19 +9735,25 @@ Geef JSON:
   broadcastWS('agent_progress', { agent: 'Agent 4 — Competitor analyzer', status: 'start', companyName: lead.companyName });
   const lang7 = language === 'nl' ? 'Nederlands' : 'English';
   const competitors = await agentCore.runAgent('Agent 4 — Competitor analyzer', () =>
-    aiJSON(`Analyseer de concurrentie voor dit bedrijf. Antwoord in ${lang7}. Geef alleen JSON terug.
+    aiJSON(`Analyseer de concurrentie voor dit bedrijf. Antwoord in ${lang7}. Geef ALLEEN JSON terug.
 
 Bedrijf: ${lead.companyName} (${lead.niche})
 Locatie: ${lead.location}
 
-Genereer 3 realistische directe lokale concurrenten in dezelfde stad of regio (zelfde niche).
-Vergelijk per concurrent: website kwaliteit, reviews, social media aanwezigheid.
-Identificeer de gaten: wat doet de concurrentie beter dan dit bedrijf?
+OPDRACHT: Genereer 3 realistische directe lokale concurrenten in dezelfde stad/regio en niche.
 
+PER CONCURRENT analyseer:
+- Website: heeft online boeken? snelle laadtijd? mobiel-vriendelijk? chatbot?
+- Reviews: Google Maps rating en aantal reviews
+- Social media: actief op Instagram? regelmatig posten? hoeveel volgers?
+
+FOCUS: Identificeer concrete, specifieke voordelen die de concurrentie heeft — dingen die ${lead.companyName} mist en die wij kunnen leveren (website, chatbot, content, boekingssysteem).
+
+JSON formaat:
 {
-  "competitorNames": ["naam 1", "naam 2", "naam 3"],
-  "competitorAdvantages": ["concreet voordeel 1 (bijv. online boeken)", "concreet voordeel 2", "concreet voordeel 3"],
-  "competitorGap": "één concrete zin in ${lang7} die samenvat wat het grootste voordeel is dat hun concurrenten hebben — bruikbaar in een email als 'Terwijl [concurrent] al X doet...'"
+  "competitorNames": ["echte bedrijfsnaam 1", "echte bedrijfsnaam 2", "echte bedrijfsnaam 3"],
+  "competitorAdvantages": ["concreet digitaal voordeel dat concurrent 1 heeft (bijv. 'online boekingssysteem met 4.8★ reviews')", "concreet voordeel 2", "concreet voordeel 3"],
+  "competitorGap": "één concrete zin in ${lang7} bruikbaar in email: 'Terwijl [concurrentnaam] al [specifiek iets] doet, mist ${lead.companyName} nog...'"
 }`), {
     attempts: 3,
     fallback: { competitorNames: [], competitorAdvantages: [], competitorGap: null },
@@ -9424,8 +9920,11 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
   const greetingFR = `Bonjour ${lead.companyName},`;
   const greetingIT = `Gentile ${lead.companyName},`;
 
-  const sharedRules = language === 'nl'
-    ? `- Aanhef: gebruik altijd exact deze aanhef: "${greetingNL}"
+  // Email system prompt (cacheable): formatting rules + workspace settings — identical across all leads in a batch
+  const emailSystemPrompt = language === 'nl'
+    ? `Je bent een koude-emailschrijver voor een digitaal marketingbureau. Schrijf professionele koude emails die klinken als een echt persoon. Geef ALLEEN JSON terug: {"subject": "onderwerp", "body": "emailtekst"}
+
+REGELS:
 - VERBODEN aanhef: Hoi, Hey, Hi, Hallo, Goedemorgen, Beste mensen — ALLEEN "Beste" of "Geachte" is toegestaan
 - Toon: professioneel maar toegankelijk — schrijf als een senior consultant, niet als een chatbot of marketingbureau
 - Gebruik "u" bij grote bedrijven of niet-NL/BE, anders "je/jullie"
@@ -9440,9 +9939,13 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - Max 150 woorden in de body (exclusief aanhef en afsluiting)
 - Als er concurrentie context is: verweef maximaal 1 zin organisch
 - VERBODEN WOORDEN: oplossing, traject, optimaliseren, implementeren, synergie, innovatief, vrijblijvend, passie, data-gedreven, op maat, uniek aanbod, fantastisch, geweldig, absoluut, transformeren, naar een hoger niveau, concurrentievoordeel, bewezen, resultaatgericht
-- SEIZOEN: Het is nu ${seasonal.season}. Verweef optioneel 1 subtiele seizoensreferentie alleen als het écht past bij hun niche (bijv. ${seasonal.event}). Forceer dit NIET.`
+- SEIZOEN: Het is nu ${seasonal.season}. Verweef optioneel 1 subtiele seizoensreferentie alleen als het écht past bij hun niche (bijv. ${seasonal.event}). Forceer dit NIET.
+- NOOIT vermelden in de email: Meta advertenties, Facebook ads, Google Ads, betaalde advertenties, WhatsApp Business automatisering, CRM-systemen, heatmap analyse, A/B testing
+- FOCUS ALLEEN OP: website verbetering, online boekingssysteem, AI chatbot voor website, professionele content (blogs/social/emails), SEO teksten, landingspagina's, email reeksen`
     : language === 'de'
-    ? `- Anrede: immer genau diese Anrede verwenden: "${greetingDE}"
+    ? `Du bist ein Kalt-E-Mail-Autor für eine digitale Marketingagentur. Schreibe professionelle Kalt-E-Mails auf DEUTSCH, die wie eine echte Person klingen. Gib NUR JSON zurück: {"subject": "Betreff", "body": "E-Mail-Text"}
+
+REGELN:
 - Ton: professionell und sachlich — wie ein erfahrener Berater, kein Bot, kein Marketingtext
 - Siezen (formelles "Sie") immer verwenden
 - Den ersten Satz NIE mit "Ich" beginnen
@@ -9454,9 +9957,13 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - CTA Absatz 3: sanfte Einladung — z.B. "Wären Sie offen für ein kurzes Gespräch?" ${calendlyLink ? `Schließen Sie dann mit: "Buchen Sie direkt ein kostenloses 20-minütiges Gespräch: ${calendlyLink}"` : 'Abschlusssatz: "Antworten Sie auf diese E-Mail für mehr Informationen."'}
 - Abschluss: "Mit freundlichen Grüßen," neue Zeile, dann "${myName}"
 - Max. 150 Wörter im Haupttext (ohne Anrede und Abschluss)
-- VERBOTENE WÖRTER: Lösung, Synergie, innovativ, Optimierung, Implementierung, datengetrieben, einzigartig, transformieren, Mehrwert, maßgeschneidert`
+- VERBOTENE WÖRTER: Lösung, Synergie, innovativ, Optimierung, Implementierung, datengetrieben, einzigartig, transformieren, Mehrwert, maßgeschneidert
+- NIE in der E-Mail erwähnen: Meta-Anzeigen, Facebook Ads, Google Ads, bezahlte Werbung, WhatsApp-Automatisierung, CRM-Systeme, Heatmap-Analyse, A/B-Tests
+- NUR fokussieren auf: Website-Verbesserung, Online-Buchungssystem, KI-Chatbot, professionelle Inhalte (Blogs/Social/E-Mails), SEO-Texte, Landingpages, E-Mail-Sequenzen`
     : language === 'fr'
-    ? `- Formule d'appel: toujours exactement: "${greetingFR}"
+    ? `Tu es un rédacteur d'e-mails de prospection pour une agence de marketing digital. Écris des e-mails professionnels en FRANÇAIS qui sonnent comme une vraie personne. Retourne UNIQUEMENT du JSON: {"subject": "objet", "body": "corps de l'e-mail"}
+
+RÈGLES:
 - Ton: professionnel et accessible — comme un consultant senior, pas un robot marketing
 - Vouvoiement obligatoire ("vous")
 - Ne jamais commencer la première phrase par "Je"
@@ -9468,9 +9975,13 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - CTA paragraphe 3: invitation douce — ex. "Seriez-vous ouvert(e) à un bref échange?" ${calendlyLink ? `Puis conclure avec: "Réservez directement un rendez-vous de 20 minutes: ${calendlyLink}"` : 'Conclure avec: "Répondez à cet e-mail pour plus d\'informations."'}
 - Formule de clôture: "Cordialement," nouvelle ligne, puis "${myName}"
 - Max 150 mots dans le corps (hors formule d'appel et clôture)
-- MOTS INTERDITS: solution, synergie, innovant, optimiser, implémenter, data-driven, unique, transformer, valeur ajoutée, sur-mesure`
+- MOTS INTERDITS: solution, synergie, innovant, optimiser, implémenter, data-driven, unique, transformer, valeur ajoutée, sur-mesure
+- NE JAMAIS mentionner: publicités Meta, Facebook Ads, Google Ads, publicité payante, WhatsApp, CRM, heatmaps, A/B testing
+- SE CONCENTRER UNIQUEMENT SUR: amélioration du site web, réservation en ligne, chatbot IA, contenu (blogs/réseaux/emails), textes SEO, pages d'atterrissage, séquences email`
     : language === 'it'
-    ? `- Apertura: usare sempre esattamente: "${greetingIT}"
+    ? `Sei un autore di cold email per un'agenzia di marketing digitale. Scrivi email professionali in ITALIANO che suonano come una persona reale. Restituisci SOLO JSON: {"subject": "oggetto", "body": "corpo email"}
+
+REGOLE:
 - Tono: professionale e diretto — come un consulente senior, non un bot di marketing
 - Usare il "Lei" formale sempre
 - Non iniziare mai la prima frase con "Io"
@@ -9482,8 +9993,12 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - CTA paragrafo 3: invito gentile — es. "Sarebbe disponibile per una breve chiamata?" ${calendlyLink ? `Poi concludere con: "Prenoti direttamente una chiamata gratuita di 20 minuti: ${calendlyLink}"` : 'Concludere con: "Risponda a questa email per ulteriori informazioni."'}
 - Chiusura: "Cordiali saluti," nuova riga, poi "${myName}"
 - Max 150 parole nel corpo (esclusi apertura e chiusura)
-- PAROLE VIETATE: soluzione, sinergia, innovativo, ottimizzare, implementare, data-driven, unico, trasformare, valore aggiunto, su misura`
-    : `- Greeting: always use exactly this greeting: "${greetingEN}"
+- PAROLE VIETATE: soluzione, sinergia, innovativo, ottimizzare, implementare, data-driven, unico, trasformare, valore aggiunto, su misura
+- NON menzionare mai: Meta ads, Facebook Ads, Google Ads, pubblicità a pagamento, WhatsApp, CRM, heatmap, A/B testing
+- CONCENTRARSI SOLO SU: sito web, prenotazioni online, chatbot AI, contenuto (blog/social/email), SEO, landing page, sequenze email`
+    : `You are a cold email writer for a digital marketing agency. Write professional cold emails that read like a real person typed them. Return ONLY JSON: {"subject": "subject line", "body": "email body"}
+
+RULES:
 - FORBIDDEN greetings: Hey, Hi, Hello, What's up, Howdy — ONLY "Dear" is allowed
 - Tone: professional but approachable — write like a senior consultant who genuinely noticed something specific about their business
 - NEVER start the first sentence with "I"
@@ -9497,28 +10012,21 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
 - Max 150 words in the body (excluding greeting and sign-off)
 - If competitor context is provided: weave in max 1 sentence naturally
 - BANNED WORDS: solution, trajectory, optimize, implement, synergy, leverage, innovative, data-driven, tailored, unique offering, fantastic, absolutely, transform, take to the next level, proven, competitive advantage, seamlessly, cutting-edge, game-changer
-- SEASONAL: It is currently ${seasonal.season}. Optionally weave in 1 subtle seasonal reference only if it genuinely fits their niche (e.g. ${seasonal.event}). Do NOT force this.`;
+- SEASONAL: It is currently ${seasonal.season}. Optionally weave in 1 subtle seasonal reference only if it genuinely fits their niche (e.g. ${seasonal.event}). Do NOT force this.
+- NEVER mention in the email: Meta ads, Facebook ads, Google Ads, paid advertising, WhatsApp automation, CRM systems, heatmap analysis, A/B testing
+- FOCUS ONLY ON: website improvement, online booking systems, AI chatbot, professional content (blogs/social/emails), SEO content, landing pages, email sequences`;
 
-  // No-ads restriction appended to sharedRules for all languages
-  const noAdsLine = language === 'nl'
-    ? '\n- NOOIT vermelden in de email: Meta advertenties, Facebook ads, Google Ads, betaalde advertenties, WhatsApp Business automatisering, CRM-systemen, heatmap analyse, A/B testing\n- FOCUS ALLEEN OP: website verbetering, online boekingssysteem, AI chatbot voor website, professionele content (blogs/social/emails), SEO teksten, landingspagina\'s, email reeksen'
-    : language === 'de'
-    ? '\n- NIE in der E-Mail erwähnen: Meta-Anzeigen, Facebook Ads, Google Ads, bezahlte Werbung, WhatsApp-Automatisierung, CRM-Systeme, Heatmap-Analyse, A/B-Tests\n- NUR fokussieren auf: Website-Verbesserung, Online-Buchungssystem, KI-Chatbot, professionelle Inhalte (Blogs/Social/E-Mails), SEO-Texte, Landingpages, E-Mail-Sequenzen'
-    : language === 'fr'
-    ? "\n- NE JAMAIS mentionner: publicités Meta, Facebook Ads, Google Ads, publicité payante, WhatsApp, CRM, heatmaps, A/B testing\n- SE CONCENTRER UNIQUEMENT SUR: amélioration du site web, réservation en ligne, chatbot IA, contenu (blogs/réseaux/emails), textes SEO, pages d'atterrissage, séquences email"
-    : language === 'it'
-    ? '\n- NON menzionare mai: Meta ads, Facebook Ads, Google Ads, pubblicità a pagamento, WhatsApp, CRM, heatmap, A/B testing\n- CONCENTRARSI SOLO SU: sito web, prenotazioni online, chatbot AI, contenuto (blog/social/email), SEO, landing page, sequenze email'
-    : '\n- NEVER mention in the email: Meta ads, Facebook ads, Google Ads, paid advertising, WhatsApp automation, CRM systems, heatmap analysis, A/B testing\n- FOCUS ONLY ON: website improvement, online booking systems, AI chatbot, professional content (blogs/social/emails), SEO content, landing pages, email sequences';
+  const greeting = language === 'nl' ? greetingNL : language === 'de' ? greetingDE : language === 'fr' ? greetingFR : language === 'it' ? greetingIT : greetingEN;
 
   const promptA = language === 'nl'
-    ? `Schrijf een koude email — VERSIE A: PROBLEEM-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.\n\nCONTEXT:\n${sharedContext}\n\nOPENING ZIN (gebruik deze exact of pas licht aan):\n"${opener}"\n\nAANPAK VERSIE A: Begin met het probleem. Gebruik de opening zin hierboven. Noem het probleem concreet met een getal of vergelijking. Dan de dienst als logische oplossing.\n\nREGELS:\n${sharedRules}${noAdsLine}\n\n{"subject": "onderwerp", "body": "emailtekst"}`
+    ? `VERSIE A: PROBLEEM-GERICHT.\n\nAANHEF (gebruik exact): "${greeting}"\n\nCONTEXT:\n${sharedContext}\n\nOPENING ZIN (gebruik exact of pas licht aan):\n"${opener}"\n\nAANPAK: Begin met het probleem. Gebruik de opening zin hierboven. Noem het probleem concreet met een getal of vergelijking. Dan de dienst als logische oplossing.`
     : language === 'de'
-    ? `Schreibe eine Kalt-E-Mail — VERSION A: PROBLEM-ORIENTIERT. Klingt wie ein echter Mensch, NICHT wie KI. Schreibe auf DEUTSCH. JSON zurückgeben.\n\nKONTEXT:\n${sharedContext}\n\nERÖFFNUNGSSATZ (exakt verwenden oder leicht anpassen):\n"${opener}"\n\nANSATZ VERSION A: Mit dem Problem beginnen. Den Eröffnungssatz verwenden. Problem konkret mit Zahlen nennen. Dann Dienstleistung als logische Lösung.\n\nREGELN:\n${sharedRules}${noAdsLine}\n\n{"subject": "Betreff", "body": "E-Mail-Text"}`
+    ? `VERSION A: PROBLEM-ORIENTIERT.\n\nANREDE (exakt verwenden): "${greeting}"\n\nKONTEXT:\n${sharedContext}\n\nERÖFFNUNGSSATZ (exakt verwenden oder leicht anpassen):\n"${opener}"\n\nANSATZ: Mit dem Problem beginnen. Den Eröffnungssatz verwenden. Problem konkret mit Zahlen nennen. Dann Dienstleistung als logische Lösung.`
     : language === 'fr'
-    ? `Rédige un e-mail de prospection — VERSION A: CENTRÉ SUR LE PROBLÈME. Sonne comme une vraie personne, PAS comme une IA. Écrire en FRANÇAIS. Retourner JSON.\n\nCONTEXTE:\n${sharedContext}\n\nPHRASE D'OUVERTURE (utiliser exactement ou adapter légèrement):\n"${opener}"\n\nAPPROCHE VERSION A: Commencer par le problème. Utiliser la phrase d'ouverture. Mentionner le problème concrètement avec un chiffre. Puis le service comme solution logique.\n\nRÈGLES:\n${sharedRules}${noAdsLine}\n\n{"subject": "objet", "body": "corps de l'e-mail"}`
+    ? `VERSION A: CENTRÉ SUR LE PROBLÈME.\n\nFORMULE D'APPEL (utiliser exactement): "${greeting}"\n\nCONTEXTE:\n${sharedContext}\n\nPHRASE D'OUVERTURE (utiliser exactement ou adapter légèrement):\n"${opener}"\n\nAPPROCHE: Commencer par le problème. Utiliser la phrase d'ouverture. Mentionner le problème concrètement avec un chiffre. Puis le service comme solution logique.`
     : language === 'it'
-    ? `Scrivi una cold email — VERSIONE A: FOCALIZZATA SUL PROBLEMA. Suona come una persona reale, NON come un'IA. Scrivere in ITALIANO. Restituire JSON.\n\nCONTESTO:\n${sharedContext}\n\nFRASE D'APERTURA (usare esattamente o adattare leggermente):\n"${opener}"\n\nAPPROCCIO VERSIONE A: Iniziare con il problema. Usare la frase d'apertura. Menzionare il problema concretamente con un numero. Poi il servizio come soluzione logica.\n\nREGOLE:\n${sharedRules}${noAdsLine}\n\n{"subject": "oggetto", "body": "corpo email"}`
-    : `Write a cold email — VERSION A: PROBLEM-FOCUSED. Reads like a real person typed it, NOT like AI. Return JSON.\n\nCONTEXT:\n${sharedContext}\n\nOPENING LINE (use this exactly or adapt slightly):\n"${opener}"\n\nVERSION A APPROACH: Start with the problem. Use the opening line above. State the problem concretely with a number or comparison. Then offer the service as the logical next step.\n\nRULES:\n${sharedRules}${noAdsLine}\n\n{"subject": "subject line", "body": "email body"}`;
+    ? `VERSIONE A: FOCALIZZATA SUL PROBLEMA.\n\nAPERTURA (usare esattamente): "${greeting}"\n\nCONTESTO:\n${sharedContext}\n\nFRASE D'APERTURA (usare esattamente o adattare leggermente):\n"${opener}"\n\nAPPROCCIO: Iniziare con il problema. Usare la frase d'apertura. Menzionare il problema concretamente con un numero. Poi il servizio come soluzione logica.`
+    : `VERSION A: PROBLEM-FOCUSED.\n\nGREETING (use exactly): "${greeting}"\n\nCONTEXT:\n${sharedContext}\n\nOPENING LINE (use exactly or adapt slightly):\n"${opener}"\n\nAPPROACH: Start with the problem. Use the opening line above. State the problem concretely with a number or comparison. Then offer the service as the logical next step.`;
 
   const openerB = language === 'nl'
     ? `${lead.companyName} heeft echt potentieel in ${lead.location} — en ik denk dat ${topService.toLowerCase()} precies dat kan versnellen.`
@@ -9531,14 +10039,14 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
     : `${lead.companyName} has real potential to grow in ${lead.location} — and I think ${topService.toLowerCase()} could accelerate that.`;
 
   const promptB = language === 'nl'
-    ? `Schrijf een koude email — VERSIE B: GROEIKANSEN-GERICHT. Klinkt als een echte persoon, NIET als AI. Geef JSON terug.\n\nCONTEXT:\n${sharedContext}\n\nOPENING ZIN VERSIE B (gebruik deze exact of pas licht aan):\n"${openerB}"\n\nAANPAK VERSIE B: Begin positief — met groeipotentieel, niet met problemen. Focus op wat ze KUNNEN bereiken met ${topService}. Enthousiaster toon.\n\nREGELS:\n${sharedRules}${noAdsLine}\n\n{"subject": "onderwerp", "body": "emailtekst"}`
+    ? `VERSIE B: GROEIKANSEN-GERICHT.\n\nAANHEF (gebruik exact): "${greeting}"\n\nCONTEXT:\n${sharedContext}\n\nOPENING ZIN (gebruik exact of pas licht aan):\n"${openerB}"\n\nAANPAK: Begin positief — met groeipotentieel, niet met problemen. Focus op wat ze KUNNEN bereiken met ${topService}. Enthousiaster toon.`
     : language === 'de'
-    ? `Schreibe eine Kalt-E-Mail — VERSION B: WACHSTUMSORIENTIERT. Klingt wie ein echter Mensch, NICHT wie KI. Schreibe auf DEUTSCH. JSON zurückgeben.\n\nKONTEXT:\n${sharedContext}\n\nERÖFFNUNGSSATZ VERSION B (exakt verwenden oder leicht anpassen):\n"${openerB}"\n\nANSATZ VERSION B: Positiv beginnen — Wachstumspotenzial betonen, nicht Probleme. Auf das fokussieren, was mit ${topService} erreicht werden kann.\n\nREGELN:\n${sharedRules}${noAdsLine}\n\n{"subject": "Betreff", "body": "E-Mail-Text"}`
+    ? `VERSION B: WACHSTUMSORIENTIERT.\n\nANREDE (exakt verwenden): "${greeting}"\n\nKONTEXT:\n${sharedContext}\n\nERÖFFNUNGSSATZ (exakt verwenden oder leicht anpassen):\n"${openerB}"\n\nANSATZ: Positiv beginnen — Wachstumspotenzial betonen, nicht Probleme. Auf das fokussieren, was mit ${topService} erreicht werden kann.`
     : language === 'fr'
-    ? `Rédige un e-mail de prospection — VERSION B: CENTRÉ SUR LA CROISSANCE. Sonne comme une vraie personne, PAS comme une IA. Écrire en FRANÇAIS. Retourner JSON.\n\nCONTEXTE:\n${sharedContext}\n\nPHRASE D'OUVERTURE VERSION B (utiliser exactement ou adapter légèrement):\n"${openerB}"\n\nAPPROCHE VERSION B: Commencer positivement — potentiel de croissance, pas les problèmes. Se concentrer sur ce qui peut être accompli avec ${topService}.\n\nRÈGLES:\n${sharedRules}${noAdsLine}\n\n{"subject": "objet", "body": "corps de l'e-mail"}`
+    ? `VERSION B: CENTRÉ SUR LA CROISSANCE.\n\nFORMULE D'APPEL (utiliser exactement): "${greeting}"\n\nCONTEXTE:\n${sharedContext}\n\nPHRASE D'OUVERTURE (utiliser exactement ou adapter légèrement):\n"${openerB}"\n\nAPPROCHE: Commencer positivement — potentiel de croissance, pas les problèmes. Se concentrer sur ce qui peut être accompli avec ${topService}.`
     : language === 'it'
-    ? `Scrivi una cold email — VERSIONE B: FOCALIZZATA SULLA CRESCITA. Suona come una persona reale, NON come un'IA. Scrivere in ITALIANO. Restituire JSON.\n\nCONTESTO:\n${sharedContext}\n\nFRASE D'APERTURA VERSIONE B (usare esattamente o adattare leggermente):\n"${openerB}"\n\nAPPROCCIO VERSIONE B: Iniziare positivamente — potenziale di crescita, non problemi. Concentrarsi su cosa si può raggiungere con ${topService}.\n\nREGOLE:\n${sharedRules}${noAdsLine}\n\n{"subject": "oggetto", "body": "corpo email"}`
-    : `Write a cold email — VERSION B: GROWTH/OPPORTUNITY-FOCUSED. Reads like a real person typed it, NOT like AI. Return JSON.\n\nCONTEXT:\n${sharedContext}\n\nOPENING LINE VERSION B (use this exactly or adapt slightly):\n"${openerB}"\n\nVERSION B APPROACH: Start positively — with growth potential, not problems. Focus on what they CAN achieve with ${topService}. More enthusiastic tone.\n\nRULES:\n${sharedRules}${noAdsLine}\n\n{"subject": "subject line", "body": "email body"}`;
+    ? `VERSIONE B: FOCALIZZATA SULLA CRESCITA.\n\nAPERTURA (usare esattamente): "${greeting}"\n\nCONTESTO:\n${sharedContext}\n\nFRASE D'APERTURA (usare esattamente o adattare leggermente):\n"${openerB}"\n\nAPPROCCIO: Iniziare positivamente — potenziale di crescita, non problemi. Concentrarsi su cosa si può raggiungere con ${topService}.`
+    : `VERSION B: GROWTH/OPPORTUNITY-FOCUSED.\n\nGREETING (use exactly): "${greeting}"\n\nCONTEXT:\n${sharedContext}\n\nOPENING LINE (use exactly or adapt slightly):\n"${openerB}"\n\nAPPROACH: Start positively — with growth potential, not problems. Focus on what they CAN achieve with ${topService}. More enthusiastic tone.`;
 
   // ITEM 18: use winning A/B version when auto-pick is set for this niche
   const autoVersion = getAutoPickVersion(lead.niche, lead.country, null);
@@ -9546,17 +10054,18 @@ Seasonal context: ${seasonal.season} — ${seasonal.hook}`;
   broadcastWS('agent_progress', { agent: 'Agent 5 — Email schrijver', status: 'start', companyName: lead.companyName });
   const _t5 = Date.now();
   let emailA, emailB;
+  const emailOpts = { system: emailSystemPrompt };
   try {
     if (autoVersion === 'A') {
-      emailA = await agentCore.withRetry('Agent 5 — Email schrijver', () => aiJSON(promptA));
+      emailA = await agentCore.withRetry('Agent 5 — Email schrijver', () => aiJSON(promptA, getModel('COLD_EMAIL'), emailOpts));
       emailB = emailA;
     } else if (autoVersion === 'B') {
-      emailB = await agentCore.withRetry('Agent 5 — Email schrijver', () => aiJSON(promptB));
+      emailB = await agentCore.withRetry('Agent 5 — Email schrijver', () => aiJSON(promptB, getModel('COLD_EMAIL'), emailOpts));
       emailA = emailB;
     } else {
       [emailA, emailB] = await Promise.all([
-        agentCore.withRetry('Agent 5 — Email A', () => aiJSON(promptA)),
-        agentCore.withRetry('Agent 5 — Email B', () => aiJSON(promptB)),
+        agentCore.withRetry('Agent 5 — Email A', () => aiJSON(promptA, getModel('COLD_EMAIL'), emailOpts)),
+        agentCore.withRetry('Agent 5 — Email B', () => aiJSON(promptB, getModel('COLD_EMAIL'), emailOpts)),
       ]);
     }
     agentCore.recordAgentRun('Agent 5 — Email schrijver', true, Date.now() - _t5);
@@ -9648,7 +10157,7 @@ Return ONLY JSON: { "subjectOptions": ["option1", "option2", "option3"] }`;
 
   let subjectOptions = [];
   try {
-    const subjectResult = await aiJSON(subjectPrompt);
+    const subjectResult = await aiJSON(subjectPrompt, getModel('SUBJECT_LINES'));
     subjectOptions = Array.isArray(subjectResult?.subjectOptions) ? subjectResult.subjectOptions : [];
   } catch (err) { console.warn(`[AI fallback]`, err.message);}
   if (subjectOptions.length < 3) {
@@ -9674,12 +10183,15 @@ Dienst: ${topService}
 
 Regels:
 - Begin met een concrete observatie over hun bedrijf, niet met een zelfintroductie
-- "hoi/hey + naam als mogelijk" - maar begin NOOIT met "Ik zie dat" of "Ik merkte dat"
-- Noem 1 specifiek detail (volgers, laadtijd, niche) als het past
-- Eindig met een open vraag, niet met een CTA of link-aanbod
-- Max 280 tekens inclusief afsluiting
-- VERBODEN: innovatief, synergie, vrijblijvend, perfect, uniek, oplossingen op maat
-Geef alleen de DM-tekst, geen uitleg.`
+- "hoi/hey + voornaam" als opening — maar begin NOOIT met "Ik zie dat" of "Ik merkte dat" of "Ik kwam"
+- Noem 1 specifiek detail (volgers, laadtijd, niche, locatie) als het past
+- Eindig met een open vraag die nieuwsgierigheid wekt, niet met een CTA of link-aanbod
+- Max 280 tekens inclusief alles — tel je tekens!
+- Klinkt als een DM van een bekende, niet als een verkoper
+- VERBODEN: innovatief, synergie, vrijblijvend, perfect, uniek, oplossingen op maat, gratis, samenwerking, "naar een hoger niveau"
+- VERBODEN openingen: "Ik zag", "Ik merkte", "Ik kwam jullie tegen", "Ik wilde even"
+
+Geef ALLEEN de DM-tekst, geen uitleg of aanhalingstekens.`
     : `Write a LinkedIn DM that reads like a real, quick personal message. Max 280 characters. No hashtags.
 
 Company: ${lead.companyName} (${lead.niche}, ${lead.location})
@@ -9688,40 +10200,49 @@ Service: ${topService}
 
 Rules:
 - Start with a specific observation about their business, NOT a self-intro
-- "Hey/Hi + name if possible" - but NEVER start with "I noticed" or "I saw"
-- Mention 1 specific detail (followers, load time, niche) if natural
-- End with an open question, not a CTA or link offer
-- Max 280 characters including sign-off
-- BANNED: innovative, synergy, leverage, perfect, unique, tailored solutions
-Return only the DM text, no explanation.`;
+- "Hey/Hi + first name" as opener — but NEVER start with "I noticed" or "I saw" or "I came across"
+- Mention 1 specific detail (followers, load time, niche, location) if natural
+- End with an open question that sparks curiosity, not a CTA or link offer
+- Max 280 characters including everything — count your characters!
+- Sounds like a DM from an acquaintance, not a salesperson
+- BANNED: innovative, synergy, leverage, perfect, unique, tailored solutions, free, collaboration, "next level"
+- BANNED openers: "I noticed", "I saw", "I came across", "I wanted to"
+
+Return ONLY the DM text, no explanation or quotes.`;
 
   const voicePrompt = language === 'nl'
-    ? `Schrijf een voicenote script voor WhatsApp of Instagram. Max 75 woorden (30 seconden uitgesproken). Klinkt als een spontaan persoonlijk berichtje.
+    ? `Schrijf een voicenote script voor WhatsApp of Instagram. Max 75 woorden (30 seconden uitgesproken). Klinkt als een spontaan persoonlijk berichtje dat iemand inspreekt terwijl ze lopen.
 
 Bedrijf: ${lead.companyName} (${lead.niche}, ${lead.location})
 Specifiek detail: ${topProblem}
 Dienst: ${topService}
 
 Regels:
-- Begin middenin een gedachte, niet met standaard begroeting
-- 1 specifieke observatie over hun bedrijf
-- Gebruik ... voor 1 natuurlijke pauze
-- Eindig met een zachte vraag
-- Klinkt menselijk, niet als pitch
-- Geef alleen de spreektekst, geen labels of aanwijzingen`
-    : `Write a voicenote script for WhatsApp or Instagram. Max 75 words (30 seconds spoken). Sounds like a spontaneous personal message.
+- Begin middenin een gedachte ("Hey, ik zat net te kijken naar..." of "Weet je wat me opviel...")
+- 1 specifieke observatie over hun bedrijf die laat zien dat je hun website/socials bezocht hebt
+- Gebruik ... voor 1 natuurlijke pauze (max 1 keer)
+- Eindig met een zachte vraag die uitnodigt tot antwoord
+- Tempo: alsof je tegen een vriend praat — korte zinnen, spreektaal
+- VERBODEN: "innovatief", "samenwerking", "vrijblijvend", "oplossing", formele woorden
+- NOOIT labels of aanwijzingen in de tekst (geen "[pauze]", geen "(lach)")
+
+Geef ALLEEN de spreektekst, zonder aanhalingstekens.`
+    : `Write a voicenote script for WhatsApp or Instagram. Max 75 words (30 seconds spoken). Sounds like a spontaneous personal message someone records while walking.
 
 Company: ${lead.companyName} (${lead.niche}, ${lead.location})
 Specific detail: ${topProblem}
 Service: ${topService}
 
 Rules:
-- Start mid-thought, not with a standard greeting
-- 1 specific observation about their business
-- Use ... for 1 natural pause
-- End with a soft question
-- Sounds human, not like a pitch
-- Return only the spoken text, no labels`;
+- Start mid-thought ("Hey, I was just looking at..." or "You know what caught my eye...")
+- 1 specific observation showing you visited their website/socials
+- Use ... for 1 natural pause (max once)
+- End with a soft question that invites a reply
+- Pace: like talking to a friend — short sentences, conversational
+- BANNED: "innovative", "collaboration", "no obligation", "solution", formal words
+- NEVER include labels or directions in text (no "[pause]", no "(laughs)")
+
+Return ONLY the spoken text, no quotes.`;
 
   let linkedinDm, voicenoteScript;
   try {
@@ -9877,20 +10398,21 @@ async function runFindLeadsJob(overrides = {}, manual = false, workspaceId) {
     const searchPrompt = `Search the web and find ${batchSize} real small independent local businesses in ${randomCity} that sell or offer: ${randomNiche}.
 
 For EACH business you MUST find:
-1. Real company name (as shown on their website)
-2. Real website URL (the actual URL you found while searching)
-3. Real contact email address — find it from their website, Google Maps listing, social media profile, or any public source. Do NOT guess or invent an email.
+1. Real company name (as shown on their website — not abbreviated or guessed)
+2. Real website URL (the actual URL you visited — must be a working domain, NOT a social media page)
+3. Real contact email address — find it from their website contact page, footer, Google Maps, or social media bio. Do NOT guess or construct emails from domain names.
 
-Only include businesses where you actually found a real email address.
-
-Requirements:
-- Independently owned local business (NOT a national chain or franchise)
-- Real active website (not just a social media page)
-- Operating for at least 1 year
+QUALITY RULES:
+- ONLY include businesses where you actually found AND verified a real email address on a public page
+- Independently owned local business (NOT a national chain, franchise, or multi-location brand)
+- Must have their own website with a working domain (not just Facebook/Instagram page)
+- Must appear to be actively operating (recent content, not abandoned)
+- Email must be a real business email (info@, contact@, hello@, or personal name) — NOT noreply@, support@ for large companies
+- If you cannot find ${batchSize} qualifying businesses, return only what you found — never pad with guesses
 
 Return ONLY a JSON array, no explanation:
 [{
-  "companyName": "Exact business name",
+  "companyName": "Exact business name as on their website",
   "websiteUrl": "https://their-real-website.com",
   "email": "real@emailaddress.com",
   "location": "${randomCity}, Country",
@@ -9904,10 +10426,7 @@ Return ONLY a JSON array, no explanation:
 
 CRITICAL: Your response must be ONLY a JSON array.
 No explanation, no thinking, no commentary.
-Start your response with [ and end with ]
-If you cannot find ${batchSize} businesses with emails, return whatever you found as JSON.
-Example format:
-[{"companyName":"Example","websiteUrl":"https://example.com","email":"info@example.com","location":"${randomCity}","country":"NL","niche":"beauty","instagramHandle":"@example","estimatedFollowers":5000}]${alreadySeen}`;
+Start your response with [ and end with ]${alreadySeen}`;
 
     // 7s between web-search calls to stay under the 10/min rate limit
     if (attempts > 0) await new Promise(r => setTimeout(r, 7000));
@@ -9915,7 +10434,7 @@ Example format:
     let batch;
     try {
       console.log(`[Agent 1] Searching for ${randomNiche} businesses in ${randomCity}...`);
-      batch = await aiWebSearchJSON(searchPrompt);
+      batch = await aiWebSearchJSON(searchPrompt, getModel('LEAD_DISCOVERY'));
       if (!Array.isArray(batch)) batch = [batch];
       batch = batch.slice(0, batchSize);
     } catch (err) {
@@ -9953,27 +10472,38 @@ Example format:
       try {
         console.log(`[Agent 1-IG] Zoeken naar Instagram accounts: ${randomNiche} in ${randomCity}...`);
         _runState.currentAgent = 'Agent 1 — Instagram Finder';
-        const igPrompt = `Search Instagram and the web for ${batchSize} real small local businesses in ${randomCity} in the niche: ${randomNiche}, that have an Instagram account with between 2,000 and 200,000 followers, a low engagement rate (under 2%), no booking system link in their bio, and an active profile (post within last 30 days).
+        const igPrompt = `Search Instagram and the web for ${batchSize} real small local businesses in ${randomCity} in the niche: ${randomNiche}.
+
+TARGET PROFILE:
+- Instagram account with 2,000–200,000 followers
+- Low engagement rate (under 2% — likes+comments / followers per post)
+- No professional booking system link in their bio (no Calendly, Treatwell, Planity, etc.)
+- Active profile (posted within last 30 days)
+- Independently owned (NOT a franchise or chain location)
 
 For EACH account you MUST find:
-1. Real company/business name
-2. Instagram handle (@handle)
-3. Estimated follower count (2000–200000)
-4. Bio text (what they write in their profile)
-5. Website URL from bio (or null)
-6. Approximate date of last post (e.g. "2025-05-10")
-7. Real contact email (from website, Google Maps, or bio) — only include if found
+1. Real company/business name (as shown on their Instagram profile)
+2. Instagram handle (@handle — must be a real, existing handle)
+3. Estimated follower count (2,000–200,000)
+4. Bio text (exact text from their profile)
+5. Website URL from bio (or null if none)
+6. Approximate date of last post (YYYY-MM-DD format)
+7. Real contact email (from website, Google Maps, or bio) — only include if actually found
 
-Search queries to use: "${randomNiche} ${randomCity} instagram followers site:instagram.com" and "${randomNiche} ${randomCity} instagram account"
+QUALITY RULES:
+- Only include accounts you can verify exist — do NOT invent handles
+- Low engagement = opportunity for improvement (this is why we target them)
+- No booking link = they might need a booking system (our service offering)
+- If you cannot find ${batchSize} qualifying accounts, return only what you found
 
 Return ONLY a JSON array:
 [{
   "companyName": "Business name",
-  "instagramHandle": "@handle",
+  "instagramHandle": "@real_handle",
   "estimatedFollowers": 15000,
-  "instagramBio": "Bio text here",
+  "instagramBio": "Exact bio text",
   "websiteUrl": "https://their-website.com or null",
-  "lastPostDate": "2025-05-10",
+  "lastPostDate": "2026-05-10",
   "email": "info@business.com or null",
   "location": "${randomCity}, Country",
   "country": "2-letter country code",
@@ -9984,7 +10514,7 @@ Return ONLY a JSON array:
 
 CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
         await new Promise(r => setTimeout(r, 7000));
-        const igRaw = await aiWebSearchJSON(igPrompt);
+        const igRaw = await aiWebSearchJSON(igPrompt, getModel('INSTAGRAM_DISCOVERY'));
         instaBatch = (Array.isArray(igRaw) ? igRaw : []).filter(b => b && b.companyName && b.instagramHandle).slice(0, batchSize);
         instaBatch = instaBatch.filter(b => {
           const key = b.companyName.toLowerCase().trim();
@@ -10005,26 +10535,33 @@ CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
       try {
         console.log(`[Agent 1-Maps] Zoeken op Google Maps: ${randomNiche} in ${randomCity}...`);
         _runState.currentAgent = 'Agent 1 — Google Maps Finder';
-        const mapsPrompt = `Search Google Maps and the web for ${batchSize} real small local businesses in ${randomCity} in the niche: ${randomNiche}. Look specifically for businesses that have:
-- Between 3 and 4 star reviews (room for improvement — not perfect, not bad)
-- Fewer than 50 Google reviews (small/new business)
-- A website listed on Google Maps
-- Active in the last 6 months
+        const mapsPrompt = `Search Google Maps and the web for ${batchSize} real small local businesses in ${randomCity} in the niche: ${randomNiche}.
 
-Search queries to use: "${randomNiche} ${randomCity} google maps 3 star reviews website" and "site:maps.google.com OR site:google.com/maps ${randomNiche} ${randomCity}"
+TARGET PROFILE:
+- Between 3.0 and 4.0 star rating (room for improvement — signals they could use marketing help)
+- Fewer than 50 Google reviews (small or newer business, not established chains)
+- Has a website listed on their Google Maps profile
+- Appears actively operating (not permanently closed or temporarily closed)
+- Independently owned (NOT a franchise, chain, or multi-location brand)
 
 For EACH business you MUST find:
-1. Real business name
-2. Full address
-3. Google Maps rating (3.0–4.0)
-4. Number of Google reviews (under 50)
-5. Website URL (listed on Maps)
-6. Phone number (if visible)
-7. Real contact email (from website or Google Maps listing) — only include if found
+1. Real business name (exactly as shown on Google Maps)
+2. Full street address
+3. Google Maps rating (must be 3.0–4.0 — NOT above 4.0)
+4. Number of Google reviews (must be under 50)
+5. Website URL (from their Maps listing — must be a real working domain)
+6. Phone number (if visible on Maps listing, or null)
+7. Real contact email (from their website contact page or Maps listing) — only include if actually found
+
+QUALITY RULES:
+- Only include businesses that actually appear on Google Maps — do NOT invent listings
+- 3-4 star rating = they have room to improve reputation (our opportunity)
+- Under 50 reviews = small enough to benefit from our services
+- If you cannot find ${batchSize} qualifying businesses, return only what you found — never pad with guesses
 
 Return ONLY a JSON array:
 [{
-  "companyName": "Business name",
+  "companyName": "Business name exactly from Maps",
   "address": "Full street address",
   "mapsRating": 3.8,
   "reviewCount": 24,
@@ -10040,7 +10577,7 @@ Return ONLY a JSON array:
 
 CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
         await new Promise(r => setTimeout(r, 7000));
-        const mapsRaw = await aiWebSearchJSON(mapsPrompt);
+        const mapsRaw = await aiWebSearchJSON(mapsPrompt, getModel('MAPS_DISCOVERY'));
         mapsBatch = (Array.isArray(mapsRaw) ? mapsRaw : []).filter(b => b && b.companyName && b.websiteUrl).slice(0, batchSize);
         mapsBatch = mapsBatch.filter(b => {
           const key = b.companyName.toLowerCase().trim();
@@ -10150,8 +10687,16 @@ CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
   const runTokOut = _sessionTokensOut;
   _sessionTokensIn = 0; _sessionTokensOut = 0;
   const runCostUsd = calcCostUsd(runTokIn, runTokOut);
+
+  // Log cache stats for this run
+  if (_cacheStats.calls > 0) {
+    console.log(`[Cache Summary] Calls with cache: ${_cacheStats.calls}, Hits: ${_cacheStats.cacheHits}, Created: ${_cacheStats.cacheCreationTokens} tokens, Read: ${_cacheStats.cacheReadTokens} tokens`);
+  }
+  const runCacheStats = { ..._cacheStats };
+  _cacheStats = { cacheCreationTokens: 0, cacheReadTokens: 0, calls: 0, cacheHits: 0 };
+
   // Log run summary (costs already tracked per-call in aiCall(, wId); costUsd:0 here avoids double-counting in P&L)
-  addActivity('run', `Run klaar: ${inboxItems.length} leads gevonden (${skipped} overgeslagen zonder email)`, { tokensIn: runTokIn, tokensOut: runTokOut, costUsd: 0, meta: { leadsFound: inboxItems.length, skipped, attempts, totalValue, runCostUsd } });
+  addActivity('run', `Run klaar: ${inboxItems.length} leads gevonden (${skipped} overgeslagen zonder email)`, { tokensIn: runTokIn, tokensOut: runTokOut, costUsd: 0, meta: { leadsFound: inboxItems.length, skipped, attempts, totalValue, runCostUsd, cache: runCacheStats } });
 
   const pendingCount   = inboxItems.length;
   const highScoreCount = inboxItems.filter(i => i.score >= 8).length;
@@ -10434,7 +10979,7 @@ Rules:
 
 {"subject": "Re: ${origSubj || lead.companyName}", "body": "full email text"}`;
 
-        const email = await aiJSON(fu1Prompt);
+        const email = await aiJSON(fu1Prompt, getModel('FOLLOWUP_EMAIL'));
         const item = {
           id: `fu1-${lead.id}-${Date.now()}`,
           leadId: lead.id,
@@ -10561,7 +11106,7 @@ Rules:
 
 {"subject": "Re: ${origSubj || lead.companyName}", "body": "full email text"}`;
 
-        const email = await aiJSON(fu2Prompt);
+        const email = await aiJSON(fu2Prompt, getModel('FOLLOWUP_EMAIL'));
         const item = {
           id: `fu2-${lead.id}-${Date.now()}`,
           leadId: lead.id,
@@ -10618,7 +11163,7 @@ Rules:
 - Sign off with your first name only
 - Hard limit: 280 characters`;
 
-        let dmText = (await aiCall(dmPrompt, null, wId)).trim().substring(0, 280);
+        let dmText = (await aiCall(dmPrompt, wId, getModel('LINKEDIN_DM'))).trim().substring(0, 280);
         if (!dmText) dmText = lang === 'nl'
           ? `Hoi! Zag ${lead.companyName} — jullie doen interessant werk in ${lead.location}. Wij helpen vergelijkbare bedrijven groeien met AI. Gratis audit beschikbaar. Even kennismaken? — ${myName}`
           : `Hi! Came across ${lead.companyName} — great work in the ${lead.location} area. We help similar businesses grow with AI. Free audit available. Worth a quick chat? — ${myName}`;
@@ -10804,12 +11349,14 @@ Diensten: ${services}${calendlyCta}
 
 Regels:
 - Lees hun antwoord zorgvuldig en reageer precies op wat ze schreven
-- Als ze interesse tonen → stel een kort gesprek voor${settings.calendlyUrl ? ', voeg de Calendly-link toe' : ''}
-- Als ze een vraag stellen → beantwoord bondig, stuur aan op een call
-- Als ze niet geïnteresseerd zijn → reageer vriendelijk, laat de deur open
-- Als onduidelijk → stel één verduidelijkende vraag
-- Maximaal 100 woorden
-- Klinkt menselijk, geen AI-jargon, geen buzzwords
+- Als ze interesse tonen → stel een kort gesprek voor (max 20 min)${settings.calendlyUrl ? ', voeg de Calendly-link toe' : ''}
+- Als ze een vraag stellen → beantwoord bondig en concreet, stuur aan op een call
+- Als ze niet geïnteresseerd zijn → reageer vriendelijk in 1-2 zinnen, laat de deur open
+- Als onduidelijk → stel één concrete verduidelijkende vraag
+- Maximaal 80 woorden
+- Toon: menselijk, direct, geen omhaal — alsof je een druk persoon snel antwoord geeft
+- VERBODEN: "innovatief", "synergie", "vrijblijvend", "naar een hoger niveau", "zeker weten", "ik begrijp"
+- Begin NOOIT met "Bedankt voor je reactie" of "Leuk om van je te horen"
 - Sluit af met: ${myName}, ${agencyName}`
     : `Write a business email reply to the following prospect response. Return ONLY the email body — no subject line, no JSON, no explanation.
 
@@ -10823,15 +11370,17 @@ Services: ${services}${calendlyCta}
 
 Rules:
 - Read their reply carefully and respond to exactly what they said
-- If they show interest → suggest a quick call${settings.calendlyUrl ? ', include the Calendly link' : ''}
-- If they ask a question → answer briefly and steer toward a call
-- If not interested → respond graciously, leave door open
-- If unclear → ask one clarifying question
-- Max 100 words
-- Sounds human, no AI jargon, no buzzwords
+- If they show interest → suggest a quick 20-min call${settings.calendlyUrl ? ', include the Calendly link' : ''}
+- If they ask a question → answer concisely and concretely, steer toward a call
+- If not interested → respond graciously in 1-2 sentences, leave door open
+- If unclear → ask one concrete clarifying question
+- Max 80 words
+- Tone: human, direct, no filler — as if answering a busy person quickly
+- BANNED: "innovative", "synergy", "no obligation", "next level", "absolutely", "I understand"
+- NEVER start with "Thanks for your reply" or "Great to hear from you"
 - Sign off with: ${myName}, ${agencyName}`;
 
-  const draft = (await aiCall(prompt, wId)).trim();
+  const draft = (await aiCall(prompt, wId, getModel('AI_REPLY'))).trim();
   const subject = `Re: ${origSubject}`;
 
   // Auto-send if toggle is on AND score is high enough
@@ -11843,7 +12392,7 @@ async function sendDailyBriefing(workspaceId) {
 
   let motivationalLine = 'Blijf gefocust — elke email is een stap dichter bij de volgende klant.';
   try {
-    const raw = await aiCall('Genereer 1 motiverende zin in het Nederlands (max 20 woorden, geen cliches, wId) voor een sales agent met ' + pending.length + ' leads in inbox, ' + repliesSince + ' reacties totaal en pipeline waarde EUR ' + pipelineValue + '. Geef alleen de zin.');
+    const raw = await aiCall('Genereer 1 motiverende zin in het Nederlands (max 20 woorden) voor een sales agent.\n\nContext: ' + pending.length + ' leads in inbox, ' + repliesSince + ' reacties totaal, pipeline waarde €' + pipelineValue + '.\n\nRegels:\n- Refereer aan minstens 1 concreet getal uit de context\n- Klinkt als een coach die naast je staat, niet als een poster aan de muur\n- VERBODEN: "Je kunt het!", "Geloof in jezelf", "Elke reis begint met een stap", quotes van beroemdheden\n- Geef ALLEEN de zin, geen aanhalingstekens, geen uitleg.', wId, getModel('MOTIVATIONAL_LINE'));
     motivationalLine = raw.trim();
   } catch { /* keep default */ }
 
@@ -11936,10 +12485,87 @@ async function runPostDeliveryFollowups(workspaceId) {
     const upsell = FU_UPSELL_MAP.find(u => u.match.test(deliveredNames)) || { suggest: 'Maandelijkse content kalender', why: 'het momentum van uw nieuwe oplevering vasthouden' };
 
     const prompts = {
-      d3: `Schrijf een korte vriendelijke check-in email (3 dagen na oplevering). Klant: ${firstName} (${lead.companyName}). Opgeleverd: ${deliveredNames}. Vraag of alles goed ontvangen is en of er vragen zijn. Max 90 woorden. Onderwerp begint met "Alles goed ontvangen". Afzender: ${settings.myName || ''} van ${settings.agencyName || 'Agency AI'}. Antwoord ALLEEN als JSON: {"subject":"...","body":"..."}`,
-      d7: `Schrijf een korte email (7 dagen na oplevering) die vraagt of de eerste resultaten al zichtbaar zijn. Klant: ${firstName} (${lead.companyName}). Opgeleverd: ${deliveredNames}. Bied aan om mee te kijken. Max 100 woorden. Afzender: ${settings.myName || ''} van ${settings.agencyName || 'Agency AI'}. Antwoord ALLEEN als JSON: {"subject":"...","body":"..."}`,
-      d14: `Schrijf een subtiele upsell email (14 dagen na oplevering). Klant: ${firstName} (${lead.companyName}). Opgeleverd: ${deliveredNames}. Stel als logische volgende stap voor: "${upsell.suggest}" — omdat ${upsell.why}. Niet pusherig, max 110 woorden. Afzender: ${settings.myName || ''} van ${settings.agencyName || 'Agency AI'}. Antwoord ALLEEN als JSON: {"subject":"...","body":"..."}`,
-      d30: `Schrijf een maandreview email (30 dagen na oplevering). Klant: ${firstName} (${lead.companyName}). Opgeleverd: ${deliveredNames}. Blik terug op de eerste maand, vraag naar ervaringen, bied een kort evaluatiegesprek aan. Max 130 woorden. Afzender: ${settings.myName || ''} van ${settings.agencyName || 'Agency AI'}. Antwoord ALLEEN als JSON: {"subject":"...","body":"..."}`,
+      d3: `Schrijf een check-in email (3 dagen na oplevering).
+
+Klant: ${firstName} (${lead.companyName}, ${lead.niche || ''}, ${lead.location || ''})
+Opgeleverd: ${deliveredNames}
+Afzender: ${settings.myName || ''} van ${settings.agencyName || 'Agency AI'}
+
+STRUCTUUR:
+1. "Beste ${firstName}," — ALTIJD
+2. Eén zin: check of alles goed ontvangen is (verwijs naar de specifieke oplevering)
+3. Eén zin: concrete hulp aanbieden ("Mocht er iets onduidelijk zijn aan de [specifieke oplevering], laat het mij weten")
+4. Afsluiting: "Met vriendelijke groet, ${settings.myName || ''}"
+
+REGELS:
+- Max 60 woorden in de body
+- Onderwerp: persoonlijk en kort, begin met "${firstName}" of "${lead.companyName}"
+- Toon: warm en kort, als een collega die even incheckt
+- VERBODEN: "Ik hoop dat alles goed gaat", "Ik wilde even checken", overmatige beleefdheid
+
+Antwoord ALLEEN als JSON: {"subject":"kort persoonlijk onderwerp","body":"emailtekst"}`,
+      d7: `Schrijf een resultaten-email (7 dagen na oplevering).
+
+Klant: ${firstName} (${lead.companyName}, ${lead.niche || ''}, ${lead.location || ''})
+Opgeleverd: ${deliveredNames}
+Afzender: ${settings.myName || ''} van ${settings.agencyName || 'Agency AI'}
+
+STRUCTUUR:
+1. "Beste ${firstName}," — ALTIJD
+2. Eén zin: verwijs naar de oplevering van vorige week (noem het bij naam)
+3. Eén zin: vraag naar eerste resultaten (specifiek voor het type dienst — bijv. websitebezoekers, boekingen, reacties)
+4. Eén zin: bied aan om samen te kijken naar de cijfers
+5. Afsluiting: "${settings.myName || ''}"
+
+REGELS:
+- Max 80 woorden in de body
+- Onderwerp: vraag-formaat gericht op resultaten
+- Refereer aan een CONCREET meetpunt passend bij ${deliveredNames}
+- VERBODEN: "Hoe bevalt...", "Ik ben benieuwd", vage vragen zonder specifiek meetpunt
+
+Antwoord ALLEEN als JSON: {"subject":"...","body":"..."}`,
+      d14: `Schrijf een subtiele upsell email (14 dagen na oplevering).
+
+Klant: ${firstName} (${lead.companyName}, ${lead.niche || ''}, ${lead.location || ''})
+Opgeleverd: ${deliveredNames}
+Logische volgende stap: "${upsell.suggest}" — omdat ${upsell.why}
+Afzender: ${settings.myName || ''} van ${settings.agencyName || 'Agency AI'}
+
+STRUCTUUR:
+1. "Beste ${firstName}," — ALTIJD
+2. Eén zin: kort positief terugblikken op de oplevering (concreet, niet "het gaat goed")
+3. Eén zin: de logische vervolgstap introduceren als observatie, niet als aanbod
+4. Eén zin: wat het concreet zou opleveren voor een ${lead.niche || 'bedrijf'} in ${lead.location || 'de regio'}
+5. Zachte afsluiting: "Wilt u dat ik een voorstel maak?" + handtekening
+
+REGELS:
+- Max 90 woorden in de body
+- Onderwerp: refereert aan hun situatie, niet aan een aanbod
+- Toon: adviseur, niet verkoper — observatie delen, niet pushen
+- VERBODEN: "vrijblijvend", "speciaal aanbod", "korting", "beperkte tijd", harde CTA
+
+Antwoord ALLEEN als JSON: {"subject":"...","body":"..."}`,
+      d30: `Schrijf een maandreview email (30 dagen na oplevering).
+
+Klant: ${firstName} (${lead.companyName}, ${lead.niche || ''}, ${lead.location || ''})
+Opgeleverd: ${deliveredNames}
+Afzender: ${settings.myName || ''} van ${settings.agencyName || 'Agency AI'}
+
+STRUCTUUR:
+1. "Beste ${firstName}," — ALTIJD
+2. Eén zin: markeer het moment ("Vandaag is het precies een maand sinds...")
+3. 2-3 zinnen: vraag naar hun ervaring met concrete aspecten van ${deliveredNames}
+4. Eén zin: bied een kort evaluatiegesprek aan (15-20 min)
+5. Afsluiting: "${settings.myName || ''}"
+
+REGELS:
+- Max 110 woorden in de body
+- Onderwerp: "1 maand" + bedrijfsnaam of oplevering
+- Vraag naar SPECIFIEKE ervaringen (niet "hoe gaat het?")
+- Bied evaluatie aan als waarde, niet als verkoopgesprek
+- VERBODEN: "Ik hoop dat u tevreden bent", "We zijn trots", vage complimenten
+
+Antwoord ALLEEN als JSON: {"subject":"...","body":"..."}`,
     };
 
     try {
@@ -12035,9 +12661,9 @@ async function runMonthlyReports(workspaceId) {
     let reportContent = '';
     try {
       const prompt = lang === 'nl'
-        ? 'Schrijf een professioneel maar bondig maandrapport voor een klant. Klinkt realistisch en positief. Max 200 woorden in het Nederlands.\n\nKlant: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nDienst: ' + service + '\nActief: ' + monthsActive + ' maand(en)\nMaand: ' + monthName + '\n\nStructuur:\n- Samenvatting prestaties (realistische positieve getallen voor ' + service + ')\n- Uitgevoerde werkzaamheden\n- Aanbeveling voor volgende maand\n\nGeef alleen de rapporttekst.'
-        : 'Write a professional but concise monthly report for a client. Sounds realistic and positive. Max 200 words in English.\n\nClient: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nService: ' + service + '\nActive: ' + monthsActive + ' month(s)\nMonth: ' + monthName + '\n\nStructure:\n- Performance summary (realistic positive numbers for ' + service + ')\n- Work completed\n- Recommendation for next month\n\nReturn only the report text.';
-      reportContent = (await aiCall(prompt, wId)).trim();
+        ? 'Schrijf een maandrapport voor een klant.\n\nKlant: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nDienst: ' + service + '\nActief: ' + monthsActive + ' maand(en)\nMaand: ' + monthName + '\n\nSTRUCTUUR:\n1. Samenvatting (2-3 zinnen met concrete resultaten — noem specifieke getallen passend bij ' + service + ')\n2. Uitgevoerd deze maand (3-5 bullet points, concreet en telbaar)\n3. Volgende maand (1-2 concrete acties die we gaan doen)\n\nREGELS:\n- Max 200 woorden\n- Toon: professioneel, resultaatgericht, kort\n- Getallen moeten realistisch zijn voor een ' + client.niche + ' na ' + monthsActive + ' maand(en)\n- Geen overdreven beloftes of vaagheden\n- VERBODEN: "We zijn trots", "Fantastische maand", "Op naar nog meer"\n- Geef ALLEEN de rapporttekst, geen onderwerp of aanhef'
+        : 'Write a monthly report for a client.\n\nClient: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nService: ' + service + '\nActive: ' + monthsActive + ' month(s)\nMonth: ' + monthName + '\n\nSTRUCTURE:\n1. Summary (2-3 sentences with concrete results — specific numbers relevant to ' + service + ')\n2. Completed this month (3-5 bullet points, concrete and countable)\n3. Next month (1-2 specific actions planned)\n\nRULES:\n- Max 200 words\n- Tone: professional, results-focused, concise\n- Numbers must be realistic for a ' + client.niche + ' after ' + monthsActive + ' month(s)\n- No exaggerated claims or vague promises\n- BANNED: "We\'re proud", "Amazing month", "Looking forward to even more"\n- Return ONLY the report text, no subject line or greeting';
+      reportContent = (await aiCall(prompt, wId, getModel('MONTHLY_REPORT'))).trim();
     } catch (err) { console.warn(`[AI fallback]`, err.message);
       reportContent = lang === 'nl'
         ? 'Dit rapport is automatisch gegenereerd voor ' + monthName + '.\n\nDienst: ' + service + '\nStatus: Actief en op schema.\n\nVoor vragen kunt u contact opnemen via het portaal.'
@@ -12109,10 +12735,11 @@ async function runReferralCheck(workspaceId) {
 
     let email = null;
     try {
+      const monthsActive = Math.floor(daysSince / 30);
       const prompt = lang === 'nl'
-        ? 'Schrijf een warme referral-verzoek email voor een tevreden klant. Klinkt persoonlijk, niet als een template. Geef JSON terug.\n\nKlant: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nDienst: ' + service + '\nActief: ' + daysSince + ' dagen\nAfzender: ' + myName + ' van ' + agencyName + '\nDatum vandaag: ' + new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) + '\n\nRegels:\n- Refereer positief aan hun samenwerking en resultaten\n- Vraag vriendelijk of ze iemand kennen die ook baat zou hebben\n- NIET pusherig of salesy\n- Max 100 woorden\n- Geen bullet points\n- Einde met zachte vraag\n- Afsluiting: "Groeten, ' + myName + '"\n\n{"subject": "onderwerp", "body": "emailtekst"}'
-        : 'Write a warm referral request email for a happy client. Sounds personal, not like a template. Return JSON.\n\nClient: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nService: ' + service + '\nActive: ' + daysSince + ' days\nSender: ' + myName + ' from ' + agencyName + '\n\nRules:\n- Reference their positive collaboration and results\n- Warmly ask if they know anyone who could benefit\n- NOT pushy or salesy\n- Max 100 words\n- No bullet points\n- End with a soft question\n- Sign off: "Best, ' + myName + '"\n\n{"subject": "subject", "body": "email body"}';
-      email = await aiJSON(prompt);
+        ? 'Schrijf een referral-verzoek email.\n\nKlant: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nDienst: ' + service + '\nActief: ' + monthsActive + ' maanden\nAfzender: ' + myName + ' van ' + agencyName + '\n\nSTRUCTUUR:\n1. "Beste ' + client.companyName + '," — ALTIJD\n2. Eén zin over hun resultaten (specifiek voor ' + client.niche + ', realistisch na ' + monthsActive + ' maanden)\n3. Eén zin: directe reden voor het mailtje\n4. De zachte vraag: "Kent u iemand in [relevante sector] die hier ook baat bij zou hebben?"\n5. Afsluiting: "Groeten, ' + myName + '"\n\nREGELS:\n- Max 80 woorden — korter = beter\n- Toon: alsof je een collega mailt, niet een klant\n- Verwijs naar een CONCREET resultaat (niet "goede samenwerking")\n- VERBODEN: "Aarzel niet", "Mocht u iemand kennen", "Het zou mij een plezier zijn", bullet points\n- Antwoord ALLEEN als JSON: {"subject":"kort persoonlijk onderwerp","body":"emailtekst"}'
+        : 'Write a referral request email.\n\nClient: ' + client.companyName + ' (' + client.niche + ', ' + client.location + ')\nService: ' + service + '\nActive: ' + monthsActive + ' months\nSender: ' + myName + ' from ' + agencyName + '\n\nSTRUCTURE:\n1. "Hi ' + client.companyName + '," — ALWAYS\n2. One sentence about their results (specific to ' + client.niche + ', realistic after ' + monthsActive + ' months)\n3. One sentence: direct reason for emailing\n4. The soft ask: "Do you know anyone in [relevant sector] who could benefit too?"\n5. Sign-off: "Best, ' + myName + '"\n\nRULES:\n- Max 80 words — shorter = better\n- Tone: like messaging a colleague, not a client\n- Reference a CONCRETE result (not "great collaboration")\n- BANNED: "Don\'t hesitate", "If you happen to know", "It would be my pleasure", bullet points\n- Return ONLY JSON: {"subject":"short personal subject","body":"email body"}';
+      email = await aiJSON(prompt, getModel('CLIENT_EMAIL'));
     } catch (err) { console.warn(`[AI fallback]`, err.message);
       email = lang === 'nl'
         ? { subject: 'Kort vraagje – ' + client.companyName, body: 'Beste ' + client.companyName + ',\n\nWe werken nu al ' + Math.floor(daysSince / 30) + ' maanden samen en ik hoop dat u tevreden bent met de behaalde resultaten.\n\nKent u iemand in uw netwerk die ook baat zou kunnen hebben bij onze aanpak? Een warme introductie wordt zeer gewaardeerd.\n\nMet vriendelijke groet,\n' + myName }
@@ -12775,7 +13402,23 @@ cron.schedule('0 9 * * *', async () => {
       if (!lead.contactEmail || !isResendReady(settings)) continue;
       try {
         const overdueLink = pay.paymentUrl ? `Betaallink: ${pay.paymentUrl}` : (pay.bankDetails ? `IBAN: ${pay.bankDetails.iban}` : '');
-        const reminderEmail = await aiJSON(`Schrijf een vriendelijke betalingsherinnering. Klant: ${lead.companyName}. Bedrag: €${pay.amount}. ${daysOverdue} dagen te laat. ${overdueLink} Max 100 woorden. JSON: { "subject": "...", "body": "..." }`);
+        const reminderEmail = await aiJSON(`Schrijf een betalingsherinnering email.
+
+Klant: ${lead.companyName}
+Bedrag: €${pay.amount}
+Dagen te laat: ${daysOverdue}
+${overdueLink}
+
+REGELS:
+- Toon: vriendelijk maar zakelijk — dit is een herinnering, geen verzoek
+- Begin met "Beste ${lead.companyName}," — niet "Geachte"
+- Noem het exacte bedrag en de vervaldatum
+- ${daysOverdue <= 7 ? 'Eerste herinnering: geef benefit of the doubt ("mogelijk over het hoofd gezien")' : daysOverdue <= 14 ? 'Tweede herinnering: iets directer, vraag om betaling deze week' : 'Derde+ herinnering: formeel, noem consequenties (service pauzeren)'}
+- Eindig met betaalinstructies of link
+- Max 80 woorden
+- VERBODEN: "spoedig", "ten spoedigste", dreigend taalgebruik bij eerste herinnering
+
+Geef ALLEEN JSON: {"subject":"kort en duidelijk","body":"volledige email tekst"}`, getModel('PAYMENT_REMINDER'));
         await sendEmail({ to: lead.contactEmail, subject: reminderEmail.subject, body: reminderEmail.body, settings, workspaceId: wId});
         const lIdx = allLeads.findIndex(l => l.id === lead.id);
         const pIdx = (allLeads[lIdx]?.payments || []).findIndex(p => p.id === pay.id);
@@ -13683,16 +14326,24 @@ app.post('/api/leads/:id/export-pdf', requireAdmin, async (req, res) => {
 // Task 31 — Export statistics as CSV
 app.get('/api/stats/export.csv', requireAdmin, (req, res) => {
   const leads = wsRead(req, 'leads.json') || [];
+  // Prevent CSV formula injection: prefix dangerous first chars with a single quote
+  const csvSafe = v => {
+    if (v == null) return '';
+    let s = String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    s = s.replace(/"/g, '""');
+    return `"${s}"`;
+  };
   const rows = [['Bedrijf','Email','Status','Score','Locatie','Niche','Verstuurd','Reply','Klant sinds','Omzet'].join(',')];
   leads.forEach(l => {
     const revenue = (l.payments||[]).filter(p=>p.status==='paid').reduce((s,p)=>s+(p.amount||0),0);
     rows.push([
-      `"${(l.companyName||'').replace(/"/g,'""')}"`,
-      `"${(l.contactEmail||'').replace(/"/g,'""')}"`,
-      l.status||'',
+      csvSafe(l.companyName),
+      csvSafe(l.contactEmail),
+      csvSafe(l.status),
       l.score||'',
-      `"${(l.location||'').replace(/"/g,'""')}"`,
-      l.niche||'',
+      csvSafe(l.location),
+      csvSafe(l.niche),
       l.sentAt?.slice(0,10)||'',
       l.repliedAt?.slice(0,10)||'',
       l.projectStartedAt?.slice(0,10)||'',

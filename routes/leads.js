@@ -8,7 +8,7 @@ module.exports = function createLeadsRouter(deps) {
   const {
     readJSON, wsRead, wsWrite, requireAdmin, scopeToUser,
     addLeadHistory, isDemoContext, aiJSON, updateMemoryConversion,
-    isResendReady, generateClientEmail, sendEmail
+    isResendReady, generateClientEmail, sendEmail, getModel
   } = deps;
 
   const router = express.Router();
@@ -24,8 +24,11 @@ router.get('/export.csv', (req, res) => {
 
   const csvEsc = v => {
     if (v == null) return '';
-    const s = String(v).replace(/"/g, '""');
-    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+    let s = String(v);
+    // Prevent CSV formula injection: prefix dangerous first chars with a single quote
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    s = s.replace(/"/g, '""');
+    return s.includes(',') || s.includes('"') || s.includes('\n') || s.includes("'") ? `"${s}"` : s;
   };
 
   const headers = [
@@ -173,7 +176,7 @@ Write a realistic, convincing case study. Invent plausible results (percentages,
 {"title": "Case study title (max 8 words)", "industry": "${lead.niche}", "challenge": "2-3 sentences about the challenge (no jargon)", "solution": "2-3 sentences about ${agencyName}'s approach", "results": ["Result 1 with number/percentage", "Result 2 with number/percentage", "Result 3 with number/percentage"], "quote": "Fictional client quote max 20 words, sounds genuine", "quoteName": "First Last, Job Title", "published": false}`;
 
   try {
-    const caseStudy = await aiJSON(prompt);
+    const caseStudy = await aiJSON(prompt, getModel('CASE_STUDY'));
     caseStudy.createdAt = new Date().toISOString();
     caseStudy.published = caseStudy.published || false;
     leads[idx].caseStudy = caseStudy;

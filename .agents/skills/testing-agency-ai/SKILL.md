@@ -29,7 +29,7 @@ cd /home/ubuntu/repos/agency-ai
 node server.js
 ```
 
-The app starts on `http://localhost:3000`. Expected startup output:
+The app starts on `http://localhost:3000` by default (or the port specified by `PORT` env var — commonly `PORT=3456` is used). Expected startup output:
 - `[Migrations] Schema up-to-date`
 - `[DB] Geen DATABASE_URL — SQLite-only modus`
 - `[Security] JWT_SECRET not set — using insecure dev-only default` (normal for dev)
@@ -130,6 +130,42 @@ As of PR #5, all frontend debug logs (`[getToken]`, `[hash-import]`, `[WS]`) are
 
 If you see `[getToken]` logs without debugMode enabled, someone has re-added ungated `console.log` calls.
 
+## Superadmin Testing
+
+### Login
+- URL: `/superadmin` (separate from the main admin app)
+- Credentials: `info@agencyai.info` / `superadmin2024`
+- **Important**: If login fails with "Ongeldige gebruikersnaam of wachtwoord" despite correct credentials, the issue might be stale JWT tokens in localStorage from a previous admin session. Fix: clear localStorage via DevTools console (`localStorage.clear(); window.location.href='/superadmin';`) then re-enter credentials.
+
+### Key Superadmin Pages
+| Tab | What to Verify |
+|-----|----------------|
+| Overzicht | Stats cards (Actief/Wacht op betaling/MRR), workspace table, pending payments list |
+| Workspaces | Full list, eye icon opens detail modal with 5 tabs (Info, Gebruikers, Betalingen, Activiteit, Notities) |
+| Betalingen | Payment history with status badges |
+| Demo aanvragen | Demo request submissions |
+| Activiteit | Activity log |
+| Berichten | Messages |
+| Systeem | Health cards (Node version, uptime, memory, database, Railway env, app version, totals), Claude API status |
+
+### Payment Confirmation Flow
+1. Go to Overzicht → "Openstaande betalingen" section
+2. Click "Bevestig" next to a pending workspace
+3. Confirm browser `confirm()` dialog
+4. Expect: toast "Betaling bevestigd & account geactiveerd!", entry removed from pending list
+5. After page refresh: ACTIEF count +1, WACHT OP BETALING count -1, MRR increases by €197
+
+### Workspace Detail Modal
+- Click eye icon (👁) on any workspace row
+- 5 tabs: Info (ID/Slug/Plan/Owner/MRR/Color), Gebruikers (user table), Betalingen (billing history), Activiteit (activity log), Notities (textarea + save)
+- Action buttons at bottom: Sluiten, Naam wijzigen, Wachtwoord, Verwijderen, Inloggen als
+
+### Responsive Testing (Tablet 768px)
+- Open DevTools → toggle device toolbar → set width to 768px
+- Sidebar collapses to hamburger menu (☰) — tap to open nav overlay
+- Stats cards should wrap to 2-column grid
+- Tables should remain readable without horizontal overflow
+
 ## Common Issues
 
 - **Setup wizard modal blocks UI**: Click outside it to dismiss. Escape key doesn't close it. You can also remove it via JS: find elements containing "Stap 1 van" text and set `display:none`.
@@ -138,16 +174,18 @@ If you see `[getToken]` logs without debugMode enabled, someone has re-added ung
 - **Port conflicts**: If port 3000 is in use, kill existing process or set `PORT` env var.
 - **Jest worker warning**: `npm run test` may show "worker process has failed to exit gracefully" — this is a known Jest issue with cron timers, not a test failure.
 - **Playwright CDP tab disconnection**: When Playwright opens a new page via CDP and then closes, the browser tab may show ERR_FAILED. This is cosmetic — the existing app tabs continue working. Switch back to the Agency AI tab.
+- **Superadmin auth conflict**: The admin app and superadmin use the same localStorage for JWT tokens. If you've been testing the admin app, visiting `/superadmin` might fail auth. Always clear localStorage before switching between admin and superadmin testing contexts.
+- **Contacten page "undefined"/"Invalid Date"**: If contact entries from the public site contact form show "undefined" status or "Invalid Date", the issue is that `site_contact` type entries use `submittedAt` (not `createdAt`) and lack a `status` field. The fix uses `c.status || 'new'` and `new Date(c.submittedAt || c.createdAt)`.
 
 ## Unit Tests
 
 ```bash
-npm run test  # 45 tests across 9 suites
+npm run test  # 67 tests across 11 suites
 ```
 
 All tests should pass. The "force exit" warning at the end is expected (cron timers).
 
-Suites: auth, health, leads, settings, portal, stats, superadmin, inbox, regression.
+Suites: auth, health, leads, settings, portal, stats, superadmin, inbox, regression, payments, registration.
 
 ## Route Architecture
 
