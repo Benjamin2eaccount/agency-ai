@@ -147,3 +147,42 @@ describe('API Error Shape Consistency', () => {
     expect(typeof res.body.error).toBe('string');
   });
 });
+
+describe('CSV Formula Injection Prevention', () => {
+  it('GET /api/leads/export.csv — formula chars are prefixed with single quote', async () => {
+    // Create a lead with formula-injection payloads
+    await request(app)
+      .post('/api/leads')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ companyName: '=CMD(calc)', niche: '+SUM(A1)', location: '-1+1', score: 5 });
+
+    const res = await request(app)
+      .get('/api/leads/export.csv')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+
+    // Verify formula chars are neutralized (prefixed with ')
+    const csv = res.text;
+    expect(csv).not.toMatch(/^=CMD/m);
+    expect(csv).not.toMatch(/,=CMD/);
+    expect(csv).toContain("'=CMD");
+    expect(csv).toContain("'+SUM");
+    expect(csv).toContain("'-1+1");
+  });
+
+  it('GET /api/stats/export.csv — formula chars are prefixed with single quote', async () => {
+    // The lead created above (=CMD(calc)) should also appear in stats export
+    const res = await request(app)
+      .get('/api/stats/export.csv')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+
+    const csv = res.text;
+    // Should not contain raw unquoted formulas that Excel would execute
+    expect(csv).not.toMatch(/,"=CMD\(/);
+    // The companyName field should be sanitized with ' prefix
+    expect(csv).toContain("'=CMD");
+  });
+});

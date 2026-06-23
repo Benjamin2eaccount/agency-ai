@@ -13577,15 +13577,23 @@ app.post('/api/leads/:id/export-pdf', requireAdmin, async (req, res) => {
 // Task 31 — Export statistics as CSV
 app.get('/api/stats/export.csv', requireAdmin, (req, res) => {
   const leads = wsRead(req, 'leads.json') || [];
+  // Prevent CSV formula injection: prefix dangerous first chars with a single quote
+  const csvSafe = v => {
+    if (v == null) return '';
+    let s = String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    s = s.replace(/"/g, '""');
+    return `"${s}"`;
+  };
   const rows = [['Bedrijf','Email','Status','Score','Locatie','Niche','Verstuurd','Reply','Klant sinds','Omzet'].join(',')];
   leads.forEach(l => {
     const revenue = (l.payments||[]).filter(p=>p.status==='paid').reduce((s,p)=>s+(p.amount||0),0);
     rows.push([
-      `"${(l.companyName||'').replace(/"/g,'""')}"`,
-      `"${(l.contactEmail||'').replace(/"/g,'""')}"`,
+      csvSafe(l.companyName),
+      csvSafe(l.contactEmail),
       l.status||'',
       l.score||'',
-      `"${(l.location||'').replace(/"/g,'""')}"`,
+      csvSafe(l.location),
       l.niche||'',
       l.sentAt?.slice(0,10)||'',
       l.repliedAt?.slice(0,10)||'',
