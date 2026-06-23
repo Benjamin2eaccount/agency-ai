@@ -24,8 +24,11 @@ router.get('/export.csv', (req, res) => {
 
   const csvEsc = v => {
     if (v == null) return '';
-    const s = String(v).replace(/"/g, '""');
-    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+    let s = String(v);
+    // Prevent CSV formula injection: prefix dangerous first chars with a single quote
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    s = s.replace(/"/g, '""');
+    return s.includes(',') || s.includes('"') || s.includes('\n') || s.includes("'") ? `"${s}"` : s;
   };
 
   const headers = [

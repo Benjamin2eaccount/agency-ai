@@ -4235,6 +4235,16 @@ app.post('/api/leads/:id/start-project', requireAdmin, async (req, res) => {
     if (idx === -1) { send(0, 'Lead niet gevonden', 'error'); res.end(); return; }
     const lead = leads[idx];
 
+    // Idempotency guard: if project already started, return existing state without re-sending emails
+    if (lead.projectStartedAt) {
+      send(1, 'Portaaltoegang instellen', 'done', { portalUrl: `${BASE_URL}/portal/${lead.portalToken}` });
+      send(2, 'Intake link genereren', 'done');
+      send(3, 'Welkomstmail versturen', 'done', { skipped: true });
+      send(4, 'Klaar', 'complete');
+      res.end();
+      return;
+    }
+
     // ── DEMO GUARD: skip AI calls and real emails, just update status ──
     if (isDemoContext(req, lead)) {
       console.log(`[DEMO] Skipped real start-project for ${lead.companyName}`);
@@ -13577,16 +13587,24 @@ app.post('/api/leads/:id/export-pdf', requireAdmin, async (req, res) => {
 // Task 31 — Export statistics as CSV
 app.get('/api/stats/export.csv', requireAdmin, (req, res) => {
   const leads = wsRead(req, 'leads.json') || [];
+  // Prevent CSV formula injection: prefix dangerous first chars with a single quote
+  const csvSafe = v => {
+    if (v == null) return '';
+    let s = String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    s = s.replace(/"/g, '""');
+    return `"${s}"`;
+  };
   const rows = [['Bedrijf','Email','Status','Score','Locatie','Niche','Verstuurd','Reply','Klant sinds','Omzet'].join(',')];
   leads.forEach(l => {
     const revenue = (l.payments||[]).filter(p=>p.status==='paid').reduce((s,p)=>s+(p.amount||0),0);
     rows.push([
-      `"${(l.companyName||'').replace(/"/g,'""')}"`,
-      `"${(l.contactEmail||'').replace(/"/g,'""')}"`,
-      l.status||'',
+      csvSafe(l.companyName),
+      csvSafe(l.contactEmail),
+      csvSafe(l.status),
       l.score||'',
-      `"${(l.location||'').replace(/"/g,'""')}"`,
-      l.niche||'',
+      csvSafe(l.location),
+      csvSafe(l.niche),
       l.sentAt?.slice(0,10)||'',
       l.repliedAt?.slice(0,10)||'',
       l.projectStartedAt?.slice(0,10)||'',

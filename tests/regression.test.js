@@ -147,3 +147,93 @@ describe('API Error Shape Consistency', () => {
     expect(typeof res.body.error).toBe('string');
   });
 });
+
+describe('CSV Formula Injection Prevention', () => {
+  it('GET /api/leads/export.csv — formula chars are prefixed with single quote', async () => {
+    // Create a lead with formula-injection payloads
+    await request(app)
+      .post('/api/leads')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ companyName: '=CMD(calc)', niche: '+SUM(A1)', location: '-1+1', score: 5 });
+
+    const res = await request(app)
+      .get('/api/leads/export.csv')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+
+    // Verify formula chars are neutralized (prefixed with ')
+    const csv = res.text;
+    expect(csv).not.toMatch(/^=CMD/m);
+    expect(csv).not.toMatch(/,=CMD/);
+    expect(csv).toContain("'=CMD");
+    expect(csv).toContain("'+SUM");
+    expect(csv).toContain("'-1+1");
+  });
+
+  it('GET /api/stats/export.csv — formula chars are prefixed with single quote', async () => {
+    // The lead created above (=CMD(calc)) should also appear in stats export
+    const res = await request(app)
+      .get('/api/stats/export.csv')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+
+    const csv = res.text;
+    // Should not contain raw unquoted formulas that Excel would execute
+    expect(csv).not.toMatch(/,"=CMD\(/);
+    // The companyName field should be sanitized with ' prefix
+    expect(csv).toContain("'=CMD");
+  });
+});
+
+describe('Concurrency — Inbox Approve Idempotency', () => {
+  it('PATCH /api/inbox/:id/approve — second approve returns same result without re-processing', async () => {
+    // Seed a test inbox item directly
+    const { readJSON, writeJSON } = require('../database');
+    const existing = readJSON('inbox.json') || [];
+    const testItem = { id: 'idempotency-test-1', status: 'new', companyName: 'Race Corp', contactEmail: 'race@test.nl', subject: 'Test', body: 'Hi', niche: 'test', createdAt: new Date().toISOString() };
+    writeJSON('inbox.json', [...existing, testItem]);
+
+    // First approve
+    const res1 = await request(app)
+      .patch('/api/inbox/idempotency-test-1/approve')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res1.statusCode).toBe(200);
+    expect(res1.body.status).toBe('approved');
+    const approvedAt1 = res1.body.approvedAt;
+
+    // Second approve (idempotent — should not re-process)
+    const res2 = await request(app)
+      .patch('/api/inbox/idempotency-test-1/approve')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res2.statusCode).toBe(200);
+    expect(res2.body.status).toBe('approved');
+    expect(res2.body.approvedAt).toBe(approvedAt1); // Same timestamp = no re-processing
+  });
+});
+
+describe('Concurrency — Start-Project Idempotency', () => {
+  it('POST /api/leads/:id/start-project — second call returns immediately when project already started', async () => {
+    // Create a lead then manually set projectStartedAt via PATCH
+    const createRes = await request(app)
+      .post('/api/leads')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ companyName: 'Already Started BV', niche: 'test', score: 5 });
+    const leadId = createRes.body.id;
+
+    // Mark it as already started
+    await request(app)
+      .patch(`/api/leads/${leadId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ status: 'client', projectStartedAt: '2026-01-01T00:00:00.000Z', portalToken: 'test-portal-abc', intakeToken: 'test-intake-def' });
+
+    const res = await request(app)
+      .post(`/api/leads/${leadId}/start-project`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.statusCode).toBe(200);
+    // SSE response should contain 'skipped' indicating no re-processing
+    expect(res.text).toContain('skipped');
+    expect(res.text).toContain('Klaar');
+  });
+});
