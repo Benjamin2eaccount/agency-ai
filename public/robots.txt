@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /superadmin
+Disallow: /api/
+Disallow: /portal
+Disallow: /intake
+
+Sitemap: https://www.agencyai.info/sitemap.xml
