@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacybeleid — Agency AI</title>
+  <meta name="description" content="Privacybeleid van Agency AI. Hoe wij omgaan met uw persoonsgegevens conform de AVG/GDPR.">
+  <link rel="icon" href="/images/agency_ai_logo_dark.png" type="image/png">
+  <link rel="canonical" href="https://www.agencyai.info/privacy">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0F0F0F;
+      --surface: #1A1A1A;
+      --border: #2A2A2A;
+      --text: #F5F5F5;
+      --text-2: #999999;
+      --text-3: #555555;
+      --accent: #2563EB;
+      --radius: 6px;
+      --max-w: 760px;
+    }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .legal-header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .legal-header img { height: 28px; width: auto; }
+    .legal-header a { color: var(--text); font-weight: 600; font-size: 15px; }
+
+    .legal-body {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+    .legal-body h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .legal-body .subtitle {
+      color: var(--text-2);
+      font-size: 14px;
+      margin-bottom: 40px;
+    }
+    .legal-body h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 32px 0 12px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .legal-body h2:first-of-type { border-top: none; padding-top: 0; }
+    .legal-body h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 20px 0 8px;
+    }
+    .legal-body p, .legal-body li {
+      font-size: 15px;
+      color: var(--text-2);
+      margin-bottom: 12px;
+    }
+    .legal-body ul, .legal-body ol {
+      padding-left: 24px;
+      margin-bottom: 16px;
+    }
+    .legal-body li { margin-bottom: 6px; }
+    .legal-body table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+    .legal-body th, .legal-body td {
+      text-align: left;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      color: var(--text-2);
+    }
+    .legal-body th {
+      background: var(--surface);
+      color: var(--text);
+      font-weight: 600;
+    }
+    .legal-footer {
+      text-align: center;
+      padding: 24px;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--text-3);
+    }
+  </style>
+</head>
+<body>
+
+<header class="legal-header">
+  <a href="/"><img src="/images/agency_ai_logo_dark.png" alt="Agency AI"></a>
+  <a href="/">Agency AI</a>
+</header>
+
+<main class="legal-body">
+  <h1>Privacybeleid</h1>
+  <p class="subtitle">Laatst bijgewerkt: 22 juni 2026</p>
+
+  <h2>1. Wie zijn wij</h2>
+  <p>Agency AI is een SaaS-platform voor geautomatiseerde marketing, aangeboden door Agency AI, gevestigd in Nederland. Voor vragen over privacy kunt u contact opnemen via <a href="mailto:info@agencyai.info">info@agencyai.info</a>.</p>
+
+  <h2>2. Welke persoonsgegevens verzamelen wij</h2>
+  <p>Wij verzamelen uitsluitend gegevens die nodig zijn voor de dienstverlening:</p>
+
+  <h3>2.1 Bij registratie (accounthouders)</h3>
+  <ul>
+    <li>Volledige naam</li>
+    <li>Bedrijfsnaam</li>
+    <li>E-mailadres</li>
+    <li>Wachtwoord (opgeslagen als bcrypt-hash, nooit in leesbare vorm)</li>
+    <li>Gekozen abonnement (Starter/Pro/Agency)</li>
+  </ul>
+
+  <h3>2.2 Bij gebruik van het platform (leads/contacten)</h3>
+  <ul>
+    <li>Bedrijfsnaam, contactpersoon, e-mailadres en website van leads</li>
+    <li>Niche, locatie en AI-score van leads</li>
+    <li>E-mailcorrespondentie (verzonden berichten, ontvangen reacties)</li>
+    <li>Chatberichten via het klantportaal</li>
+    <li>Ge&uuml;ploade bestanden in het klantportaal</li>
+  </ul>
+
+  <h3>2.3 Automatisch verzamelde gegevens</h3>
+  <ul>
+    <li>IP-adres (voor rate limiting en activiteitenlogboek)</li>
+    <li>Inlogtijdstip (last_login_at)</li>
+    <li>Browser user-agent (alleen bij downloads)</li>
+  </ul>
+
+  <h3>2.4 Op de landingspagina (bezoekers)</h3>
+  <ul>
+    <li>Google Analytics 4 (indien geconfigureerd door de beheerder): anonieme bezoekstatistieken met IP-anonimisering ingeschakeld. Google plaatst hiervoor cookies (_ga, _gid).</li>
+    <li>Naam, e-mailadres en bericht bij het invullen van het contactformulier</li>
+  </ul>
+
+  <h2>3. Waarvoor gebruiken wij deze gegevens</h2>
+  <table>
+    <tr><th>Doel</th><th>Grondslag (AVG)</th></tr>
+    <tr><td>Account aanmaken en beheren</td><td>Uitvoering overeenkomst (art. 6.1.b)</td></tr>
+    <tr><td>Facturering en betalingsverwerking</td><td>Uitvoering overeenkomst (art. 6.1.b)</td></tr>
+    <tr><td>AI-gestuurde lead discovery en outreach</td><td>Uitvoering overeenkomst (art. 6.1.b)</td></tr>
+    <tr><td>E-mails verzenden (welkom, facturen, meldingen)</td><td>Uitvoering overeenkomst (art. 6.1.b)</td></tr>
+    <tr><td>Klantportaal en projectcommunicatie</td><td>Uitvoering overeenkomst (art. 6.1.b)</td></tr>
+    <tr><td>Rate limiting en misbruikpreventie</td><td>Gerechtvaardigd belang (art. 6.1.f)</td></tr>
+    <tr><td>Websitestatistieken (Google Analytics)</td><td>Toestemming (art. 6.1.a)</td></tr>
+  </table>
+
+  <h2>4. Derde partijen</h2>
+  <p>Wij delen persoonsgegevens alleen met de volgende verwerkers, uitsluitend voor de hieronder genoemde doeleinden:</p>
+  <table>
+    <tr><th>Partij</th><th>Doel</th><th>Gegevens</th></tr>
+    <tr><td>Resend (resend.com)</td><td>E-mail verzending</td><td>E-mailadres ontvanger, e-mailinhoud</td></tr>
+    <tr><td>Anthropic (anthropic.com)</td><td>AI-verwerking (lead analyse, e-mail generatie, content creatie)</td><td>Bedrijfsinformatie van leads, website-inhoud, e-mailteksten ter verwerking</td></tr>
+    <tr><td>Google (analytics)</td><td>Websitestatistieken</td><td>Geanonimiseerd IP-adres, paginabezoeken</td></tr>
+    <tr><td>Railway (railway.app)</td><td>Hosting</td><td>Alle opgeslagen gegevens (versleuteld in transit en at rest)</td></tr>
+  </table>
+  <p>Wij verkopen geen persoonsgegevens aan derden.</p>
+
+  <h2>5. Bewaartermijnen</h2>
+  <ul>
+    <li><strong>Gearchiveerde leads:</strong> automatisch verwijderd na 90 dagen (wekelijkse opschoontaak).</li>
+    <li><strong>Accountgegevens:</strong> bewaard zolang het account actief is. Bij opzegging worden gegevens verwijderd op verzoek (zie sectie 7).</li>
+    <li><strong>Factuurgegevens:</strong> 7 jaar bewaard conform de fiscale bewaarplicht.</li>
+    <li><strong>Activiteitenlogboek:</strong> bewaard zolang het account actief is.</li>
+  </ul>
+  <p><em>Opmerking: Er is momenteel geen geautomatiseerde verwijdering van volledige accounts. Verwijdering geschiedt op verzoek (zie sectie 7).</em></p>
+
+  <h2>6. Beveiliging</h2>
+  <ul>
+    <li>Wachtwoorden worden opgeslagen met bcrypt (12 rounds)</li>
+    <li>API-sleutels worden versleuteld met AES-256-CBC</li>
+    <li>Alle communicatie verloopt via HTTPS</li>
+    <li>JWT-tokens verlopen na 7 dagen</li>
+    <li>Rate limiting op alle publieke endpoints</li>
+    <li>Workspace-isolatie: gebruikers kunnen uitsluitend eigen data benaderen</li>
+  </ul>
+
+  <h2>7. Uw rechten (AVG)</h2>
+  <p>U heeft de volgende rechten met betrekking tot uw persoonsgegevens:</p>
+  <ul>
+    <li><strong>Inzage:</strong> U kunt opvragen welke gegevens wij van u bewaren.</li>
+    <li><strong>Correctie:</strong> U kunt onjuiste gegevens laten aanpassen.</li>
+    <li><strong>Verwijdering:</strong> U kunt verzoeken al uw gegevens te laten verwijderen.</li>
+    <li><strong>Dataportabiliteit:</strong> U kunt een export van uw gegevens opvragen.</li>
+    <li><strong>Bezwaar:</strong> U kunt bezwaar maken tegen verwerking op basis van gerechtvaardigd belang.</li>
+    <li><strong>Intrekking toestemming:</strong> U kunt uw toestemming voor Google Analytics op elk moment intrekken.</li>
+  </ul>
+  <p>Voor het uitoefenen van deze rechten stuurt u een e-mail naar <a href="mailto:info@agencyai.info">info@agencyai.info</a>. Wij reageren binnen 30 dagen.</p>
+
+  <h2>8. Cookies en lokale opslag</h2>
+  <p>Wij gebruiken de volgende opslagmechanismen:</p>
+  <table>
+    <tr><th>Type</th><th>Naam/doel</th><th>Noodzakelijk?</th></tr>
+    <tr><td>localStorage</td><td>Authenticatietoken (JWT)</td><td>Ja (functioneel)</td></tr>
+    <tr><td>localStorage</td><td>UI-voorkeuren (tabbladen, weergave)</td><td>Ja (functioneel)</td></tr>
+    <tr><td>localStorage</td><td>Aankondigingsbanner dismissal</td><td>Ja (functioneel)</td></tr>
+    <tr><td>sessionStorage</td><td>Portaaltoken</td><td>Ja (functioneel)</td></tr>
+    <tr><td>Cookie (_ga, _gid)</td><td>Google Analytics</td><td>Nee (statistisch, alleen met toestemming)</td></tr>
+  </table>
+
+  <h2>9. Google Analytics</h2>
+  <p>Indien de beheerder Google Analytics 4 heeft geconfigureerd, worden anonieme bezoekstatistieken verzameld op de landingspagina. IP-anonimisering is standaard ingeschakeld. U kunt deze tracking weigeren via de cookiemelding die bij uw eerste bezoek wordt getoond.</p>
+
+  <h2>10. Wijzigingen</h2>
+  <p>Wij kunnen dit privacybeleid wijzigen. De datum bovenaan geeft aan wanneer het laatst is bijgewerkt. Bij ingrijpende wijzigingen informeren wij actieve gebruikers per e-mail.</p>
+
+  <h2>11. Klachten</h2>
+  <p>Heeft u een klacht over hoe wij met uw gegevens omgaan? Neem eerst contact op via <a href="mailto:info@agencyai.info">info@agencyai.info</a>. U heeft ook het recht een klacht in te dienen bij de Autoriteit Persoonsgegevens (<a href="https://autoriteitpersoonsgegevens.nl" target="_blank" rel="noopener">autoriteitpersoonsgegevens.nl</a>).</p>
+</main>
+
+<footer class="legal-footer">
+  &copy; <script>document.write(new Date().getFullYear())</script> Agency AI &middot;
+  <a href="/privacy" style="color:var(--text-3)">Privacy</a> &middot;
+  <a href="/terms" style="color:var(--text-3)">Voorwaarden</a> &middot;
+  <a href="/" style="color:var(--text-3)">Terug naar home</a>
+</footer>
+
+</body>
+</html>

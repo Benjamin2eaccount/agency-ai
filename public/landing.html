@@ -1442,8 +1442,8 @@
     <div class="footer-bottom">
       <span class="footer-bottom-copy">© <span id="footerYear"></span> Agency AI</span>
       <div class="footer-bottom-links">
-        <a href="mailto:info@agencyai.info">Privacy</a>
-        <a href="mailto:info@agencyai.info">Voorwaarden</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Voorwaarden</a>
       </div>
     </div>
   </div>
@@ -1554,33 +1554,67 @@
         document.getElementById('navLogoIcon').style.display = 'none';
       }
       if (cfg.gaId && /^G-[A-Z0-9]+$/i.test(cfg.gaId)) {
-        const s = document.createElement('script');
-        s.src = 'https://www.googletagmanager.com/gtag/js?id=' + cfg.gaId;
-        s.async = true;
-        document.head.appendChild(s);
-        window.dataLayer = window.dataLayer || [];
-        window.gtag = function(){ dataLayer.push(arguments); };
-        gtag('js', new Date());
-        gtag('config', cfg.gaId, { anonymize_ip: true });
-        window._gaReady = true;
-        document.querySelectorAll('.btn-hero-primary, .btn-nav-blue, .btn-demo').forEach(b => {
-          b.addEventListener('click', () => gtag('event', 'cta_click', { event_label: b.textContent.trim() }));
-        });
-        document.querySelector('a[href="#product"]')?.addEventListener('click', () =>
-          gtag('event', 'bekijk_diensten', { event_category: 'engagement', event_label: 'hero_cta2' }));
-        let scrollMilestones = new Set();
-        window.addEventListener('scroll', () => {
-          const pct = Math.round((window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100);
-          [25, 50, 75, 90].forEach(m => {
-            if (pct >= m && !scrollMilestones.has(m)) {
-              scrollMilestones.add(m);
-              gtag('event', 'scroll_depth', { event_label: m + '%' });
-            }
-          });
-        }, { passive: true });
+        window._gaId = cfg.gaId;
+        if (localStorage.getItem('cookie-consent') === 'accepted') {
+          initGA(cfg.gaId);
+        } else if (!localStorage.getItem('cookie-consent')) {
+          showCookieBanner();
+        }
       }
     } catch {}
   })();
+
+  function initGA(gaId) {
+    const s = document.createElement('script');
+    s.src = 'https://www.googletagmanager.com/gtag/js?id=' + gaId;
+    s.async = true;
+    document.head.appendChild(s);
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = function(){ dataLayer.push(arguments); };
+    gtag('js', new Date());
+    gtag('config', gaId, { anonymize_ip: true });
+    window._gaReady = true;
+    document.querySelectorAll('.btn-hero-primary, .btn-nav-blue, .btn-demo').forEach(b => {
+      b.addEventListener('click', () => gtag('event', 'cta_click', { event_label: b.textContent.trim() }));
+    });
+    document.querySelector('a[href="#product"]')?.addEventListener('click', () =>
+      gtag('event', 'bekijk_diensten', { event_category: 'engagement', event_label: 'hero_cta2' }));
+    let scrollMilestones = new Set();
+    window.addEventListener('scroll', () => {
+      const pct = Math.round((window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100);
+      [25, 50, 75, 90].forEach(m => {
+        if (pct >= m && !scrollMilestones.has(m)) {
+          scrollMilestones.add(m);
+          gtag('event', 'scroll_depth', { event_label: m + '%' });
+        }
+      });
+    }, { passive: true });
+  }
+
+  function showCookieBanner() {
+    const banner = document.createElement('div');
+    banner.id = 'cookieBanner';
+    banner.innerHTML = `
+      <div style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#1A1A1A;border-top:1px solid #2A2A2A;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:14px;color:#999">
+        <span>Wij gebruiken cookies voor websitestatistieken (Google Analytics). <a href="/privacy" style="color:#2563EB">Meer info</a></span>
+        <span style="display:flex;gap:8px;flex-shrink:0">
+          <button onclick="acceptCookies()" style="padding:8px 16px;background:#2563EB;color:#fff;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer">Accepteren</button>
+          <button onclick="declineCookies()" style="padding:8px 16px;background:transparent;color:#999;border:1px solid #333;border-radius:4px;font-size:13px;cursor:pointer">Weigeren</button>
+        </span>
+      </div>`;
+    document.body.appendChild(banner);
+  }
+
+  function acceptCookies() {
+    localStorage.setItem('cookie-consent', 'accepted');
+    document.getElementById('cookieBanner')?.remove();
+    if (window._gaId) initGA(window._gaId);
+  }
+
+  function declineCookies() {
+    localStorage.setItem('cookie-consent', 'declined');
+    document.getElementById('cookieBanner')?.remove();
+  }
 </script>
 </body>
 </html>

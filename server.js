@@ -426,6 +426,8 @@ app.get('/app', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.h
 app.get('/status',       (_, res) => res.sendFile(path.join(__dirname, 'public', 'status.html')));
 app.get('/register',          (_, res) => res.sendFile(path.join(__dirname, 'public', 'register.html')));
 app.get('/register/betaling', (_, res) => res.sendFile(path.join(__dirname, 'public', 'betaling.html')));
+app.get('/privacy',           (_, res) => res.sendFile(path.join(__dirname, 'public', 'privacy.html')));
+app.get('/terms',             (_, res) => res.sendFile(path.join(__dirname, 'public', 'terms.html')));
 // Serve superadmin shell — JS inside verifies isSuperAdmin from JWT
 app.get('/superadmin', (_, res) => res.sendFile(path.join(__dirname, 'public', 'superadmin.html')));
 
