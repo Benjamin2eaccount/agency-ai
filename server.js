@@ -9968,50 +9968,52 @@ Sender: Benjamin from Agency AI`;
     agencyEmailSystemPrompt = agencyLang === 'nl'
       ? `Je schrijft een koude email van Agency AI (een AI-outreach SaaS) naar een ANDER marketingbureau. Dit is peer-to-peer communicatie tussen vakgenoten. Geef ALLEEN JSON: {"subject": "onderwerp", "body": "emailtekst"}
 
-KERNHOOK: Deze email is zelf gevonden, geschreven en verstuurd door Agency AI's AI-agents — de outreach ZELF is het bewijs dat het product werkt. Maak dit expliciet en slim in de copy.
+KERNHOOK: Deze email is onderzocht en geschreven door Agency AI's AI-agents, en door Benjamin goedgekeurd en verstuurd — de outreach ZELF is het bewijs dat het product werkt: AI doet het research- en schrijfwerk, een mens houdt de regie. Maak dit expliciet en slim in de copy.
 
-PITCH: Bureaus kunnen hun volledige outreach, klantacquisitie en projectmanagement workflow op autopilot draaien met AI-agents die het werk doen dat een junior medewerker of de founder nu handmatig doet.
+PITCH: Bureaus kunnen hun volledige outreach, klantacquisitie en projectmanagement workflow op autopilot draaien met AI-agents die het werk doen dat een junior medewerker of de founder nu handmatig doet — met menselijke goedkeuring als laatste stap.
 
 REGELS:
 - Toon: collega-tot-collega, niet leverancier-naar-klant. Gelijkwaardig, direct, geen ontzag
 - Begin NOOIT met "Ik" als eerste woord
 - VERBODEN aanhef: Hoi, Hey, Hi — ALLEEN "Beste" toegestaan
-- Onderwerp: 4-6 woorden, prikkelend voor een marketeer — hint naar de zelf-bewuste AI-hook
-- 3 korte alinea's: (1) specifieke observatie over HUN bureau + onthulling dat deze email door AI is geschreven, (2) wat Agency AI doet en waarom dat relevant is voor een bureau, (3) zachte uitnodiging
+- Onderwerp: 4-6 woorden, prikkelend voor een marketeer — hint naar de AI-hook
+- 3 korte alinea's: (1) specifieke observatie over HUN bureau + onthulling dat AI-agents deze email hebben geschreven (en een mens goedkeurde), (2) wat Agency AI doet en waarom dat relevant is voor een bureau, (3) zachte uitnodiging
 - Max 130 woorden body
-- Refereer aan iets concreets van hun website/social (laadtijd, niche-focus, teamgrootte)
-- Noem concreet wat Agency AI doet: 7 AI-agents, dagelijks 15 leads vinden, gepersonaliseerde outreach, inbox goedkeuring, follow-ups, projectmanagement — alles autonoom
+- Refereer aan iets concreets van hun website/social (niche-focus, teamgrootte, diensten) — gebruik laadtijd NIET als kritiekpunt
+- Noem concreet wat Agency AI doet: 7 AI-agents, dagelijks 15 leads vinden, gepersonaliseerde outreach, inbox goedkeuring, follow-ups, projectmanagement — autonoom met menselijke controle
 - CTA: "Zou je het interessant vinden om te zien hoe dit werkt voor jouw bureau?"
 - Afsluiting: "Groeten,\\nBenjamin" (informeel, collega-niveau)
 - VERBODEN: innovatief, synergie, vrijblijvend, uniek, op maat, oplossing, traject, data-gedreven, next level
-- Maak GEEN oncontroleerbare claims — baseer alles op echte features (7 agents, 15 leads/dag, 5 talen, PWA dashboard)`
+- VERBODEN: claims dat er geen mens betrokken is, claims dat het 100% autonoom is zonder menselijke stap — wees eerlijk over het mens-in-de-loop model
+- Maak GEEN oncontroleerbare claims — baseer alles op echte features (7 agents, 15 leads/dag, 5 talen, PWA dashboard, inbox goedkeuring)`
       : `You are writing a cold email from Agency AI (an AI outreach SaaS) to ANOTHER marketing agency. This is peer-to-peer communication between industry professionals. Return ONLY JSON: {"subject": "subject", "body": "email body"}
 
-CORE HOOK: This email was itself found, written, and sent by Agency AI's own AI agents — the outreach IS the proof the product works. Make this explicit and clever in the copy.
+CORE HOOK: This email was researched and drafted by Agency AI's AI agents, then approved and sent by Benjamin — the outreach IS the proof the product works: AI does the research and writing, a human stays in control. Make this explicit and clever in the copy.
 
-PITCH: Agencies can run their entire outreach, client acquisition, and project management workflow on autopilot with AI agents doing the work a junior employee or the founder currently does manually.
+PITCH: Agencies can run their entire outreach, client acquisition, and project management workflow on autopilot with AI agents doing the work a junior employee or the founder currently does manually — with human approval as the final step.
 
 RULES:
 - Tone: colleague-to-colleague, not vendor-to-customer. Equal footing, direct, no deference
 - NEVER start the first sentence with "I"
 - FORBIDDEN greetings: Hey, Hi, Hello — ONLY "Dear" allowed
-- Subject: 4-6 words, intriguing for a marketer — hint at the self-aware AI hook
-- 3 short paragraphs: (1) specific observation about THEIR agency + reveal this email was AI-written, (2) what Agency AI does and why it's relevant to an agency, (3) soft invitation
+- Subject: 4-6 words, intriguing for a marketer — hint at the AI hook
+- 3 short paragraphs: (1) specific observation about THEIR agency + reveal AI agents drafted this email (and a human approved it), (2) what Agency AI does and why it's relevant to an agency, (3) soft invitation
 - Max 130 words body
-- Reference something concrete from their website/social (load time, niche focus, team size)
-- Name concretely what Agency AI does: 7 AI agents, finds 15 leads daily, personalized outreach, inbox approval, follow-ups, project management — all autonomous
+- Reference something concrete from their website/social (niche focus, team size, services) — do NOT use load time as a criticism
+- Name concretely what Agency AI does: 7 AI agents, finds 15 leads daily, personalized outreach, inbox approval, follow-ups, project management — autonomous with human control
 - CTA: "Would you find it interesting to see how this works for your agency?"
 - Sign-off: "Cheers,\\nBenjamin" (informal, peer-level)
 - BANNED: innovative, synergy, leverage, no obligation, unique, tailored, solution, data-driven, next level, cutting-edge
-- Make NO unverifiable claims — base everything on real features (7 agents, 15 leads/day, 5 languages, PWA dashboard)`;
+- BANNED: claims that no human is involved, claims it's 100% autonomous without a human step — be honest about the human-in-the-loop model
+- Make NO unverifiable claims — base everything on real features (7 agents, 15 leads/day, 5 languages, PWA dashboard, inbox approval)`;
 
     agencyPromptA = agencyLang === 'nl'
-      ? `VERSIE A: ZELF-BEWIJS HOOK.\n\nAANHEF: "${agencyGreeting}"\n\nCONTEXT:\n${agencyContext}\n\nAANPAK: Open met een specifieke observatie over hun bureau (iets van hun website). Onthul dan direct: "Deze email is niet door mij getypt — hij is gevonden, geschreven en verstuurd door mijn eigen AI-agents." Leg uit wat Agency AI doet. Sluit af met een peer-level uitnodiging.`
-      : `VERSION A: SELF-PROOF HOOK.\n\nGREETING: "${agencyGreeting}"\n\nCONTEXT:\n${agencyContext}\n\nAPPROACH: Open with a specific observation about their agency (something from their website). Then directly reveal: "This email wasn't typed by me — it was found, written, and sent by my own AI agents." Explain what Agency AI does. Close with a peer-level invitation.`;
+      ? `VERSIE A: ZELF-BEWIJS HOOK.\n\nAANHEF: "${agencyGreeting}"\n\nCONTEXT:\n${agencyContext}\n\nAANPAK: Open met een specifieke observatie over hun bureau (iets van hun website/diensten, NIET hun laadtijd bekritiseren). Onthul dan: "Deze email is geschreven door mijn AI-agents — ik heb hem gelezen, goedgekeurd en verstuurd." Het punt is: AI doet het research- en schrijfwerk, de mens houdt de regie. Leg uit wat Agency AI doet. Sluit af met een peer-level uitnodiging.`
+      : `VERSION A: SELF-PROOF HOOK.\n\nGREETING: "${agencyGreeting}"\n\nCONTEXT:\n${agencyContext}\n\nAPPROACH: Open with a specific observation about their agency (something from their website/services, do NOT criticize their load time). Then reveal: "This email was drafted by my AI agents — I read it, approved it, and hit send." The point is: AI does the research and writing, the human stays in control. Explain what Agency AI does. Close with a peer-level invitation.`;
 
     agencyPromptB = agencyLang === 'nl'
-      ? `VERSIE B: AUTOMATISERING UITDAGING.\n\nAANHEF: "${agencyGreeting}"\n\nCONTEXT:\n${agencyContext}\n\nAANPAK: Open met een observatie over hoe druk bureaus het hebben met handmatige outreach en klantacquisitie. Stel de vraag: "Wat als je outreach-pipeline zichzelf vult — inclusief deze email?" Leg uit hoe Agency AI werkt als autopilot voor acquisitie. Sluit af met nieuwsgierigheid-wekkende vraag.`
-      : `VERSION B: AUTOMATION CHALLENGE.\n\nGREETING: "${agencyGreeting}"\n\nCONTEXT:\n${agencyContext}\n\nAPPROACH: Open with an observation about how busy agencies are with manual outreach and client acquisition. Pose the question: "What if your outreach pipeline filled itself — including this very email?" Explain how Agency AI works as autopilot for acquisition. Close with a curiosity-sparking question.`;
+      ? `VERSIE B: AUTOMATISERING UITDAGING.\n\nAANHEF: "${agencyGreeting}"\n\nCONTEXT:\n${agencyContext}\n\nAANPAK: Open met een observatie over hoe druk bureaus het hebben met handmatige outreach en klantacquisitie. Stel de vraag: "Wat als het research- en schrijfwerk van je acquisitie door AI gedaan wordt — zoals bij deze email?" Leg uit hoe Agency AI werkt: AI doet het zware werk, jij keurt goed en verstuurt. Sluit af met nieuwsgierigheid-wekkende vraag. Bekritiseer NIET hun laadtijd.`
+      : `VERSION B: AUTOMATION CHALLENGE.\n\nGREETING: "${agencyGreeting}"\n\nCONTEXT:\n${agencyContext}\n\nAPPROACH: Open with an observation about how busy agencies are with manual outreach and client acquisition. Pose the question: "What if the research and writing for your acquisition was done by AI — like this email?" Explain how Agency AI works: AI does the heavy lifting, you approve and send. Close with a curiosity-sparking question. Do NOT criticize their load time.`;
   }
 
   const finalSystemPrompt = isAgencyNiche ? agencyEmailSystemPrompt : emailSystemPrompt;
@@ -10151,11 +10153,12 @@ Website: ${lead.websiteUrl || 'onbekend'}
 
 Regels:
 - "Hey" + bedrijfsnaam als opening
-- Kernboodschap: "Dit bericht is geschreven door mijn AI-agents — dat is letterlijk het product. Lijkt me interessant voor jullie bureau."
+- Kernboodschap: "Dit bericht is opgesteld door mijn AI-agents — ik keur alles goed voor het verstuurd wordt. Dat is het product: AI doet het werk, jij houdt de regie."
 - Eindig met een korte, nieuwsgierigheid-wekkende vraag
 - Max 280 tekens — tel!
 - Klinkt als een DM van een collega-ondernemer, niet als pitch
 - VERBODEN: innovatief, synergie, vrijblijvend, gratis, samenwerking, uniek
+- VERBODEN: beweren dat geen mens erbij betrokken is
 - Noem 1 concreet detail over hun bureau als het past (niche, stad)
 
 Geef ALLEEN de DM-tekst.`
@@ -10166,11 +10169,12 @@ Website: ${lead.websiteUrl || 'unknown'}
 
 Rules:
 - "Hey" + company name as opener
-- Core message: "This message was written by my AI agents — that's literally the product. Thought it might be interesting for your agency."
+- Core message: "This message was drafted by my AI agents — I approve everything before it sends. That's the product: AI does the work, you stay in control."
 - End with a short curiosity-sparking question
 - Max 280 characters — count!
 - Sounds like a DM from a fellow founder, not a pitch
 - BANNED: innovative, synergy, no obligation, free, collaboration, unique
+- BANNED: claiming no human is involved
 - Mention 1 concrete detail about their agency if natural (niche, city)
 
 Return ONLY the DM text.`)
@@ -10218,11 +10222,12 @@ Bureau: ${lead.companyName} (${lead.location})
 
 Regels:
 - Begin middenin een gedachte ("Hey, ik zat jullie site te bekijken en...")
-- Kernboodschap: je bouwt een tool die outreach automatiseert — deze voicenote is het bewijs dat het werkt
-- Noem 1 specifiek ding over hun bureau (locatie, niche-focus)
+- Kernboodschap: je bouwt een tool die het research- en schrijfwerk van outreach automatiseert — AI doet het zware werk, jij keurt goed en verstuurt. Dit is het bewijs.
+- Noem 1 specifiek ding over hun bureau (locatie, niche-focus) — bekritiseer NIET hun site/laadtijd
 - Eindig met: "Zou je het willen zien?"
 - Spreektaal, geen formeel — alsof je een DM inspreekt naar een bekende ondernemer
 - VERBODEN: innovatief, synergie, vrijblijvend, oplossing
+- VERBODEN: beweren dat geen mens betrokken is
 
 Geef ALLEEN de spreektekst.`
       : `Write a voicenote from Benjamin (Agency AI) to another marketing agency. Max 75 words. Colleague-to-colleague, like recording a message to a fellow founder.
@@ -10231,11 +10236,12 @@ Agency: ${lead.companyName} (${lead.location})
 
 Rules:
 - Start mid-thought ("Hey, was just looking at your site and...")
-- Core message: you built a tool that automates outreach — this voicenote is proof it works
-- Mention 1 specific thing about their agency (location, niche focus)
+- Core message: you built a tool that automates the research and writing of outreach — AI does the heavy lifting, you approve and send. This is the proof.
+- Mention 1 specific thing about their agency (location, niche focus) — do NOT criticize their site/load time
 - End with: "Would you want to see it in action?"
 - Conversational, informal — like DMing a fellow entrepreneur
 - BANNED: innovative, synergy, no obligation, solution
+- BANNED: claiming no human is involved
 
 Return ONLY the spoken text.`)
     : language === 'nl'
