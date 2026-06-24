@@ -13195,7 +13195,7 @@ cron.schedule('5 9 * * *', async () => {
   try {
     const leads = wsReadWs(wId, 'leads.json') || [];
     const settings = wsReadWs(wId, 'settings.json') || {};
-    if (!isResendReady(settings)) return;
+    if (!isResendReady(settings)) continue;
     const today = new Date();
     const mmdd = `${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
     const birthdays = leads.filter(l => l.clientBirthday && l.clientBirthday.slice(5) === mmdd && l.contactEmail);
@@ -13309,10 +13309,10 @@ cron.schedule('* * * * *', async () => {
   const inbox = wsReadWs(wId, 'inbox.json') || [];
   const now = new Date();
   const due = inbox.filter(i => i.status === 'scheduled' && i.scheduledAt && new Date(i.scheduledAt) <= now);
-  if (!due.length) { _scheduledSendRunning = false; return; }
+  if (!due.length) continue;
 
   const settings = wsReadWs(wId, 'settings.json');
-  if (!isResendReady(settings)) { _scheduledSendRunning = false; return; }
+  if (!isResendReady(settings)) continue;
 
   // Mark items as 'sending' immediately to prevent duplicate sends on next tick
   for (const item of due) {
