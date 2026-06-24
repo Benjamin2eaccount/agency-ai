@@ -2227,7 +2227,7 @@ app.get('/track/open/:token', (req, res) => {
         leads[idx].openedAt = now;
         leads[idx].emailOpened = true;
         addLeadHistory(leads, leads[idx].id, { event: 'opened', label: 'Email geopend' });
-        addActivity('open', 'Email geopend door ' + (leads[idx].companyName || 'Onbekend'), { meta: { leadId: leads[idx].id } });
+        addActivity('open', 'Email geopend door ' + (leads[idx].companyName || 'Onbekend'), { meta: { leadId: leads[idx].id }, workspaceId: _ws });
         trackFunnelEvent(leads[idx].id, 'email_opened');
         console.log(`[Tracking] Email geopend: ${leads[idx].companyName}`);
       }
@@ -7743,7 +7743,7 @@ ${bookingDel.html.substring(0, 8000)}`, req.user?.workspaceId, getModel('CODE_EX
     leads[li].agentsRanAt = new Date().toISOString();
     wsWrite(req, 'leads.json', leads);
     addLeadHistory(leads, req.params.id, { event: 'buildAllServices', label: `Agents bouwden ${toSave.length} leveringen automatisch` });
-    addActivity('agent_build', `${lead.companyName}: ${toSave.length} leveringen gebouwd`);
+    addActivity('agent_build', `${lead.companyName}: ${toSave.length} leveringen gebouwd`, { workspaceId: req.user?.workspaceId });
 
     sse({ type: 'all_done', count: toSave.length, deliverables: toSave });
     broadcastWS('build_complete', { leadId: req.params.id, count: toSave.length });
@@ -9023,7 +9023,7 @@ async function aiCallBuild(prompt, workspaceId, model, options = {}) {
   }
 
   const callCost = calcCostUsd(tokIn, tokOut, modelId);
-  addActivity('ai_call', `Claude build: ${prompt.slice(0, 50).replace(/\n/g,' ')}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost, model: modelId });
+  addActivity('ai_call', `Claude build: ${prompt.slice(0, 50).replace(/\n/g,' ')}…`, { tokensIn: tokIn, tokensOut: tokOut, costUsd: callCost, model: modelId, workspaceId: wId });
   const statsNow = wsReadWs(wId, 'stats.json') || {};
   statsNow.totalApiTokensIn  = (statsNow.totalApiTokensIn  || 0) + tokIn;
   statsNow.totalApiTokensOut = (statsNow.totalApiTokensOut || 0) + tokOut;
@@ -9339,7 +9339,7 @@ async function processOneLead(lead, settings, options = {}, workspaceId) {
   // Chain/franchise check — we only target independent local businesses
   if (agentCore.isLikelyChain(lead.companyName)) {
     console.log(`  ✗ [Agent 2] Keten/franchise gedetecteerd: ${lead.companyName} — overgeslagen`);
-    addActivity('skip', `${lead.companyName} overgeslagen — keten/franchise`, { meta: { companyName: lead.companyName } });
+    addActivity('skip', `${lead.companyName} overgeslagen — keten/franchise`, { meta: { companyName: lead.companyName }, workspaceId: wId });
     agentCore.recordAgentRun('Agent 2 — Lead verificatie', true, Date.now() - _t2);
     return null;
   }
@@ -9358,7 +9358,7 @@ async function processOneLead(lead, settings, options = {}, workspaceId) {
       console.log(`  ⚠ Website onbereikbaar — ${lead.companyName} (handmatige run, doorgaan)`);
     } else {
       console.log(`  ✗ Website onbereikbaar — ${lead.companyName} overgeslagen (${website.notes || 'geen verbinding'})`);
-      addActivity('skip', `${lead.companyName} overgeslagen — website onbereikbaar`, { meta: { companyName: lead.companyName, websiteUrl: lead.websiteUrl || '' } });
+      addActivity('skip', `${lead.companyName} overgeslagen — website onbereikbaar`, { meta: { companyName: lead.companyName, websiteUrl: lead.websiteUrl || '' }, workspaceId: wId });
       return null;
     }
   }
@@ -9390,7 +9390,7 @@ async function processOneLead(lead, settings, options = {}, workspaceId) {
       lead.contactFormUrl = contactFormUrl;
     } else {
       console.log(`  ✗ Email ongeldig van Agent 1: "${rawEmail || 'leeg'}" — ${lead.companyName} overgeslagen`);
-      addActivity('skip', `${lead.companyName} overgeslagen — geen geldig email van Agent 1`, { meta: { companyName: lead.companyName, niche: lead.niche } });
+      addActivity('skip', `${lead.companyName} overgeslagen — geen geldig email van Agent 1`, { meta: { companyName: lead.companyName, niche: lead.niche }, workspaceId: wId });
       return null;
     }
   } else {
@@ -9411,7 +9411,7 @@ async function processOneLead(lead, settings, options = {}, workspaceId) {
           console.log(`  ⚠ [Manual] MX check: ${emailDomain} → geen MX records — doorgaan zonder email`);
         } else {
           console.log(`  ✗ MX check: ${emailDomain} → no records — ${lead.companyName} overgeslagen`);
-          addActivity('skip', `${lead.companyName} overgeslagen — email domein ontvangt geen mail`, { meta: { companyName: lead.companyName } });
+          addActivity('skip', `${lead.companyName} overgeslagen — email domein ontvangt geen mail`, { meta: { companyName: lead.companyName }, workspaceId: wId });
           return null;
         }
       }
@@ -10756,7 +10756,7 @@ CRITICAL: Return ONLY a JSON array. Start with [ end with ].${alreadySeen}`;
   _cacheStats = { cacheCreationTokens: 0, cacheReadTokens: 0, calls: 0, cacheHits: 0 };
 
   // Log run summary (costs already tracked per-call in aiCall(, wId); costUsd:0 here avoids double-counting in P&L)
-  addActivity('run', `Run klaar: ${inboxItems.length} leads gevonden (${skipped} overgeslagen zonder email)`, { tokensIn: runTokIn, tokensOut: runTokOut, costUsd: 0, meta: { leadsFound: inboxItems.length, skipped, attempts, totalValue, runCostUsd, cache: runCacheStats } });
+  addActivity('run', `Run klaar: ${inboxItems.length} leads gevonden (${skipped} overgeslagen zonder email)`, { tokensIn: runTokIn, tokensOut: runTokOut, costUsd: 0, meta: { leadsFound: inboxItems.length, skipped, attempts, totalValue, runCostUsd, cache: runCacheStats }, workspaceId: wId });
 
   const pendingCount   = inboxItems.length;
   const highScoreCount = inboxItems.filter(i => i.score >= 8).length;
@@ -10867,7 +10867,7 @@ app.post('/api/find-leads', requireAdmin, async (req, res) => {
     const fakeRun = { id: 'demo-run-' + Date.now(), status: 'completed', startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), leadsFound: 12, leadsProcessed: 18, city: 'Amsterdam', niche: 'beauty', isDemo: true };
     runs.push(fakeRun);
     wsWrite(req, 'runs.json', runs);
-    addActivity('run', 'Run klaar: 12 leads gevonden [demo]', { meta: { leadsFound: 12, skipped: 6, totalValue: 8500 } });
+    addActivity('run', 'Run klaar: 12 leads gevonden [demo]', { meta: { leadsFound: 12, skipped: 6, totalValue: 8500 }, workspaceId: req.user?.workspaceId });
     return res.json({ ok: true, found: 12 });
   }
   try {
@@ -11449,7 +11449,7 @@ Rules:
     const leads = wsReadWs(wId, 'leads.json') || [];
     addLeadHistory(leads, lead.id, { event: 'aiReplySent', label: `AI antwoord automatisch verstuurd naar ${lead.contactEmail || ''}` });
     wsWriteWs(wId, 'leads.json', leads);
-    addActivity('email', `AI antwoord auto-verstuurd → ${lead.companyName}`, { meta: { leadId: lead.id } });
+    addActivity('email', `AI antwoord auto-verstuurd → ${lead.companyName}`, { meta: { leadId: lead.id }, workspaceId: wId });
     console.log(`[AiReply] Auto-verstuurd naar ${lead.companyName}`);
     return;
   }
@@ -11699,14 +11699,14 @@ async function checkReplies(workspaceId) {
         const replyLower = (replyText || '').toLowerCase();
         const replyDomain = (matched.contactEmail || '').split('@')[1];
         if (replyDomain) {
-          if (UNSUB_KEYWORDS.some(k => replyLower.includes(k))) autoBlacklist(replyDomain, 'Uitschrijfverzoek in antwoord', null);
-          else if (AGGRESSIVE_KEYWORDS.some(k => replyLower.includes(k))) autoBlacklist(replyDomain, 'Negatieve/agressieve reactie', null);
+          if (UNSUB_KEYWORDS.some(k => replyLower.includes(k))) autoBlacklist(replyDomain, 'Uitschrijfverzoek in antwoord', wId);
+          else if (AGGRESSIVE_KEYWORDS.some(k => replyLower.includes(k))) autoBlacklist(replyDomain, 'Negatieve/agressieve reactie', wId);
         }
 
-        addActivity('reply', 'Reply ontvangen van ' + matched.companyName, { meta: { companyName: matched.companyName, leadId: matched.id } });
+        addActivity('reply', 'Reply ontvangen van ' + matched.companyName, { meta: { companyName: matched.companyName, leadId: matched.id }, workspaceId: wId });
         addNotification('reply_received', `Reply: ${matched.companyName}`, `${matched.companyName} heeft gereageerd op jouw email`, matched.id, `project:${matched.id}`, matched.workspaceId || null);
         broadcastWS('new_reply', { leadId: matched.id, companyName: matched.companyName, repliedAt: matched.repliedAt });
-        fireWebhooks('lead.replied', { leadId: matched.id, companyName: matched.companyName, niche: matched.niche, score: matched.score, location: matched.location, contactEmail: matched.contactEmail, repliedAt: matched.repliedAt }, null);
+        fireWebhooks('lead.replied', { leadId: matched.id, companyName: matched.companyName, niche: matched.niche, score: matched.score, location: matched.location, contactEmail: matched.contactEmail, repliedAt: matched.repliedAt }, wId);
         console.log(`[Reply] Reply gedetecteerd: ${matched.companyName} (${msgId})`);
 
         if (settings.aiAutoReply !== false && replyText) {
@@ -11749,10 +11749,10 @@ async function checkReplies(workspaceId) {
             hit.emailBounced = true;
             hit.bouncedAt    = new Date().toISOString();
             addLeadHistory(leads, hit.id, { event: 'bounced', label: `Email gebounced — ongeldig adres (${failedEmail})` });
-            addActivity('bounce', `Bounce: ${hit.companyName}`, { meta: { companyName: hit.companyName, leadId: hit.id, email: failedEmail } });
+            addActivity('bounce', `Bounce: ${hit.companyName}`, { meta: { companyName: hit.companyName, leadId: hit.id, email: failedEmail }, workspaceId: wId });
             addNotification('email_bounced', `Bounce: ${hit.companyName}`, `Email naar ${failedEmail} is niet aangekomen`, hit.id, `project:${hit.id}`, hit.workspaceId || null);
             const bouncedDomain = failedEmail.split('@')[1];
-            if (bouncedDomain) autoBlacklist(bouncedDomain, 'Email gebounced', null);
+            if (bouncedDomain) autoBlacklist(bouncedDomain, 'Email gebounced', wId);
             bouncesFound++;
             console.log(`[Reply] Bounce gedetecteerd voor ${hit.companyName} (${failedEmail})`);
             break;
@@ -12921,7 +12921,7 @@ async function runDailyBackup(manual = false, workspaceId) {
 
   fs.writeFileSync(filepath, JSON.stringify(bundle, null, 2), 'utf8');
   console.log('[Backup] Backup aangemaakt:', filename);
-  addActivity('backup', 'Backup aangemaakt: ' + filename, { meta: { filename } });
+  addActivity('backup', 'Backup aangemaakt: ' + filename, { meta: { filename }, workspaceId: wId });
 
   // Rotate: keep last 30 backups
   const all = fs.readdirSync(BACKUP_DIR)
