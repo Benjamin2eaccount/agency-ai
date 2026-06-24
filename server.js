@@ -370,8 +370,7 @@ app.use('/components', express.static(path.join(__dirname, 'components')));
 app.use((req, res, next) => {
   const host = req.hostname; // e.g. "www.kappersamsterdam.nl"
   if (!host || host.includes('localhost') || host.includes('agencyai.info') || host.includes('railway.app')) return next();
-  const leads = readJSON('leads.json') || [];
-  const lead  = leads.find(l => l.customDomain && (l.customDomain === host || l.customDomain === `www.${host}` || `www.${l.customDomain}` === host));
+  const { lead } = findLeadAcrossWorkspaces(l => l.customDomain && (l.customDomain === host || l.customDomain === `www.${host}` || `www.${l.customDomain}` === host));
   if (!lead) return next();
   // Find their built website file
   const slug     = (lead.companyName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -1919,6 +1918,18 @@ function getAllWorkspaceIds() {
   }
 }
 
+// ── Cross-workspace lead lookup (for public routes without auth context) ─────
+// Public routes (intake, tracking, contact forms, portal) receive a token/ID but
+// have no req.user — they must search leads across ALL workspaces.
+function findLeadAcrossWorkspaces(predicate) {
+  for (const wId of getAllWorkspaceIds()) {
+    const leads = wsReadWs(wId, 'leads.json') || [];
+    const idx = leads.findIndex(predicate);
+    if (idx !== -1) return { lead: leads[idx], leads, idx, workspaceId: wId };
+  }
+  return { lead: null, leads: [], idx: -1, workspaceId: null };
+}
+
 // ── Email service (dependency injection) ──────────────────────────────────────
 // Initialize after wsReadWs/addActivity are available. aiJSON is passed lazily
 // because it's defined later in the file (inside build-all-services scope).
@@ -1980,10 +1991,8 @@ app.get('/intake/:leadId/:token', (req, res) => {
 });
 
 app.get('/api/intake/:leadId/:token', async (req, res) => {
-  const leads = readJSON('leads.json') || [];
-  const lead = leads.find(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
+  const { lead, workspaceId: _ws } = findLeadAcrossWorkspaces(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
   if (!lead) return res.status(404).json({ error: 'Intake link ongeldig of verlopen' });
-  const _ws = lead.workspaceId || null;
 
   if (lead.intakeSubmittedAt) {
     return res.json({ submitted: true, companyName: lead.companyName, agencyName: (wsReadWs(_ws, 'settings.json') || {}).agencyName || 'Agency AI' });
@@ -2086,9 +2095,7 @@ Return ONLY valid JSON (no markdown):
 });
 
 app.post('/api/intake/:leadId/:token', async (req, res) => {
-  const leads = readJSON('leads.json') || [];
-  const idx = leads.findIndex(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
-  const _ws = idx !== -1 ? (leads[idx].workspaceId || null) : null;
+  const { leads, idx, workspaceId: _ws } = findLeadAcrossWorkspaces(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
   if (idx === -1) return res.status(404).json({ error: 'Intake link ongeldig' });
   if (leads[idx].intakeSubmittedAt) return res.status(409).json({ error: 'Intake al ingediend' });
 
@@ -2213,10 +2220,8 @@ app.get('/track/open/:token', (req, res) => {
   // Async update — don't block the pixel response
   setImmediate(() => {
     try {
-      const leads = readJSON('leads.json') || [];
-      const idx = leads.findIndex(l => l.trackingToken === token);
+      const { leads, idx, workspaceId: _ws } = findLeadAcrossWorkspaces(l => l.trackingToken === token);
       if (idx === -1) return;
-      const _ws = leads[idx].workspaceId || null;
       const now = new Date().toISOString();
       if (!leads[idx].openedAt) {
         leads[idx].openedAt = now;
@@ -2516,16 +2521,8 @@ app.get('/api/sites/:siteSlug/uploads/:filename', (req, res) => {
   console.log('[PublicUpload] siteSlug:', req.params.siteSlug);
   console.log('[PublicUpload] filename:', req.params.filename);
   if (!/^[a-z0-9-]+$/.test(req.params.siteSlug)) return res.status(404).json({ error: 'Niet gevonden' });
-  const leads = readJSON('leads.json') || []; // readJSON hits SQLite directly — always fresh
-  console.log('[PublicUpload] leads count:', leads.length);
   const slug = req.params.siteSlug;
-  console.log('[PublicUpload] All lead slugs:', leads.map(l => ({
-    name: l.companyName,
-    siteSlug: l.siteSlug,
-    generatedSlug: l.generatedSite?.siteSlug,
-    computed: (l.companyName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-  })));
-  const lead = leads.find(l => {
+  const { lead } = findLeadAcrossWorkspaces(l => {
     const computed = (l.companyName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     return l.siteSlug === slug ||
       l.generatedSite?.siteSlug === slug ||
@@ -2533,7 +2530,6 @@ app.get('/api/sites/:siteSlug/uploads/:filename', (req, res) => {
       computed.includes(slug) ||
       slug.includes(computed);
   });
-  console.log('[PublicUpload] lead found:', lead ? lead.companyName : 'NOT FOUND');
   if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
   console.log('[PublicUpload] clientUploads count:', lead.clientUploads?.length || 0);
   const upload = _findUpload(lead.clientUploads, req.params.filename);
@@ -2904,10 +2900,7 @@ app.post('/api/sites/:siteSlug/contact', async (req, res) => {
   if (!name || !email) return res.status(400).json({ error: 'Naam en email zijn verplicht' });
 
   const siteSlug = req.params.siteSlug;
-  const leads = readJSON('leads.json') || [];
-
-  // Find lead whose generated site matches this slug
-  const lead = leads.find(l => {
+  const { lead, leads, workspaceId: _ws } = findLeadAcrossWorkspaces(l => {
     if (l.generatedSite?.siteSlug === siteSlug) return true;
     if ((l.agentBuilds || []).some(b => (b.url || '').includes(`/sites/${siteSlug}/`))) return true;
     const compSlug = (l.companyName || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
@@ -2920,7 +2913,6 @@ app.post('/api/sites/:siteSlug/contact', async (req, res) => {
     siteSlug, submittedAt: new Date().toISOString()
   };
 
-  const _ws = lead ? (lead.workspaceId || null) : null;
   const settings = wsReadWs(_ws, 'settings.json') || {};
 
   if (lead) {
@@ -2947,9 +2939,7 @@ app.post('/api/sites/:siteSlug/contact', async (req, res) => {
 
 // ── Public: client submits hosting request from portal ────────────────────────
 app.post('/api/portal/:token/hosting-request', requirePortalAuth, express.json(), async (req, res) => {
-  const leads = readJSON('leads.json') || [];
-  const lead  = leads.find(l => l.portalToken === req.params.token);
-  const _ws = lead ? (lead.workspaceId || null) : null;
+  const { lead, workspaceId: _ws } = findLeadAcrossWorkspaces(l => l.portalToken === req.params.token);
   if (!lead) return res.status(404).json({ error: 'Portaal niet gevonden' });
   if (lead.portalBlocked) return res.status(403).json({ error: 'Toegang geblokkeerd' });
 
@@ -13980,8 +13970,7 @@ app.post('/api/subscriptions/:leadId', requireAdmin, (req, res) => {
 
 // POST /api/portal/:token/subscription-request — client requests change (public)
 app.post('/api/portal/:token/subscription-request', requirePortalAuth, async (req, res) => {
-  const leads = wsRead(req, 'leads.json') || [];
-  const lead = leads.find(l => l.portalToken === req.params.token);
+  const { lead, leads, workspaceId: _ws } = findLeadAcrossWorkspaces(l => l.portalToken === req.params.token);
   if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
   const { type, serviceName, message } = req.body;
   if (!type || !['add_service','pause','cancel'].includes(type)) return res.status(400).json({ error: 'Ongeldig verzoek' });
@@ -13989,16 +13978,16 @@ app.post('/api/portal/:token/subscription-request', requirePortalAuth, async (re
   const request = { id: crypto.randomUUID(), type, serviceName: serviceName || '', message: message || '', createdAt: new Date().toISOString(), status: 'pending' };
   if (!lead.subscriptionRequests) lead.subscriptionRequests = [];
   lead.subscriptionRequests.push(request);
-  wsWrite(req, 'leads.json', leads);
+  wsWriteWs(_ws, 'leads.json', leads);
   addNotification('client_question', `Abonnement verzoek: ${lead.companyName}`,
     `${type === 'add_service' ? 'Wil ' + serviceName + ' toevoegen' : type === 'pause' ? 'Wil pauzeren' : 'Wil opzeggen'}`,
-    lead.id, `project:${lead.id}`, lead.workspaceId || null);
+    lead.id, `project:${lead.id}`, _ws);
 
-  const settings = wsRead(req, 'settings.json') || {};
+  const settings = wsReadWs(_ws, 'settings.json') || {};
   if (isResendReady(settings)) {
     await sendEmail({ to: settings.gmailAddress, subject: `Abonnement verzoek: ${lead.companyName}`,
       body: `<p><strong>${lead.companyName}</strong> heeft een verzoek ingediend:<br><br>Type: <strong>${type}</strong><br>${serviceName ? 'Dienst: ' + serviceName + '<br>' : ''}Bericht: ${message || '—'}</p>`,
-      noCalendly: true, workspaceId: req.user?.workspaceId});
+      noCalendly: true, workspaceId: _ws});
   }
   res.json({ ok: true });
 });
@@ -14051,8 +14040,7 @@ app.get('/api/stats/funnel', requireAdmin, (req, res) => {
 
 // POST /api/portal/:token/order-service — client orders a new service
 app.post('/api/portal/:token/order-service', requirePortalAuth, async (req, res) => {
-  const leads = wsRead(req, 'leads.json') || [];
-  const lead = leads.find(l => l.portalToken === req.params.token);
+  const { lead, workspaceId: _ws } = findLeadAcrossWorkspaces(l => l.portalToken === req.params.token);
   if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
   const { serviceName, servicePrice } = req.body;
   if (!serviceName) return res.status(400).json({ error: 'Dienst vereist' });
@@ -14062,14 +14050,14 @@ app.post('/api/portal/:token/order-service', requirePortalAuth, async (req, res)
     lead.id, lead.id, serviceName, servicePrice || 0, 'pending');
 
   addNotification('client_question', `Nieuwe dienst aanvraag: ${lead.companyName}`,
-    `Wil "${serviceName}" toevoegen`, lead.id, `project:${lead.id}`, lead.workspaceId || null);
+    `Wil "${serviceName}" toevoegen`, lead.id, `project:${lead.id}`, _ws);
 
-  const settings = wsRead(req, 'settings.json') || {};
+  const settings = wsReadWs(_ws, 'settings.json') || {};
   if (isResendReady(settings)) {
     await sendEmail({ to: settings.gmailAddress,
       subject: `Nieuwe dienst aanvraag van ${lead.companyName}`,
       body: `<p><strong>${esc(lead.companyName)}</strong> wil de volgende dienst toevoegen:<br><br><strong>${esc(serviceName)}</strong>${servicePrice ? ' — €' + servicePrice : ''}</p><p><a href="${BASE_URL}/app">Bekijk in dashboard →</a></p>`,
-      noCalendly: true, workspaceId: req.user?.workspaceId});
+      noCalendly: true, workspaceId: _ws});
   }
   res.json({ ok: true });
 });
@@ -14309,27 +14297,25 @@ app.delete('/api/templates/:id', requireAdmin, (req, res) => {
 
 // Task 22 — Portal profile update
 app.put('/api/portal/:token/profile', requirePortalAuth, (req, res) => {
-  const leads = wsRead(req, 'leads.json') || [];
-  const lead = leads.find(l => l.portalToken === req.params.token);
+  const { lead, leads, workspaceId: _ws } = findLeadAcrossWorkspaces(l => l.portalToken === req.params.token);
   if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
   const { contactName, phone, address } = req.body;
   if (contactName) lead.contactName = contactName;
   if (phone)       lead.phone = phone;
   if (address)     lead.address = address;
-  wsWrite(req, 'leads.json', leads);
+  wsWriteWs(_ws, 'leads.json', leads);
   res.json({ ok: true });
 });
 
 // Task 23 — Portal password change
 app.post('/api/portal/:token/change-password', requirePortalAuth, async (req, res) => {
   try {
-    const leads = wsRead(req, 'leads.json') || [];
-    const lead = leads.find(l => l.portalToken === req.params.token);
+    const { lead, leads, workspaceId: _ws } = findLeadAcrossWorkspaces(l => l.portalToken === req.params.token);
     if (!lead) return res.status(404).json({ error: 'Niet gevonden' });
     const { newPassword } = req.body;
     if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'Wachtwoord minimaal 6 tekens' });
     lead.portalPassword = await bcrypt.hash(newPassword, 10);
-    wsWrite(req, 'leads.json', leads);
+    wsWriteWs(_ws, 'leads.json', leads);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
