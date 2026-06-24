@@ -1991,7 +1991,7 @@ app.get('/intake/:leadId/:token', (req, res) => {
 });
 
 app.get('/api/intake/:leadId/:token', async (req, res) => {
-  const { lead, workspaceId: _ws } = findLeadAcrossWorkspaces(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
+  const { lead, leads, workspaceId: _ws } = findLeadAcrossWorkspaces(l => l.id === req.params.leadId && l.intakeToken === req.params.token);
   if (!lead) return res.status(404).json({ error: 'Intake link ongeldig of verlopen' });
 
   if (lead.intakeSubmittedAt) {
