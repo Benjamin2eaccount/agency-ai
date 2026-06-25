@@ -3269,6 +3269,37 @@ app.post('/api/register/direct', async (req, res) => {
 // Export email builder for use by super admin activation
 global._buildRegEmail = buildRegEmail;
 
+// ─── Calendly webhook (public) — MUST be before app.use('/api', authMiddleware) ─
+// Calendly's servers POST here with no Bearer token, so this route must sit in the
+// public section. It also has no req.user, so it searches leads across ALL workspaces.
+app.post('/api/webhooks/calendly', (req, res) => {
+  try {
+    const event = req.body?.event;
+    const payload = req.body?.payload;
+    if (event === 'invitee.created' && payload) {
+      const inviteeName  = payload.name  || payload.first_name || 'Iemand';
+      const inviteeEmail = payload.email || '';
+      const eventName    = payload.event_type?.name || 'Gesprek';
+      const startTime    = payload.scheduled_event?.start_time || payload.event?.start_time || '';
+      const startLabel   = startTime ? new Date(startTime).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' }) : '';
+
+      // Match to a lead by email across all workspaces
+      const { lead, leads, idx, workspaceId } = findLeadAcrossWorkspaces(l => l.contactEmail?.toLowerCase() === inviteeEmail.toLowerCase());
+      if (lead) {
+        leads[idx].calendlyBooking = { name: inviteeName, email: inviteeEmail, eventName, startTime, bookedAt: new Date().toISOString() };
+        addLeadHistory(leads, lead.id, { event: 'calendlyBooked', label: `Gesprek ingepland: ${eventName}${startLabel ? ' op ' + startLabel : ''}` });
+        addNotification('calendly_booking', `Gesprek ingepland: ${inviteeName}`, `${eventName}${startLabel ? ' op ' + startLabel : ''}`, lead.id, `project:${lead.id}`, workspaceId);
+        wsWriteWs(workspaceId, 'leads.json', leads);
+      } else {
+        addNotification('calendly_booking', `Nieuw gesprek: ${inviteeName}`, `${eventName}${startLabel ? ' op ' + startLabel : ''} (${inviteeEmail})`);
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.use('/api', authMiddleware);
 app.use('/data/uploads', authMiddleware, express.static(path.join(__dirname, 'data', 'uploads')));
 
@@ -13622,37 +13653,6 @@ app.patch('/api/notifications/preferences', requireAdmin, (req, res) => {
   settings.notificationPreferences = prefs;
   wsWrite(req, 'settings.json', settings);
   res.json(prefs);
-});
-
-// ─── Calendly webhook (public) ───────────────────────────────────────────────
-app.post('/api/webhooks/calendly', (req, res) => {
-  try {
-    const event = req.body?.event;
-    const payload = req.body?.payload;
-    if (event === 'invitee.created' && payload) {
-      const inviteeName  = payload.name  || payload.first_name || 'Iemand';
-      const inviteeEmail = payload.email || '';
-      const eventName    = payload.event_type?.name || 'Gesprek';
-      const startTime    = payload.scheduled_event?.start_time || payload.event?.start_time || '';
-      const startLabel   = startTime ? new Date(startTime).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' }) : '';
-
-      // Match to a lead by email
-      const leads = wsRead(req, 'leads.json') || [];
-      const lead  = leads.find(l => l.contactEmail?.toLowerCase() === inviteeEmail.toLowerCase());
-      if (lead) {
-        const idx = leads.findIndex(l => l.id === lead.id);
-        leads[idx].calendlyBooking = { name: inviteeName, email: inviteeEmail, eventName, startTime, bookedAt: new Date().toISOString() };
-        addLeadHistory(leads, lead.id, { event: 'calendlyBooked', label: `Gesprek ingepland: ${eventName}${startLabel ? ' op ' + startLabel : ''}` });
-        addNotification('calendly_booking', `Gesprek ingepland: ${inviteeName}`, `${eventName}${startLabel ? ' op ' + startLabel : ''}`, lead.id, `project:${lead.id}`, lead.workspaceId || null);
-        wsWrite(req, 'leads.json', leads);
-      } else {
-        addNotification('calendly_booking', `Nieuw gesprek: ${inviteeName}`, `${eventName}${startLabel ? ' op ' + startLabel : ''} (${inviteeEmail})`);
-      }
-    }
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // ─── Outgoing webhooks CRUD ───────────────────────────────────────────────────
