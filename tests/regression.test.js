@@ -280,6 +280,66 @@ describe('Calendly Webhook — reachable + multi-tenant', () => {
   });
 });
 
+describe('Resend Bounce Webhook — reachable + multi-tenant', () => {
+  const { readJSON, writeJSON, getDb } = require('../database');
+  const WS = 'ws_bounce_test';
+  const LEAD_KEY = `ws:${WS}:leads.json`;
+  const BL_KEY = `ws:${WS}:blacklist.json`;
+  const TEST_EMAIL = 'bounce-regression@bouncetest.example';
+  const LEAD_ID = 'bounce_regression_lead';
+
+  beforeAll(() => {
+    getDb().prepare(
+      `INSERT OR REPLACE INTO workspaces (id, slug, name, owner_email, status)
+       VALUES (?, ?, ?, ?, 'active')`
+    ).run(WS, 'bounce-test', 'Bounce Test WS', 'bounce-ws@test.local');
+    writeJSON(LEAD_KEY, [{ id: LEAD_ID, companyName: 'Bounce Test BV', contactEmail: TEST_EMAIL, status: 'sent', history: [] }]);
+    writeJSON(BL_KEY, []);
+  });
+
+  afterAll(() => {
+    getDb().prepare('DELETE FROM workspaces WHERE id = ?').run(WS);
+    getDb().prepare('DELETE FROM store WHERE key = ?').run(LEAD_KEY);
+    getDb().prepare('DELETE FROM store WHERE key = ?').run(BL_KEY);
+  });
+
+  it('POST /api/webhooks/resend-bounce — reachable without auth (route is public, not behind authMiddleware)', async () => {
+    // If this route regressed to sit after app.use('/api', authMiddleware),
+    // an unauthenticated POST from Resend would return 401 and bounces would be dropped.
+    const res = await request(app)
+      .post('/api/webhooks/resend-bounce')
+      .send({ type: 'email.delivered', email: 'noop@example.com' });
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('hard bounce — marks the lead + blacklists the domain in the lead\'s OWN workspace, not the default one', async () => {
+    const res = await request(app)
+      .post('/api/webhooks/resend-bounce')
+      .send({ type: 'email.bounced', email: TEST_EMAIL });
+    expect(res.statusCode).toBe(200);
+
+    // The handler runs after responding; give the async write a tick to land.
+    await new Promise(r => setTimeout(r, 50));
+
+    // Bounce flag + history land in the lead's actual (non-default) workspace
+    const wsLead = (readJSON(LEAD_KEY) || []).find(l => l.id === LEAD_ID);
+    expect(wsLead.emailBounced).toBe(true);
+    expect(wsLead.bouncedAt).toBeTruthy();
+    expect((wsLead.history || []).some(h => h.event === 'bounced')).toBe(true);
+
+    // Domain auto-blacklisted in the same workspace
+    const wsBlacklist = readJSON(BL_KEY) || [];
+    expect(wsBlacklist.some(e => e.value === 'bouncetest.example')).toBe(true);
+
+    // The default workspace must NOT receive the bounce (multi-tenancy isolation)
+    const defaultLeads = readJSON('leads.json') || [];
+    expect(defaultLeads.some(l => l.contactEmail === TEST_EMAIL)).toBe(false);
+    const defaultBlacklist = readJSON('blacklist.json') || [];
+    expect(defaultBlacklist.some(e => e.value === 'bouncetest.example')).toBe(false);
+  });
+});
+
 describe('Concurrency — Start-Project Idempotency', () => {
   it('POST /api/leads/:id/start-project — second call returns immediately when project already started', async () => {
     // Create a lead then manually set projectStartedAt via PATCH

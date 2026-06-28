@@ -3300,6 +3300,25 @@ app.post('/api/webhooks/calendly', (req, res) => {
   }
 });
 
+// ─── Resend bounce webhook (public) — MUST be before app.use('/api', authMiddleware) ─
+// Resend's servers POST here with no Bearer token, so this route must sit in the
+// public section. It also has no req.user, so it searches leads across ALL workspaces.
+app.post('/api/webhooks/resend-bounce', async (req, res) => {
+  res.json({ ok: true }); // respond immediately
+  const event = req.body;
+  if (!event?.type?.includes('bounce')) return;
+  const email = event?.data?.email_id ? (event?.data?.to?.[0] || '') : (event?.email || '');
+  if (!email) return;
+  const { lead, leads, idx, workspaceId } = findLeadAcrossWorkspaces(l => (l.contactEmail||'').toLowerCase() === email.toLowerCase());
+  if (!lead) return;
+  leads[idx].emailBounced = true;
+  leads[idx].bouncedAt = new Date().toISOString();
+  addLeadHistory(leads, leads[idx].id, { event: 'bounced', label: `Email hard gebounced (Resend webhook)` });
+  wsWriteWs(workspaceId, 'leads.json', leads);
+  const domain = email.split('@')[1];
+  if (domain) autoBlacklist(domain, 'Hard bounce via Resend webhook', workspaceId);
+});
+
 app.use('/api', authMiddleware);
 app.use('/data/uploads', authMiddleware, express.static(path.join(__dirname, 'data', 'uploads')));
 
@@ -14543,23 +14562,6 @@ app.get('/api/leads/fuzzy-duplicates', requireAdmin, (req, res) => {
 });
 
 // Task 39 — Resend bounce webhook
-app.post('/api/webhooks/resend-bounce', async (req, res) => {
-  res.json({ ok: true }); // respond immediately
-  const event = req.body;
-  if (!event?.type?.includes('bounce')) return;
-  const email = event?.data?.email_id ? (event?.data?.to?.[0] || '') : (event?.email || '');
-  if (!email) return;
-  const leads = wsRead(req, 'leads.json') || [];
-  const idx = leads.findIndex(l => (l.contactEmail||'').toLowerCase() === email.toLowerCase());
-  if (idx === -1) return;
-  leads[idx].emailBounced = true;
-  leads[idx].bouncedAt = new Date().toISOString();
-  addLeadHistory(leads, leads[idx].id, { event: 'bounced', label: `Email hard gebounced (Resend webhook)` });
-  wsWrite(req, 'leads.json', leads);
-  const domain = email.split('@')[1];
-  if (domain) autoBlacklist(domain, 'Hard bounce via Resend webhook', req.user?.workspaceId);
-});
-
 // Task 40 — Cron log table
 function logCron(jobName, status = 'ok', details = '') {
   try {
