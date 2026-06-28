@@ -213,6 +213,73 @@ describe('Concurrency — Inbox Approve Idempotency', () => {
   });
 });
 
+describe('Calendly Webhook — reachable + multi-tenant', () => {
+  const { readJSON, writeJSON, getDb } = require('../database');
+  const WS = 'ws_calendly_test';
+  const LEAD_KEY = `ws:${WS}:leads.json`;
+  const NOTIF_KEY = `ws:${WS}:notifications.json`;
+  const TEST_EMAIL = 'calendly-regression@example.com';
+  const LEAD_ID = 'cal_regression_lead';
+
+  beforeAll(() => {
+    // Active workspace so findLeadAcrossWorkspaces (getAllWorkspaceIds) includes it
+    getDb().prepare(
+      `INSERT OR REPLACE INTO workspaces (id, slug, name, owner_email, status)
+       VALUES (?, ?, ?, ?, 'active')`
+    ).run(WS, 'calendly-test', 'Calendly Test WS', 'calendly-ws@test.local');
+    // Seed a lead with the booking email ONLY in this non-default workspace
+    writeJSON(LEAD_KEY, [{ id: LEAD_ID, companyName: 'Calendly Test BV', contactEmail: TEST_EMAIL, status: 'sent', history: [] }]);
+    writeJSON(NOTIF_KEY, []);
+  });
+
+  afterAll(() => {
+    getDb().prepare('DELETE FROM workspaces WHERE id = ?').run(WS);
+    getDb().prepare('DELETE FROM store WHERE key = ?').run(LEAD_KEY);
+    getDb().prepare('DELETE FROM store WHERE key = ?').run(NOTIF_KEY);
+  });
+
+  it('POST /api/webhooks/calendly — reachable without auth (route is public, not behind authMiddleware)', async () => {
+    // If this route regressed to sit after app.use('/api', authMiddleware),
+    // an unauthenticated POST would return 401 and Calendly deliveries would be dropped.
+    const res = await request(app)
+      .post('/api/webhooks/calendly')
+      .send({ event: 'ping' });
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('invitee.created — booking is written to the lead\'s OWN workspace, not the default one', async () => {
+    const res = await request(app)
+      .post('/api/webhooks/calendly')
+      .send({
+        event: 'invitee.created',
+        payload: {
+          name: 'Test Invitee',
+          email: TEST_EMAIL,
+          event_type: { name: 'Intro Call' },
+          scheduled_event: { start_time: '2026-07-01T10:00:00Z' }
+        }
+      });
+    expect(res.statusCode).toBe(200);
+
+    // Booking + history land in the lead's actual (non-default) workspace
+    const wsLead = (readJSON(LEAD_KEY) || []).find(l => l.id === LEAD_ID);
+    expect(wsLead.calendlyBooking).toBeTruthy();
+    expect(wsLead.calendlyBooking.email).toBe(TEST_EMAIL);
+    expect(wsLead.calendlyBooking.eventName).toBe('Intro Call');
+    expect((wsLead.history || []).some(h => h.event === 'calendlyBooked')).toBe(true);
+
+    // Notification is workspace-scoped to the matched lead
+    const wsNotifs = readJSON(NOTIF_KEY) || [];
+    expect(wsNotifs.some(n => n.type === 'calendly_booking' && n.leadId === LEAD_ID)).toBe(true);
+
+    // The default workspace must NOT receive this booking (multi-tenancy isolation)
+    const defaultLeads = readJSON('leads.json') || [];
+    expect(defaultLeads.some(l => l.contactEmail === TEST_EMAIL)).toBe(false);
+    expect(defaultLeads.some(l => l.calendlyBooking?.email === TEST_EMAIL)).toBe(false);
+  });
+});
+
 describe('Concurrency — Start-Project Idempotency', () => {
   it('POST /api/leads/:id/start-project — second call returns immediately when project already started', async () => {
     // Create a lead then manually set projectStartedAt via PATCH
