@@ -340,6 +340,58 @@ describe('Resend Bounce Webhook — reachable + multi-tenant', () => {
   });
 });
 
+describe('Notifications — routed to the lead\'s OWN workspace, not the default', () => {
+  // Several notification sites (intake submitted, reply received, bounce, payment overdue)
+  // used to pass `lead.workspaceId || null` to addNotification. Leads stored in a
+  // workspace-scoped store do NOT carry a workspaceId field, so that resolved to null
+  // and every such notification landed in the DEFAULT workspace — invisible to the
+  // tenant and polluting the default feed. The fix passes the in-scope workspace id.
+  const { readJSON, writeJSON, getDb } = require('../database');
+  const WS = 'ws_notif_test';
+  const LEAD_KEY = `ws:${WS}:leads.json`;
+  const NOTIF_KEY = `ws:${WS}:notifications.json`;
+  const LEAD_ID = 'notif_regression_lead';
+  const INTAKE_TOKEN = 'notif-intake-token-xyz';
+
+  beforeAll(() => {
+    getDb().prepare(
+      `INSERT OR REPLACE INTO workspaces (id, slug, name, owner_email, status)
+       VALUES (?, ?, ?, ?, 'active')`
+    ).run(WS, 'notif-test', 'Notif Test WS', 'notif-ws@test.local');
+    writeJSON(LEAD_KEY, [{ id: LEAD_ID, companyName: 'Notif Test BV', contactName: 'Jan', intakeToken: INTAKE_TOKEN, services: [], status: 'client', history: [] }]);
+    writeJSON(NOTIF_KEY, []);
+  });
+
+  afterAll(() => {
+    getDb().prepare('DELETE FROM workspaces WHERE id = ?').run(WS);
+    getDb().prepare('DELETE FROM store WHERE key = ?').run(LEAD_KEY);
+    getDb().prepare('DELETE FROM store WHERE key = ?').run(NOTIF_KEY);
+    // Scrub any default-workspace leftover so a reverted-fix run can't pollute later runs
+    const defaultNotifs = (readJSON('notifications.json') || []).filter(n => n.leadId !== LEAD_ID);
+    writeJSON('notifications.json', defaultNotifs);
+  });
+
+  it('intake submission — fires intake_submitted notification into the lead\'s workspace, not the default one', async () => {
+    const defaultBefore = (readJSON('notifications.json') || []).length;
+
+    const res = await request(app)
+      .post(`/api/intake/${LEAD_ID}/${INTAKE_TOKEN}`)
+      .send({ answers: { kleur: 'blauw' } });
+    expect(res.statusCode).toBe(200);
+
+    // Notification lands in the lead's actual (non-default) workspace
+    const wsNotifs = readJSON(NOTIF_KEY) || [];
+    const intakeNotif = wsNotifs.find(n => n.type === 'intake_submitted' && n.leadId === LEAD_ID);
+    expect(intakeNotif).toBeTruthy();
+    expect(intakeNotif.workspaceId).toBe(WS);
+
+    // The default workspace must NOT receive this tenant's notification
+    const defaultNotifs = readJSON('notifications.json') || [];
+    expect(defaultNotifs.some(n => n.leadId === LEAD_ID)).toBe(false);
+    expect(defaultNotifs.length).toBe(defaultBefore);
+  });
+});
+
 describe('Concurrency — Start-Project Idempotency', () => {
   it('POST /api/leads/:id/start-project — second call returns immediately when project already started', async () => {
     // Create a lead then manually set projectStartedAt via PATCH

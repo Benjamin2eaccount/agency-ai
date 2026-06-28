@@ -2105,7 +2105,7 @@ app.post('/api/intake/:leadId/:token', async (req, res) => {
   // Advance to Fase 2 — Uitvoering on intake submission
   if ((leads[idx].currentPhase || 1) < 2) leads[idx].currentPhase = 2;
   addLeadHistory(leads, leads[idx].id, { event: 'intakeSubmitted', label: 'Intake ingevuld door klant' });
-  addNotification('intake_submitted', `Intake ingevuld: ${leads[idx].companyName}`, `De intake is ingevuld door ${leads[idx].contactName || leads[idx].companyName}`, leads[idx].id, `project:${leads[idx].id}`, leads[idx].workspaceId || null);
+  addNotification('intake_submitted', `Intake ingevuld: ${leads[idx].companyName}`, `De intake is ingevuld door ${leads[idx].contactName || leads[idx].companyName}`, leads[idx].id, `project:${leads[idx].id}`, _ws);
   fireWebhooks('intake.submitted', { leadId: leads[idx].id, companyName: leads[idx].companyName, niche: leads[idx].niche, contactEmail: leads[idx].contactEmail, submittedAt: leads[idx].intakeSubmittedAt }, _ws);
   wsWriteWs(_ws, 'leads.json', leads);
 
@@ -11754,7 +11754,7 @@ async function checkReplies(workspaceId) {
         }
 
         addActivity('reply', 'Reply ontvangen van ' + matched.companyName, { meta: { companyName: matched.companyName, leadId: matched.id }, workspaceId: wId });
-        addNotification('reply_received', `Reply: ${matched.companyName}`, `${matched.companyName} heeft gereageerd op jouw email`, matched.id, `project:${matched.id}`, matched.workspaceId || null);
+        addNotification('reply_received', `Reply: ${matched.companyName}`, `${matched.companyName} heeft gereageerd op jouw email`, matched.id, `project:${matched.id}`, wId);
         broadcastWS('new_reply', { leadId: matched.id, companyName: matched.companyName, repliedAt: matched.repliedAt });
         fireWebhooks('lead.replied', { leadId: matched.id, companyName: matched.companyName, niche: matched.niche, score: matched.score, location: matched.location, contactEmail: matched.contactEmail, repliedAt: matched.repliedAt }, wId);
         console.log(`[Reply] Reply gedetecteerd: ${matched.companyName} (${msgId})`);
@@ -11800,7 +11800,7 @@ async function checkReplies(workspaceId) {
             hit.bouncedAt    = new Date().toISOString();
             addLeadHistory(leads, hit.id, { event: 'bounced', label: `Email gebounced — ongeldig adres (${failedEmail})` });
             addActivity('bounce', `Bounce: ${hit.companyName}`, { meta: { companyName: hit.companyName, leadId: hit.id, email: failedEmail }, workspaceId: wId });
-            addNotification('email_bounced', `Bounce: ${hit.companyName}`, `Email naar ${failedEmail} is niet aangekomen`, hit.id, `project:${hit.id}`, hit.workspaceId || null);
+            addNotification('email_bounced', `Bounce: ${hit.companyName}`, `Email naar ${failedEmail} is niet aangekomen`, hit.id, `project:${hit.id}`, wId);
             const bouncedDomain = failedEmail.split('@')[1];
             if (bouncedDomain) autoBlacklist(bouncedDomain, 'Email gebounced', wId);
             bouncesFound++;
@@ -13535,7 +13535,7 @@ Geef ALLEEN JSON: {"subject":"kort en duidelijk","body":"volledige email tekst"}
         const lIdx = allLeads.findIndex(l => l.id === lead.id);
         const pIdx = (allLeads[lIdx]?.payments || []).findIndex(p => p.id === pay.id);
         if (lIdx !== -1 && pIdx !== -1) { allLeads[lIdx].payments[pIdx].lastReminderAt = new Date().toISOString(); allLeads[lIdx].payments[pIdx].reminderCount = (allLeads[lIdx].payments[pIdx].reminderCount || 0) + 1; }
-        addNotification('payment_overdue', `Betaling te laat: ${lead.companyName}`, `€${pay.amount} is ${daysOverdue} dagen te laat — herinnering verstuurd`, lead.id, `project:${lead.id}`, lead.workspaceId || null);
+        addNotification('payment_overdue', `Betaling te laat: ${lead.companyName}`, `€${pay.amount} is ${daysOverdue} dagen te laat — herinnering verstuurd`, lead.id, `project:${lead.id}`, wId);
         console.log(`[Overdue] Herinnering verstuurd aan ${lead.companyName} voor €${pay.amount}`);
       } catch { /* optional */ }
     }
