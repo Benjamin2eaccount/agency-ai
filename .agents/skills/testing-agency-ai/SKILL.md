@@ -185,7 +185,7 @@ npm run test  # 67 tests across 11 suites
 
 All tests should pass. The "force exit" warning at the end is expected (cron timers).
 
-Suites: auth, health, leads, settings, portal, stats, superadmin, inbox, regression, payments, registration.
+Suites: auth, health, leads, settings, portal, stats, superadmin, inbox, regression, features, payments, registration.
 
 ## Route Architecture
 
@@ -205,6 +205,49 @@ All extracted routes use dependency injection: `createRouter(deps)` pattern wher
 - `lib/email.js` — email service with DI factory (`createEmailService(deps)`)
 - `ENV.md` — documentation of all 19 `process.env` variables
 - `PROGRESS.md` / `AUDIT.md` — session tracking and audit findings
+
+## Registration & Payment Flow Testing
+
+### Test Accounts
+- **Admin**: `admin` / `agency2024` (demo workspace with 67 leads)
+- **Empty workspace**: Register a fresh account via `/register#direct` — creates a `pending_payment` workspace
+- **Second test workspace**: `ratetest1@test.nl` / `Welkom123` (empty workspace, 0 leads — good for welcome banner testing)
+
+### Registration Page (`/register#direct`)
+- Two tabs: "Demo aanvragen" and "Direct starten" — test the Direct starten flow
+- Validation errors appear as red banners above the form
+- **Known pitfall**: The `_submitting` double-click guard must be reset on validation error early returns. If the form stops responding after a validation error, this guard is broken.
+- Expected Dutch error messages: "Vul alle verplichte velden in.", "Naam moet tussen 2 en 100 tekens zijn.", "Voer een geldig emailadres in.", "Wachtwoord: min. 8 tekens en minstens 1 cijfer."
+
+### Betaling Page (`/register/betaling`)
+- After successful registration, redirects here with query params: `?ref=AAI-2026-XXXXXX&amount=197&naam=...`
+- Must show: IBAN `NL62RABO0301339430`, payment reference (AAI-2026-XXXXXX format), amount, copy buttons
+- Payment reference uses 6 hex chars with collision detection
+
+### Pending Payment Login
+- Logging in with a `pending_payment` workspace shows a yellow notice instead of dashboard access
+- Notice must contain: IBAN, payment reference, amount, link to betaalinstructies
+
+### Welcome Banner
+- Appears on dashboard for workspaces with 0 leads and `!isDemo`
+- Shows 3 steps: Instellingen configureren, Eerste run starten, Leads beoordelen
+- Setup wizard modal also appears — click outside to dismiss (Escape doesn't work)
+
+### API Key Management (Instellingen → Integraties)
+- Generate: enter label, click "Genereer sleutel" → full key shown with "wordt niet opnieuw getoond" warning
+- After reload: only prefix (`sk-agency-xxxx...`) shown in list
+- Rotation: `POST /api/auth/api-keys/:id/rotate` — old key returns 401, new key works
+- Rate limit: 120 requests/minute per key, request #121 returns 429
+
+### Settings Field Limits
+- Agency name, myName, myTitle, username: 200 char limit (server-side `trim200()`)
+- websiteAbout, websiteContact: 1000 char limit (server-side `trim1000()`)
+- Test by pasting 300+ chars, saving, reloading — should be truncated
+
+### Rate Limiting
+- Registration: 5 attempts per IP per 15 minutes → 6th returns 429
+- Login: 10 attempts per 15 minutes
+- API keys: 120 requests per minute per key
 
 ## Browser Cache Issues
 After killing/restarting the server (e.g. for shutdown testing), Chrome may cache the ERR_FAILED error page. Fix: clear browsing data (Ctrl+Shift+Delete → Delete data) or open a new incognito window. The `curl` health check will confirm the server is actually running even when the browser shows an error.
